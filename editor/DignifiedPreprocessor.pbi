@@ -19,23 +19,39 @@
 ;    nomes longos para curtos (ZZ->AA), labels de linha, jump
 ;    labels, loop labels ( nome{ ... } ) e EXIT, TRUE/FALSE,
 ;    operadores compostos (++ -- += -= *= /= ^=), numeracao de
-;    linha com resolucao de referencias para frente (2 passes).
-;    NAO implementado ainda: FUNC/RET (proto-funcoes), INCLUDE,
-;    remtags/##BB:/.ini (usa defaults fixos), traducao unicode
-;    (-tr), conversao ?/PRINT e strip THEN/GOTO (-cp/-tg),
-;    relatorios (-lbr/-lnr/-var).
+;    linha com resolucao de referencias para frente (2 passes),
+;    FUNC/RET (proto-funcoes), conversao ?/PRINT (-cp), strip
+;    THEN/GOTO (-tg), traducao Unicode->ASCII MSX (-tr),
+;    maiusculas geral (-ca) e tamanho de TAB configuravel.
+;    Configuravel via BadigCfg (editor/BadigSettings.pbi) atraves
+;    de Dig_SyncConfigFromBadigCfg() em BadigEditor.pb, ou
+;    diretamente via os globals Dig_* abaixo (usado por
+;    editor/tools/DigTestCli.pb, que roda com os defaults fixos).
+;    NAO implementado ainda: INCLUDE, remtags/##BB:/.ini
+;    (usa os globals fixos abaixo, nao a hierarquia completa),
+;    relatorios (-lbr/-lnr/-var), strip_spaces (reinterpretado:
+;    remove so espacos que nao ficam entre duas palavras, para
+;    nao colar identificadores/keywords - nao e byte-a-byte
+;    identico ao original).
 ; ------------------------------------------------------------
 ;
 
 EnableExplicit
 
 ;- ------------------------------------------------------------
-;- Configuracao fixa (equivalente aos defaults de badig_settings.py)
+;- Configuracao (defaults equivalentes aos de badig_settings.py;
+;- sincronizados a partir de BadigCfg quando rodando no editor)
 ;- ------------------------------------------------------------
 
 Global Dig_LineStart.i = 10
 Global Dig_LineStep.i = 10
 Global Dig_RemHeader.b = #True
+Global Dig_TabLength.i = 4
+Global Dig_StripSpaces.b = #False
+Global Dig_CapitalizeAll.b = #False
+Global Dig_ConvertPrintCfg.s = ""      ; "" = nao converter, "?" ou "P" (forma final desejada)
+Global Dig_StripThenGotoCfg.s = ""     ; "" = nao remover, "T" ou "G"
+Global Dig_Translate.b = #False
 
 Global Dig_HasError.b
 Global Dig_ErrorMsg.s
@@ -1594,6 +1610,312 @@ Procedure.s Dig_BoolOps_Piece(Piece.s, LineNum.i)
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Tokenizacao generica em atomos (palavra/espaco/outro), usada
+;- pelos passos de -cp / -tg / -ca / strip_spaces abaixo. Opera
+;- sobre um trecho CODE (ja sem strings/comentarios/DATA).
+;- ------------------------------------------------------------
+
+Procedure Dig_TokenizeAtoms(Piece.s, List Atoms.s(), List AtomKind.s())
+  ClearList(Atoms()) : ClearList(AtomKind())
+  Protected pos.i = 1, len_.i = Len(Piece), c.s
+
+  While pos <= len_
+    c = Mid(Piece, pos, 1)
+
+    If c = " " Or c = Chr(9)
+      Protected sStart.i = pos
+      While pos <= len_ And (Mid(Piece, pos, 1) = " " Or Mid(Piece, pos, 1) = Chr(9))
+        pos + 1
+      Wend
+      AddElement(Atoms()) : Atoms() = Mid(Piece, sStart, pos - sStart)
+      AddElement(AtomKind()) : AtomKind() = "SPACE"
+      Continue
+    EndIf
+
+    If Dig_IsWordChar(c)
+      Protected wStart.i = pos
+      While pos <= len_ And Dig_IsWordChar(Mid(Piece, pos, 1))
+        pos + 1
+      Wend
+      AddElement(Atoms()) : Atoms() = Mid(Piece, wStart, pos - wStart)
+      AddElement(AtomKind()) : AtomKind() = "WORD"
+      Continue
+    EndIf
+
+    AddElement(Atoms()) : Atoms() = c
+    AddElement(AtomKind()) : AtomKind() = "OTHER"
+    pos + 1
+  Wend
+EndProcedure
+
+; Converte "?" <-> "PRINT" no inicio de instrucao (comeco do trecho, apos ":",
+; ou apos "THEN"/"ELSE") conforme Dig_ConvertPrintCfg ("?" ou "P" = forma final
+; desejada). Port de badig_msx.py pass_5 (bloco "Convert ? to print or vice versa").
+Procedure.s Dig_ConvertPrint_Piece(Piece.s, LineNum.i)
+  If Dig_ConvertPrintCfg = ""
+    ProcedureReturn Piece
+  EndIf
+
+  Protected out.s = "", pos.i = 1, len_.i = Len(Piece), c.s
+  Protected atStmtStart.b = #True
+
+  While pos <= len_
+    c = Mid(Piece, pos, 1)
+
+    If c = " " Or c = Chr(9)
+      out + c
+      pos + 1
+      Continue
+    EndIf
+
+    If c = ":"
+      out + c
+      pos + 1
+      atStmtStart = #True
+      Continue
+    EndIf
+
+    If atStmtStart And c = "?"
+      If Dig_ConvertPrintCfg = "?"
+        out + "?"
+      Else
+        out + "PRINT"
+      EndIf
+      pos + 1
+      atStmtStart = #False
+      Continue
+    EndIf
+
+    If Dig_IsWordChar(c)
+      Protected wStart.i = pos
+      While pos <= len_ And Dig_IsWordChar(Mid(Piece, pos, 1))
+        pos + 1
+      Wend
+      Protected word.s = Mid(Piece, wStart, pos - wStart)
+      Protected wordU.s = UCase(word)
+
+      If atStmtStart And wordU = "PRINT"
+        If Dig_ConvertPrintCfg = "?"
+          out + "?"
+        Else
+          out + "PRINT"
+        EndIf
+      Else
+        out + word
+      EndIf
+
+      atStmtStart = Bool(wordU = "THEN" Or wordU = "ELSE")
+      Continue
+    EndIf
+
+    out + c
+    pos + 1
+    atStmtStart = #False
+  Wend
+
+  ProcedureReturn out
+EndProcedure
+
+; Remove THEN quando imediatamente seguido de GOTO (modo "T") ou remove GOTO
+; quando imediatamente precedido de THEN/ELSE (modo "G"), conforme
+; Dig_StripThenGotoCfg. Port de badig_msx.py pass_5 (blocos "Strip THEN before
+; GOTO" / "Strip GOTO after THEN/ELSE").
+Procedure.s Dig_StripThenGoto_Piece(Piece.s, LineNum.i)
+  If Dig_StripThenGotoCfg = ""
+    ProcedureReturn Piece
+  EndIf
+
+  Protected NewList atoms.s() : Protected NewList kinds.s()
+  Dig_TokenizeAtoms(Piece, atoms(), kinds())
+
+  Protected n.i = ListSize(atoms())
+  If n = 0
+    ProcedureReturn Piece
+  EndIf
+
+  Dim A.s(n - 1) : Dim K.s(n - 1) : Dim Skip.b(n - 1)
+  Protected idx.i = 0
+  ForEach atoms()
+    A(idx) = atoms()
+    idx + 1
+  Next
+  idx = 0
+  ForEach kinds()
+    K(idx) = kinds()
+    idx + 1
+  Next
+
+  Protected i.i, j.i, p.i, wu.s
+
+  For i = 0 To n - 1
+    If K(i) = "WORD"
+      wu = UCase(A(i))
+
+      If Dig_StripThenGotoCfg = "T" And wu = "THEN"
+        j = i + 1
+        While j <= n - 1 And K(j) = "SPACE"
+          j + 1
+        Wend
+        If j <= n - 1 And K(j) = "WORD" And UCase(A(j)) = "GOTO"
+          Skip(i) = #True
+          If i + 1 <= n - 1 And K(i + 1) = "SPACE"
+            Skip(i + 1) = #True
+          EndIf
+        EndIf
+
+      ElseIf Dig_StripThenGotoCfg = "G" And wu = "GOTO"
+        p = i - 1
+        While p >= 0 And K(p) = "SPACE"
+          p - 1
+        Wend
+        If p >= 0 And K(p) = "WORD" And (UCase(A(p)) = "THEN" Or UCase(A(p)) = "ELSE")
+          Skip(i) = #True
+          If i + 1 <= n - 1 And K(i + 1) = "SPACE"
+            Skip(i + 1) = #True
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+  Next
+
+  Protected out.s = ""
+  For i = 0 To n - 1
+    If Not Skip(i)
+      out + A(i)
+    EndIf
+  Next
+
+  ProcedureReturn out
+EndProcedure
+
+; Maiusculiza todo o trecho CODE (identificadores/keywords) - chamado via
+; Dig_MapCodeSegments, que ja deixa de fora strings/REM/DATA, entao aqui basta
+; UCase() no trecho inteiro. Port de badig.py generate() ("capitalise_all
+; aplicado por ultimo, sobre tudo que nao e literal").
+Procedure.s Dig_CapitalizeAll_Piece(Piece.s, LineNum.i)
+  If Not Dig_CapitalizeAll
+    ProcedureReturn Piece
+  EndIf
+  ProcedureReturn UCase(Piece)
+EndProcedure
+
+; Remove espacos "cosmeticos" de um trecho CODE, preservando exatamente um
+; espaco entre duas palavras adjacentes (senao "PRINT A" viraria "PRINTA").
+; Reinterpretacao pragmatica do -ss original (que remove espacos token a
+; token no nivel do lexer) - nao e garantido byte-a-byte identico.
+Procedure.s Dig_StripSpaces_Piece(Piece.s, LineNum.i)
+  If Not Dig_StripSpaces
+    ProcedureReturn Piece
+  EndIf
+
+  Protected NewList atoms.s() : Protected NewList kinds.s()
+  Dig_TokenizeAtoms(Piece, atoms(), kinds())
+
+  Protected n.i = ListSize(atoms())
+  If n = 0
+    ProcedureReturn Piece
+  EndIf
+
+  Dim A.s(n - 1) : Dim K.s(n - 1)
+  Protected idx.i = 0
+  ForEach atoms()
+    A(idx) = atoms()
+    idx + 1
+  Next
+  idx = 0
+  ForEach kinds()
+    K(idx) = kinds()
+    idx + 1
+  Next
+
+  Protected out.s = "", i.i
+  For i = 0 To n - 1
+    If K(i) = "SPACE"
+      If i > 0 And K(i - 1) = "WORD" And i < n - 1 And K(i + 1) = "WORD"
+        out + " "
+      EndIf
+    Else
+      out + A(i)
+    EndIf
+  Next
+
+  ProcedureReturn out
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Traducao Unicode -> ASCII nativo MSX (-tr). Tabela extraida de
+;- badig/msx/badig_msx.py (c_replacements/c_original/c_translat)
+;- via scratchpad/extract_charset.py - validada (128 chars unicos,
+;- c_translat sequencial 0x80..0xFF, sem overlap com c_replacements).
+;- c_original[i] (1-based) -> Chr(&H80 + i - 1) via Dig_TransOriginal.
+;- ------------------------------------------------------------
+
+Global Dig_TransOriginal.s = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»ÃãĨĩÕõŨũĲĳ¾∽◇‰¶§▂▚▆▔◾▇▎▞▊▕▉▨▧▼▲▶◀⧗⧓▘▗▝▖▒Δǂω█▄▌▐▀αβΓπΣσμτΦθΩδ∞φ∈∩≡±≥≤⌠⌡÷≈°∙‐√ⁿ²❚■"
+
+Procedure.s Dig_TransReplacement(C.s)
+  Select C
+    Case "☺" : ProcedureReturn "A"
+    Case "☻" : ProcedureReturn "B"
+    Case "♥" : ProcedureReturn "C"
+    Case "♦" : ProcedureReturn "D"
+    Case "♣" : ProcedureReturn "E"
+    Case "♠" : ProcedureReturn "F"
+    Case "·" : ProcedureReturn "G"
+    Case "◘" : ProcedureReturn "H"
+    Case "○" : ProcedureReturn "I"
+    Case "◙" : ProcedureReturn "J"
+    Case "♂" : ProcedureReturn "K"
+    Case "♀" : ProcedureReturn "L"
+    Case "♪" : ProcedureReturn "M"
+    Case "♬" : ProcedureReturn "N"
+    Case "☼" : ProcedureReturn "O"
+    Case "┿" : ProcedureReturn "P"
+    Case "┴" : ProcedureReturn "Q"
+    Case "┬" : ProcedureReturn "R"
+    Case "┤" : ProcedureReturn "S"
+    Case "├" : ProcedureReturn "T"
+    Case "┼" : ProcedureReturn "U"
+    Case "│" : ProcedureReturn "V"
+    Case "─" : ProcedureReturn "W"
+    Case "┌" : ProcedureReturn "X"
+    Case "┐" : ProcedureReturn "Y"
+    Case "└" : ProcedureReturn "Z"
+    Case "┘" : ProcedureReturn "["
+    Case "╳" : ProcedureReturn "]"
+    Case "╱" : ProcedureReturn "\"
+    Case "╲" : ProcedureReturn "^"
+    Case "╂" : ProcedureReturn "_"
+  EndSelect
+  ProcedureReturn C
+EndProcedure
+
+; Converte texto com caracteres Unicode especiais (graficos/acentos/gregas) para
+; os codigos nativos MSX (0x80-0xFF) equivalentes. Porta byte-a-byte trans_char()
+; de badig/msx/badig_msx.py (c_replacements aplicado primeiro, depois a tabela
+; posicional c_original/c_translat). Aplicado sobre a linha final inteira (nao so
+; trechos STRING/COMMENT/DATA): trechos CODE nunca contem esses caracteres porque
+; identificadores/numeros/operadores sao restritos a ASCII pelo resto do pipeline.
+Procedure.s Dig_TransChar(Text.s)
+  If Not Dig_Translate
+    ProcedureReturn Text
+  EndIf
+
+  Protected out.s = "", pos.i = 1, len_.i = Len(Text), c.s, p.i
+  While pos <= len_
+    c = Mid(Text, pos, 1)
+    c = Dig_TransReplacement(c)
+    p = FindString(Dig_TransOriginal, c)
+    If p > 0
+      out + Chr($7F + p)
+    Else
+      out + c
+    EndIf
+    pos + 1
+  Wend
+  ProcedureReturn out
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Funcao principal
 ;- ------------------------------------------------------------
 
@@ -1623,7 +1945,7 @@ Procedure.s Dig_Preprocess(SourceText.s)
   ; Trim() do PureBasic so remove espacos, nao tabs - expande tabs para espacos
   ; aqui para que indentacao com TAB nao quebre a deteccao de DEFINE/DECLARE/
   ; KEEP/labels no inicio de linha (todos comparam a primeira "palavra" apos Trim)
-  text = ReplaceString(text, Chr(9), "    ")
+  text = ReplaceString(text, Chr(9), Space(Dig_TabLength))
 
   Protected NewList raw.s()
   Protected lc.i = CountString(text, Chr(10)) + 1, li.i
@@ -1901,6 +2223,14 @@ Procedure.s Dig_Preprocess(SourceText.s)
       resolved = ReplaceString(resolved, "::", ":")
     Wend
     resolved = Trim(resolved)
+
+    ; ajustes finais equivalentes ao pass_5/generate() do badig_msx.py original -
+    ; operam sobre a linha classica ja resolvida (labels/variaveis/loops prontos)
+    resolved = Dig_MapCodeSegments(resolved, finalLines()\SrcLine, @Dig_ConvertPrint_Piece())
+    resolved = Dig_MapCodeSegments(resolved, finalLines()\SrcLine, @Dig_StripThenGoto_Piece())
+    resolved = Dig_TransChar(resolved)
+    resolved = Dig_MapCodeSegments(resolved, finalLines()\SrcLine, @Dig_CapitalizeAll_Piece())
+    resolved = Dig_MapCodeSegments(resolved, finalLines()\SrcLine, @Dig_StripSpaces_Piece())
 
     Protected finalLine.s = Str(finalLines()\LineNumber) + " " + resolved
     If Len(finalLine) > 255

@@ -23,7 +23,8 @@ Enumeration Windows
 EndEnumeration
 
 Enumeration Gadgets
-  #PanelGadget
+  #TabBarGadget
+  #RulerGadget
 EndEnumeration
 
 Enumeration StatusBars
@@ -63,23 +64,59 @@ Enumeration 1
 EndEnumeration
 
 #Event_Rehighlight = #PB_Event_FirstCustomValue
+#Event_UpdateUI    = #PB_Event_FirstCustomValue + 1
 
 #App_Title      = "Basic Dignified Editor"
 #File_Pattern   = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
-#Linux_TabGuess = 30 ; altura estimada da faixa de abas no Linux/GTK, onde o atributo nao esta disponivel
+
+; Tab bar / regua de colunas - abas customizadas (com botao de fechar) desenhadas
+; num CanvasGadget, no lugar do PanelGadget nativo (que nao suporta isso e tem
+; visual datado demais nas 3 plataformas).
+#TabBar_Height   = 36
+#Ruler_Height    = 20
+#Tab_PadX        = 14
+#Tab_MinWidth    = 90
+#Tab_MaxWidth    = 220
+#Tab_CloseSize   = 14
+#Tab_CloseGap    = 10
+#Tab_Gap         = 2
+
+; Cores da tab bar/regua (RGB() e uma funcao em tempo de execucao no PureBasic,
+; entao essas nao podem ser #Constantes - sao globais, calculadas uma vez aqui
+; no topo, antes de qualquer janela/gadget ser criado)
+Global Color_AppBg        = RGB(15, 16, 21)   ; um pouco mais escuro que o fundo do editor, para dar profundidade
+Global Color_EditorBg     = RGB(24, 26, 34)   ; mesma cor de fundo do ScintillaGadget (ver SetupEditorStyles)
+Global Color_TabInactive  = RGB(30, 32, 40)
+Global Color_TabHover     = RGB(38, 41, 52)
+Global Color_TextActive   = RGB(220, 223, 230)
+Global Color_TextInactive = RGB(140, 145, 160)
+Global Color_Accent       = RGB(97, 175, 239) ; mesmo azul de #Style_Function
+Global Color_CloseHover   = RGB(224, 108, 117); mesmo vermelho de #Style_Operator
+Global Color_RulerBg      = RGB(20, 21, 28)
+Global Color_RulerText    = RGB(110, 116, 130)
+Global Color_RulerTick    = RGB(60, 64, 76)
 
 ;- ------------------------------------------------------------
 ;- Estruturas e listas globais
 ;- ------------------------------------------------------------
 
 Structure Document
-  Path.s          ; caminho completo no disco, vazio se ainda nao foi salvo
-  Modified.b      ; 1 se ha alteracoes nao salvas
-  SciGadget.i     ; ScintillaGadget associado a esta aba
+  Path.s            ; caminho completo no disco, vazio se ainda nao foi salvo
+  Modified.b        ; 1 se ha alteracoes nao salvas
+  SciGadget.i       ; ScintillaGadget associado a esta aba
+  UntitledName.s    ; nome estavel ("Sem titulo N"), so usado enquanto Path = ""
+  DisplayCaption.s  ; rotulo ja computado (nome + " *" se modificado), cache para RedrawTabBar
+  TabX1.i           ; retangulo da aba inteira na tab bar (hit-test de clique/hover)
+  TabX2.i
+  CloseX1.i         ; retangulo do botao "x" de fechar, dentro da aba
+  CloseX2.i
 EndStructure
 
 Global NewList Docs.Document()
 Global UntitledCount = 0
+Global ActiveTabPosition.i = -1
+Global HoverTabPosition.i = -1
+Global HoverCloseTabPosition.i = -1
 
 ; Enquanto verdadeiro, mudancas de texto no Scintilla nao marcam o
 ; documento como modificado (usado ao carregar conteudo programaticamente).
@@ -109,7 +146,13 @@ Declare.b IsDigitChar(C.s)
 Declare.b IsWordChar(C.s)
 Declare   HighlightDocument(Sci)
 Declare   SetupEditorStyles(Sci)
+Declare   UpdateLineNumberMargin(Sci)
+Declare   ActiveSciGadget()
 Declare   ScintillaCallBack(Gadget, *scinotify.SCNotification)
+Declare.s ComputeTabCaption(Position)
+Declare   RedrawTabBar()
+Declare   RedrawRuler()
+Declare   SetActiveTab(Position)
 Declare   AddDocumentTab(Path.s = "", Content.s = "")
 Declare   FindDocumentByGadget(GadgetNum)
 Declare   UpdateTabCaption(Position)
@@ -121,6 +164,7 @@ Declare   SaveTokenized()
 Declare   SaveAsTokenizedNative()
 Declare   SaveAsAsciiFromDignified()
 Declare   SaveAsTokenizedFromDignified()
+Declare   Dig_SyncConfigFromBadigCfg()
 Declare   ResizeInterface()
 
 ;- ------------------------------------------------------------
@@ -239,6 +283,12 @@ EndProcedure
 Procedure HighlightDocument(Sci)
   Protected Text.s = ReadSciText(Sci)
   Protected TextLen = Len(Text)
+
+  UpdateLineNumberMargin(Sci)
+  If Sci = ActiveSciGadget()
+    RedrawRuler()
+  EndIf
+
   If TextLen = 0
     ProcedureReturn
   EndIf
@@ -555,6 +605,27 @@ Procedure SetupEditorStyles(Sci)
   ScintillaSendMessage(Sci, #SCI_SETCARETFORE, RGB(255, 255, 255))
   ScintillaSendMessage(Sci, #SCI_SETSELBACK, 1, RGB(60, 80, 110))
   ScintillaSendMessage(Sci, #SCI_SETTABWIDTH, 4)
+
+  ; Margem de numeros de linha - unica margem usada (sem marcadores/folding)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_LINENUMBER, RGB(100, 106, 122))
+  ScintillaSendMessage(Sci, #SCI_STYLESETBACK, #STYLE_LINENUMBER, Color_RulerBg)
+  ScintillaSendMessage(Sci, #SCI_SETMARGINTYPEN, 0, #SC_MARGIN_NUMBER)
+  ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 1, 0)
+  ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 2, 0)
+  UpdateLineNumberMargin(Sci)
+EndProcedure
+
+; Recalcula a largura da margem de numeros de linha com base na quantidade de
+; digitos necessaria (numero de linhas do documento) e na largura real do
+; caractere na fonte monoespacada em uso - mantem a margem sempre do tamanho
+; certo (nem apertada demais, nem larga demais) conforme o arquivo cresce.
+Procedure UpdateLineNumberMargin(Sci)
+  Protected Digits = Len(Str(ScintillaSendMessage(Sci, #SCI_GETLINECOUNT)))
+  If Digits < 3 : Digits = 3 : EndIf
+  Protected *Sample = UTF8(RSet("", Digits, "9"))
+  Protected TextW = ScintillaSendMessage(Sci, #SCI_TEXTWIDTH, #STYLE_LINENUMBER, *Sample)
+  FreeMemory(*Sample)
+  ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 0, TextW + 16)
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -571,54 +642,82 @@ Procedure ScintillaCallBack(Gadget, *scinotify.SCNotification)
       If *scinotify\modificationType & (#SC_MOD_INSERTTEXT | #SC_MOD_DELETETEXT)
         PostEvent(#Event_Rehighlight, #MainWindow, Gadget, 0, SuppressModifiedTracking)
       EndIf
+
+    Case #SCN_UPDATEUI
+      ; disparado em scroll/mudanca de selecao/caret - mantem a regua de colunas
+      ; e a margem de numeros de linha alinhadas com o que esta sendo exibido
+      PostEvent(#Event_UpdateUI, #MainWindow, Gadget, 0, 0)
   EndSelect
 EndProcedure
 
 ;- ------------------------------------------------------------
-;- Documentos / abas
+;- Documentos / abas (tab bar customizada - ver RedrawTabBar/RedrawRuler)
 ;- ------------------------------------------------------------
 
+; Gadget Scintilla da aba ativa no momento, ou 0 se nao houver nenhuma aba.
+Procedure ActiveSciGadget()
+  If ActiveTabPosition < 0 Or Not SelectElement(Docs(), ActiveTabPosition)
+    ProcedureReturn 0
+  EndIf
+  ProcedureReturn Docs()\SciGadget
+EndProcedure
+
+; Torna a aba em Position a aba visivel/ativa: mostra o ScintillaGadget dela e
+; esconde todos os outros, atualiza a selecao visual da tab bar e a regua.
+Procedure SetActiveTab(Position)
+  If Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  ActiveTabPosition = Position
+
+  Protected P = 0
+  ForEach Docs()
+    HideGadget(Docs()\SciGadget, Bool(P <> Position))
+    P + 1
+  Next
+
+  SelectElement(Docs(), Position)
+  SetActiveGadget(Docs()\SciGadget)
+  UpdateLineNumberMargin(Docs()\SciGadget)
+
+  RedrawTabBar()
+  RedrawRuler()
+EndProcedure
+
 Procedure AddDocumentTab(Path.s = "", Content.s = "")
-  Protected Caption.s
-  Protected InnerW, InnerH
-  Protected Sci
+  Protected InnerW, InnerH, Sci
+
+  InnerW = GadgetWidth(#RulerGadget)
+  InnerH = WindowHeight(#MainWindow) - StatusBarHeight(#MainStatusBar) - #TabBar_Height - #Ruler_Height
+  If InnerW <= 0 : InnerW = WindowWidth(#MainWindow) : EndIf
+  If InnerH <= 0 : InnerH = 200 : EndIf
+
+  Sci = ScintillaGadget(#PB_Any, 0, #TabBar_Height + #Ruler_Height, InnerW, InnerH, @ScintillaCallBack())
+  SetupEditorStyles(Sci)
+
+  AddElement(Docs())
+  Docs()\Path      = Path
+  Docs()\Modified  = #False
+  Docs()\SciGadget = Sci
 
   If Path = ""
     UntitledCount + 1
-    Caption = "Sem titulo " + Str(UntitledCount)
-  Else
-    Caption = GetFilePart(Path)
+    Docs()\UntitledName = "Sem titulo " + Str(UntitledCount)
   EndIf
 
-  If CountGadgetItems(#PanelGadget) > 0
-    InnerW = GetGadgetAttribute(#PanelGadget, #PB_Panel_ItemWidth)
-    InnerH = GetGadgetAttribute(#PanelGadget, #PB_Panel_ItemHeight)
+  If Content <> ""
+    SuppressModifiedTracking = #True
+    WriteSciText(Sci, Content)
+    SuppressModifiedTracking = #False
   EndIf
-  If InnerW <= 0 : InnerW = GadgetWidth(#PanelGadget) : EndIf
-  If InnerH <= 0 : InnerH = GadgetHeight(#PanelGadget) : EndIf
 
-  OpenGadgetList(#PanelGadget)
-    AddGadgetItem(#PanelGadget, -1, Caption)
-    Sci = ScintillaGadget(#PB_Any, 0, 0, InnerW, InnerH, @ScintillaCallBack())
-    SetupEditorStyles(Sci)
+  ScintillaSendMessage(Sci, #SCI_EMPTYUNDOBUFFER)
+  Docs()\Modified = #False
 
-    AddElement(Docs())
-    Docs()\Path      = Path
-    Docs()\Modified  = #False
-    Docs()\SciGadget = Sci
-
-    If Content <> ""
-      SuppressModifiedTracking = #True
-      WriteSciText(Sci, Content)
-      SuppressModifiedTracking = #False
-    EndIf
-
-    ScintillaSendMessage(Sci, #SCI_EMPTYUNDOBUFFER)
-    Docs()\Modified = #False
-  CloseGadgetList()
-
-  SetGadgetState(#PanelGadget, CountGadgetItems(#PanelGadget) - 1)
-  SetActiveGadget(Sci)
+  Protected NewPosition = ListSize(Docs()) - 1
+  UpdateTabCaption(NewPosition)
+  SetActiveTab(NewPosition)
 EndProcedure
 
 Procedure FindDocumentByGadget(GadgetNum)
@@ -632,22 +731,160 @@ Procedure FindDocumentByGadget(GadgetNum)
   ProcedureReturn -1
 EndProcedure
 
+; Recalcula Docs()\DisplayCaption (nome + " *" se modificado) e redesenha a tab
+; bar. Chamada sempre que o nome, caminho ou estado "modificado" de uma aba muda.
 Procedure UpdateTabCaption(Position)
-  If SelectElement(Docs(), Position)
-    Protected Caption.s
-    If Docs()\Path = ""
-      Caption = GetGadgetItemText(#PanelGadget, Position)
-      If Right(Caption, 2) = " *"
-        Caption = Left(Caption, Len(Caption) - 2)
-      EndIf
-    Else
-      Caption = GetFilePart(Docs()\Path)
-    EndIf
-    If Docs()\Modified
-      Caption + " *"
-    EndIf
-    SetGadgetItemText(#PanelGadget, Position, Caption)
+  If Not SelectElement(Docs(), Position)
+    ProcedureReturn
   EndIf
+
+  Protected Caption.s
+  If Docs()\Path = ""
+    Caption = Docs()\UntitledName
+  Else
+    Caption = GetFilePart(Docs()\Path)
+  EndIf
+  If Docs()\Modified
+    Caption + " *"
+  EndIf
+  Docs()\DisplayCaption = Caption
+
+  RedrawTabBar()
+EndProcedure
+
+; Desenha a tab bar customizada (uma aba "chip" arredondada por documento, com
+; botao de fechar embutido) - ver hit-test correspondente no loop de eventos
+; principal (#PB_Event_Gadget / #TabBarGadget).
+Procedure RedrawTabBar()
+  Protected W = GadgetWidth(#TabBarGadget)
+  Protected H = GadgetHeight(#TabBarGadget)
+  If W <= 0 Or H <= 0 Or Not StartDrawing(CanvasOutput(#TabBarGadget))
+    ProcedureReturn
+  EndIf
+
+  Box(0, 0, W, H, Color_AppBg)
+  DrawingMode(#PB_2DDrawing_Transparent)
+
+  Protected X = 4, Position = 0
+  Protected TabW, TextW, AvailTextW, BgColor, TextColor, CloseColor
+  Protected Caption.s, DrawCaption.s, CloseX, CloseY
+
+  ForEach Docs()
+    Caption = Docs()\DisplayCaption
+    TextW = TextWidth(Caption)
+    TabW = TextW + 2 * #Tab_PadX + #Tab_CloseSize + #Tab_CloseGap
+    If TabW < #Tab_MinWidth : TabW = #Tab_MinWidth : EndIf
+    If TabW > #Tab_MaxWidth : TabW = #Tab_MaxWidth : EndIf
+
+    Docs()\TabX1 = X
+    Docs()\TabX2 = X + TabW
+
+    If Position = ActiveTabPosition
+      BgColor = Color_EditorBg : TextColor = Color_TextActive
+    ElseIf Position = HoverTabPosition
+      BgColor = Color_TabHover : TextColor = Color_TextActive
+    Else
+      BgColor = Color_TabInactive : TextColor = Color_TextInactive
+    EndIf
+
+    DrawingMode(#PB_2DDrawing_Default)
+    RoundBox(X, 6, TabW, H - 6, 6, 6, BgColor)
+    DrawingMode(#PB_2DDrawing_Transparent)
+
+    AvailTextW = TabW - 2 * #Tab_PadX - #Tab_CloseSize - #Tab_CloseGap
+    DrawCaption = Caption
+    While TextWidth(DrawCaption) > AvailTextW And Len(DrawCaption) > 1
+      DrawCaption = Left(DrawCaption, Len(DrawCaption) - 1)
+    Wend
+    If DrawCaption <> Caption
+      DrawCaption = Left(DrawCaption, Len(DrawCaption) - 1) + "…"
+    EndIf
+
+    FrontColor(TextColor)
+    DrawText(X + #Tab_PadX, (H - TextHeight(DrawCaption)) / 2, DrawCaption)
+
+    CloseX = X + TabW - #Tab_PadX - #Tab_CloseSize
+    CloseY = (H - #Tab_CloseSize) / 2 + 3
+    Docs()\CloseX1 = CloseX
+    Docs()\CloseX2 = CloseX + #Tab_CloseSize
+
+    If Position = HoverCloseTabPosition
+      CloseColor = Color_CloseHover
+    Else
+      CloseColor = TextColor
+    EndIf
+    FrontColor(CloseColor)
+    LineXY(CloseX, CloseY, CloseX + #Tab_CloseSize, CloseY + #Tab_CloseSize)
+    LineXY(CloseX, CloseY + #Tab_CloseSize, CloseX + #Tab_CloseSize, CloseY)
+
+    If Position = ActiveTabPosition And TabW > 12
+      Box(X + 6, H - 3, TabW - 12, 3, Color_Accent)
+    EndIf
+
+    X + TabW + #Tab_Gap
+    Position + 1
+  Next
+
+  StopDrawing()
+EndProcedure
+
+; Desenha a regua de colunas da aba ativa, alinhada pixel a pixel com o texto
+; do ScintillaGadget correspondente (mesma largura de caractere, mesma margem,
+; mesmo deslocamento de rolagem horizontal) - ver #Event_UpdateUI no loop
+; principal, que redesenha isto a cada rolagem/mudanca de caret.
+Procedure RedrawRuler()
+  Protected Sci = ActiveSciGadget()
+  Protected W = GadgetWidth(#RulerGadget)
+  Protected H = GadgetHeight(#RulerGadget)
+  If W <= 0 Or H <= 0 Or Not StartDrawing(CanvasOutput(#RulerGadget))
+    ProcedureReturn
+  EndIf
+
+  Box(0, 0, W, H, Color_RulerBg)
+
+  If Sci
+    Protected *Zero = UTF8("0")
+    Protected CharW = ScintillaSendMessage(Sci, #SCI_TEXTWIDTH, #STYLE_DEFAULT, *Zero)
+    FreeMemory(*Zero)
+    If CharW <= 0 : CharW = 8 : EndIf
+
+    Protected MarginTotal = ScintillaSendMessage(Sci, #SCI_GETMARGINWIDTHN, 0) + ScintillaSendMessage(Sci, #SCI_GETMARGINWIDTHN, 1) + ScintillaSendMessage(Sci, #SCI_GETMARGINWIDTHN, 2) + ScintillaSendMessage(Sci, #SCI_GETMARGINWIDTHN, 3) + ScintillaSendMessage(Sci, #SCI_GETMARGINWIDTHN, 4)
+    Protected XOffset = ScintillaSendMessage(Sci, #SCI_GETXOFFSET)
+    Protected FirstColX = MarginTotal - XOffset
+
+    Protected FirstCol = 0
+    If FirstColX < 0
+      FirstCol = (0 - FirstColX) / CharW
+    EndIf
+
+    DrawingMode(#PB_2DDrawing_Transparent)
+
+    Protected Col = FirstCol, X, Label.s
+    Repeat
+      X = FirstColX + Col * CharW
+      If X > W
+        Break
+      EndIf
+      If X >= 0
+        If (Col + 1) % 10 = 0
+          FrontColor(Color_RulerTick)
+          LineXY(X, H - 10, X, H - 1)
+          Label = Str(Col + 1)
+          FrontColor(Color_RulerText)
+          DrawText(X - TextWidth(Label) / 2, 1, Label)
+        ElseIf (Col + 1) % 5 = 0
+          FrontColor(Color_RulerTick)
+          LineXY(X, H - 6, X, H - 1)
+        Else
+          FrontColor(Color_RulerTick)
+          LineXY(X, H - 3, X, H - 1)
+        EndIf
+      EndIf
+      Col + 1
+    Until Col > FirstCol + 2000 ; guarda de seguranca (evita loop infinito se CharW ficar 0)
+  EndIf
+
+  StopDrawing()
 EndProcedure
 
 Procedure OpenDocumentDialog()
@@ -659,7 +896,7 @@ Procedure OpenDocumentDialog()
   Protected Position = 0
   ForEach Docs()
     If Docs()\Path = Path
-      SetGadgetState(#PanelGadget, Position)
+      SetActiveTab(Position)
       ProcedureReturn
     EndIf
     Position + 1
@@ -681,7 +918,7 @@ Procedure OpenDocumentDialog()
 EndProcedure
 
 Procedure.b SaveDocument(SaveAs.b = #False)
-  Protected Position = GetGadgetState(#PanelGadget)
+  Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
     ProcedureReturn #False
   EndIf
@@ -691,11 +928,7 @@ Procedure.b SaveDocument(SaveAs.b = #False)
   If SaveAs Or Path = ""
     Protected Suggestion.s = Path
     If Suggestion = ""
-      Suggestion = GetGadgetItemText(#PanelGadget, Position)
-      If Right(Suggestion, 2) = " *"
-        Suggestion = Left(Suggestion, Len(Suggestion) - 2)
-      EndIf
-      Suggestion + ".dmx"
+      Suggestion = Docs()\UntitledName + ".dmx"
     EndIf
     Protected NewPath.s = SaveFileRequester("Salvar como", Suggestion, #File_Pattern, 0)
     If NewPath = ""
@@ -737,12 +970,19 @@ Procedure CloseTab(Position)
     EndIf
   EndIf
 
-  RemoveGadgetItem(#PanelGadget, Position)
+  FreeGadget(Docs()\SciGadget)
   DeleteElement(Docs())
 
-  If CountGadgetItems(#PanelGadget) = 0
+  If ListSize(Docs()) = 0
     AddDocumentTab()
+    ProcedureReturn
   EndIf
+
+  Protected NewActive = Position
+  If NewActive >= ListSize(Docs())
+    NewActive = ListSize(Docs()) - 1
+  EndIf
+  SetActiveTab(NewActive)
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -750,7 +990,7 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure SaveTokenized()
-  Protected Position = GetGadgetState(#PanelGadget)
+  Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
     ProcedureReturn
   EndIf
@@ -808,7 +1048,7 @@ EndProcedure
 ; linha) usando o tokenizador nativo (MsxTokenizer.pbi) e salva o binario
 ; resultante como .bmx. Nao depende de Python nem do toolchain badig/.
 Procedure SaveAsTokenizedNative()
-  Protected Position = GetGadgetState(#PanelGadget)
+  Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
     ProcedureReturn
   EndIf
@@ -847,10 +1087,7 @@ Procedure SaveAsTokenizedNative()
 
   Protected Suggestion.s = Docs()\Path
   If Suggestion = ""
-    Suggestion = GetGadgetItemText(#PanelGadget, Position)
-    If Right(Suggestion, 2) = " *"
-      Suggestion = Left(Suggestion, Len(Suggestion) - 2)
-    EndIf
+    Suggestion = Docs()\UntitledName
   EndIf
   Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bmx"
 
@@ -870,10 +1107,27 @@ Procedure SaveAsTokenizedNative()
                    #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
 EndProcedure
 
+; Copia as configuracoes da tela "Configurar -> Basic Dignified..." (BadigCfg,
+; ver editor/BadigSettings.pbi) para os globals Dig_* lidos pelo pre-processador
+; nativo (editor/DignifiedPreprocessor.pbi), unificando as duas telas de
+; configuracao num so conjunto de opcoes (ver docs/SPEC.md modulo 3e).
+Procedure Dig_SyncConfigFromBadigCfg()
+  Dig_LineStart = BadigCfg\LineStart
+  Dig_LineStep = BadigCfg\LineStep
+  Dig_RemHeader = BadigCfg\RemHeader
+  Dig_TabLength = BadigCfg\TabLenght
+  Dig_StripSpaces = BadigCfg\StripSpaces
+  Dig_CapitalizeAll = BadigCfg\CapitalizeAll
+  Dig_Translate = BadigCfg\Translate
+  Dig_ConvertPrintCfg = BadigCfg\ConvertPrint
+  Dig_StripThenGotoCfg = BadigCfg\StripThenGoto
+EndProcedure
+
 ; Roda o pre-processador Dignified nativo (DignifiedPreprocessor.pbi) sobre o
 ; conteudo da aba atual e devolve o texto ASCII classico resultante, ou ""
 ; em erro (mostrando o dialogo de erro). Usado pelas duas procedures abaixo.
 Procedure.s RunDignifiedPreprocessor()
+  Dig_SyncConfigFromBadigCfg()
   Protected SourceText.s = ReadSciText(Docs()\SciGadget)
   Protected AsciiOut.s = Dig_Preprocess(SourceText)
 
@@ -890,7 +1144,7 @@ EndProcedure
 ; Converte o Dignified da aba atual para MSX-BASIC ASCII classico (nativo,
 ; sem Python) e salva como .amx.
 Procedure SaveAsAsciiFromDignified()
-  Protected Position = GetGadgetState(#PanelGadget)
+  Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
     ProcedureReturn
   EndIf
@@ -902,10 +1156,7 @@ Procedure SaveAsAsciiFromDignified()
 
   Protected Suggestion.s = Docs()\Path
   If Suggestion = ""
-    Suggestion = GetGadgetItemText(#PanelGadget, Position)
-    If Right(Suggestion, 2) = " *"
-      Suggestion = Left(Suggestion, Len(Suggestion) - 2)
-    EndIf
+    Suggestion = Docs()\UntitledName
   EndIf
   Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".amx"
 
@@ -931,7 +1182,7 @@ EndProcedure
 ; Converte o Dignified da aba atual direto para tokenizado .bmx, encadeando
 ; o pre-processador nativo com o tokenizador nativo. Sem Python em nenhum passo.
 Procedure SaveAsTokenizedFromDignified()
-  Protected Position = GetGadgetState(#PanelGadget)
+  Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
     ProcedureReturn
   EndIf
@@ -951,10 +1202,7 @@ Procedure SaveAsTokenizedFromDignified()
 
   Protected Suggestion.s = Docs()\Path
   If Suggestion = ""
-    Suggestion = GetGadgetItemText(#PanelGadget, Position)
-    If Right(Suggestion, 2) = " *"
-      Suggestion = Left(Suggestion, Len(Suggestion) - 2)
-    EndIf
+    Suggestion = Docs()\UntitledName
   EndIf
   Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bmx"
 
@@ -979,28 +1227,22 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure ResizeInterface()
-  Protected PanelW = WindowWidth(#MainWindow)
-  Protected PanelH = WindowHeight(#MainWindow) - StatusBarHeight(#MainStatusBar)
-  If PanelH < 0 : PanelH = 0 : EndIf
+  Protected FullW = WindowWidth(#MainWindow)
+  Protected FullH = WindowHeight(#MainWindow) - StatusBarHeight(#MainStatusBar)
+  If FullH < 0 : FullH = 0 : EndIf
 
-  ResizeGadget(#PanelGadget, 0, 0, PanelW, PanelH)
+  ResizeGadget(#TabBarGadget, 0, 0, FullW, #TabBar_Height)
+  ResizeGadget(#RulerGadget, 0, #TabBar_Height, FullW, #Ruler_Height)
 
-  Protected InnerW, InnerH
-  If CountGadgetItems(#PanelGadget) > 0
-    CompilerIf #PB_Compiler_OS = #PB_OS_Linux
-      InnerW = PanelW
-      InnerH = PanelH - #Linux_TabGuess
-    CompilerElse
-      InnerW = GetGadgetAttribute(#PanelGadget, #PB_Panel_ItemWidth)
-      InnerH = GetGadgetAttribute(#PanelGadget, #PB_Panel_ItemHeight)
-    CompilerEndIf
-  EndIf
-  If InnerW <= 0 : InnerW = PanelW : EndIf
-  If InnerH <= 0 : InnerH = PanelH : EndIf
+  Protected InnerH = FullH - #TabBar_Height - #Ruler_Height
+  If InnerH < 0 : InnerH = 0 : EndIf
 
   ForEach Docs()
-    ResizeGadget(Docs()\SciGadget, 0, 0, InnerW, InnerH)
+    ResizeGadget(Docs()\SciGadget, 0, #TabBar_Height + #Ruler_Height, FullW, InnerH)
   Next
+
+  RedrawTabBar()
+  RedrawRuler()
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -1013,6 +1255,7 @@ BadigCfg_Load()
 If Not OpenWindow(#MainWindow, 0, 0, 1000, 700, #App_Title, #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
   End
 EndIf
+SetWindowColor(#MainWindow, Color_AppBg)
 
 CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
@@ -1041,7 +1284,8 @@ AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_S, #Menu_Sa
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_W, #Menu_CloseTab)
 
-PanelGadget(#PanelGadget, 0, 0, WindowWidth(#MainWindow), WindowHeight(#MainWindow))
+CanvasGadget(#TabBarGadget, 0, 0, WindowWidth(#MainWindow), #TabBar_Height)
+CanvasGadget(#RulerGadget, 0, #TabBar_Height, WindowWidth(#MainWindow), #Ruler_Height)
 
 CreateStatusBar(#MainStatusBar, WindowID(#MainWindow))
   AddStatusBarField(#PB_Ignore)
@@ -1050,6 +1294,7 @@ AddDocumentTab()
 ResizeInterface()
 
 Define Event, Quit, Position, AllSaved, Discard, ChangedGadget, DocPos
+Define MouseX, MouseY, HitPos, NewHoverTab, NewHoverClose
 
 Repeat
   Event = WaitWindowEvent()
@@ -1083,7 +1328,7 @@ Repeat
           SaveAsTokenizedFromDignified()
 
         Case #Menu_CloseTab
-          CloseTab(GetGadgetState(#PanelGadget))
+          CloseTab(ActiveTabPosition)
 
         Case #Menu_Exit
           Quit = 1
@@ -1092,11 +1337,69 @@ Repeat
           BadigCfg_OpenSettingsWindow(#MainWindow)
       EndSelect
 
+    Case #PB_Event_Gadget
+      Select EventGadget()
+        Case #TabBarGadget
+          Select EventType()
+            Case #PB_EventType_LeftButtonDown
+              MouseX = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseX)
+              MouseY = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseY)
+              HitPos = 0
+              ForEach Docs()
+                If MouseX >= Docs()\TabX1 And MouseX < Docs()\TabX2
+                  If MouseX >= Docs()\CloseX1 - 4 And MouseX <= Docs()\CloseX2 + 4 And MouseY >= 4 And MouseY <= #TabBar_Height - 4
+                    CloseTab(HitPos)
+                  Else
+                    SetActiveTab(HitPos)
+                  EndIf
+                  Break
+                EndIf
+                HitPos + 1
+              Next
+
+            Case #PB_EventType_MouseMove
+              MouseX = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseX)
+              MouseY = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseY)
+              NewHoverTab = -1
+              NewHoverClose = -1
+              HitPos = 0
+              ForEach Docs()
+                If MouseX >= Docs()\TabX1 And MouseX < Docs()\TabX2
+                  NewHoverTab = HitPos
+                  If MouseX >= Docs()\CloseX1 - 4 And MouseX <= Docs()\CloseX2 + 4
+                    NewHoverClose = HitPos
+                  EndIf
+                  Break
+                EndIf
+                HitPos + 1
+              Next
+              If NewHoverTab <> HoverTabPosition Or NewHoverClose <> HoverCloseTabPosition
+                HoverTabPosition = NewHoverTab
+                HoverCloseTabPosition = NewHoverClose
+                RedrawTabBar()
+              EndIf
+
+            Case #PB_EventType_MouseLeave
+              If HoverTabPosition <> -1 Or HoverCloseTabPosition <> -1
+                HoverTabPosition = -1
+                HoverCloseTabPosition = -1
+                RedrawTabBar()
+              EndIf
+          EndSelect
+      EndSelect
+
     Case #PB_Event_CloseWindow
       Quit = 1
 
     Case #PB_Event_SizeWindow
       ResizeInterface()
+
+    Case #Event_UpdateUI
+      ChangedGadget = EventGadget()
+      If ChangedGadget = ActiveSciGadget()
+        UpdateLineNumberMargin(ChangedGadget)
+        RedrawRuler()
+      EndIf
 
     Case #Event_Rehighlight
       ChangedGadget = EventGadget()

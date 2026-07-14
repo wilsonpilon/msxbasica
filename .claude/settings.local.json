@@ -45,7 +45,18 @@
       "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE test_build.exe; Write-Output \"ExitCode=$LASTEXITCODE\"; Test-Path test_build.exe)",
       "Bash(xargs grep -l \"AddJSONMember\\\\|CreateJSON\\\\|GetJSONMember\")",
       "Bash(xargs grep -l \"JSON\")",
-      "PowerShell(cd \"C:\\\\dos\\\\temp\\\\user\\\\claude\\\\C--dos-msxbasica\\\\78e916dd-f604-4de5-b7dc-1c62300ec077\\\\scratchpad\"; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" json_test.pb /EXE json_test.exe /CONSOLE; Write-Output \"ExitCode=$LASTEXITCODE\")"
+      "PowerShell(cd \"C:\\\\dos\\\\temp\\\\user\\\\claude\\\\C--dos-msxbasica\\\\78e916dd-f604-4de5-b7dc-1c62300ec077\\\\scratchpad\"; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" json_test.pb /EXE json_test.exe /CONSOLE; Write-Output \"ExitCode=$LASTEXITCODE\")",
+      "Bash(git diff *)",
+      "Bash(git -C badig remote -v)",
+      "Bash(git -C badig log --oneline -3)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(python extract_charset.py)",
+      "Bash(echo \"ExitCode=$?\")",
+      "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE test_build.exe; Write-Output \"ExitCode=$LASTEXITCODE\")",
+      "Skill(run)",
+      "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE BadigEditor.exe; Write-Output \"ExitCode=$LASTEXITCODE\")"
     ]
   }
 }

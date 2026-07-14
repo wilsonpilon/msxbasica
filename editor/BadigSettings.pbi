@@ -424,9 +424,12 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   SetGadgetState(G_LexerReport, BadigCfg\LexerReport)
   SetGadgetState(G_ParserReport, BadigCfg\ParserReport)
 
+  ; ConvertPrint guarda a forma FINAL desejada ("?" ou "P"), nao qual token
+  ; esta sendo substituido - por isso o mapeamento e invertido em relacao ao
+  ; rotulo do combo (item 1 "? -> PRINT" produz forma final "P", e vice-versa).
   Select BadigCfg\ConvertPrint
-    Case "?" : SetGadgetState(G_ConvertPrint, 1)
-    Case "P" : SetGadgetState(G_ConvertPrint, 2)
+    Case "?" : SetGadgetState(G_ConvertPrint, 2)
+    Case "P" : SetGadgetState(G_ConvertPrint, 1)
     Default  : SetGadgetState(G_ConvertPrint, 0)
   EndSelect
 
@@ -502,9 +505,10 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
     BadigCfg\LexerReport = GetGadgetState(G_LexerReport)
     BadigCfg\ParserReport = GetGadgetState(G_ParserReport)
 
+    ; item 1 = "? -> PRINT" (forma final PRINT); item 2 = "PRINT -> ?" (forma final ?)
     Select GetGadgetState(G_ConvertPrint)
-      Case 1 : BadigCfg\ConvertPrint = "?"
-      Case 2 : BadigCfg\ConvertPrint = "P"
+      Case 1 : BadigCfg\ConvertPrint = "P"
+      Case 2 : BadigCfg\ConvertPrint = "?"
       Default : BadigCfg\ConvertPrint = ""
     EndSelect
 
