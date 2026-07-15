@@ -7,3 +7,14 @@
 # que e sincronizada com o GitHub (fonte usada/testada pelo editor).
 /fonts/*
 !/fonts/Source_Code_Pro.zip
+
+# Caminho do JOE
+/joewin/
+
+# Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
+/build.config.json
+
+# Preferencias locais persistidas pelo proprio editor (Configurar -> ...),
+# especificas de cada maquina/usuario.
+/editor/editor_settings.json
+/editor/badig_settings.json

@@ -10,10 +10,16 @@
 
 EnableExplicit
 
+; Referenciada em EditorSettings.pbi (botao "Baixar fontes...") mas definida em
+; FontDownloader.pbi, que precisa vir depois (usa EditorCfg_NormalizeDir e
+; BadigCfg_ExtractZip) - forward declaration para quebrar a dependencia circular.
+Declare.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
+
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
 XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
+XIncludeFile "FontDownloader.pbi"
 
 ;- ------------------------------------------------------------
 ;- Constantes gerais
@@ -26,6 +32,7 @@ EndEnumeration
 Enumeration Gadgets
   #TabBarGadget
   #RulerGadget
+  #HelpGadget      ; ver WordStarKeys.pbi (Ctrl+K H) - ocupa o lugar do Scintilla ativo
 EndEnumeration
 
 Enumeration StatusBars
@@ -49,6 +56,7 @@ Enumeration MenuItems
   #Menu_Exit
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
+  #Menu_HelpAbout
 EndEnumeration
 
 ; Numeros de estilo do Scintilla usados pelo realce de sintaxe.
@@ -67,9 +75,25 @@ EndEnumeration
 
 #Event_Rehighlight = #PB_Event_FirstCustomValue
 #Event_UpdateUI    = #PB_Event_FirstCustomValue + 1
+; Usado por WordStarKeys.pbi (^KX/^KQ) para adiar o fechamento da aba ativa -
+; ver comentario no proprio arquivo.
+#Event_WS_CloseTab = #PB_Event_FirstCustomValue + 2
 
 #App_Title      = "Basic Dignified Editor"
 #File_Pattern   = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
+
+; Versao/build normalmente injetadas via build.ps1 (/CONSTANT App_Version=...,
+; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
+; PureBasic (F5), fora do build.ps1.
+CompilerIf Not Defined(App_Version, #PB_Constant)
+  #App_Version = "5.1.3"
+CompilerEndIf
+CompilerIf Not Defined(App_Build, #PB_Constant)
+  #App_Build = "DEV"
+CompilerEndIf
+CompilerIf Not Defined(App_BuildDate, #PB_Constant)
+  #App_BuildDate = "compilado fora do build.ps1"
+CompilerEndIf
 
 ; Tab bar / regua de colunas - abas customizadas (com botao de fechar) desenhadas
 ; num CanvasGadget, no lugar do PanelGadget nativo (que nao suporta isso e tem
@@ -168,6 +192,8 @@ Structure Document
   TabX2.i
   CloseX1.i         ; retangulo do botao "x" de fechar, dentro da aba
   CloseX2.i
+  MarkBegin.i       ; posicao (bytes) do bloco marcado no estilo WordStar/JOE
+  MarkEnd.i         ; (^KB/^KK, ver WordStarKeys.pbi) - -1 quando nao ha marca
 EndStructure
 
 Global NewList Docs.Document()
@@ -175,6 +201,12 @@ Global UntitledCount = 0
 Global ActiveTabPosition.i = -1
 Global HoverTabPosition.i = -1
 Global HoverCloseTabPosition.i = -1
+
+; Estado do teclado WordStar/JOE (ver WordStarKeys.pbi) - declarados aqui (e
+; nao no proprio WordStarKeys.pbi, incluido so no fim do arquivo) porque
+; UpdateStatusBar() [abaixo] precisa deles e e definida bem antes disso.
+Global WS_ChordPrefix.i = 0      ; 0 = nenhum, Asc("K")/Asc("Q") = prefixo pendente
+Global WS_SwallowChar.b = #False ; engole o proximo WM_CHAR (par do WM_KEYDOWN ja tratado)
 
 ; Enquanto verdadeiro, mudancas de texto no Scintilla nao marcam o
 ; documento como modificado (usado ao carregar conteudo programaticamente).
@@ -205,7 +237,12 @@ Declare   HighlightDocument(Sci)
 Declare   SetupEditorStyles(Sci)
 Declare   UpdateLineNumberMargin(Sci)
 Declare   ActiveSciGadget()
+Declare   UpdateStatusBar()
 Declare   ScintillaCallBack(Gadget, *scinotify.SCNotification)
+Declare   WS_AttachSubclass(Sci)   ; WordStarKeys.pbi (incluido no fim do arquivo)
+Declare   WS_SetupIndicator(Sci)
+Declare   WS_CreateHelpGadget()
+Declare   WS_SetupHelpStyles()
 Declare.s ComputeTabCaption(Position)
 Declare   RedrawTabBar()
 Declare   RedrawRuler()
@@ -657,6 +694,8 @@ Procedure SetupEditorStyles(Sci)
   ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 1, 0)
   ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 2, 0)
   UpdateLineNumberMargin(Sci)
+
+  WS_SetupIndicator(Sci)
 EndProcedure
 
 ; Recalcula a largura da margem de numeros de linha com base na quantidade de
@@ -727,6 +766,7 @@ Procedure SetActiveTab(Position)
 
   RedrawTabBar()
   RedrawRuler()
+  UpdateStatusBar()
 EndProcedure
 
 Procedure AddDocumentTab(Path.s = "", Content.s = "")
@@ -739,11 +779,14 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "")
 
   Sci = ScintillaGadget(#PB_Any, 0, #TabBar_Height + #Ruler_Height, InnerW, InnerH, @ScintillaCallBack())
   SetupEditorStyles(Sci)
+  WS_AttachSubclass(Sci)
 
   AddElement(Docs())
   Docs()\Path      = Path
   Docs()\Modified  = #False
   Docs()\SciGadget = Sci
+  Docs()\MarkBegin = -1
+  Docs()\MarkEnd   = -1
 
   If Path = ""
     UntitledCount + 1
@@ -775,6 +818,39 @@ Procedure FindDocumentByGadget(GadgetNum)
   ProcedureReturn -1
 EndProcedure
 
+; Atualiza a barra de status (rodape): campo 0 = modo (INS/SBR) ou prefixo de
+; comando WordStar pendente (^K/^Q, ver WordStarKeys.pbi); campo 1 = nome do
+; arquivo da aba ativa; campo 2 = linha/coluna do cursor.
+Procedure UpdateStatusBar()
+  Protected ModeText.s = "", NameText.s = "", PosText.s = ""
+
+  If WS_ChordPrefix <> 0
+    ModeText = "^" + Chr(WS_ChordPrefix)
+  Else
+    Protected Sci = ActiveSciGadget()
+    If Sci
+      If ScintillaSendMessage(Sci, #SCI_GETOVERTYPE)
+        ModeText = "SBR"
+      Else
+        ModeText = "INS"
+      EndIf
+    EndIf
+  EndIf
+
+  If ActiveTabPosition >= 0 And SelectElement(Docs(), ActiveTabPosition)
+    NameText = Docs()\DisplayCaption
+    Protected Sci2 = Docs()\SciGadget
+    Protected Pos = ScintillaSendMessage(Sci2, #SCI_GETCURRENTPOS)
+    Protected Line = ScintillaSendMessage(Sci2, #SCI_LINEFROMPOSITION, Pos) + 1
+    Protected Col = ScintillaSendMessage(Sci2, #SCI_GETCOLUMN, Pos) + 1
+    PosText = "Lin " + Str(Line) + ", Col " + Str(Col)
+  EndIf
+
+  StatusBarText(#MainStatusBar, 0, ModeText)
+  StatusBarText(#MainStatusBar, 1, NameText)
+  StatusBarText(#MainStatusBar, 2, PosText, #PB_StatusBar_Right)
+EndProcedure
+
 ; Recalcula Docs()\DisplayCaption (nome + " *" se modificado) e redesenha a tab
 ; bar. Chamada sempre que o nome, caminho ou estado "modificado" de uma aba muda.
 Procedure UpdateTabCaption(Position)
@@ -794,6 +870,7 @@ Procedure UpdateTabCaption(Position)
   Docs()\DisplayCaption = Caption
 
   RedrawTabBar()
+  UpdateStatusBar()
 EndProcedure
 
 ; Desenha a tab bar customizada (uma aba "chip" arredondada por documento, com
@@ -1003,6 +1080,19 @@ EndProcedure
 Procedure.b ConfirmDiscard(Text.s)
   Protected Result = MessageRequester(#App_Title, Text, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning)
   ProcedureReturn Bool(Result = #PB_MessageRequester_Yes)
+EndProcedure
+
+; Versao/build/data sao constantes de compilacao injetadas pelo build.ps1
+; (via /CONSTANT) - ver fallback no topo do arquivo para compilacao direto
+; pela IDE do PureBasic.
+Procedure ShowAboutDialog()
+  Protected Text.s = #App_Title + Chr(10) + Chr(10) +
+    "Versao: " + #App_Version + Chr(10) +
+    "Build: " + #App_Build + Chr(10) +
+    "Data: " + #App_BuildDate + Chr(10) + Chr(10) +
+    "(C) " + Str(Year(Date())) + " Wilson Pilon"
+
+  MessageRequester("Sobre", Text, #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
 EndProcedure
 
 Procedure CloseTab(Position)
@@ -1288,6 +1378,7 @@ Procedure ResizeInterface()
   ForEach Docs()
     ResizeGadget(Docs()\SciGadget, 0, #TabBar_Height + #Ruler_Height, FullW, InnerH)
   Next
+  ResizeGadget(#HelpGadget, 0, #TabBar_Height + #Ruler_Height, FullW, InnerH)
 
   RedrawTabBar()
   RedrawRuler()
@@ -1313,7 +1404,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_New,      "Novo" + Chr(9) + "Ctrl+N")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
-    MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+S")
+    MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+K D")
     MenuItem(#Menu_SaveAs,   "Salvar como..." + Chr(9) + "Ctrl+Shift+S")
     MenuBar()
     MenuItem(#Menu_Tokenize, "Gerar tokenizado MSX via Python (.bmx)...")
@@ -1329,10 +1420,13 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
+  MenuTitle("Ajuda")
+    MenuItem(#Menu_HelpAbout, "Sobre...")
 
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Open)
-AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_S, #Menu_Save)
+; Ctrl+S NAO fica com "Salvar" - no teclado WordStar/JOE (ver WordStarKeys.pbi)
+; Ctrl+S move o cursor para a esquerda. Salvar passou a ser Ctrl+K D.
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_W, #Menu_CloseTab)
 
@@ -1340,8 +1434,11 @@ CanvasGadget(#TabBarGadget, 0, 0, WindowWidth(#MainWindow), #TabBar_Height)
 CanvasGadget(#RulerGadget, 0, #TabBar_Height, WindowWidth(#MainWindow), #Ruler_Height)
 
 CreateStatusBar(#MainStatusBar, WindowID(#MainWindow))
-  AddStatusBarField(#PB_Ignore)
+  AddStatusBarField(70)          ; modo (INS/SBR) ou prefixo de comando pendente (^K/^Q)
+  AddStatusBarField(#PB_Ignore)  ; nome do arquivo
+  AddStatusBarField(160)         ; linha/coluna
 
+WS_CreateHelpGadget()
 AddDocumentTab()
 ResizeInterface()
 
@@ -1396,8 +1493,12 @@ Repeat
               SetupEditorStyles(Docs()\SciGadget)
               HighlightDocument(Docs()\SciGadget)
             Next
+            WS_SetupHelpStyles()
             ResizeInterface()
           EndIf
+
+        Case #Menu_HelpAbout
+          ShowAboutDialog()
       EndSelect
 
     Case #PB_Event_Gadget
@@ -1462,6 +1563,7 @@ Repeat
       If ChangedGadget = ActiveSciGadget()
         UpdateLineNumberMargin(ChangedGadget)
         RedrawRuler()
+        UpdateStatusBar()
       EndIf
 
     Case #Event_Rehighlight
@@ -1478,6 +1580,18 @@ Repeat
         EndIf
       EndIf
       HighlightDocument(ChangedGadget)
+
+    Case #Event_WS_CloseTab
+      ; ^KX (salvar e fechar) / ^KQ (fechar) do teclado WordStar/JOE - ver
+      ; WordStarKeys.pbi. Adiado para aqui (fora da subclass do Scintilla) por
+      ; causa do FreeGadget dentro de CloseTab.
+      If EventData()
+        If SaveDocument(#False)
+          CloseTab(ActiveTabPosition)
+        EndIf
+      Else
+        CloseTab(ActiveTabPosition)
+      EndIf
 
   EndSelect
 
@@ -1500,3 +1614,9 @@ Repeat
 Until Quit = 1
 
 End
+
+; Incluido so aqui no fim (nao junto com os demais XIncludeFile no topo) porque
+; usa Docs()/SaveDocument()/OpenDocumentDialog()/CloseTab()/Color_Accent, todos
+; definidos ao longo deste arquivo - ver Declare de WS_AttachSubclass/
+; WS_SetupIndicator perto do topo para as poucas chamadas na direcao inversa.
+XIncludeFile "WordStarKeys.pbi"

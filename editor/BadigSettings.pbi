@@ -616,7 +616,7 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
     Event = WaitWindowEvent()
 
     Select Event
-      Case #PB_Event_Menu
+      Case #PB_Event_Gadget
         Select EventGadget()
           Case G_InstallDirBrowse
             Protected PickInstallDir.s = PathRequester("Selecione o diretorio de instalacao do Basic Dignified Suite",

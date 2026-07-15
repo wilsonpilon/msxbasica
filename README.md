@@ -1,12 +1,19 @@
 # MSX BASIC + Z80 IDE
 
+![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
+
+**Versão atual: 5.1.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
+
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
 linha) e Z80 assembly, construída em torno de um editor com highlighting via Scintilla e um
 pré-processador/tokenizador reescritos nativamente — sem depender de Python instalado na máquina do
 usuário final.
 
 > Documento vivo. O detalhe completo da especificação (escopo, decisões de arquitetura, módulos
-> planejados) está em [`docs/SPEC.md`](docs/SPEC.md) — é a fonte de verdade do projeto.
+> planejados) está em [`docs/SPEC.md`](docs/SPEC.md) — é a fonte de verdade do projeto. Para
+> compilar, executar e usar o editor de texto (atalhos estilo WordStar/JOE), veja
+> [`docs/MANUAL.md`](docs/MANUAL.md).
 
 ## Sobre o projeto
 
@@ -61,7 +68,17 @@ MML/`PLAY`), extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX
   em vez de usar valores fixos.
 - **2026-07-15** — Nova tela `Configurar → Editor...` (fonte, tema claro/escuro, estilo de abas,
   fontes customizadas, caminho de instalação). Diretório de instalação do Basic Dignified Suite
-  configurável, com botão para baixar o toolchain direto do GitHub (`git clone` ou `.zip`).
+  configurável, com botão para baixar o toolchain direto do GitHub (`git clone` ou `.zip`). Botão de
+  download de fontes Nerd Fonts direto de `nerdfonts.com` (lista ao vivo, seleção individual ou em
+  lote). Script `build.ps1` para compilar via `pbcompiler.exe` (caminho configurável com `-C`/
+  `--compiler`, `-R`/`--run` para executar após compilar, `-H`/`--help` para a lista de opções),
+  embutindo versão (`5.1.3`) e build (data/hora UTC da compilação em hex) no executável, exibidas em
+  `Ajuda → Sobre...`. Editor ganhou teclado estilo WordStar/JOE
+  (`WordStarKeys.pbi` — movimento do cursor, apagar texto, bloco marcado com destaque persistente,
+  salvar/abrir/fechar, desfazer/refazer; `Ctrl+S` deixou de ser "salvar" e virou "cursor para a
+  esquerda", como no WordStar de verdade). Tela de ajuda embutida (`Ctrl+K H`, fecha com qualquer
+  tecla) e barra de status no rodapé (modo/prefixo de comando pendente, nome do arquivo, linha e
+  coluna). Novo `docs/MANUAL.md` com o guia de uso da IDE.
 
 ## Ferramentas e ambiente
 

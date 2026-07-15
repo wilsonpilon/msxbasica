@@ -283,7 +283,7 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
-  Protected WinW = 560, WinH = 260
+  Protected WinW = 560, WinH = 300
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do Editor",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -317,22 +317,23 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
   TextGadget(#PB_Any, 15, 55, 400, 20, "Pasta de fontes customizadas (opcional)")
   Protected G_FontFolder = StringGadget(#PB_Any, 15, 75, 460, 22, EditorCfg\FontFolder)
   Protected G_FontFolderBrowse = ButtonGadget(#PB_Any, 485, 75, 45, 22, "...")
+  Protected G_FontDownload = ButtonGadget(#PB_Any, 15, 100, 250, 22, "Baixar fontes (Nerd Fonts)...")
 
-  TextGadget(#PB_Any, 15, 115, 400, 20, "Caminho de instalacao do editor")
-  Protected G_EditorPath = StringGadget(#PB_Any, 15, 135, 460, 22, EditorCfg\EditorPath)
-  Protected G_EditorPathBrowse = ButtonGadget(#PB_Any, 485, 135, 45, 22, "...")
-  TextGadget(#PB_Any, 15, 160, 515, 32,
+  TextGadget(#PB_Any, 15, 155, 400, 20, "Caminho de instalacao do editor")
+  Protected G_EditorPath = StringGadget(#PB_Any, 15, 175, 460, 22, EditorCfg\EditorPath)
+  Protected G_EditorPathBrowse = ButtonGadget(#PB_Any, 485, 175, 45, 22, "...")
+  TextGadget(#PB_Any, 15, 200, 515, 32,
     "Usado como base do diretorio padrao do Basic Dignified Suite - util para manter" + Chr(10) +
     "instalacoes separadas do editor (ex.: estavel e beta).")
 
-  TextGadget(#PB_Any, 15, 205, 100, 20, "Tema")
-  Protected G_Theme = ComboBoxGadget(#PB_Any, 90, 202, 130, 22)
+  TextGadget(#PB_Any, 15, 245, 100, 20, "Tema")
+  Protected G_Theme = ComboBoxGadget(#PB_Any, 90, 242, 130, 22)
   AddGadgetItem(G_Theme, -1, "Escuro")
   AddGadgetItem(G_Theme, -1, "Claro")
   SetGadgetState(G_Theme, Bool(EditorCfg\Theme = "Light"))
 
-  TextGadget(#PB_Any, 300, 205, 100, 20, "Estilo de abas")
-  Protected G_Style = ComboBoxGadget(#PB_Any, 400, 202, 130, 22)
+  TextGadget(#PB_Any, 300, 245, 100, 20, "Estilo de abas")
+  Protected G_Style = ComboBoxGadget(#PB_Any, 400, 242, 130, 22)
   AddGadgetItem(G_Style, -1, "Moderno")
   AddGadgetItem(G_Style, -1, "Classico")
   SetGadgetState(G_Style, Bool(EditorCfg\Style = "Classic"))
@@ -346,7 +347,7 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
     Event = WaitWindowEvent()
 
     Select Event
-      Case #PB_Event_Menu
+      Case #PB_Event_Gadget
         Select EventGadget()
           Case G_FontFolderBrowse
             Pick = PathRequester("Selecione a pasta de fontes customizadas", GetGadgetText(G_FontFolder))
@@ -358,6 +359,12 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
             Pick = PathRequester("Selecione o caminho de instalacao do editor", GetGadgetText(G_EditorPath))
             If Pick <> ""
               SetGadgetText(G_EditorPath, Pick)
+            EndIf
+
+          Case G_FontDownload
+            Pick = FontDownloader_OpenWindow(Win, GetGadgetText(G_FontFolder))
+            If Pick <> ""
+              SetGadgetText(G_FontFolder, Pick)
             EndIf
 
           Case G_Save
