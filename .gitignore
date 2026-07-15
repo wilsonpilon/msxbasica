@@ -1,0 +1,9 @@
+# Copia local do toolchain Basic Dignified Suite - referencia de comportamento
+# a ser portada nativamente (ver docs/SPEC.md), nao dependencia de runtime.
+# Baixavel via Configurar -> Basic Dignified... -> "Baixar Basic Dignified Suite..."
+/badig/
+
+# Cache local de fontes (nao faz parte do projeto) - exceto Source Code Pro,
+# que e sincronizada com o GitHub (fonte usada/testada pelo editor).
+/fonts/*
+!/fonts/Source_Code_Pro.zip

@@ -12,6 +12,7 @@ EnableExplicit
 
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
+XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
 
 ;- ------------------------------------------------------------
@@ -47,6 +48,7 @@ Enumeration MenuItems
   #Menu_CloseTab
   #Menu_Exit
   #Menu_ConfigureBadig
+  #Menu_ConfigureEditor
 EndEnumeration
 
 ; Numeros de estilo do Scintilla usados pelo realce de sintaxe.
@@ -81,20 +83,76 @@ EndEnumeration
 #Tab_CloseGap    = 10
 #Tab_Gap         = 2
 
-; Cores da tab bar/regua (RGB() e uma funcao em tempo de execucao no PureBasic,
-; entao essas nao podem ser #Constantes - sao globais, calculadas uma vez aqui
-; no topo, antes de qualquer janela/gadget ser criado)
-Global Color_AppBg        = RGB(15, 16, 21)   ; um pouco mais escuro que o fundo do editor, para dar profundidade
-Global Color_EditorBg     = RGB(24, 26, 34)   ; mesma cor de fundo do ScintillaGadget (ver SetupEditorStyles)
-Global Color_TabInactive  = RGB(30, 32, 40)
-Global Color_TabHover     = RGB(38, 41, 52)
-Global Color_TextActive   = RGB(220, 223, 230)
-Global Color_TextInactive = RGB(140, 145, 160)
-Global Color_Accent       = RGB(97, 175, 239) ; mesmo azul de #Style_Function
-Global Color_CloseHover   = RGB(224, 108, 117); mesmo vermelho de #Style_Operator
-Global Color_RulerBg      = RGB(20, 21, 28)
-Global Color_RulerText    = RGB(110, 116, 130)
-Global Color_RulerTick    = RGB(60, 64, 76)
+; Cores da tab bar/regua/sintaxe (RGB() e uma funcao em tempo de execucao no
+; PureBasic, entao essas nao podem ser #Constantes - sao globais, atribuidas
+; por ApplyTheme() de acordo com EditorCfg\Theme (ver EditorSettings.pbi),
+; chamada antes de qualquer janela/gadget ser criado e de novo sempre que o
+; usuario troca o tema em Configurar -> Editor...
+Global Color_AppBg, Color_EditorBg, Color_TabInactive, Color_TabHover
+Global Color_TextActive, Color_TextInactive, Color_Accent, Color_CloseHover
+Global Color_RulerBg, Color_RulerText, Color_RulerTick
+
+Global Color_Syntax_Default, Color_Syntax_Comment, Color_Syntax_String
+Global Color_Syntax_Statement, Color_Syntax_Operator, Color_Syntax_Function
+Global Color_Syntax_Number, Color_Syntax_Label, Color_Syntax_DignifiedStmt
+Global Color_Syntax_Remtag, Color_Caret, Color_SelBack, Color_LineNumberFore
+
+; Preenche todos os globais Color_* acima de acordo com EditorCfg\Theme.
+Procedure ApplyTheme()
+  If EditorCfg\Theme = "Light"
+    Color_AppBg        = RGB(245, 246, 248)
+    Color_EditorBg      = RGB(255, 255, 255)
+    Color_TabInactive   = RGB(230, 231, 235)
+    Color_TabHover      = RGB(220, 222, 228)
+    Color_TextActive    = RGB(40, 42, 48)
+    Color_TextInactive  = RGB(120, 124, 132)
+    Color_Accent        = RGB(64, 120, 192)
+    Color_CloseHover    = RGB(200, 60, 70)
+    Color_RulerBg       = RGB(238, 239, 242)
+    Color_RulerText     = RGB(120, 124, 132)
+    Color_RulerTick     = RGB(200, 202, 208)
+
+    Color_Syntax_Default       = RGB(56, 58, 66)
+    Color_Syntax_Comment       = RGB(160, 161, 167)
+    Color_Syntax_String        = RGB(80, 161, 79)
+    Color_Syntax_Statement     = RGB(166, 38, 164)
+    Color_Syntax_Operator      = RGB(228, 86, 73)
+    Color_Syntax_Function      = RGB(64, 120, 192)
+    Color_Syntax_Number        = RGB(152, 104, 1)
+    Color_Syntax_Label         = RGB(196, 143, 0)
+    Color_Syntax_DignifiedStmt = RGB(202, 57, 84)
+    Color_Syntax_Remtag        = RGB(178, 120, 0)
+    Color_Caret                = RGB(0, 0, 0)
+    Color_SelBack               = RGB(198, 214, 251)
+    Color_LineNumberFore       = RGB(140, 144, 152)
+  Else
+    Color_AppBg        = RGB(15, 16, 21)   ; um pouco mais escuro que o fundo do editor, para dar profundidade
+    Color_EditorBg      = RGB(24, 26, 34)  ; mesma cor de fundo do ScintillaGadget
+    Color_TabInactive   = RGB(30, 32, 40)
+    Color_TabHover      = RGB(38, 41, 52)
+    Color_TextActive    = RGB(220, 223, 230)
+    Color_TextInactive  = RGB(140, 145, 160)
+    Color_Accent        = RGB(97, 175, 239) ; mesmo azul de #Style_Function
+    Color_CloseHover    = RGB(224, 108, 117); mesmo vermelho de #Style_Operator
+    Color_RulerBg       = RGB(20, 21, 28)
+    Color_RulerText     = RGB(110, 116, 130)
+    Color_RulerTick     = RGB(60, 64, 76)
+
+    Color_Syntax_Default       = RGB(220, 223, 230)
+    Color_Syntax_Comment       = RGB(98, 114, 142)
+    Color_Syntax_String        = RGB(152, 195, 121)
+    Color_Syntax_Statement     = RGB(198, 120, 221)
+    Color_Syntax_Operator      = RGB(224, 108, 117)
+    Color_Syntax_Function      = RGB(97, 175, 239)
+    Color_Syntax_Number        = RGB(209, 154, 102)
+    Color_Syntax_Label         = RGB(229, 181, 103)
+    Color_Syntax_DignifiedStmt = RGB(230, 126, 144)
+    Color_Syntax_Remtag        = RGB(255, 203, 107)
+    Color_Caret                = RGB(255, 255, 255)
+    Color_SelBack               = RGB(60, 80, 110)
+    Color_LineNumberFore       = RGB(100, 106, 122)
+  EndIf
+EndProcedure
 
 ;- ------------------------------------------------------------
 ;- Estruturas e listas globais
@@ -135,7 +193,6 @@ Global NewMap KwBoolean.b()
 ;- Declaracoes
 ;- ------------------------------------------------------------
 
-Declare.s GetEditorFontName()
 Declare   FillKeywordMap(Map Dest.b(), Words.s)
 Declare   InitKeywordMaps()
 Declare.s ReadSciText(Sci)
@@ -166,20 +223,6 @@ Declare   SaveAsAsciiFromDignified()
 Declare   SaveAsTokenizedFromDignified()
 Declare   Dig_SyncConfigFromBadigCfg()
 Declare   ResizeInterface()
-
-;- ------------------------------------------------------------
-;- Fonte usada no editor (mono espacada, uma opcao razoavel por SO)
-;- ------------------------------------------------------------
-
-Procedure.s GetEditorFontName()
-  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
-    ProcedureReturn "Consolas"
-  CompilerElseIf #PB_Compiler_OS = #PB_OS_Linux
-    ProcedureReturn "DejaVu Sans Mono"
-  CompilerElse
-    ProcedureReturn "Menlo"
-  CompilerEndIf
-EndProcedure
 
 ;- ------------------------------------------------------------
 ;- Palavras-chave do dialeto (classicas MSX-BASIC + Dignified)
@@ -570,7 +613,8 @@ Procedure HighlightDocument(Sci)
 EndProcedure
 
 ;- ------------------------------------------------------------
-;- Aparencia do ScintillaGadget (tema escuro)
+;- Aparencia do ScintillaGadget (fonte/tema conforme EditorCfg - ver
+;- ApplyTheme() e EditorSettings.pbi)
 ;- ------------------------------------------------------------
 
 Procedure SetupEditorStyles(Sci)
@@ -578,36 +622,36 @@ Procedure SetupEditorStyles(Sci)
 
   ScintillaSendMessage(Sci, #SCI_SETCODEPAGE, #SC_CP_UTF8)
 
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_DEFAULT, RGB(220, 223, 230))
-  ScintillaSendMessage(Sci, #SCI_STYLESETBACK, #STYLE_DEFAULT, RGB(24, 26, 34))
-  *FontName = UTF8(GetEditorFontName())
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_DEFAULT, Color_Syntax_Default)
+  ScintillaSendMessage(Sci, #SCI_STYLESETBACK, #STYLE_DEFAULT, Color_EditorBg)
+  *FontName = UTF8(EditorCfg\FontName)
   ScintillaSendMessage(Sci, #SCI_STYLESETFONT, #STYLE_DEFAULT, *FontName)
   FreeMemory(*FontName)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #STYLE_DEFAULT, 11)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #STYLE_DEFAULT, EditorCfg\FontSize)
   ScintillaSendMessage(Sci, #SCI_STYLECLEARALL)
 
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Comment, RGB(98, 114, 142))
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Comment, Color_Syntax_Comment)
   ScintillaSendMessage(Sci, #SCI_STYLESETITALIC, #Style_Comment, #True)
 
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_String, RGB(152, 195, 121))
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Statement, RGB(198, 120, 221))
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_String, Color_Syntax_String)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Statement, Color_Syntax_Statement)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_Statement, #True)
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Operator, RGB(224, 108, 117))
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Function, RGB(97, 175, 239))
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Number, RGB(209, 154, 102))
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Label, RGB(229, 181, 103))
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Operator, Color_Syntax_Operator)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Function, Color_Syntax_Function)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Number, Color_Syntax_Number)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Label, Color_Syntax_Label)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_Label, #True)
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_DignifiedStmt, RGB(230, 126, 144))
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_DignifiedStmt, Color_Syntax_DignifiedStmt)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_DignifiedStmt, #True)
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Remtag, RGB(255, 203, 107))
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Remtag, Color_Syntax_Remtag)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_Remtag, #True)
 
-  ScintillaSendMessage(Sci, #SCI_SETCARETFORE, RGB(255, 255, 255))
-  ScintillaSendMessage(Sci, #SCI_SETSELBACK, 1, RGB(60, 80, 110))
+  ScintillaSendMessage(Sci, #SCI_SETCARETFORE, Color_Caret)
+  ScintillaSendMessage(Sci, #SCI_SETSELBACK, 1, Color_SelBack)
   ScintillaSendMessage(Sci, #SCI_SETTABWIDTH, 4)
 
   ; Margem de numeros de linha - unica margem usada (sem marcadores/folding)
-  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_LINENUMBER, RGB(100, 106, 122))
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_LINENUMBER, Color_LineNumberFore)
   ScintillaSendMessage(Sci, #SCI_STYLESETBACK, #STYLE_LINENUMBER, Color_RulerBg)
   ScintillaSendMessage(Sci, #SCI_SETMARGINTYPEN, 0, #SC_MARGIN_NUMBER)
   ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 1, 0)
@@ -788,7 +832,11 @@ Procedure RedrawTabBar()
     EndIf
 
     DrawingMode(#PB_2DDrawing_Default)
-    RoundBox(X, 6, TabW, H - 6, 6, 6, BgColor)
+    If EditorCfg\Style = "Classic"
+      Box(X, 6, TabW, H - 6, BgColor)
+    Else
+      RoundBox(X, 6, TabW, H - 6, 6, 6, BgColor)
+    EndIf
     DrawingMode(#PB_2DDrawing_Transparent)
 
     AvailTextW = TabW - 2 * #Tab_PadX - #Tab_CloseSize - #Tab_CloseGap
@@ -1002,7 +1050,7 @@ Procedure SaveTokenized()
   EndIf
 
   Protected Path.s = Docs()\Path
-  Protected BadigRoot.s = GetPathPart(ProgramFilename()) + "..\badig\"
+  Protected BadigRoot.s = BadigCfg\InstallDir + "\"
   Protected Params.s = "badig.py " + Chr(34) + Path + Chr(34) + BadigCfg_BuildCliArgs()
 
   Protected Prog = RunProgram("python", Params, BadigRoot, #PB_Program_Open | #PB_Program_Read | #PB_Program_Error)
@@ -1250,6 +1298,9 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 InitKeywordMaps()
+EditorCfg_Load()
+EditorCfg_LoadCustomFonts()
+ApplyTheme()
 BadigCfg_Load()
 
 If Not OpenWindow(#MainWindow, 0, 0, 1000, 700, #App_Title, #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
@@ -1277,6 +1328,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
+    MenuItem(#Menu_ConfigureEditor, "Editor...")
 
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Open)
@@ -1335,6 +1387,17 @@ Repeat
 
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)
+
+        Case #Menu_ConfigureEditor
+          If EditorCfg_OpenSettingsWindow(#MainWindow)
+            ApplyTheme()
+            SetWindowColor(#MainWindow, Color_AppBg)
+            ForEach Docs()
+              SetupEditorStyles(Docs()\SciGadget)
+              HighlightDocument(Docs()\SciGadget)
+            Next
+            ResizeInterface()
+          EndIf
       EndSelect
 
     Case #PB_Event_Gadget

@@ -210,13 +210,15 @@ automatizada de asserts ainda — a verificação até agora foi manual (grep po
 resolvida sobrando no ASCII de saída, checar que `GOTO`/`GOSUB` sempre são seguidos de número, etc.);
 uma melhoria futura seria automatizar essas checagens.
 
-**Escopo não implementado nesta v1** (com guard-rail: `INCLUDE` ainda dá erro explícito "ainda não
+**Escopo não implementado** (com guard-rail: `INCLUDE` ainda dá erro explícito "ainda não
 suportado" em vez de gerar código corrompido silenciosamente):
 - `INCLUDE` (arquivos múltiplos com namespace separado).
-- Remtags (`##BB:...`) e a hierarquia completa `.ini`/linha de comando — a v1 usa defaults fixos
-  (`line_start=10`, `line_step=10`, `rem_header=True`, sem strip_spaces/capitalize).
-- Tradução Unicode→ASCII (`-tr`), conversão `?`/`PRINT` e strip `THEN`/`GOTO` (`-cp`/`-tg`).
+- Remtags (`##BB:...`) — a hierarquia `.ini`/linha de comando em si já está ligada (ver módulo 3e:
+  `Dig_SyncConfigFromBadigCfg()` lê a tela de configuração `BadigCfg` e alimenta os globals `Dig_*`).
 - Relatórios de debug (`-lbr`/`-lnr`/`-var`/`-lex`/`-par`).
+- ~~Tradução Unicode→ASCII (`-tr`), conversão `?`/`PRINT` e strip `THEN`/`GOTO` (`-cp`/`-tg`)~~ —
+  **resolvida (2026-07-14)**: implementadas em `DignifiedPreprocessor.pbi`
+  (`Dig_TransChar`/`Dig_ConvertPrint_Piece`/`Dig_StripThenGoto_Piece`), configuráveis via `BadigCfg`.
 - **Concatenação implícita de strings adjacentes entre linhas** (`PRINT "a "` seguido de `"b"` na
   próxima linha, sem `:`/`_` explícito) — feature documentada em `BASIC_DIGNIFIED.md` mas não
   portada; se usada, produz uma linha extra inválida em vez de juntar as strings. Baixa prioridade
@@ -252,13 +254,53 @@ correta do `emulator_interface.ini` ao salvar. `Translate` vem com default ligad
 `BadigCfg_BuildCliArgs()` monta a linha de comando do `badig.py` a partir da configuração salva; usada
 por `SaveTokenized()` no lugar dos flags fixos que tinha antes.
 
-**Importante — isso é só para o caminho Python**: o pipeline nativo (`DignifiedPreprocessor.pbi` +
-`MsxTokenizer.pbi`, módulo 3/3b) ainda usa defaults fixos e **não lê** `BadigCfg` — a lacuna listada em
-3d ("Remtags e a hierarquia `.ini`/linha de comando... a v1 usa defaults fixos") continua aberta. Já
-existem globals prontos para receber isso sem refatoração (`Dig_LineStart`, `Dig_LineStep`,
-`Dig_RemHeader` em `DignifiedPreprocessor.pbi`) — próximo passo natural é ler `BadigCfg` nesses globals
-antes de chamar `Dig_Preprocess()`/`Tok_Tokenize()`, unificando as duas telas de configuração num só
-conjunto de opções.
+**Ligado ao pipeline nativo (resolvido em 2026-07-14)**: `Dig_SyncConfigFromBadigCfg()` (em
+`BadigEditor.pb`, chamada no início de `RunDignifiedPreprocessor()`) copia `BadigCfg` para os globals
+`Dig_*` lidos por `DignifiedPreprocessor.pbi`, unificando as duas telas de configuração num só conjunto
+de opções — a tela "Configurar → Basic Dignified..." agora vale tanto para o caminho Python quanto para
+o nativo. Nessa mesma sessão o pré-processador nativo ganhou os passos finais que faltavam (equivalentes
+ao `pass_5`/`generate()` do `badig_msx.py` original): conversão `?`/`PRINT` (`-cp`), strip
+`THEN`/`GOTO` (`-tg`), tradução Unicode→ASCII nativo MSX (`-tr`, tabela completa validada contra o
+original), maiusculização geral (`-ca`) e tamanho de TAB configurável. `strip_spaces` (`-ss`) foi
+reinterpretado de forma pragmática (preserva um espaço entre palavras) — não é garantido byte-a-byte
+idêntico ao Python original. Segue aberto: `INCLUDE` e remtags (`##BB:...`), ver módulo 3d.
+
+### 3f. Configurações do Editor e instalação do Basic Dignified Suite (2026-07-15)
+
+**Novo módulo `editor/EditorSettings.pbi`**: tela de configuração nativa do editor em si (menu
+"Configurar → Editor...", separada de "Configurar → Basic Dignified..."), com:
+- **Fonte**: combo listando só fontes monoespaçadas instaladas no sistema, enumeradas via WinAPI
+  (`EnumFontFamiliesEx`, filtrando `lfPitchAndFamily & 3 = FIXED_PITCH`) + tamanho.
+- **Pasta de fontes customizadas** (opcional): arquivos `.ttf`/`.otf`/`.ttc` da pasta são carregados em
+  memória via `AddFontResourceEx` (flag `FR_PRIVATE`) — visíveis só para o processo do editor, sem
+  instalar nada no Windows. Como `AddFontResourceEx`/`RemoveFontResourceEx` não fazem parte da `.lib`
+  de importação do gdi32 que o PureBasic traz embutida, são resolvidas em tempo de execução via
+  `OpenLibrary("gdi32.dll")` + `GetFunction()` (com `Prototype` tipado), em vez de `Import` estático.
+- **Caminho de instalação do editor** (`EditorPath`): editável, default = pasta do `.exe`. Não move o
+  executável — serve de base para o cálculo do diretório padrão do Basic Dignified Suite (ver abaixo).
+  Pensado para o cenário de 2 instalações do editor lado a lado (ex.: estável + beta).
+- **Tema** (Escuro/Claro) e **Estilo de abas** (Moderno = chip arredondado, atual desde 2026-07-14;
+  Clássico = retângulo plano). `ApplyTheme()` em `BadigEditor.pb` centraliza a paleta (cores de UI e de
+  sintaxe) num único lugar, recalculada ao salvar as configurações (reaplica fonte/tema em todas as
+  abas abertas via `SetupEditorStyles()` + `HighlightDocument()`, sem precisar reiniciar o editor).
+
+Persistida em `editor/editor_settings.json`, mesmo padrão de `BadigSettings.pbi`.
+
+**Diretório de instalação do Basic Dignified Suite**: `BadigSettings` ganhou o campo `InstallDir`
+(struct + JSON + campo com botão de navegação na aba "Basic Dignified"). Default calculado por
+`BadigCfg_DefaultInstallDir()`: se a instalação "clássica" (`..\badig`, o submódulo git que já existe
+na raiz do projeto) for encontrada, usa ela — preserva o setup atual sem quebrar nada; senão usa o novo
+padrão pedido pelo usuário, `EditorPath + "\badig"`. `SaveTokenized()` (caminho Python) e
+`BadigCfg_SyncEmulatorIni()` foram migrados do caminho fixo antigo (`GetPathPart(ProgramFilename()) +
+"..\badig\"`) para esse `BadigCfg\InstallDir` configurável.
+
+**Botão "Baixar Basic Dignified Suite..."**: baixa o toolchain de referência
+(`https://github.com/farique1/basic-dignified`) direto para o `InstallDir` configurado, por dois
+métodos à escolha do usuário — clonar com `git clone --depth 1` (via `RunProgram`) ou baixar o `.zip`
+da branch `main` (`ReceiveHTTPFile`, exige `UseNetworkTLS()` para HTTPS) e descompactar nativamente
+(`UseZipPacker()` + `OpenPack()`/`ExaminePack()`/`UncompressPackFile()`, sem depender de nenhuma
+ferramenta externa de unzip) — removendo o prefixo de pasta único que o GitHub inclui no `.zip`
+(`basic-dignified-main/`) para que o conteúdo caia direto dentro de `InstallDir`, sem subpasta extra.
 
 ### 5. Editor gráfico LINE/CIRCLE/PSET/DRAW
 - Mais simples que DRAW puro isolado porque LINE/CIRCLE/PSET são coordenadas absolutas (sem estado de
@@ -412,20 +454,21 @@ conjunto de opções.
 
 ## Próximos passos em aberto
 
-**Estado ao fim de 2026-07-13**: núcleo do Basic Dignified reescrito nativo já existe e roda de ponta
-a ponta contra `teste.dmx` (`editor/DignifiedPreprocessor.pbi` + `editor/MsxTokenizer.pbi`, módulos
-3/3b/11), incluindo `FUNC`/`RET`. Bug de charset do caminho Python corrigido (módulo 3e) e nova tela
-de configuração nativa (`editor/BadigSettings.pbi`, menu "Configurar → Basic Dignified...") criada
-para o caminho Python. A especificação do núcleo (Basic Dignified + tokenizador MSX + controle do
-openMSX) está completamente documentada a partir do código-fonte original — as lacunas remanescentes
-são só os módulos que dependiam de conteúdo não recuperado da conversa original (sprite/char,
-MML/`PLAY`) ou de levantamento de dados externo (NestorBASIC, msxbas2rom).
+**Estado ao fim de 2026-07-15**: núcleo do Basic Dignified reescrito nativo roda de ponta a ponta
+contra `teste.dmx` (`editor/DignifiedPreprocessor.pbi` + `editor/MsxTokenizer.pbi`, módulos 3/3b/11),
+incluindo `FUNC`/`RET` e, desde 2026-07-14, `-cp`/`-tg`/`-tr`/`-ca`/TAB configurável — e já está ligado
+à tela de configuração (`BadigCfg`, módulo 3e). O editor ganhou tab bar/régua customizadas e tema
+escuro (2026-07-14) e, em 2026-07-15, uma tela própria de configurações do editor (fonte, tema
+claro/escuro, estilo de abas, fontes customizadas, caminho de instalação — módulo 3f) mais um diretório
+de instalação configurável e um botão de download para o Basic Dignified Suite (git clone ou zip,
+módulo 3f). A especificação do núcleo (Basic Dignified + tokenizador MSX + controle do openMSX) está
+completamente documentada a partir do código-fonte original — as lacunas remanescentes são só os
+módulos que dependiam de conteúdo não recuperado da conversa original (sprite/char, MML/`PLAY`) ou de
+levantamento de dados externo (NestorBASIC, msxbas2rom).
 
 **Próximo passo sugerido (ainda não decidido com o usuário)**: escolher entre —
-1. Ligar `BadigCfg` (a nova tela de configuração) ao pipeline **nativo**, lendo os globals que já
-   existem em `DignifiedPreprocessor.pbi` (`Dig_LineStart`, `Dig_LineStep`, `Dig_RemHeader`) a partir
-   da struct salva, e implementando as opções que faltam nele (`INCLUDE`, remtags/`-tr`/`-cp`/`-tg`,
-   ver módulo 3d) — fecharia de vez a paridade com o caminho Python e permitiria remover os menus
-   Python de `BadigEditor.pb` (débito técnico listado acima).
+1. Fechar de vez a paridade do pré-processador nativo com o caminho Python: `INCLUDE` e remtags
+   (`##BB:...`, ver módulo 3d) — os únicos itens de escopo ainda não portados — o que permitiria
+   remover os menus Python de `BadigEditor.pb` (débito técnico listado acima).
 2. Ou seguir para um módulo totalmente novo (assembler Z80, editor sprite/char, controle do openMSX
    via módulo 12) — falta decidir qual com o usuário.

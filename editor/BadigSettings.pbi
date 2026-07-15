@@ -15,6 +15,7 @@
 
 Structure BadigSettings
   ; -- Pagina 1: Basic Dignified (geral, badig.ini) --
+  InstallDir.s       ; pasta onde o toolchain Python (badig/) esta instalado - ver BadigCfg_DefaultInstallDir()
   SystemId.s
   LineStart.i
   LineStep.i
@@ -56,7 +57,22 @@ Global BadigCfg.BadigSettings
 ;- Valores padrao
 ;- ------------------------------------------------------------
 
+; Se a instalacao "classica" (irmao da pasta editor/, ..\badig - onde o
+; submodulo do toolchain Python vive hoje) ja existir, usa ela como default
+; (evita quebrar quem ja tem o projeto configurado). Senao, usa o novo default
+; pedido: pasta "badig" dentro do caminho de instalacao do editor
+; (EditorCfg\EditorPath, ver EditorSettings.pbi - editavel em Configurar ->
+; Editor..., util para manter 2 instalacoes separadas do editor).
+Procedure.s BadigCfg_DefaultInstallDir()
+  Protected Legacy.s = GetPathPart(ProgramFilename()) + "..\badig"
+  If FileSize(Legacy) = -2
+    ProcedureReturn Legacy
+  EndIf
+  ProcedureReturn EditorCfg\EditorPath + "badig"
+EndProcedure
+
 Procedure BadigCfg_SetDefaults()
+  BadigCfg\InstallDir = BadigCfg_DefaultInstallDir()
   BadigCfg\SystemId = "msx"
   BadigCfg\LineStart = 10
   BadigCfg\LineStep = 10
@@ -117,6 +133,7 @@ Procedure BadigCfg_Load()
   Protected Root = JSONValue(Json)
   Protected M
 
+  M = GetJSONMember(Root, "InstallDir")     : If M : BadigCfg\InstallDir = GetJSONString(M) : EndIf
   M = GetJSONMember(Root, "SystemId")       : If M : BadigCfg\SystemId = GetJSONString(M) : EndIf
   M = GetJSONMember(Root, "LineStart")      : If M : BadigCfg\LineStart = GetJSONInteger(M) : EndIf
   M = GetJSONMember(Root, "LineStep")       : If M : BadigCfg\LineStep = GetJSONInteger(M) : EndIf
@@ -157,6 +174,7 @@ Procedure BadigCfg_Save()
   Protected Json = CreateJSON(#PB_Any)
   Protected Root = SetJSONObject(JSONValue(Json))
 
+  SetJSONString(AddJSONMember(Root, "InstallDir"), BadigCfg\InstallDir)
   SetJSONString(AddJSONMember(Root, "SystemId"), BadigCfg\SystemId)
   SetJSONInteger(AddJSONMember(Root, "LineStart"), BadigCfg\LineStart)
   SetJSONInteger(AddJSONMember(Root, "LineStep"), BadigCfg\LineStep)
@@ -213,7 +231,7 @@ Procedure BadigCfg_SyncEmulatorIni()
     ProcedureReturn
   EndIf
 
-  Protected IniPath.s = GetPathPart(ProgramFilename()) + "..\badig\msx\emulator_interface.ini"
+  Protected IniPath.s = BadigCfg\InstallDir + "\msx\emulator_interface.ini"
   If FileSize(IniPath) <= 0
     ProcedureReturn
   EndIf
@@ -315,6 +333,142 @@ Procedure.s BadigCfg_BuildCliArgs()
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Download do Basic Dignified Suite (clone via Git ou .zip do GitHub)
+;- UseZipPacker() ja foi declarado em EditorSettings.pbi (incluido antes
+;- deste arquivo - ver XIncludeFile em BadigEditor.pb).
+;- ------------------------------------------------------------
+
+#BadigSuite_GitUrl = "https://github.com/farique1/basic-dignified.git"
+#BadigSuite_ZipUrl  = "https://github.com/farique1/basic-dignified/archive/refs/heads/main.zip"
+
+UseNetworkTLS() ; necessario para ReceiveHTTPFile() conseguir falar https:// (GitHub)
+
+; Descompacta ZipPath em TargetDir, removendo o prefixo de pasta unico que o
+; GitHub inclui em arquivos de archive (ex.: "basic-dignified-main/") para que
+; o conteudo do repositorio fique direto dentro de TargetDir, sem subpasta extra.
+Procedure.b BadigCfg_ExtractZip(ZipPath.s, TargetDir.s)
+  Protected Pack = OpenPack(#PB_Any, ZipPath, #PB_PackerPlugin_Zip)
+  If Not Pack
+    ProcedureReturn #False
+  EndIf
+
+  If Not ExaminePack(Pack)
+    ClosePack(Pack)
+    ProcedureReturn #False
+  EndIf
+
+  Protected Prefix.s = ""
+  If NextPackEntry(Pack) > 0
+    Protected FirstName.s = PackEntryName(Pack)
+    Protected SlashPos = FindString(FirstName, "/")
+    If SlashPos > 0
+      Prefix = Left(FirstName, SlashPos)
+    EndIf
+  EndIf
+
+  CreateDirectory(TargetDir)
+
+  Protected EntryName.s, RelName.s, OutPath.s
+  ExaminePack(Pack)
+  While NextPackEntry(Pack) > 0
+    EntryName = PackEntryName(Pack)
+    RelName = EntryName
+    If Prefix <> "" And Left(EntryName, Len(Prefix)) = Prefix
+      RelName = Mid(EntryName, Len(Prefix) + 1)
+    EndIf
+    If RelName = ""
+      Continue
+    EndIf
+
+    OutPath = TargetDir + "\" + RelName
+
+    If Right(EntryName, 1) = "/"
+      CreateDirectory(OutPath)
+    Else
+      CreateDirectory(GetPathPart(OutPath))
+      UncompressPackFile(Pack, OutPath)
+    EndIf
+  Wend
+
+  ClosePack(Pack)
+  ProcedureReturn #True
+EndProcedure
+
+Procedure BadigCfg_DownloadViaGit(TargetDir.s)
+  Protected Params.s = "clone --depth 1 " + #BadigSuite_GitUrl + " " + Chr(34) + TargetDir + Chr(34)
+  Protected Prog = RunProgram("git", Params, GetPathPart(ProgramFilename()), #PB_Program_Wait | #PB_Program_Hide)
+  If Not Prog
+    MessageRequester("Erro", "Git nao encontrado. Instale o Git (https://git-scm.com/) ou use a opcao de download via ZIP.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected ExitCode = ProgramExitCode(Prog)
+  CloseProgram(Prog)
+
+  If ExitCode = 0
+    MessageRequester("Basic Dignified Suite", "Clonado com sucesso em:" + Chr(10) + TargetDir,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+  Else
+    MessageRequester("Erro", "O comando 'git clone' falhou (codigo " + Str(ExitCode) + ")." + Chr(10) +
+                     "Verifique se a pasta ja existe e nao esta vazia, ou tente a opcao de download via ZIP.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+  EndIf
+EndProcedure
+
+Procedure BadigCfg_DownloadViaZip(TargetDir.s)
+  Protected TmpZip.s = GetTemporaryDirectory() + "basic-dignified-" + Str(Random(999999)) + ".zip"
+
+  If Not ReceiveHTTPFile(#BadigSuite_ZipUrl, TmpZip)
+    MessageRequester("Erro", "Falha ao baixar o arquivo ZIP do GitHub." + Chr(10) + "Verifique sua conexao com a internet.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  If Not BadigCfg_ExtractZip(TmpZip, TargetDir)
+    MessageRequester("Erro", "Falha ao descompactar o arquivo ZIP baixado.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    DeleteFile(TmpZip)
+    ProcedureReturn
+  EndIf
+
+  DeleteFile(TmpZip)
+  MessageRequester("Basic Dignified Suite", "Baixado e descompactado com sucesso em:" + Chr(10) + TargetDir,
+                   #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+EndProcedure
+
+Procedure BadigCfg_DownloadSuite(ParentWindow, TargetDir.s)
+  If Trim(TargetDir) = ""
+    MessageRequester("Erro", "Informe o diretorio de instalacao antes de baixar.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  If FileSize(TargetDir) = -2
+    Protected Confirm = MessageRequester("Basic Dignified Suite",
+      "A pasta" + Chr(10) + TargetDir + Chr(10) + "ja existe. Continuar pode sobrescrever arquivos nela." + Chr(10) + Chr(10) + "Continuar?",
+      #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning)
+    If Confirm <> #PB_MessageRequester_Yes
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Protected Method = MessageRequester("Basic Dignified Suite",
+    "Como deseja baixar?" + Chr(10) + Chr(10) +
+    "SIM = clonar com Git (recomendado, permite atualizar depois)" + Chr(10) +
+    "NAO = baixar o .zip da branch main e descompactar" + Chr(10) + Chr(10) +
+    "Pasta de destino:" + Chr(10) + TargetDir,
+    #PB_MessageRequester_YesNoCancel | #PB_MessageRequester_Info)
+
+  Select Method
+    Case #PB_MessageRequester_Yes
+      BadigCfg_DownloadViaGit(TargetDir)
+    Case #PB_MessageRequester_No
+      BadigCfg_DownloadViaZip(TargetDir)
+  EndSelect
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Janela de configuracao (Configurar -> Basic Dignified...)
 ;- ------------------------------------------------------------
 
@@ -358,6 +512,13 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   Protected G_VarReport = CheckBoxGadget(#PB_Any, 320, 243, 290, 22, "Substituicao de variaveis")
   Protected G_LexerReport = CheckBoxGadget(#PB_Any, 15, 271, 290, 22, "Saida do lexer (tokens)")
   Protected G_ParserReport = CheckBoxGadget(#PB_Any, 320, 271, 290, 22, "Saida do parser (tokens)")
+
+  TextGadget(#PB_Any, 15, 313, 400, 20, "Diretorio de instalacao do Basic Dignified Suite")
+  Protected G_InstallDir = StringGadget(#PB_Any, 15, 333, 460, 22, BadigCfg\InstallDir)
+  Protected G_InstallDirBrowse = ButtonGadget(#PB_Any, 485, 333, 45, 22, "...")
+
+  Protected G_DownloadSuite = ButtonGadget(#PB_Any, 15, 365, 260, 26, "Baixar Basic Dignified Suite...")
+  TextGadget(#PB_Any, 285, 368, 260, 40, "Clona com Git ou baixa um .zip do GitHub e descompacta no diretorio acima.")
 
   ;- Pagina 2: MSX -------------------------------------------------------------
   AddGadgetItem(Panel, -1, "MSX")
@@ -457,6 +618,16 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
     Select Event
       Case #PB_Event_Menu
         Select EventGadget()
+          Case G_InstallDirBrowse
+            Protected PickInstallDir.s = PathRequester("Selecione o diretorio de instalacao do Basic Dignified Suite",
+                                                        GetGadgetText(G_InstallDir))
+            If PickInstallDir <> ""
+              SetGadgetText(G_InstallDir, PickInstallDir)
+            EndIf
+
+          Case G_DownloadSuite
+            BadigCfg_DownloadSuite(Win, GetGadgetText(G_InstallDir))
+
           Case G_EmSettingBrowse
             Protected PickSetting.s = OpenFileRequester("Selecione o arquivo de configuracao do openMSX",
                                                         GetGadgetText(G_EmSetting), "Todos os arquivos (*.*)|*.*", 0)
@@ -490,6 +661,12 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   Until Quit
 
   If Saved
+    Protected InstallDirText.s = GetGadgetText(G_InstallDir)
+    If Right(InstallDirText, 1) = "\" Or Right(InstallDirText, 1) = "/"
+      InstallDirText = Left(InstallDirText, Len(InstallDirText) - 1)
+    EndIf
+    BadigCfg\InstallDir = InstallDirText
+
     BadigCfg\LineStart = Val(GetGadgetText(G_LineStart))
     BadigCfg\LineStep = Val(GetGadgetText(G_LineStep))
     BadigCfg\TabLenght = Val(GetGadgetText(G_TabLenght))
