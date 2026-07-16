@@ -40,8 +40,8 @@ servir de especificação byte-a-byte ao port nativo:
 | # | Módulo | Esforço relativo | Status da spec |
 |---|--------|-------------------|-----------------|
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
-| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Arquitetura definida, sem detalhe de tabela de opcodes |
-| 3 | Basic Dignified reescrito nativo | depende do escopo do original | **v1 implementada e verificada** — `editor/DignifiedPreprocessor.pbi`, ver detalhe abaixo |
+| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Lado editor pronto (arquivo `.asm` + syntax highlight, 2026-07-16) — motor do assembler em si ainda não iniciado |
+| 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Gap**: explicação detalhada não recuperada da conversa original |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
 | 6 | Editor de som SOUND (PSG) | baixo | Definido (seção 6) |
@@ -50,7 +50,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 9 | Extensão NestorBASIC (nbasic) | médio | Definido, com exemplo de sintaxe (seção 7) |
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
-| 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | Definido (seção 10) |
+| 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 
 ## Decisões fechadas
 
@@ -64,10 +64,18 @@ servir de especificação byte-a-byte ao port nativo:
   precisam ser **portados/reescritos nativamente em PureBasic**, usando o código Python de `badig/`
   como especificação de comportamento a replicar (tabelas de dados e algoritmo), não como biblioteca a
   chamar.
-  - **Débito técnico atual**: `editor/BadigEditor.pb` → `SaveTokenized()` hoje chama
-    `python badig.py ... --tk_tokenize` via `RunProgram` (ver `editor/BadigEditor.pb:741-786`). Isso
-    contradiz a decisão acima e precisa ser substituído por um tokenizador nativo antes de considerar
-    o EXE "limpo".
+  - **Débito técnico resolvido (2026-07-15)**: o menu "Gerar tokenizado MSX via Python (.bmx)..." e a
+    procedure `SaveTokenized()` (que chamava `python badig.py ... --tk_tokenize` via `RunProgram`) foram
+    removidos de `editor/BadigEditor.pb`, junto com `BadigCfg_BuildCliArgs()`/`BadigCfg_QuoteArg()` em
+    `editor/BadigSettings.pbi` (ficaram sem nenhum chamador). O caminho nativo (`Dignified -> ASCII/
+    tokenizado nativo`) já cobre 100% do escopo do original, incluindo `INCLUDE` e remtags (módulo 3g) -
+    o `.exe` do editor não chama mais Python em nenhum menu. ~~Ficou como leftover conhecido, de baixo
+    risco: os campos `BadigCfg\EmRun`/`EmSetting`/`EmMachine`/etc. e a aba "Emulador" da tela de
+    configurações continuam existindo (JSON + UI), mas hoje não têm nenhum efeito prático~~ —
+    **atualizado 2026-07-16**: `EmRun`/`EmMachine`/`EmExtension`/`EmulatorPath` passaram a ter efeito
+    real de novo, agora ligados ao fluxo nativo `RunOnOpenMSX()` (ver módulo 12) em vez do `python
+    badig.py` removido. Só `EmSetting`/`EmMonitor`/`EmNoThrottle`/`EmVerbose` continuam sem
+    consumidor.
 - Duas (potencialmente três) saídas do pré-processador: ASCII clássico, tokenizado, e opcionalmente
   dialeto msxbas2rom para gerar ROM.
 - Editores visuais (sprite, som, tracker, MML, draw) todos alimentam o mesmo pipeline de saída
@@ -84,6 +92,37 @@ servir de especificação byte-a-byte ao port nativo:
 - Integração com editor: bloco de assembly dentro do mesmo arquivo `.dmx`/`.bas` (marcador tipo
   `' ASM` ... `' ENDASM`) com highlighting dinâmico, ou abas separadas `.BAS`/`.ASM` referenciadas.
 - Saída: `.bin`/listagem hexa para uso com `BLOAD` ou rotina clássica de carga hexa em runtime.
+
+**Status (2026-07-16): lado editor implementado** (a decisão de arquitetura acima escolheu "abas
+separadas", não o marcador `' ASM`/`' ENDASM` embutido no mesmo arquivo). Menu **Arquivo → Novo
+Assembly** (`Ctrl+Shift+N`, ao lado de "Novo") cria uma aba `.asm` em vez de `.dmx`; o tipo de cada
+aba é rastreado em `Document\Mode` (`"DMX"` ou `"ASM"`, `editor/BadigEditor.pb`), detectado
+automaticamente pela extensão ao abrir um arquivo existente (`.asm`/`.z80`/`.mac` → `ASM`). Diálogos
+de Abrir/Salvar já filtram e sugerem a extensão certa por modo (`#File_Pattern_ASM`/
+`#File_Pattern_Open`).
+
+Realce de sintaxe do modo `.asm` (`HighlightZ80Text()`) segue estritamente o vocabulário do
+**N80/Nestor80** (Konamiman, github.com/Konamiman/Nestor80 — assembler Z80/R800/Z280 compatível com
+MACRO-80, referência de sintaxe lida diretamente do `docs/LanguageReference.md` do projeto): mnemônicos
+documentados + indocumentados comuns (`SLL` etc.), registradores e códigos de condição (`NZ Z NC C PO
+PE P M`, mesmo estilo visual para os dois), diretivas (`EQU DEFL ORG DEFB/DB DEFW/DW MACRO IF/ENDIF
+MODULE` e as com ponto do dialeto N80 como `.RADIX`/`.PHASE`), literais numéricos em qualquer radix
+(sufixos `B/O/Q/H/D`, prefixos `0x`/`0b`/`#`, forma `X'..'`), strings `"..."`/`'...'` com escapes,
+comentário `;`. Reaproveita a mesma paleta de estilos do modo Dignified (`#Style_Comment/String/
+Statement/Function/Number/Label`, mais `#Style_DignifiedStmt` reutilizado genericamente como "estilo de
+diretiva") — nenhuma cor/estilo novo precisou ser adicionado.
+
+**Regra de rótulo vs. mnemônico/diretiva** (mesma convenção clássica MACRO-80/Z80): a primeira palavra
+de uma linha vira rótulo (com ou sem `:`/`::`) somente quando **não** bate com nenhuma tabela de
+palavra-chave — cobre tanto `LABEL: LD A,1` quanto `CONST EQU 5` quanto `ORG 100H` (que começa a linha
+mas é diretiva conhecida, não rótulo). Testado ao vivo (screenshot com pixel-sampling de cor
+confirmando os estilos certos) com rótulos, mnemônicos, registradores, condição de desvio, diretiva
+`EQU`/`ORG`/`DEFB`, string e número — todos corretos.
+
+**Limitações conhecidas aceitas**: bloco `.COMMENT <delim>...<delim>` com delimitador arbitrário não é
+reconhecido (só o comentário de linha `;`); a fronteira exata "dígitos" vs. "sufixo de radix" dentro de
+um literal numérico pode variar internamente sem afetar o destaque visual (o token inteiro sempre fica
+colorido como número, ver comentário em `HighlightZ80Text()`).
 
 ### 3. Basic Dignified reescrito nativo
 
@@ -210,11 +249,9 @@ automatizada de asserts ainda — a verificação até agora foi manual (grep po
 resolvida sobrando no ASCII de saída, checar que `GOTO`/`GOSUB` sempre são seguidos de número, etc.);
 uma melhoria futura seria automatizar essas checagens.
 
-**Escopo não implementado** (com guard-rail: `INCLUDE` ainda dá erro explícito "ainda não
-suportado" em vez de gerar código corrompido silenciosamente):
-- `INCLUDE` (arquivos múltiplos com namespace separado).
-- Remtags (`##BB:...`) — a hierarquia `.ini`/linha de comando em si já está ligada (ver módulo 3e:
-  `Dig_SyncConfigFromBadigCfg()` lê a tela de configuração `BadigCfg` e alimenta os globals `Dig_*`).
+**Escopo não implementado**:
+- ~~`INCLUDE` (arquivos múltiplos com namespace separado)~~ — **resolvida (2026-07-15)**, ver módulo 3g.
+- ~~Remtags (`##BB:...`)~~ — **resolvida (2026-07-15)**, ver módulo 3g.
 - Relatórios de debug (`-lbr`/`-lnr`/`-var`/`-lex`/`-par`).
 - ~~Tradução Unicode→ASCII (`-tr`), conversão `?`/`PRINT` e strip `THEN`/`GOTO` (`-cp`/`-tg`)~~ —
   **resolvida (2026-07-14)**: implementadas em `DignifiedPreprocessor.pbi`
@@ -251,8 +288,9 @@ Dignified...") para o caminho Python, com 3 abas espelhando os `.ini` de referê
 JSON próprio do editor (`editor/badig_settings.json`), não nos `.ini` do Python — exceção:
 `emulator_path` (único valor sem flag de CLI no `badig.py`) recebe patch textual direto na seção do SO
 correta do `emulator_interface.ini` ao salvar. `Translate` vem com default ligado (fix do bug acima).
-`BadigCfg_BuildCliArgs()` monta a linha de comando do `badig.py` a partir da configuração salva; usada
-por `SaveTokenized()` no lugar dos flags fixos que tinha antes.
+`BadigCfg_BuildCliArgs()` montava a linha de comando do `badig.py` a partir da configuração salva; usada
+por `SaveTokenized()` no lugar dos flags fixos que tinha antes (ambos removidos em 2026-07-15, ver
+"Débito técnico resolvido" acima).
 
 **Ligado ao pipeline nativo (resolvido em 2026-07-14)**: `Dig_SyncConfigFromBadigCfg()` (em
 `BadigEditor.pb`, chamada no início de `RunDignifiedPreprocessor()`) copia `BadigCfg` para os globals
@@ -263,7 +301,7 @@ ao `pass_5`/`generate()` do `badig_msx.py` original): conversão `?`/`PRINT` (`-
 `THEN`/`GOTO` (`-tg`), tradução Unicode→ASCII nativo MSX (`-tr`, tabela completa validada contra o
 original), maiusculização geral (`-ca`) e tamanho de TAB configurável. `strip_spaces` (`-ss`) foi
 reinterpretado de forma pragmática (preserva um espaço entre palavras) — não é garantido byte-a-byte
-idêntico ao Python original. Segue aberto: `INCLUDE` e remtags (`##BB:...`), ver módulo 3d.
+idêntico ao Python original.
 
 ### 3f. Configurações do Editor e instalação do Basic Dignified Suite (2026-07-15)
 
@@ -290,9 +328,9 @@ Persistida em `editor/editor_settings.json`, mesmo padrão de `BadigSettings.pbi
 (struct + JSON + campo com botão de navegação na aba "Basic Dignified"). Default calculado por
 `BadigCfg_DefaultInstallDir()`: se a instalação "clássica" (`..\badig`, o submódulo git que já existe
 na raiz do projeto) for encontrada, usa ela — preserva o setup atual sem quebrar nada; senão usa o novo
-padrão pedido pelo usuário, `EditorPath + "\badig"`. `SaveTokenized()` (caminho Python) e
-`BadigCfg_SyncEmulatorIni()` foram migrados do caminho fixo antigo (`GetPathPart(ProgramFilename()) +
-"..\badig\"`) para esse `BadigCfg\InstallDir` configurável.
+padrão pedido pelo usuário, `EditorPath + "\badig"`. `SaveTokenized()` (caminho Python, removido em
+2026-07-15 - ver módulo 3g) e `BadigCfg_SyncEmulatorIni()` foram migrados do caminho fixo antigo
+(`GetPathPart(ProgramFilename()) + "..\badig\"`) para esse `BadigCfg\InstallDir` configurável.
 
 **Botão "Baixar Basic Dignified Suite..."**: baixa o toolchain de referência
 (`https://github.com/farique1/basic-dignified`) direto para o `InstallDir` configurado, por dois
@@ -301,6 +339,66 @@ da branch `main` (`ReceiveHTTPFile`, exige `UseNetworkTLS()` para HTTPS) e desco
 (`UseZipPacker()` + `OpenPack()`/`ExaminePack()`/`UncompressPackFile()`, sem depender de nenhuma
 ferramenta externa de unzip) — removendo o prefixo de pasta único que o GitHub inclui no `.zip`
 (`basic-dignified-main/`) para que o conteúdo caia direto dentro de `InstallDir`, sem subpasta extra.
+
+### 3g. INCLUDE e remtags — paridade nativa completa (2026-07-15)
+
+**Status: implementado e verificado.** Com isso, `editor/DignifiedPreprocessor.pbi` cobre 100% do
+escopo do `badig.py` original relevante para esta IDE (única exceção deliberada: relatórios de debug
+`-lbr`/`-lnr`/`-var`/`-lex`/`-par`, que não têm consumidor na IDE). O menu Python legado foi removido
+do editor (ver "Débito técnico resolvido" acima).
+
+**Arquitetura**: o pipeline deixou de processar "todas as linhas do arquivo de uma vez" para processar
+recursivamente **por arquivo** — `Dig_ProcessSource(SourceText, Prefix, OwnBasePath, IsMainFile,
+OutLogLines)` roda os estágios de comentário/toggle/join/`DEFINE`/`DECLARE`/labels/`FUNC`/`RET`/
+`Dig_FuncCalls_Piece`/`Dig_ScanLabelRefs_Piece` sobre **um** arquivo (principal ou incluído), devolvendo
+sua lista de "linhas lógicas" ainda sem numeração (numeração/`TRUE`/`FALSE`/operadores compostos/
+redução de variáveis só fazem sentido para a árvore inteira já mesclada, então continuam em
+`Dig_Preprocess`, que chama `Dig_ProcessSource` uma vez para o arquivo principal e deixa os `INCLUDE`
+se expandirem recursivamente por dentro). Mesma divisão de responsabilidade documentada em
+`docs/reference/dignified-core.md` (Pass 1-3 por arquivo, Pass 4-5 só na árvore mesclada) — só que
+aqui em uma única função recursiva ao invés de passes separados.
+
+**`INCLUDE "arquivo"`**: resolvido relativo ao diretório do arquivo que contém a instrução
+(`OwnBasePath`, propagado recursivamente — cada arquivo incluído resolve os próprios `INCLUDE`
+relativos à sua própria pasta, não à do arquivo principal). Caminho absoluto (com `:` ou barra inicial)
+é usado como está. Detecção de ciclo via `Dig_IncludeStack` (pilha dos caminhos atualmente abertos,
+comparação case-insensitive) e limite de profundidade (`#Dig_MaxIncludeDepth = 16`) — nota: a
+detecção de ciclo não cobre o caso em que um include aponta de volta para o **próprio arquivo
+principal** na primeira tentativa (só é pega uma recursão depois, quando o arquivo principal é
+reprocessado como se fosse um include) porque o caminho do arquivo principal em si nunca é empurrado
+na pilha; o limite de profundidade garante que isso nunca vira loop infinito, só um erro relatado
+uma recursão mais tarde do que o ideal — melhoria futura de baixo risco.
+
+**Namespace por arquivo**: exatamente como documentado (`docs/reference/dignified-core.md`, Pass 3) —
+variáveis (`Dig_Declares`/`Dig_HardShort`/`Dig_HardLong`/`Dig_VarIndex`) são **compartilhadas** entre
+arquivo principal e includes (nunca resetadas por `Dig_ProcessSource`, um único pool global de nomes
+curtos ZZ→AA para o programa inteiro); já `DEFINE`/toggle-rem/`KEEP`/`FUNC`/`RET` são **isolados** por
+arquivo (salvos/restaurados via `CopyMap()` ao redor de cada chamada recursiva). Labels, loop-labels e
+nomes de função usam um prefixo interno único por instância de include (`Dig_CurrentPrefix`, formato
+`__incN$` incremental, `Dig_IncludeCounter`) aplicado tanto no registro do nome quanto nos marcadores
+internos que os referenciam (`Chr(2)+"J"/"B"/"G"/"X"+nome+Chr(2)`, ver comentário no topo do arquivo) —
+dois arquivos diferentes podem usar o mesmo nome de label/loop/função sem colidir, cada um resolve
+dentro do seu próprio escopo. Verificado com um fixture de teste com labels `{start}`/loop `loop{}`/
+função `.show()` de mesmo nome no arquivo principal e no incluído, variáveis diferentes em cada um
+(pool compartilhado, sem colisão de nome curto) — todas as chamadas/saltos resolveram para o arquivo
+correto, sem erro de "label duplicado".
+
+**Remtags (`##BB:comando=valor`)**: reconhecidos em `Dig_StripComments` (mesma posição do antigo stub
+que só descartava a linha) — **só lidos do arquivo principal**, nunca de arquivos incluídos (mesma
+regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comandos suportados (os
+únicos de fato registrados como remtag em `badig_settings.py` — `CONVERT_ONLY`/`TOKENIZE`, citados em
+`badig_dignified.py`, nunca chegam a virar remtag utilizável nessa versão do toolchain):
+- `ARGUMENTS`: aplica um subconjunto das flags de linha de comando do `badig.py`/`badig_msx.py`
+  (`-tl -ls -lp -rh -ss -ca -tr -cp -tg`) como override dos globals `Dig_*` **só para esta chamada**
+  de `Dig_Preprocess` (as demais flags reconhecidas pelo parser original — relatórios, `-id`, `-vb`,
+  `-asc`, `-ini`, `-rtg` — são aceitas e ignoradas, consumindo o valor quando a flag original recebe
+  um, só para não desalinhar o parsing das flags seguintes).
+- `EXPORT_FILE`: expõe `Dig_ExportFileOverride` (caminho resolvido contra o diretório do arquivo fonte)
+  para o chamador usar como sugestão de nome no `SaveFileRequester` (não pula o diálogo de salvar —
+  só pré-preenche, mantendo a confirmação do usuário).
+- `HELP`: reconhecido (não gera erro de "remtag desconhecido"), mas sem efeito prático — o original
+  imprime a lista de remtags disponíveis e sai do processo, o que não faz sentido dentro do fluxo do
+  editor GUI.
 
 ### 5. Editor gráfico LINE/CIRCLE/PSET/DRAW
 - Mais simples que DRAW puro isolado porque LINE/CIRCLE/PSET são coordenadas absolutas (sem estado de
@@ -432,6 +530,34 @@ ferramenta externa de unzip) — removendo o prefixo de pasta único que o GitHu
 - Enviar input em runtime: mesma mecânica de `keymatrixup`/`keymatrixdown` usada para digitar
   comandos (não detalhado a fundo na leitura desta sessão, mas é o mesmo tipo de comando XML).
 
+**Status (2026-07-16): fatia inicial implementada** — bem mais simples que as duas abordagens acima
+(nenhuma das duas foi usada): `RunOnOpenMSX()` (`editor/BadigEditor.pb`), acionada pelo menu "Dignified
+→ tokenizado nativo..." quando `BadigCfg\EmRun` está marcado (aba "Emulador" de `Configurar → Basic
+Dignified...`). Fluxo atual:
+1. Monta um disquete `.dsk` (`disk/run.dsk`, pasta irmã de `editor/` — mesma convenção de
+   `BadigCfg_DefaultInstallDir()`/`..\badig`) contendo o `.dmx`/`.amx`/`.bmx` recém-gerados **mais**
+   um `AUTOEXEC.BAS` sintetizado (`10 RUN "BASENAME.BMX"`) para autorun no boot do MSX-DOS/BASIC.
+   Rotinas de disco (FAT12, formato/leitura/escrita de `.dsk`) são vendorizadas de
+   `msxDiskUtil/MSXDisk.pbi` (utilitário PureBasic próprio do usuário, não relacionado ao Basic
+   Dignified) para `editor/MSXDisk.pbi`, incluído via `XIncludeFile` e chamado com sintaxe qualificada
+   de módulo (`MSXDisk::CreateDisk()`/`AddFile()`/etc.) — **compilado direto no executável do editor,
+   sem processo externo** para montar o disco (única exceção: o próprio `openMSX` é lançado via
+   `RunProgram`, já que rodar o programa MSX de outro jeito não faz sentido).
+2. Abre o `openMSX` configurado (`BadigCfg\EmulatorPath`) com `-machine <BadigCfg\EmMachine>` (se
+   preenchido), `-ext<slot> <nome>` (se preenchido — o campo aceita `Nome:slot`, ex. `Nome:exta`; o
+   slot vira parte do NOME da flag, não um argumento separado, replicando a regra real do openMSX) e
+   `-diska <disco>`.
+3. Os campos `Maquina`/`Extensão` (aba "Emulador") ganharam botão "..." (`BadigCfg_PickXmlName()`,
+   `editor/BadigSettings.pbi`) que lista os arquivos `.xml` de `share/machines/`/`share/extensions/`
+   a partir do diretório do executável do openMSX configurado (nome sem a extensão `.xml`), numa
+   janela picker simples; ao trocar a extensão, um `:slot` já digitado é preservado.
+
+**Não implementado ainda** (a fatia "difícil" do módulo): controle via socket/protocolo XML em tempo
+real, envio de input simulado durante a execução, e detecção de erro em runtime com retorno à linha
+certa no editor — nenhuma das duas abordagens documentadas acima (script Tcl+convenção `CHR$(7)`, ou
+hook de erro via `POKE`+breakpoint) foi implementada. O fluxo atual é "gerar disco e abrir o openMSX
+já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.
@@ -454,21 +580,38 @@ ferramenta externa de unzip) — removendo o prefixo de pasta único que o GitHu
 
 ## Próximos passos em aberto
 
-**Estado ao fim de 2026-07-15**: núcleo do Basic Dignified reescrito nativo roda de ponta a ponta
-contra `teste.dmx` (`editor/DignifiedPreprocessor.pbi` + `editor/MsxTokenizer.pbi`, módulos 3/3b/11),
-incluindo `FUNC`/`RET` e, desde 2026-07-14, `-cp`/`-tg`/`-tr`/`-ca`/TAB configurável — e já está ligado
-à tela de configuração (`BadigCfg`, módulo 3e). O editor ganhou tab bar/régua customizadas e tema
-escuro (2026-07-14) e, em 2026-07-15, uma tela própria de configurações do editor (fonte, tema
+**Estado ao fim de 2026-07-16**: três frentes novas, todas testadas ao vivo (GUI automation +
+screenshot/pixel-sampling, não só compilação):
+- **Rodar no openMSX** (módulo 12, ver detalhe na seção do módulo acima): gerar disco `.dsk` com
+  `.dmx`/`.amx`/`.bmx`/`AUTOEXEC.BAS` e abrir o openMSX já rodando o programa, com `-machine`/`-ext`
+  escolhidos via botão "..." que lista `share/machines`/`share/extensions`. Isso significa que o
+  leftover "aba Emulador sem efeito prático" registrado na sessão anterior **não é mais verdade** —
+  `EmRun`/`EmMachine`/`EmExtension`/`EmulatorPath` agora têm efeito real; só `EmSetting`/`EmMonitor`/
+  `EmNoThrottle`/`EmVerbose` continuam sem consumidor (não foram usados neste fluxo, ficam como
+  próximo incremento natural do módulo 12).
+- **Arquivo → Novo Assembly** (módulo 2, ver detalhe na seção do módulo acima): aba `.asm` com syntax
+  highlight nativo do dialeto N80/Nestor80 (Konamiman). O motor do assembler Z80 em si (montar
+  `.asm` → `.bin`) continua não iniciado — só o lado editor (arquivo + destaque) está pronto.
+- Versão embutida no executável (`build.ps1`/`BadigEditor.pb`) atualizada para **5.3.1**.
+
+**Estado ao fim de 2026-07-15 (sessão 2)**: o Basic Dignified reescrito nativo ficou **completo** —
+`INCLUDE` e remtags (módulo 3g) implementados e verificados (regressão byte-a-byte contra
+`sample/teste.dmx` + fixtures novos de `INCLUDE` aninhado/namespace/remtag), fechando a última lacuna
+de paridade com o `badig.py` original. Os menus e código do caminho Python (`SaveTokenized()`,
+`BadigCfg_BuildCliArgs()`, `BadigCfg_QuoteArg()`) foram removidos de `editor/BadigEditor.pb` e
+`editor/BadigSettings.pbi` — o `.exe` do editor não invoca mais Python em nenhum fluxo.
+
+**Estado ao fim de 2026-07-15 (sessão 1)**: núcleo do Basic Dignified reescrito nativo já rodava de
+ponta a ponta contra `teste.dmx` (`editor/DignifiedPreprocessor.pbi` + `editor/MsxTokenizer.pbi`,
+módulos 3/3b/11), incluindo `FUNC`/`RET` e, desde 2026-07-14, `-cp`/`-tg`/`-tr`/`-ca`/TAB configurável
+— e já ligado à tela de configuração (`BadigCfg`, módulo 3e). O editor ganhou tab bar/régua
+customizadas e tema escuro (2026-07-14) e uma tela própria de configurações do editor (fonte, tema
 claro/escuro, estilo de abas, fontes customizadas, caminho de instalação — módulo 3f) mais um diretório
 de instalação configurável e um botão de download para o Basic Dignified Suite (git clone ou zip,
-módulo 3f). A especificação do núcleo (Basic Dignified + tokenizador MSX + controle do openMSX) está
-completamente documentada a partir do código-fonte original — as lacunas remanescentes são só os
-módulos que dependiam de conteúdo não recuperado da conversa original (sprite/char, MML/`PLAY`) ou de
-levantamento de dados externo (NestorBASIC, msxbas2rom).
+módulo 3f).
 
-**Próximo passo sugerido (ainda não decidido com o usuário)**: escolher entre —
-1. Fechar de vez a paridade do pré-processador nativo com o caminho Python: `INCLUDE` e remtags
-   (`##BB:...`, ver módulo 3d) — os únicos itens de escopo ainda não portados — o que permitiria
-   remover os menus Python de `BadigEditor.pb` (débito técnico listado acima).
-2. Ou seguir para um módulo totalmente novo (assembler Z80, editor sprite/char, controle do openMSX
-   via módulo 12) — falta decidir qual com o usuário.
+**Próximo passo sugerido (ainda não decidido com o usuário)**: candidatos sem nenhum código de motor
+ainda: o assembler Z80 em si (módulo 2, o editor já aceita `.asm` mas não monta nada), editor
+sprite/char (módulo 4, spec original com lacuna de conteúdo não recuperado), ou aprofundar o módulo 12
+(input simulado em runtime, detecção de erro com retorno à linha no editor — o cuidado já registrado
+sobre suporte a Windows incerto para a parte de detecção de erro continua valendo).

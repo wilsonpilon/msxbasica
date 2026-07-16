@@ -271,68 +271,6 @@ Procedure BadigCfg_SyncEmulatorIni()
 EndProcedure
 
 ;- ------------------------------------------------------------
-;- Linha de comando equivalente do badig.py a partir das configuracoes
-;- ------------------------------------------------------------
-
-Procedure.s BadigCfg_QuoteArg(Value.s)
-  If FindString(Value, " ")
-    ProcedureReturn Chr(34) + Value + Chr(34)
-  Else
-    ProcedureReturn Value
-  EndIf
-EndProcedure
-
-Procedure.s BadigCfg_BuildCliArgs()
-  Protected Args.s = ""
-
-  Args + " -id " + BadigCfg\SystemId
-  Args + " -tl " + Str(BadigCfg\TabLenght)
-  Args + " -ls " + Str(BadigCfg\LineStart)
-  Args + " -lp " + Str(BadigCfg\LineStep)
-  If Not BadigCfg\RemHeader   : Args + " -rh"  : EndIf
-  If BadigCfg\StripSpaces     : Args + " -ss"  : EndIf
-  If BadigCfg\CapitalizeAll   : Args + " -ca"  : EndIf
-  If BadigCfg\Translate       : Args + " -tr"  : EndIf
-  Args + " -vb " + Str(BadigCfg\VerboseLevel)
-  If BadigCfg\PrintReport     : Args + " -prr" : EndIf
-  If BadigCfg\LabelReport     : Args + " -lbr" : EndIf
-  If BadigCfg\LineReport      : Args + " -lnr" : EndIf
-  If BadigCfg\VarReport       : Args + " -var" : EndIf
-  If BadigCfg\LexerReport     : Args + " -lex" : EndIf
-  If BadigCfg\ParserReport    : Args + " -par" : EndIf
-
-  If BadigCfg\ConvertPrint <> ""
-    Args + " -cp " + LCase(BadigCfg\ConvertPrint)
-  EndIf
-  If BadigCfg\StripThenGoto <> ""
-    Args + " -tg " + LCase(BadigCfg\StripThenGoto)
-  EndIf
-
-  Args + " --tk_tokenize"
-  If BadigCfg\TkList
-    Args + " --tk_list " + Str(BadigCfg\TkListWidth)
-  EndIf
-  If BadigCfg\TkDelAscii
-    Args + " --tk_del_ascii"
-  EndIf
-  If BadigCfg\TkVerbose >= 0
-    Args + " --tk_verbose " + Str(BadigCfg\TkVerbose)
-  EndIf
-
-  If BadigCfg\EmRun
-    Args + " --em_run"
-    If BadigCfg\EmSetting <> ""   : Args + " --em_setting " + BadigCfg_QuoteArg(BadigCfg\EmSetting) : EndIf
-    If BadigCfg\EmMachine <> ""   : Args + " --em_machine " + BadigCfg_QuoteArg(BadigCfg\EmMachine) : EndIf
-    If BadigCfg\EmExtension <> "" : Args + " --em_extension " + BadigCfg_QuoteArg(BadigCfg\EmExtension) : EndIf
-    If BadigCfg\EmNoThrottle      : Args + " --em_nothrottle" : EndIf
-    If BadigCfg\EmMonitor         : Args + " --em_monitor" : EndIf
-    If BadigCfg\EmVerbose >= 0    : Args + " --em_verbose " + Str(BadigCfg\EmVerbose) : EndIf
-  EndIf
-
-  ProcedureReturn Args
-EndProcedure
-
-;- ------------------------------------------------------------
 ;- Download do Basic Dignified Suite (clone via Git ou .zip do GitHub)
 ;- UseZipPacker() ja foi declarado em EditorSettings.pbi (incluido antes
 ;- deste arquivo - ver XIncludeFile em BadigEditor.pb).
@@ -469,6 +407,131 @@ Procedure BadigCfg_DownloadSuite(ParentWindow, TargetDir.s)
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Selecao de maquina/extensao do openMSX (lista os arquivos .xml de
+;- share/machines ou share/extensions, a partir do diretorio do executavel
+;- configurado no campo acima) - pedido pelo usuario para nao precisar
+;- digitar o nome exato da maquina/extensao de cabeca.
+;- ------------------------------------------------------------
+
+; Lista os nomes (sem a extensao .xml) dos arquivos .xml em Dir, ordenados
+; alfabeticamente (case-insensitive). Devolve #False se o diretorio nao existir.
+Procedure.b BadigCfg_ListXmlNames(Dir.s, List Names.s())
+  ClearList(Names())
+  If FileSize(Dir) <> -2 ; -2 = diretorio existe
+    ProcedureReturn #False
+  EndIf
+
+  Protected Handle = ExamineDirectory(#PB_Any, Dir, "*.xml")
+  If Not Handle
+    ProcedureReturn #False
+  EndIf
+
+  While NextDirectoryEntry(Handle)
+    If DirectoryEntryType(Handle) = #PB_DirectoryEntry_File
+      Protected Name.s = DirectoryEntryName(Handle)
+      AddElement(Names())
+      Names() = Left(Name, Len(Name) - 4) ; remove ".xml"
+    EndIf
+  Wend
+  FinishDirectory(Handle)
+
+  SortList(Names(), #PB_Sort_Ascending | #PB_Sort_NoCase)
+  ProcedureReturn #True
+EndProcedure
+
+; Abre uma janela modal simples com uma lista dos itens encontrados em Dir
+; para o usuario escolher um (duplo-clique ou "OK"). Devolve o nome escolhido
+; (sem .xml) ou "" se cancelado, se o diretorio nao existir ou vier vazio
+; (mostra um aviso claro nesses dois ultimos casos, apontando para o campo
+; do executavel do openMSX que define a base da busca).
+Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
+  Protected NewList Names.s()
+
+  If Not BadigCfg_ListXmlNames(Dir, Names())
+    MessageRequester("Diretorio nao encontrado",
+                     "Nao foi possivel encontrar:" + Chr(10) + Dir + Chr(10) + Chr(10) +
+                     "Confira o caminho do executavel do openMSX configurado acima.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn ""
+  EndIf
+
+  If ListSize(Names()) = 0
+    MessageRequester("Nada encontrado",
+                     "Nenhum arquivo .xml encontrado em:" + Chr(10) + Dir,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn ""
+  EndIf
+
+  Protected WinW = 380, WinH = 420
+  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, Title,
+                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  If Not Win
+    ProcedureReturn ""
+  EndIf
+  DisableWindow(ParentWindow, #True)
+
+  Protected G_List = ListViewGadget(#PB_Any, 15, 15, WinW - 30, WinH - 70)
+  Protected SelectIndex = -1, i.i = 0
+  ForEach Names()
+    AddGadgetItem(G_List, -1, Names())
+    If Names() = CurrentValue
+      SelectIndex = i
+    EndIf
+    i + 1
+  Next
+  If SelectIndex >= 0
+    SetGadgetState(G_List, SelectIndex)
+  EndIf
+
+  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 220, WinH - 40, 100, 28, "OK")
+  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 110, WinH - 40, 100, 28, "Cancelar")
+
+  Protected Event, Quit = #False, Result.s = "", Sel.i
+
+  Repeat
+    Event = WaitWindowEvent()
+    Select Event
+      Case #PB_Event_Gadget
+        Select EventGadget()
+          Case G_List
+            If EventType() = #PB_EventType_LeftDoubleClick
+              Sel = GetGadgetState(G_List)
+              If Sel >= 0
+                Result = GetGadgetItemText(G_List, Sel)
+              EndIf
+              Quit = #True
+            EndIf
+
+          Case G_Ok
+            Sel = GetGadgetState(G_List)
+            If Sel >= 0
+              Result = GetGadgetItemText(G_List, Sel)
+            EndIf
+            Quit = #True
+
+          Case G_Cancel
+            Quit = #True
+        EndSelect
+
+      Case #PB_Event_CloseWindow
+        Quit = #True
+    EndSelect
+  Until Quit
+
+  DisableWindow(ParentWindow, #False)
+  CloseWindow(Win)
+  ProcedureReturn Result
+EndProcedure
+
+; Diretorio "share\<SubFolder>\" a partir do caminho do executavel do openMSX
+; (respeitando o separador nativo do SO devolvido por GetPathPart).
+Procedure.s BadigCfg_OpenMsxShareDir(ExePath.s, SubFolder.s)
+  Protected Base.s = GetPathPart(ExePath)
+  Protected Sep.s = Right(Base, 1)
+  ProcedureReturn Base + "share" + Sep + SubFolder + Sep
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Janela de configuracao (Configurar -> Basic Dignified...)
 ;- ------------------------------------------------------------
 
@@ -558,10 +621,12 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   Protected G_EmSettingBrowse = ButtonGadget(#PB_Any, 505, 128, 40, 22, "...")
 
   TextGadget(#PB_Any, 15, 160, 300, 20, "Maquina (machine)")
-  Protected G_EmMachine = StringGadget(#PB_Any, 15, 180, 545, 22, BadigCfg\EmMachine)
+  Protected G_EmMachine = StringGadget(#PB_Any, 15, 180, 480, 22, BadigCfg\EmMachine)
+  Protected G_EmMachineBrowse = ButtonGadget(#PB_Any, 505, 180, 40, 22, "...")
 
   TextGadget(#PB_Any, 15, 212, 400, 20, "Extensao de disco (extension), formato Nome:slot")
-  Protected G_EmExtension = StringGadget(#PB_Any, 15, 232, 545, 22, BadigCfg\EmExtension)
+  Protected G_EmExtension = StringGadget(#PB_Any, 15, 232, 480, 22, BadigCfg\EmExtension)
+  Protected G_EmExtensionBrowse = ButtonGadget(#PB_Any, 505, 232, 40, 22, "...")
 
   TextGadget(#PB_Any, 15, 264, 380, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
   Protected G_EmVerbose = StringGadget(#PB_Any, 15, 284, 60, 22, "")
@@ -645,6 +710,43 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
                                                      GetGadgetText(G_EmulatorPath), ExeFilter, 0)
             If PickPath <> ""
               SetGadgetText(G_EmulatorPath, PickPath)
+            EndIf
+
+          Case G_EmMachineBrowse
+            If Trim(GetGadgetText(G_EmulatorPath)) = ""
+              MessageRequester("Maquina", "Informe o caminho do executavel do openMSX acima primeiro.",
+                               #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            Else
+              Protected MachinesDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(G_EmulatorPath), "machines")
+              Protected PickedMachine.s = BadigCfg_PickXmlName(Win, "Selecione a maquina",
+                                                               MachinesDir, GetGadgetText(G_EmMachine))
+              If PickedMachine <> ""
+                SetGadgetText(G_EmMachine, PickedMachine)
+              EndIf
+            EndIf
+
+          Case G_EmExtensionBrowse
+            If Trim(GetGadgetText(G_EmulatorPath)) = ""
+              MessageRequester("Extensao", "Informe o caminho do executavel do openMSX acima primeiro.",
+                               #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            Else
+              Protected ExtensionsDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(G_EmulatorPath), "extensions")
+              ; preserva ":slot" ja digitado, se houver - so troca o nome da extensao
+              Protected CurExt.s = GetGadgetText(G_EmExtension)
+              Protected CurExtName.s = CurExt
+              Protected ColonPos.i = FindString(CurExt, ":")
+              If ColonPos > 0
+                CurExtName = Left(CurExt, ColonPos - 1)
+              EndIf
+              Protected PickedExt.s = BadigCfg_PickXmlName(Win, "Selecione a extensao",
+                                                           ExtensionsDir, CurExtName)
+              If PickedExt <> ""
+                If ColonPos > 0
+                  SetGadgetText(G_EmExtension, PickedExt + Mid(CurExt, ColonPos))
+                Else
+                  SetGadgetText(G_EmExtension, PickedExt)
+                EndIf
+              EndIf
             EndIf
 
           Case G_Save

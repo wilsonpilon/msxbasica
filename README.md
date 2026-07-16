@@ -2,7 +2,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.1.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 5.3.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -28,21 +28,35 @@ Python — que serve de referência de comportamento a ser portada, não de depe
 
 ## O que já temos
 
-- **Editor** (`editor/BadigEditor.pb`) — `ScintillaGadget` com lexer próprio para o dialeto Dignified,
-  abas customizadas (fechar, hover, arrastar visual), régua de colunas, margem de números de linha
-  dinâmica, tema claro/escuro e estilo de abas moderno/clássico configuráveis.
-- **Pré-processador Dignified nativo** (`editor/DignifiedPreprocessor.pbi`) — labels, loop labels,
-  `EXIT`, `DEFINE` recursivo, `DECLARE` com redução automática de nomes longos, comentários/blocos de
-  comentário, `TRUE`/`FALSE`, operadores compostos, proto-funções `FUNC`/`RET`, conversão `?`/`PRINT`,
-  strip `THEN`/`GOTO`, tradução Unicode→charset nativo MSX, maiusculização e tamanho de TAB
-  configuráveis. Testado de ponta a ponta contra código de produção real (não só exemplos sintéticos —
-  ver [`sample/teste.dmx`](sample/teste.dmx), ~900 linhas).
+- **Editor** (`editor/BadigEditor.pb`) — `ScintillaGadget` com lexer próprio para o dialeto Dignified
+  e outro para **Z80 Assembly** (`.asm`, dialeto do assembler
+  [N80/Nestor80](https://github.com/Konamiman/Nestor80)), abas customizadas (fechar, hover, arrastar
+  visual), régua de colunas, margem de números de linha dinâmica, tema claro/escuro e estilo de abas
+  moderno/clássico configuráveis. Menu **Arquivo → Novo** (`.dmx`) e **Novo Assembly** (`.asm`,
+  `Ctrl+Shift+N`) — cada aba detecta e lembra seu próprio tipo.
+- **Pré-processador Dignified nativo** (`editor/DignifiedPreprocessor.pbi`) — **cobre 100% do escopo
+  do `badig.py` original**: labels, loop labels, `EXIT`, `DEFINE` recursivo, `DECLARE` com redução
+  automática de nomes longos, comentários/blocos de comentário, `TRUE`/`FALSE`, operadores compostos,
+  proto-funções `FUNC`/`RET`, conversão `?`/`PRINT`, strip `THEN`/`GOTO`, tradução Unicode→charset
+  nativo MSX, maiusculização, tamanho de TAB configurável, **`INCLUDE` recursivo** (namespace de
+  label/loop/função isolado por arquivo, variáveis compartilhadas) e **remtags**
+  (`##BB:arguments=`/`export_file=`/`help=`). Testado de ponta a ponta contra código de produção real
+  (não só exemplos sintéticos — ver [`sample/teste.dmx`](sample/teste.dmx), ~900 linhas) e contra
+  fixtures de `INCLUDE`/remtags. O `.exe` do editor não depende mais de Python em nenhum fluxo (menus
+  legados removidos).
 - **Tokenizador MSX-BASIC nativo** (`editor/MsxTokenizer.pbi`) — converte ASCII clássico em binário
   `.bmx`, validado byte a byte contra o tokenizador Python original.
+- **Rodar no openMSX** (`RunOnOpenMSX()` em `editor/BadigEditor.pb`) — com a opção "Abrir o openMSX e
+  rodar o código após gerar" marcada, tokenizar monta um disquete `.dsk` (`.dmx`+`.amx`+`.bmx` mais um
+  `AUTOEXEC.BAS` de autorun) e abre o openMSX já rodando o programa, com a máquina/extensão
+  configuradas. Rotinas de disco `.dsk` (FAT12) vendorizadas de `msxDiskUtil/MSXDisk.pbi` — compiladas
+  direto no executável do editor, sem depender de processo externo para montar o disco.
 - **Telas de configuração nativas**:
-  - `Configurar → Basic Dignified...` (`editor/BadigSettings.pbi`) — opções do pré-processador/
-    tokenizador/emulador, diretório de instalação do toolchain (com botão para baixar o Basic Dignified
-    Suite direto do GitHub, via `git clone` ou `.zip`), tudo persistido em JSON.
+  - `Configurar → Basic Dignified...` (`editor/BadigSettings.pbi`) — três abas: pré-processador/
+    tokenizador, opções específicas do MSX, e **Emulador** (caminho do openMSX, máquina/extensão com
+    botão de busca automática em `share/machines`/`share/extensions`, opção de rodar após gerar).
+    Diretório de instalação do toolchain com botão para baixar o Basic Dignified Suite direto do
+    GitHub (`git clone` ou `.zip`), tudo persistido em JSON.
   - `Configurar → Editor...` (`editor/EditorSettings.pbi`) — fonte (só monoespaçadas, com suporte a
     pasta de fontes customizadas carregadas em memória), tema, estilo de abas, caminho de instalação do
     editor.
@@ -50,9 +64,12 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   (Dignified → ASCII → tokenizado) fora do editor, para validar mudanças no pré-processador/tokenizador.
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
-e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): assembler Z80 nativo,
-`INCLUDE`/remtags no pré-processador, editores visuais (sprite/char, LINE/CIRCLE/DRAW, som, tracker,
-MML/`PLAY`), extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX pela IDE.
+e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
+em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editores visuais
+(sprite/char, LINE/CIRCLE/DRAW, som, tracker, MML/`PLAY`), extensão NestorBASIC, saída via
+`msxbas2rom`, controle do openMSX via socket/XML em tempo real (input simulado, detecção de erro com
+retorno à linha no editor — hoje só "gerar disco e abrir o openMSX" está pronto, sem comunicação de
+volta da emulação para a IDE).
 
 ## Changelog resumido
 
@@ -78,7 +95,19 @@ MML/`PLAY`), extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX
   salvar/abrir/fechar, desfazer/refazer; `Ctrl+S` deixou de ser "salvar" e virou "cursor para a
   esquerda", como no WordStar de verdade). Tela de ajuda embutida (`Ctrl+K H`, fecha com qualquer
   tecla) e barra de status no rodapé (modo/prefixo de comando pendente, nome do arquivo, linha e
-  coluna). Novo `docs/MANUAL.md` com o guia de uso da IDE.
+  coluna). Novo `docs/MANUAL.md` com o guia de uso da IDE. Mais tarde no mesmo dia: `INCLUDE`
+  recursivo e remtags (`##BB:...`) implementados no pré-processador nativo, fechando 100% do escopo
+  do `badig.py` original — os menus e o código do caminho Python (`SaveTokenized()`,
+  `BadigCfg_BuildCliArgs()`) foram removidos, o `.exe` do editor não invoca mais Python em nenhum
+  fluxo.
+- **2026-07-16** — Botões de busca de máquina/extensão do openMSX (aba "Emulador", listam
+  `share/machines`/`share/extensions` a partir do caminho do executável configurado). Opção "Abrir o
+  openMSX e rodar o código após gerar" ganhou implementação real: monta um disquete `.dsk` com o
+  programa gerado mais um `AUTOEXEC.BAS` de autorun e abre o openMSX direto nele (rotinas de disco
+  vendorizadas de `msxDiskUtil/MSXDisk.pbi`, compiladas no próprio executável). Menu **Arquivo → Novo
+  Assembly** (`Ctrl+Shift+N`) cria abas `.asm` com syntax highlight do dialeto
+  [N80/Nestor80](https://github.com/Konamiman/Nestor80) (mnemônicos, registradores, diretivas,
+  literais numéricos em qualquer radix). Versão embutida no executável atualizada para `5.3.1`.
 
 ## Ferramentas e ambiente
 

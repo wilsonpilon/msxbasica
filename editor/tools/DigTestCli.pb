@@ -46,7 +46,7 @@ While Not Eof(fnum)
 Wend
 CloseFile(fnum)
 
-Define ascii.s = Dig_Preprocess(content)
+Define ascii.s = Dig_Preprocess(content, GetPathPart(InPath))
 
 If Dig_HasError
   PrintN("DIGERROR linha " + Str(Dig_ErrorLine) + ": " + Dig_ErrorMsg)

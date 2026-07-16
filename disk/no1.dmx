@@ -1,0 +1,3 @@
+screen 0 : color 15,1,1 : key off : width 40
+print "Teste de saida"
+a$=input$(1)

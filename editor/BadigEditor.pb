@@ -3,8 +3,9 @@
 ;  Basic Dignified Editor
 ;  Editor de codigos para o dialeto MSX-BASIC do Basic Dignified Suite.
 ;  Escrito em PureBasic (Windows / Linux).
-;  Realce de sintaxe via ScintillaGadget e geracao de MSX-BASIC
-;  tokenizado atraves do proprio toolchain Python do Basic Dignified.
+;  Realce de sintaxe via ScintillaGadget e pre-processador/tokenizador
+;  Basic Dignified nativos (sem Python) em DignifiedPreprocessor.pbi/
+;  MsxTokenizer.pbi.
 ; ------------------------------------------------------------
 ;
 
@@ -20,6 +21,7 @@ XIncludeFile "DignifiedPreprocessor.pbi"
 XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
 XIncludeFile "FontDownloader.pbi"
+XIncludeFile "MSXDisk.pbi"
 
 ;- ------------------------------------------------------------
 ;- Constantes gerais
@@ -45,10 +47,10 @@ EndEnumeration
 
 Enumeration MenuItems
   #Menu_New
+  #Menu_NewAssembly
   #Menu_Open
   #Menu_Save
   #Menu_SaveAs
-  #Menu_Tokenize
   #Menu_TokenizeNative
   #Menu_DignifiedToAscii
   #Menu_DignifiedToTokenized
@@ -80,13 +82,17 @@ EndEnumeration
 #Event_WS_CloseTab = #PB_Event_FirstCustomValue + 2
 
 #App_Title      = "Basic Dignified Editor"
-#File_Pattern   = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
+#File_Pattern     = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
+#File_Pattern_ASM = "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
+#File_Pattern_Open = "Todos os suportados (*.dmx;*.amx;*.asm)|*.dmx;*.amx;*.asm|" +
+                     "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|" +
+                     "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
 
 ; Versao/build normalmente injetadas via build.ps1 (/CONSTANT App_Version=...,
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "5.1.3"
+  #App_Version = "5.3.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -184,6 +190,7 @@ EndProcedure
 
 Structure Document
   Path.s            ; caminho completo no disco, vazio se ainda nao foi salvo
+  Mode.s            ; "DMX" (MSX-BASIC/Dignified, default) ou "ASM" (Z80 Assembly)
   Modified.b        ; 1 se ha alteracoes nao salvas
   SciGadget.i       ; ScintillaGadget associado a esta aba
   UntitledName.s    ; nome estavel ("Sem titulo N"), so usado enquanto Path = ""
@@ -221,12 +228,21 @@ Global NewMap KwOperatorWord.b()
 Global NewMap KwDignifiedStmt.b()
 Global NewMap KwBoolean.b()
 
+; Tabelas do lexer de Z80 Assembly (modo "ASM" dos documentos) - vocabulario
+; do dialeto N80/Nestor80 (Konamiman, compativel com MACRO-80), ver
+; InitZ80KeywordMaps() e docs/SPEC.md.
+Global NewMap KwZ80Mnemonic.b()
+Global NewMap KwZ80Register.b()
+Global NewMap KwZ80Directive.b()
+Global NewMap KwZ80Operator.b()
+
 ;- ------------------------------------------------------------
 ;- Declaracoes
 ;- ------------------------------------------------------------
 
 Declare   FillKeywordMap(Map Dest.b(), Words.s)
 Declare   InitKeywordMaps()
+Declare   InitZ80KeywordMaps()
 Declare.s ReadSciText(Sci)
 Declare   WriteSciText(Sci, Text.s)
 Declare   EmitRun(Sci, Text.s, Style)
@@ -234,6 +250,8 @@ Declare.b IsAlphaChar(C.s)
 Declare.b IsDigitChar(C.s)
 Declare.b IsWordChar(C.s)
 Declare   HighlightDocument(Sci)
+Declare   HighlightDignifiedText(Sci, Text.s)
+Declare   HighlightZ80Text(Sci, Text.s)
 Declare   SetupEditorStyles(Sci)
 Declare   UpdateLineNumberMargin(Sci)
 Declare   ActiveSciGadget()
@@ -247,17 +265,17 @@ Declare.s ComputeTabCaption(Position)
 Declare   RedrawTabBar()
 Declare   RedrawRuler()
 Declare   SetActiveTab(Position)
-Declare   AddDocumentTab(Path.s = "", Content.s = "")
+Declare   AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
 Declare   FindDocumentByGadget(GadgetNum)
 Declare   UpdateTabCaption(Position)
 Declare   OpenDocumentDialog()
 Declare.b SaveDocument(SaveAs.b = #False)
 Declare.b ConfirmDiscard(Text.s)
 Declare   CloseTab(Position)
-Declare   SaveTokenized()
 Declare   SaveAsTokenizedNative()
 Declare   SaveAsAsciiFromDignified()
 Declare   SaveAsTokenizedFromDignified()
+Declare   RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
 Declare   Dig_SyncConfigFromBadigCfg()
 Declare   ResizeInterface()
 
@@ -311,6 +329,45 @@ Procedure InitKeywordMaps()
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Palavras-chave do Z80 Assembly (dialeto N80/Nestor80, Konamiman -
+;- https://github.com/Konamiman/Nestor80 - assembler compativel com
+;- MACRO-80). Usadas so pelo lexer de arquivos .asm (modo "ASM" dos
+;- documentos, ver HighlightZ80Text()).
+;- ------------------------------------------------------------
+
+Procedure InitZ80KeywordMaps()
+  ; Mnemonicos Z80 (documentados + indocumentados de uso comum, ex. SLL)
+  FillKeywordMap(KwZ80Mnemonic(),
+    "ADC ADD AND BIT CALL CCF CP CPD CPDR CPI CPIR CPL DAA DEC DI DJNZ EI EX " +
+    "EXX HALT IM IN INC IND INDR INI INIR JP JR LD LDD LDDR LDI LDIR NEG NOP " +
+    "OR OTDR OTIR OUT OUTD OUTI POP PUSH RES RET RETI RETN RL RLA RLC RLCA " +
+    "RLD RR RRA RRC RRCA RRD RST SBC SCF SET SLA SLL SRA SRL SUB XOR")
+
+  ; Registradores e codigos de condicao de desvio (NZ/Z/NC/C/PO/PE/P/M) -
+  ; tratados com o mesmo estilo (ambos sao "operandos de hardware")
+  FillKeywordMap(KwZ80Register(),
+    "A B C D E H L I R IX IY SP AF BC DE HL PC IXH IXL IYH IYL NZ Z NC PO PE P M")
+
+  ; Diretivas do assembler - inclui as com "." do dialeto N80 (RADIX/PHASE/
+  ; etc guardadas SEM o ponto aqui; o "." e reconhecido a parte no lexer,
+  ; ver Z80_ScanDotWord() dentro de HighlightZ80Text)
+  FillKeywordMap(KwZ80Directive(),
+    "EQU DEFL ASET ORG DEFB DB DEFM DEFW DW DEFS DS DEFZ DZ INCBIN PUBLIC " +
+    "ENTRY GLOBAL EXTRN EXT EXTERNAL ROOT IF IFT COND IFF IFE IF1 IF2 IFABS " +
+    "IFREL IFDEF IFNDEF IFB IFNB IFIDN IFIDNI IFDIF IFDIFI IFCPU IFNCPU ELSE " +
+    "ENDIF MACRO ENDM REPT IRP IRPC IRPS LOCAL EXITM CONTM MODULE ENDMOD " +
+    "ASEG CSEG DSEG COMMON AREA TITLE SUBTTL PAGE MAINPAGE END ENDOUT " +
+    "RELAB XRELAB EXTROOT XEXTROOT PHASE DEPHASE LIST XLIST LALL SALL XALL " +
+    "LFCOND SFCOND TFCOND CPU Z80 STRENC STRESC PRINT PRINT1 PRINT2 PRINTX " +
+    "WARN ERROR FATAL REQUEST RADIX ALIGN COMMENT CREF XCREF")
+
+  ; Operadores por extenso usados em expressoes (AND/OR/XOR/NOT ficam de fora
+  ; daqui de proposito - ja sao reconhecidos como mnemonicos acima, e o
+  ; destaque visual e o mesmo nos dois usos)
+  FillKeywordMap(KwZ80Operator(), "LOW HIGH MOD SHR SHL EQ NE NEQ LT LE LTE GT GE GTE NUL TYPE")
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Acesso ao texto do ScintillaGadget (UTF-8)
 ;- ------------------------------------------------------------
 
@@ -360,19 +417,36 @@ EndProcedure
 ;- Realce de sintaxe (lexer artesanal, executado a cada mudanca)
 ;- ------------------------------------------------------------
 
+; Despacha para o lexer certo conforme o modo do documento dono deste
+; ScintillaGadget ("DMX" = MSX-BASIC/Dignified, "ASM" = Z80 Assembly) -
+; margem de numeros de linha e regua sao independentes de modo, ficam aqui.
 Procedure HighlightDocument(Sci)
   Protected Text.s = ReadSciText(Sci)
-  Protected TextLen = Len(Text)
 
   UpdateLineNumberMargin(Sci)
   If Sci = ActiveSciGadget()
     RedrawRuler()
   EndIf
 
-  If TextLen = 0
+  If Len(Text) = 0
     ProcedureReturn
   EndIf
 
+  Protected DocPos = FindDocumentByGadget(Sci)
+  Protected Mode.s = "DMX"
+  If DocPos >= 0 And SelectElement(Docs(), DocPos)
+    Mode = Docs()\Mode
+  EndIf
+
+  If Mode = "ASM"
+    HighlightZ80Text(Sci, Text)
+  Else
+    HighlightDignifiedText(Sci, Text)
+  EndIf
+EndProcedure
+
+Procedure HighlightDignifiedText(Sci, Text.s)
+  Protected TextLen = Len(Text)
   Protected I = 1
   Protected AtLineStart.b = #True
   Protected InsideExclusiveBlock.b = #False
@@ -650,6 +724,256 @@ Procedure HighlightDocument(Sci)
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Realce de sintaxe - Z80 Assembly (dialeto N80/Nestor80)
+;-
+;- Estilos reaproveitados do modo Dignified (mesma paleta, sem globals
+;- novos): #Style_Comment (";"), #Style_String ('..'/".."), #Style_Statement
+;- (mnemonicos), #Style_Function (registradores/condicoes), #Style_Number
+;- (literais numericos em qualquer radix), #Style_Label (rotulos e rotulos
+;- relativos ".nome"), #Style_DignifiedStmt (diretivas do assembler,
+;- reaproveitado aqui como estilo generico de "diretiva"), #Style_Operator
+;- (operadores por extenso e simbolos).
+;-
+;- Regra de rotulo vs. mnemonico/diretiva na 1a palavra da linha: se a
+;- palavra bate com alguma tabela de palavra-chave (diretiva/mnemonico/
+;- registrador/operador), usa o estilo correspondente ONDE QUER que apareca
+;- na linha; só cai para "rotulo" quando e a PRIMEIRA palavra da linha E nao
+;- bate com nenhuma tabela - mesma convencao classica MACRO-80/Z80 (rotulo
+;- sem dois-pontos e reconhecido por nao ser palavra reservada, nao por
+;- coluna). Cobre tanto "LABEL: LD A,1" quanto "CONST EQU 5" quanto "ORG
+;- 100H" (ORG e diretiva conhecida, nao vira rotulo mesmo comecando a linha).
+;-
+;- Escopo nao coberto (limitacoes conhecidas, aceitas por simplicidade):
+;- bloco ".COMMENT <delim>...<delim>" com delimitador arbitrario (so o
+;- comentario de linha ";" e reconhecido); precisao total de qual sufixo de
+;- radix fecha um literal numerico multi-digito (visualmente inofensivo -
+;- o token inteiro ainda e destacado como numero, so a fronteira exata entre
+;- "digitos" e "sufixo" internamente pode variar).
+;- ------------------------------------------------------------
+
+Procedure.b Z80_IsWordStartChar(C.s)
+  ProcedureReturn Bool(IsAlphaChar(C) Or C = "?" Or C = "@" Or C = "_")
+EndProcedure
+
+Procedure.b Z80_IsWordChar(C.s)
+  ProcedureReturn Bool(IsWordChar(C) Or C = "?" Or C = "@" Or C = "$" Or C = ".")
+EndProcedure
+
+Procedure HighlightZ80Text(Sci, Text.s)
+  Protected TextLen = Len(Text)
+  Protected I = 1
+  Protected AtLineStart.b = #True
+  Protected C.s, C2.s, Start, Word.s, CommentLen
+
+  ScintillaSendMessage(Sci, #SCI_STARTSTYLING, 0, 0)
+
+  While I <= TextLen
+    C = Mid(Text, I, 1)
+
+    ; --- Fim de linha ---
+    If C = Chr(13) Or C = Chr(10)
+      EmitRun(Sci, C, #Style_Default)
+      I + 1
+      AtLineStart = #True
+      Continue
+    EndIf
+
+    ; --- Espaco/tab no inicio da linha nao conta como token real ---
+    If AtLineStart And (C = " " Or C = Chr(9))
+      EmitRun(Sci, C, #Style_Default)
+      I + 1
+      Continue
+    EndIf
+
+    ; --- Comentario ; ate o final da linha ---
+    If C = ";"
+      CommentLen = 0
+      While I + CommentLen <= TextLen And Mid(Text, I + CommentLen, 1) <> Chr(13) And Mid(Text, I + CommentLen, 1) <> Chr(10)
+        CommentLen + 1
+      Wend
+      EmitRun(Sci, Mid(Text, I, CommentLen), #Style_Comment)
+      I + CommentLen
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Literais de string "..." (com escapes \" e \\) ---
+    If C = Chr(34)
+      Start = I
+      I + 1
+      While I <= TextLen And Mid(Text, I, 1) <> Chr(13) And Mid(Text, I, 1) <> Chr(10)
+        If Mid(Text, I, 1) = "\" And I < TextLen
+          I + 2
+          Continue
+        EndIf
+        If Mid(Text, I, 1) = Chr(34)
+          I + 1
+          Break
+        EndIf
+        I + 1
+      Wend
+      EmitRun(Sci, Mid(Text, Start, I - Start), #Style_String)
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Literais de string/char '...' (aspa simples dobrada '' = escapada) ---
+    If C = "'"
+      Start = I
+      I + 1
+      While I <= TextLen And Mid(Text, I, 1) <> Chr(13) And Mid(Text, I, 1) <> Chr(10)
+        If Mid(Text, I, 1) = "'"
+          If I < TextLen And Mid(Text, I + 1, 1) = "'"
+            I + 2
+            Continue
+          EndIf
+          I + 1
+          Break
+        EndIf
+        I + 1
+      Wend
+      EmitRun(Sci, Mid(Text, Start, I - Start), #Style_String)
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Hex entre aspas simples: X'1A2B' / x'1a2b' ---
+    If (C = "X" Or C = "x") And I < TextLen And Mid(Text, I + 1, 1) = "'"
+      Start = I
+      I + 2
+      While I <= TextLen And Mid(Text, I, 1) <> "'" And Mid(Text, I, 1) <> Chr(13) And Mid(Text, I, 1) <> Chr(10)
+        I + 1
+      Wend
+      If I <= TextLen And Mid(Text, I, 1) = "'"
+        I + 1
+      EndIf
+      EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Number)
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Prefixos numericos 0x.. (hex) e 0b.. (binario) ---
+    If C = "0" And I < TextLen And (UCase(Mid(Text, I + 1, 1)) = "X" Or UCase(Mid(Text, I + 1, 1)) = "B")
+      Start = I
+      I + 2
+      While I <= TextLen And Z80_IsWordChar(Mid(Text, I, 1))
+        I + 1
+      Wend
+      EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Number)
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Hex prefixado com # (#1A2B) ---
+    If C = "#" And I < TextLen And IsWordChar(Mid(Text, I + 1, 1))
+      Start = I
+      I + 1
+      While I <= TextLen And Z80_IsWordChar(Mid(Text, I, 1))
+        I + 1
+      Wend
+      EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Number)
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Numeros: digitos + letras hex A-F, sufixo de radix opcional
+    ; (B/I/D/M/O/Q/H) - ver nota de escopo no cabecalho desta procedure ---
+    If IsDigitChar(C)
+      Start = I
+      While I <= TextLen And (IsDigitChar(Mid(Text, I, 1)) Or (UCase(Mid(Text, I, 1)) >= "A" And UCase(Mid(Text, I, 1)) <= "F"))
+        I + 1
+      Wend
+      If I <= TextLen
+        C2 = UCase(Mid(Text, I, 1))
+        If C2 = "B" Or C2 = "I" Or C2 = "D" Or C2 = "M" Or C2 = "O" Or C2 = "Q" Or C2 = "H"
+          I + 1
+        EndIf
+      EndIf
+      EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Number)
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- "$" isolado = endereco/posicao atual (nao colado a um identificador) ---
+    If C = "$" And (I = TextLen Or Not IsWordChar(Mid(Text, I + 1, 1)))
+      EmitRun(Sci, C, #Style_Number)
+      I + 1
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Diretiva com ponto (.RADIX, .PHASE, ...) ou rotulo relativo (.nome) ---
+    If C = "." And I < TextLen And Z80_IsWordStartChar(Mid(Text, I + 1, 1))
+      Start = I
+      I + 1
+      While I <= TextLen And Z80_IsWordChar(Mid(Text, I, 1))
+        I + 1
+      Wend
+      Word = UCase(Mid(Text, Start + 1, I - Start - 1))
+      If FindMapElement(KwZ80Directive(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_DignifiedStmt)
+      Else
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Label)
+      EndIf
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Identificadores / mnemonicos / registradores / diretivas / rotulos ---
+    If Z80_IsWordStartChar(C)
+      Start = I
+      I + 1
+      While I <= TextLen And Z80_IsWordChar(Mid(Text, I, 1))
+        I + 1
+      Wend
+      Word = UCase(Mid(Text, Start, I - Start))
+
+      ; "AF'" (par de registrador sombra) - inclui o apostrofo no token
+      If Word = "AF" And I <= TextLen And Mid(Text, I, 1) = "'"
+        I + 1
+      EndIf
+
+      If FindMapElement(KwZ80Directive(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_DignifiedStmt)
+      ElseIf FindMapElement(KwZ80Mnemonic(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Statement)
+      ElseIf FindMapElement(KwZ80Register(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Function)
+      ElseIf FindMapElement(KwZ80Operator(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Operator)
+      ElseIf AtLineStart
+        ; primeira palavra da linha, nao e palavra reservada -> rotulo
+        ; (consome ":" ou "::" final, se houver)
+        If I <= TextLen And Mid(Text, I, 1) = ":"
+          I + 1
+          If I <= TextLen And Mid(Text, I, 1) = ":"
+            I + 1
+          EndIf
+        EndIf
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Label)
+      Else
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Default)
+      EndIf
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Operadores/simbolos ---
+    If C = "+" Or C = "-" Or C = "*" Or C = "/" Or C = "=" Or C = "<" Or C = ">" Or
+       C = ":" Or C = "," Or C = "(" Or C = ")" Or C = "!" Or C = "%" Or C = "&"
+      EmitRun(Sci, C, #Style_Operator)
+      I + 1
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; --- Qualquer outro caractere (espacos no meio da linha, etc) ---
+    EmitRun(Sci, C, #Style_Default)
+    I + 1
+  Wend
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Aparencia do ScintillaGadget (fonte/tema conforme EditorCfg - ver
 ;- ApplyTheme() e EditorSettings.pbi)
 ;- ------------------------------------------------------------
@@ -769,7 +1093,7 @@ Procedure SetActiveTab(Position)
   UpdateStatusBar()
 EndProcedure
 
-Procedure AddDocumentTab(Path.s = "", Content.s = "")
+Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
   Protected InnerW, InnerH, Sci
 
   InnerW = GadgetWidth(#RulerGadget)
@@ -781,8 +1105,22 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "")
   SetupEditorStyles(Sci)
   WS_AttachSubclass(Sci)
 
+  ; Se Path foi informado (abrindo um arquivo existente), o modo e detectado
+  ; pela extensao, ignorando o parametro Mode (que so vale para "Novo"/"Novo
+  ; Assembly", quando ainda nao ha arquivo em disco).
+  Protected DocMode.s = Mode
+  If Path <> ""
+    Select LCase(GetExtensionPart(Path))
+      Case "asm", "z80", "mac"
+        DocMode = "ASM"
+      Default
+        DocMode = "DMX"
+    EndSelect
+  EndIf
+
   AddElement(Docs())
   Docs()\Path      = Path
+  Docs()\Mode      = DocMode
   Docs()\Modified  = #False
   Docs()\SciGadget = Sci
   Docs()\MarkBegin = -1
@@ -1013,7 +1351,7 @@ Procedure RedrawRuler()
 EndProcedure
 
 Procedure OpenDocumentDialog()
-  Protected Path.s = OpenFileRequester("Abrir arquivo", "", #File_Pattern, 0)
+  Protected Path.s = OpenFileRequester("Abrir arquivo", "", #File_Pattern_Open, 0)
   If Path = ""
     ProcedureReturn
   EndIf
@@ -1049,13 +1387,19 @@ Procedure.b SaveDocument(SaveAs.b = #False)
   EndIf
 
   Protected Path.s = Docs()\Path
+  Protected DefaultExt.s = ".dmx"
+  Protected Pattern.s = #File_Pattern
+  If Docs()\Mode = "ASM"
+    DefaultExt = ".asm"
+    Pattern = #File_Pattern_ASM
+  EndIf
 
   If SaveAs Or Path = ""
     Protected Suggestion.s = Path
     If Suggestion = ""
-      Suggestion = Docs()\UntitledName + ".dmx"
+      Suggestion = Docs()\UntitledName + DefaultExt
     EndIf
-    Protected NewPath.s = SaveFileRequester("Salvar como", Suggestion, #File_Pattern, 0)
+    Protected NewPath.s = SaveFileRequester("Salvar como", Suggestion, Pattern, 0)
     If NewPath = ""
       ProcedureReturn #False
     EndIf
@@ -1121,65 +1465,6 @@ Procedure CloseTab(Position)
     NewActive = ListSize(Docs()) - 1
   EndIf
   SetActiveTab(NewActive)
-EndProcedure
-
-;- ------------------------------------------------------------
-;- Gerar MSX-BASIC tokenizado (.bmx) via o toolchain do Basic Dignified
-;- ------------------------------------------------------------
-
-Procedure SaveTokenized()
-  Protected Position = ActiveTabPosition
-  If Position < 0 Or Not SelectElement(Docs(), Position)
-    ProcedureReturn
-  EndIf
-
-  ; Garante que o arquivo esteja salvo em disco (com extensao .dmx) e
-  ; refletindo o conteudo atual antes de tokenizar.
-  If Not SaveDocument(#False)
-    ProcedureReturn
-  EndIf
-
-  Protected Path.s = Docs()\Path
-  Protected BadigRoot.s = BadigCfg\InstallDir + "\"
-  Protected Params.s = "badig.py " + Chr(34) + Path + Chr(34) + BadigCfg_BuildCliArgs()
-
-  Protected Prog = RunProgram("python", Params, BadigRoot, #PB_Program_Open | #PB_Program_Read | #PB_Program_Error)
-  If Not Prog
-    MessageRequester("Erro", "Nao foi possivel executar o Python." + Chr(10) + "Verifique se ele esta instalado e disponivel no PATH.", #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
-    ProcedureReturn
-  EndIf
-
-  ; Com "Abrir o openMSX e rodar" ativado nas configuracoes, o processo do
-  ; badig.py so termina quando o emulador for fechado - nao esperamos por ele
-  ; aqui para nao travar a interface do editor.
-  If BadigCfg\EmRun
-    MessageRequester("Tokenizado gerado", "Comando enviado ao Basic Dignified." + Chr(10) + "O openMSX sera aberto pelo proprio badig.py.", #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
-    ProcedureReturn
-  EndIf
-
-  WaitProgram(Prog, 20000)
-
-  Protected Output.s = ""
-  While AvailableProgramOutput(Prog)
-    Output + ReadProgramString(Prog) + Chr(10)
-  Wend
-
-  Protected ErrLine.s
-  Repeat
-    ErrLine = ReadProgramError(Prog)
-    If ErrLine <> ""
-      Output + ErrLine + Chr(10)
-    EndIf
-  Until ErrLine = ""
-
-  Protected ExitCode = ProgramExitCode(Prog)
-  CloseProgram(Prog)
-
-  If ExitCode = 0
-    MessageRequester("Tokenizado gerado", Output, #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
-  Else
-    MessageRequester("Erro ao gerar o tokenizado", Output, #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
-  EndIf
 EndProcedure
 
 ; Tokeniza o conteudo da aba atual (MSX-BASIC ASCII classico, com numeros de
@@ -1267,7 +1552,11 @@ EndProcedure
 Procedure.s RunDignifiedPreprocessor()
   Dig_SyncConfigFromBadigCfg()
   Protected SourceText.s = ReadSciText(Docs()\SciGadget)
-  Protected AsciiOut.s = Dig_Preprocess(SourceText)
+  Protected BasePath.s = ""
+  If Docs()\Path <> ""
+    BasePath = GetPathPart(Docs()\Path)
+  EndIf
+  Protected AsciiOut.s = Dig_Preprocess(SourceText, BasePath)
 
   If Dig_HasError
     MessageRequester("Erro no pre-processador Dignified",
@@ -1297,6 +1586,11 @@ Procedure SaveAsAsciiFromDignified()
     Suggestion = Docs()\UntitledName
   EndIf
   Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".amx"
+  If Dig_ExportFileOverride <> ""
+    ; remtag ##BB:export_file=... da linha fonte - so preenche a sugestao,
+    ; usuario ainda confirma/troca no dialogo de salvar
+    Suggestion = Dig_ExportFileOverride
+  EndIf
 
   Protected SavePath.s = SaveFileRequester("Salvar como ASCII classico", Suggestion,
                                            "MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*", 0)
@@ -1343,6 +1637,9 @@ Procedure SaveAsTokenizedFromDignified()
     Suggestion = Docs()\UntitledName
   EndIf
   Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bmx"
+  If Dig_ExportFileOverride <> ""
+    Suggestion = Dig_ExportFileOverride
+  EndIf
 
   Protected SavePath.s = SaveFileRequester("Salvar como tokenizado", Suggestion,
                                            "MSX Basic tokenizado (*.bmx)|*.bmx|Todos os arquivos (*.*)|*.*", 0)
@@ -1358,6 +1655,122 @@ Procedure SaveAsTokenizedFromDignified()
 
   MessageRequester("Tokenizado gerado", "Salvo em:" + Chr(10) + SavePath,
                    #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+
+  If BadigCfg\EmRun
+    Protected DmxSource.s = ReadSciText(Docs()\SciGadget)
+    Protected BaseName.s = GetFilePart(SavePath, #PB_FileSystem_NoExtension)
+    RunOnOpenMSX(BaseName, DmxSource, AsciiOut, HexOut)
+  EndIf
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Rodar no openMSX: monta um disquete .dsk com o .dmx/.amx/.bmx
+;- gerados e abre o openMSX ja com esse disco montado (menu "Dignified
+;- -> tokenizado nativo...", quando "Abrir o openMSX e rodar o codigo
+;- apos gerar" esta marcado nas configuracoes). Rotinas de disco
+;- vendorizadas de msxDiskUtil (MSXDisk.pbi, modulo MSXDisk) - nada de
+;- subprocess externo para montar o .dsk, so para abrir o proprio
+;- openMSX (unico subprocess desta funcao, e nao tem como no PC rodar
+;- o programa MSX de outro jeito).
+;- ------------------------------------------------------------
+
+; Diretorio "disk" irmao da pasta do editor (mesma convencao do default de
+; InstallDir, "..\badig" - ver BadigCfg_DefaultInstallDir()) - area de
+; trabalho onde o disquete de execucao e montado a cada "rodar no openMSX".
+Procedure.s RunOnOpenMSX_DiskDir()
+  Protected Dir.s = GetPathPart(ProgramFilename()) + "..\disk\"
+  If FileSize(Dir) <> -2
+    CreateDirectory(Dir)
+  EndIf
+  ProcedureReturn Dir
+EndProcedure
+
+Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
+  If BadigCfg\EmulatorPath = ""
+    MessageRequester("openMSX nao configurado",
+                     "Configure o caminho do executavel do openMSX em" + Chr(10) +
+                     "Configurar -> Basic Dignified... -> aba Emulador.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected DiskDir.s = RunOnOpenMSX_DiskDir()
+  If FileSize(DiskDir) <> -2
+    MessageRequester("Erro", "Nao foi possivel criar o diretorio:" + Chr(10) + DiskDir,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected UBase.s = UCase(BaseName)
+
+  Protected DmxLocal.s = DiskDir + BaseName + ".dmx"
+  Protected AmxLocal.s = DiskDir + BaseName + ".amx"
+  Protected BmxLocal.s = DiskDir + BaseName + ".bmx"
+  Protected AutoexecLocal.s = DiskDir + "autoexec.bas"
+
+  Protected f
+  f = CreateFile(#PB_Any, DmxLocal)
+  If f : WriteString(f, DmxText) : CloseFile(f) : EndIf
+  f = CreateFile(#PB_Any, AmxLocal)
+  If f : WriteString(f, AsciiText) : CloseFile(f) : EndIf
+  If Not Tok_SaveHexAsBinary(HexOut, BmxLocal)
+    MessageRequester("Erro", "Nao foi possivel gravar:" + Chr(10) + BmxLocal,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  ; AUTOEXEC.BAS - convencao do MSX-BASIC/MSX-DOS: se esse arquivo existir no
+  ; disco de boot, e carregado e rodado automaticamente ao ligar/reiniciar -
+  ; aqui so encaminha para o .BMX que acabou de ser gerado.
+  f = CreateFile(#PB_Any, AutoexecLocal)
+  If f : WriteString(f, "10 RUN " + Chr(34) + UBase + ".BMX" + Chr(34) + Chr(13) + Chr(10)) : CloseFile(f) : EndIf
+
+  ; MSX-DOS/FAT12 e 8.3 - nomes de arquivo maiores que 8 caracteres sao
+  ; truncados automaticamente por MSXDisk::ConvertToFAT11() ao adicionar.
+  Protected DiskPath.s = DiskDir + "run.dsk"
+  If Not MSXDisk::CreateDisk(DiskPath)
+    MessageRequester("Erro ao criar o disco", MSXDisk::GetLastErrorMessage(),
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected Ok.b = #True
+  If Ok : Ok = MSXDisk::AddFile(DmxLocal, UBase + ".DMX") : EndIf
+  If Ok : Ok = MSXDisk::AddFile(AmxLocal, UBase + ".AMX") : EndIf
+  If Ok : Ok = MSXDisk::AddFile(BmxLocal, UBase + ".BMX") : EndIf
+  If Ok : Ok = MSXDisk::AddFile(AutoexecLocal, "AUTOEXEC.BAS") : EndIf
+  Protected DiskErr.s = MSXDisk::GetLastErrorMessage()
+  MSXDisk::CloseDisk()
+
+  If Not Ok
+    MessageRequester("Erro ao montar o disco", DiskErr,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected Params.s = ""
+  If BadigCfg\EmMachine <> ""
+    Params + "-machine " + Chr(34) + BadigCfg\EmMachine + Chr(34) + " "
+  EndIf
+  If BadigCfg\EmExtension <> ""
+    ; campo aceita "Nome" ou "Nome:slot" (ex. "Nome:exta") - o slot vira
+    ; parte do NOME da flag no openMSX (-exta), nao um argumento separado
+    Protected ExtValue.s = BadigCfg\EmExtension
+    Protected ExtFlag.s = "-ext"
+    Protected ColonPos.i = FindString(ExtValue, ":")
+    If ColonPos > 0
+      ExtFlag = "-" + Mid(ExtValue, ColonPos + 1)
+      ExtValue = Left(ExtValue, ColonPos - 1)
+    EndIf
+    Params + ExtFlag + " " + Chr(34) + ExtValue + Chr(34) + " "
+  EndIf
+  Params + "-diska " + Chr(34) + DiskPath + Chr(34)
+
+  Protected Prog = RunProgram(BadigCfg\EmulatorPath, Params, GetPathPart(BadigCfg\EmulatorPath), #PB_Program_Open)
+  If Not Prog
+    MessageRequester("Erro", "Nao foi possivel executar o openMSX:" + Chr(10) + BadigCfg\EmulatorPath,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+  EndIf
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -1389,6 +1802,7 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 InitKeywordMaps()
+InitZ80KeywordMaps()
 EditorCfg_Load()
 EditorCfg_LoadCustomFonts()
 ApplyTheme()
@@ -1402,12 +1816,11 @@ SetWindowColor(#MainWindow, Color_AppBg)
 CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
     MenuItem(#Menu_New,      "Novo" + Chr(9) + "Ctrl+N")
+    MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
     MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+K D")
     MenuItem(#Menu_SaveAs,   "Salvar como..." + Chr(9) + "Ctrl+Shift+S")
-    MenuBar()
-    MenuItem(#Menu_Tokenize, "Gerar tokenizado MSX via Python (.bmx)...")
     MenuBar()
     MenuItem(#Menu_DignifiedToAscii, "Dignified -> ASCII nativo (.amx)...")
     MenuItem(#Menu_DignifiedToTokenized, "Dignified -> tokenizado nativo (.bmx)...")
@@ -1424,6 +1837,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_N, #Menu_NewAssembly)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Open)
 ; Ctrl+S NAO fica com "Salvar" - no teclado WordStar/JOE (ver WordStarKeys.pbi)
 ; Ctrl+S move o cursor para a esquerda. Salvar passou a ser Ctrl+K D.
@@ -1455,6 +1869,9 @@ Repeat
         Case #Menu_New
           AddDocumentTab()
 
+        Case #Menu_NewAssembly
+          AddDocumentTab("", "", "ASM")
+
         Case #Menu_Open
           OpenDocumentDialog()
 
@@ -1463,9 +1880,6 @@ Repeat
 
         Case #Menu_SaveAs
           SaveDocument(#True)
-
-        Case #Menu_Tokenize
-          SaveTokenized()
 
         Case #Menu_TokenizeNative
           SaveAsTokenizedNative()

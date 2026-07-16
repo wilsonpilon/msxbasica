@@ -1,6 +1,6 @@
 ;
 ; ------------------------------------------------------------
-;  Basic Dignified - pre-processador nativo (v1)
+;  Basic Dignified - pre-processador nativo
 ;  Converte codigo no dialeto "Dignified" (labels, defines,
 ;  variaveis de nome longo, comentarios especiais, etc) para
 ;  MSX-BASIC classico em ASCII, com numeros de linha, pronto
@@ -8,10 +8,11 @@
 ;
 ;  Port do nucleo de badig.py + badig_dignified.py + badig_msx.py
 ;  (Basic Dignified Suite, Fred Rique/farique). Ver docs/SPEC.md
-;  modulo 3 e docs/reference/dignified-core.md /
-;  docs/reference/badig-msx-module.md para a especificacao.
+;  modulo 3 (e 3g para INCLUDE/remtags) e docs/reference/
+;  dignified-core.md / docs/reference/badig-msx-module.md para a
+;  especificacao.
 ;
-;  Escopo desta v1 (ver docs/SPEC.md para o que falta):
+;  Escopo (ver docs/SPEC.md modulo 3 para o historico completo):
 ;    Implementado: comentarios (## / ### / ''), toggle rems e
 ;    KEEP (#all/#none), juncao de linhas (_ e :), DEFINE (com
 ;    variavel posicional e default) incluindo o [?](x,y)
@@ -22,17 +23,20 @@
 ;    linha com resolucao de referencias para frente (2 passes),
 ;    FUNC/RET (proto-funcoes), conversao ?/PRINT (-cp), strip
 ;    THEN/GOTO (-tg), traducao Unicode->ASCII MSX (-tr),
-;    maiusculas geral (-ca) e tamanho de TAB configuravel.
+;    maiusculas geral (-ca), tamanho de TAB configuravel,
+;    INCLUDE (recursivo, namespace de label/loop/funcao isolado
+;    por arquivo via Dig_ProcessSource/Dig_CurrentPrefix, ver
+;    docs/SPEC.md modulo 3g) e remtags (##BB:arguments=/
+;    export_file=/help=, so no arquivo principal).
 ;    Configuravel via BadigCfg (editor/BadigSettings.pbi) atraves
 ;    de Dig_SyncConfigFromBadigCfg() em BadigEditor.pb, ou
 ;    diretamente via os globals Dig_* abaixo (usado por
 ;    editor/tools/DigTestCli.pb, que roda com os defaults fixos).
-;    NAO implementado ainda: INCLUDE, remtags/##BB:/.ini
-;    (usa os globals fixos abaixo, nao a hierarquia completa),
-;    relatorios (-lbr/-lnr/-var), strip_spaces (reinterpretado:
-;    remove so espacos que nao ficam entre duas palavras, para
-;    nao colar identificadores/keywords - nao e byte-a-byte
-;    identico ao original).
+;    NAO implementado: relatorios (-lbr/-lnr/-var/-lex/-par, sem
+;    consumidor na IDE), strip_spaces (reinterpretado: remove so
+;    espacos que nao ficam entre duas palavras, para nao colar
+;    identificadores/keywords - nao e byte-a-byte identico ao
+;    original).
 ; ------------------------------------------------------------
 ;
 
@@ -56,6 +60,27 @@ Global Dig_Translate.b = #False
 Global Dig_HasError.b
 Global Dig_ErrorMsg.s
 Global Dig_ErrorLine.i
+
+; Diretorio do arquivo fonte sendo processado (passado a Dig_Preprocess),
+; usado para resolver caminhos relativos de INCLUDE e do remtag export_file.
+; "" quando desconhecido (documento nao salvo ainda) - INCLUDE relativo falha
+; nesse caso, caminho absoluto ainda funciona.
+Global Dig_BasePath.s = ""
+
+; Namespace da "linha logica" sendo processada agora (labels/loop-labels/nomes
+; de funcao ganham esse prefixo internamente, para nao colidir entre arquivo
+; principal e includes - variaveis continuam compartilhadas, so labels/funcs/
+; loops sao isolados por arquivo, ver docs/SPEC.md modulo 3g). "" no arquivo
+; principal (comportamento 100% identico a antes de INCLUDE existir).
+Global Dig_CurrentPrefix.s = ""
+Global Dig_IncludeCounter.i = 0
+Global NewList Dig_IncludeStack.s()   ; caminhos absolutos dos includes abertos (deteccao de ciclo)
+#Dig_MaxIncludeDepth = 16
+
+; Preenchido pelo remtag ##BB:export_file=... (so lido do arquivo principal,
+; nunca de includes - mesma regra do badig.py original). "" = nao usado.
+Global Dig_ExportFileOverride.s = ""
+Global Dig_RemtagHelpRequested.b = #False
 
 ; Marcador interno usado para "esconder" placeholders (referencias de label,
 ; variavel de define, etc) de estagios posteriores do pipeline ate serem
@@ -84,6 +109,14 @@ EndProcedure
 
 Procedure.b Dig_IsWordChar(C.s)
   ProcedureReturn Bool(Dig_IsAlpha(C) Or Dig_IsDigit(C) Or C = "_")
+EndProcedure
+
+; Nome de label sintetico usado para o ponto de entrada de uma FUNC - mesma
+; string usada tanto ao registrar o label (LabelNames) quanto ao gerar o
+; marcador "G" da chamada (Dig_BuildFuncCallReplacement), sob o mesmo prefixo
+; de namespace (Dig_CurrentPrefix) - precisa ser IDENTICA nos dois lados.
+Procedure.s Dig_FuncLabelName(Prefix.s, FuncName.s)
+  ProcedureReturn Prefix + "__func_" + FuncName
 EndProcedure
 
 ; Acha a primeira ocorrencia de Needle em Line que esteja FORA de um literal
@@ -274,12 +307,153 @@ Procedure.s Dig_MapCodeSegments(Line.s, LineNum.i, *Fn.Dig_PieceFn)
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Remtags (##BB:comando=valor) - so lidos do arquivo principal,
+;- nunca de arquivos incluidos via INCLUDE (mesma regra do
+;- badig_settings.py original: read_remtags_from_code(self.args.input)).
+;- Comandos suportados: EXPORT_FILE, ARGUMENTS, HELP (os mesmos
+;- registrados em badig_settings.py - CONVERT_ONLY/TOKENIZE citados
+;- em badig_dignified.py nunca chegam a ser registrados como remtag
+;- de fato nessa versao do toolchain).
+;- ------------------------------------------------------------
+
+Procedure.b Dig_Str2Bool(V.s, Fallback.b)
+  Protected u.s = UCase(Trim(V))
+  If u = "" : ProcedureReturn Fallback : EndIf
+  If u = "TRUE" Or u = "1" Or u = "YES" Or u = "Y" Or u = "T"
+    ProcedureReturn #True
+  ElseIf u = "FALSE" Or u = "0" Or u = "NO" Or u = "N" Or u = "F"
+    ProcedureReturn #False
+  EndIf
+  ProcedureReturn Fallback
+EndProcedure
+
+; Divide Text em tokens separados por espacos/tabs (ignora espacos repetidos).
+Procedure Dig_SplitWhitespace(Text.s, List Out.s())
+  ClearList(Out())
+  Protected pos.i = 1, len_.i = Len(Text), start.i
+  While pos <= len_
+    While pos <= len_ And (Mid(Text, pos, 1) = " " Or Mid(Text, pos, 1) = Chr(9))
+      pos + 1
+    Wend
+    If pos > len_ : Break : EndIf
+    start = pos
+    While pos <= len_ And Mid(Text, pos, 1) <> " " And Mid(Text, pos, 1) <> Chr(9)
+      pos + 1
+    Wend
+    AddElement(Out()) : Out() = Mid(Text, start, pos - start)
+  Wend
+EndProcedure
+
+; Aplica o conteudo do remtag ##BB:arguments=... como se fossem flags de linha
+; de comando do badig.py, sobre os globals Dig_* de configuracao (efeito vale
+; so para esta chamada de Dig_Preprocess - o chamador nao ve a mudanca, ver
+; snapshot/restore em Dig_Preprocess). So reconhece o subconjunto de flags que
+; este port nativo realmente suporta (-tl -ls -lp -rh -ss -ca -tr -cp -tg);
+; as demais flags do badig.py/badig_msx.py (relatorios, -id, -vb, -asc, -ini,
+; -rtg) sao aceitas e ignoradas (consumindo o valor quando a flag original as
+; recebe) para nao desalinhar o parsing de flags subsequentes.
+Procedure Dig_ApplyArgumentsRemtag(Value.s, LineNum.i)
+  Protected NewList toks.s()
+  Dig_SplitWhitespace(Value, toks())
+
+  ForEach toks()
+    Protected flag.s = LCase(toks())
+
+    Select flag
+      Case "-tl"
+        If NextElement(toks()) : Dig_TabLength = Val(toks()) : EndIf
+      Case "-ls"
+        If NextElement(toks()) : Dig_LineStart = Val(toks()) : EndIf
+      Case "-lp"
+        If NextElement(toks()) : Dig_LineStep = Val(toks()) : EndIf
+      Case "-rh"
+        Dig_RemHeader = #False ; store_false no argparse original: presenca desliga
+      Case "-ss"
+        Dig_StripSpaces = #True
+      Case "-ca"
+        Dig_CapitalizeAll = #True
+      Case "-tr"
+        Dig_Translate = #True
+      Case "-cp"
+        If NextElement(toks())
+          If LCase(toks()) = "p" : Dig_ConvertPrintCfg = "P" : Else : Dig_ConvertPrintCfg = "?" : EndIf
+        EndIf
+      Case "-tg"
+        If NextElement(toks())
+          If LCase(toks()) = "g" : Dig_StripThenGotoCfg = "G" : Else : Dig_StripThenGotoCfg = "T" : EndIf
+        EndIf
+      ; flags reconhecidas mas sem efeito neste port (relatorios/modo CLI) -
+      ; as que recebem valor precisam consumir o token seguinte para nao
+      ; desalinhar o parser
+      Case "-id", "-vb"
+        NextElement(toks())
+      Case "-prr", "-lbr", "-lnr", "-var", "-lex", "-par", "-asc", "-ini", "-rtg"
+        ; sem valor, nada a consumir
+      Default
+        ; flag desconhecida - ignorada silenciosamente (mesmo espirito do log
+        ; de aviso do original, que nao interrompe a conversao)
+    EndSelect
+  Next
+EndProcedure
+
+; Resolve o caminho do remtag export_file relativo ao diretorio do arquivo
+; fonte (Dig_BasePath) - versao simplificada do new_save_file() do
+; badig_settings.py original (so caminho relativo/absoluto, sem a logica
+; completa de merge de nome+pasta separados).
+Procedure.s Dig_ResolveExportFilePath(Value.s)
+  Protected v.s = Trim(Value)
+  If v = "" : ProcedureReturn "" : EndIf
+  If FindString(v, ":") Or Left(v, 1) = "\" Or Left(v, 1) = "/"
+    ProcedureReturn v ; ja e absoluto
+  EndIf
+  If Dig_BasePath = ""
+    ProcedureReturn v
+  EndIf
+  ProcedureReturn Dig_BasePath + v
+EndProcedure
+
+Procedure Dig_ApplyRemtag(Key.s, Value.s, LineNum.i)
+  Select UCase(Key)
+    Case "ARGUMENTS"
+      Dig_ApplyArgumentsRemtag(Value, LineNum)
+    Case "EXPORT_FILE"
+      Dig_ExportFileOverride = Dig_ResolveExportFilePath(Value)
+    Case "HELP"
+      Dig_RemtagHelpRequested = Dig_Str2Bool(Value, #True)
+    Default
+      ; remtag nao reconhecido - ignorado (equivalente ao log de aviso do
+      ; original, nao e erro fatal)
+  EndSelect
+EndProcedure
+
+; Reconhece e (se IsMainFile) aplica uma linha "##BB:comando=valor". Devolve
+; #True se a linha era um remtag (deve ser descartada do fluxo de codigo,
+; igual a qualquer outro comentario), independente de ter sido aplicada.
+Procedure.b Dig_TryHandleRemtagLine(Trimmed.s, LineNum.i, IsMainFile.b)
+  Protected upperTrim.s = UCase(Trimmed)
+  If Left(upperTrim, 5) <> "##BB:"
+    ProcedureReturn #False
+  EndIf
+  Protected rest.s = Mid(Trimmed, 6)
+  Protected eqPos.i = FindString(rest, "=")
+  If eqPos = 0
+    ProcedureReturn #True ; formato invalido - so descarta a linha
+  EndIf
+  Protected key.s = Trim(Left(rest, eqPos - 1))
+  Protected value.s = Mid(rest, eqPos + 1)
+  If IsMainFile
+    Dig_ApplyRemtag(key, value, LineNum)
+  EndIf
+  ProcedureReturn #True
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Estagio 1: comentarios (## / ### / '')
 ;- ------------------------------------------------------------
 
 ; Processa a lista de linhas fonte (ja com tabs expandidos) removendo comentarios.
 ; Blocos ''..'' viram linhas de comentario classico (mantidas, marcadas como finais).
-Procedure Dig_StripComments(List RawLines.s(), List OutLines.s(), List OutIsComment.b(), List OutSrcLine.i())
+Procedure Dig_StripComments(List RawLines.s(), List OutLines.s(), List OutIsComment.b(), List OutSrcLine.i(), IsMainFile.b = #True)
   Protected inExclusiveBlock.b = #False  ; ###
   Protected inRegularBlock.b = #False    ; ''
   Protected srcLine.i = 0
@@ -294,8 +468,8 @@ Procedure Dig_StripComments(List RawLines.s(), List OutLines.s(), List OutIsComm
     trimmed = Trim(RawLines())
     upperTrim = UCase(trimmed)
 
-    If Left(upperTrim, 5) = "##BB:" Or Left(upperTrim, 5) = "##BD:"
-      Continue ; remtags nao suportados nesta v1 - tratados como comentario
+    If Dig_TryHandleRemtagLine(trimmed, srcLine, IsMainFile)
+      Continue
     EndIf
 
     ; Bloco ### ... ### - o marcador nao precisa estar sozinho na linha (pode
@@ -866,10 +1040,9 @@ Procedure Dig_ProcessDeclares(List InLines.s(), List InIsComment.b(), List InSrc
 
     firstWord = StringField(trimmed, 1, " ")
 
-    If UCase(firstWord) = "INCLUDE"
-      Dig_Fail(InSrcLine(), UCase(firstWord) + " ainda nao e suportado pelo pre-processador nativo (v1). Ver docs/SPEC.md modulo 3.")
-      ProcedureReturn
-    EndIf
+    ; INCLUDE e reconhecido/expandido mais adiante (durante a extracao de
+    ; labels em Dig_ProcessSource) - aqui so deixa passar sem tratamento,
+    ; igual a qualquer outra linha de codigo comum.
 
     If UCase(firstWord) = "DECLARE"
       Protected rest.s = Trim(Mid(trimmed, 8))
@@ -1322,7 +1495,7 @@ Procedure.s Dig_BuildFuncCallReplacement(FuncName.s, List ArgTexts.s(), List Cap
     EndIf
   Next
 
-  result + "GOSUB " + #Dig_Mark + "G" + FuncName + #Dig_Mark
+  result + "GOSUB " + #Dig_Mark + "G" + Dig_FuncLabelName(Dig_CurrentPrefix, FuncName) + #Dig_Mark
 
   Protected nRets.i = 0
   If retList <> "" : nRets = CountString(retList, ";") + 1 : EndIf
@@ -1471,7 +1644,7 @@ Procedure.s Dig_ScanLabelRefs_Piece(Piece.s, LineNum.i)
       If name = "@"
         out + #Dig_Mark + "S" + #Dig_Mark
       Else
-        out + #Dig_Mark + "J" + LCase(name) + #Dig_Mark
+        out + #Dig_Mark + "J" + Dig_CurrentPrefix + LCase(name) + #Dig_Mark
       EndIf
       pos = np + 1
       Continue
@@ -1519,7 +1692,7 @@ Procedure.s Dig_ExtractLeadingLabel(Line.s, *LabelOut.String)
     Protected np.i
     Protected name.s = Dig_ReadIdent(Line, 2, @np)
     If Mid(Line, np, 1) = "}" And name <> "" And Not Dig_IsDigit(Left(name, 1))
-      *LabelOut\s = LCase(name)
+      *LabelOut\s = Dig_CurrentPrefix + LCase(name)
       ProcedureReturn Trim(Mid(Line, np + 1))
     EndIf
   EndIf
@@ -1528,9 +1701,9 @@ Procedure.s Dig_ExtractLeadingLabel(Line.s, *LabelOut.String)
     Protected np2.i
     Protected name2.s = Dig_ReadIdent(Line, 1, @np2)
     If Mid(Line, np2, 1) = "{" And name2 <> ""
-      *LabelOut\s = LCase(name2)
+      *LabelOut\s = Dig_CurrentPrefix + LCase(name2)
       Dig_LoopStackTop + 1
-      Dig_LoopStack(Dig_LoopStackTop) = LCase(name2)
+      Dig_LoopStack(Dig_LoopStackTop) = Dig_CurrentPrefix + LCase(name2)
       ProcedureReturn Trim(Mid(Line, np2 + 1))
     EndIf
   EndIf
@@ -1916,29 +2089,74 @@ Procedure.s Dig_TransChar(Text.s)
 EndProcedure
 
 ;- ------------------------------------------------------------
-;- Funcao principal
+;- Funcao por-arquivo (recursiva para INCLUDE)
 ;- ------------------------------------------------------------
 
-Procedure.s Dig_Preprocess(SourceText.s)
-  Dig_HasError = #False
-  Dig_ErrorMsg = ""
-  Dig_ErrorLine = 0
+; Le um arquivo de texto inteiro (BOM-aware) - usado para carregar INCLUDE.
+Procedure.s Dig_ReadTextFile(Path.s, LineNum.i)
+  Protected fnum.i = ReadFile(#PB_Any, Path, #PB_File_BOM)
+  If Not fnum
+    Dig_Fail(LineNum, "Nao foi possivel abrir o arquivo de INCLUDE: " + Path)
+    ProcedureReturn ""
+  EndIf
+  Protected content.s = ""
+  While Not Eof(fnum)
+    content + ReadString(fnum, #PB_File_IgnoreEOL) + Chr(13) + Chr(10)
+  Wend
+  CloseFile(fnum)
+  ProcedureReturn content
+EndProcedure
 
-  Dig_InitReservedKw()
+; Resolve o caminho de um INCLUDE "arquivo" relativo ao diretorio do arquivo
+; que contem a instrucao (OwnBasePath, ja com separador final) - caminho
+; absoluto (com ":" ou iniciando com barra) e usado como esta.
+Procedure.s Dig_ResolveIncludePath(RawArg.s, OwnBasePath.s)
+  If FindString(RawArg, ":") Or Left(RawArg, 1) = "\" Or Left(RawArg, 1) = "/"
+    ProcedureReturn RawArg
+  EndIf
+  ProcedureReturn OwnBasePath + RawArg
+EndProcedure
 
+; Processa o texto-fonte de UM arquivo (principal ou incluido) ate o ponto
+; logo antes da numeracao de linha (que so faz sentido para a arvore inteira
+; ja mesclada) - devolve em OutLogLines a lista de "linhas logicas" desse
+; arquivo, com nomes de label/funcao ja com o prefixo de namespace (Prefix)
+; aplicado. Chamada recursivamente para cada INCLUDE encontrado, com um
+; Prefix novo e unico por instancia - variaveis (Dig_Declares/HardShort/
+; HardLong/VarIndex) continuam compartilhadas globalmente (nunca tocadas
+; aqui); defines/toggles/funcoes/loop-labels sao isolados por chamada
+; (salvos/restaurados ao redor desta execucao) - ver docs/SPEC.md modulo 3g.
+Procedure Dig_ProcessSource(SourceText.s, Prefix.s, OwnBasePath.s, IsMainFile.b, List OutLogLines.DigLogLine())
+  Protected NewMap savedDefines.DigDefineEntry()
+  CopyMap(Dig_Defines(), savedDefines())
   ClearMap(Dig_Defines())
-  ClearMap(Dig_Declares())
-  ClearMap(Dig_HardShort())
-  ClearMap(Dig_HardLong())
+
+  Protected NewMap savedKeeps.b()
+  CopyMap(Dig_Keeps(), savedKeeps())
+  Protected savedKeepAll.b = Dig_KeepAll
+  Protected savedKeepNone.b = Dig_KeepNone
   ClearMap(Dig_Keeps())
   Dig_KeepAll = #False
   Dig_KeepNone = #False
-  Dig_VarIndex = 675
-  Dig_LoopStackTop = -1
+
+  Protected NewMap savedFuncParams.s()
+  Protected NewMap savedFuncDefaults.s()
+  Protected NewMap savedFuncRets.s()
+  CopyMap(Dig_FuncParams(), savedFuncParams())
+  CopyMap(Dig_FuncDefaults(), savedFuncDefaults())
+  CopyMap(Dig_FuncRets(), savedFuncRets())
+  Protected savedInFunc.s = Dig_InFunc
   ClearMap(Dig_FuncParams())
   ClearMap(Dig_FuncDefaults())
   ClearMap(Dig_FuncRets())
   Dig_InFunc = ""
+
+  Protected savedPrefix.s = Dig_CurrentPrefix
+  Dig_CurrentPrefix = Prefix
+
+  Protected loopTopAtEntry.i = Dig_LoopStackTop
+
+  ClearList(OutLogLines())
 
   Protected text.s = ReplaceString(SourceText, Chr(13) + Chr(10), Chr(10))
   text = ReplaceString(text, Chr(13), Chr(10))
@@ -1955,26 +2173,28 @@ Procedure.s Dig_Preprocess(SourceText.s)
   Next
 
   Protected NewList l1.s() : Protected NewList l1c.b() : Protected NewList l1s.i()
-  Dig_StripComments(raw(), l1(), l1c(), l1s())
-  If Dig_HasError : ProcedureReturn "" : EndIf
+  Dig_StripComments(raw(), l1(), l1c(), l1s(), IsMainFile)
+  If Dig_HasError : ProcedureReturn : EndIf
 
   Protected NewList l2.s() : Protected NewList l2c.b() : Protected NewList l2s.i()
   Dig_StripToggles(l1(), l1c(), l1s(), l2(), l2c(), l2s())
-  If Dig_HasError : ProcedureReturn "" : EndIf
+  If Dig_HasError : ProcedureReturn : EndIf
 
   Protected NewList l3.s() : Protected NewList l3c.b() : Protected NewList l3s.i()
   Dig_JoinLines(l2(), l2c(), l2s(), l3(), l3c(), l3s())
-  If Dig_HasError : ProcedureReturn "" : EndIf
+  If Dig_HasError : ProcedureReturn : EndIf
 
   Protected NewList l4.s() : Protected NewList l4c.b() : Protected NewList l4s.i()
   Dig_ProcessDefines(l3(), l3c(), l3s(), l4(), l4c(), l4s())
-  If Dig_HasError : ProcedureReturn "" : EndIf
+  If Dig_HasError : ProcedureReturn : EndIf
 
   Protected NewList l5.s() : Protected NewList l5c.b() : Protected NewList l5s.i()
   Dig_ProcessDeclares(l4(), l4c(), l4s(), l5(), l5c(), l5s())
-  If Dig_HasError : ProcedureReturn "" : EndIf
+  If Dig_HasError : ProcedureReturn : EndIf
 
-  ; labels: extrai declaracao no inicio de cada linha, monta lista de "linhas logicas"
+  ; labels: extrai declaracao no inicio de cada linha, monta lista de "linhas
+  ; logicas" deste arquivo (INCLUDE passa por aqui como uma linha comum - so
+  ; e expandido/substituido depois, na secao de splicing abaixo)
   Protected NewList logLines.DigLogLine()
   Protected pendingLabels.s = ""
 
@@ -1998,20 +2218,20 @@ Procedure.s Dig_Preprocess(SourceText.s)
 
     If firstWordU = "FUNC"
       If Dig_HandleFuncDef(l5(), l5s())
-        Protected synthLabel.s = "__func_" + Dig_InFunc
+        Protected synthLabel.s = Dig_FuncLabelName(Dig_CurrentPrefix, Dig_InFunc)
         If pendingLabels = ""
           pendingLabels = synthLabel
         Else
           pendingLabels + ";" + synthLabel
         EndIf
       EndIf
-      If Dig_HasError : ProcedureReturn "" : EndIf
+      If Dig_HasError : ProcedureReturn : EndIf
       Continue
     EndIf
 
     If firstWordU = "RET"
       Protected retText.s = Dig_HandleFuncRet(l5(), l5s())
-      If Dig_HasError : ProcedureReturn "" : EndIf
+      If Dig_HasError : ProcedureReturn : EndIf
       AddElement(logLines())
       logLines()\Text = retText
       logLines()\IsComment = #False
@@ -2056,12 +2276,12 @@ Procedure.s Dig_Preprocess(SourceText.s)
 
   If pendingLabels <> ""
     Dig_Fail(0, "Label no final do arquivo sem linha de destino: " + pendingLabels)
-    ProcedureReturn ""
+    ProcedureReturn
   EndIf
 
   If Dig_InFunc <> ""
     Dig_Fail(0, "Funcao sem RET: " + Dig_InFunc)
-    ProcedureReturn ""
+    ProcedureReturn
   EndIf
 
   ; chamadas de proto-funcao .nome(args) - resolvidas antes de labels/EXIT
@@ -2069,7 +2289,7 @@ Procedure.s Dig_Preprocess(SourceText.s)
   ForEach logLines()
     If Not logLines()\IsComment
       logLines()\Text = Dig_FuncCalls_Piece(logLines()\Text, logLines()\SrcLine)
-      If Dig_HasError : ProcedureReturn "" : EndIf
+      If Dig_HasError : ProcedureReturn : EndIf
     EndIf
   Next
 
@@ -2077,23 +2297,141 @@ Procedure.s Dig_Preprocess(SourceText.s)
   ForEach logLines()
     If Not logLines()\IsComment
       logLines()\Text = Dig_MapCodeSegments(logLines()\Text, logLines()\SrcLine, @Dig_ScanLabelRefs_Piece())
-      If Dig_HasError : ProcedureReturn "" : EndIf
+      If Dig_HasError : ProcedureReturn : EndIf
     EndIf
   Next
 
-  If Dig_LoopStackTop >= 0
+  If Dig_LoopStackTop <> loopTopAtEntry
     Dig_Fail(0, "Loop label nao fechado: " + Dig_LoopStack(Dig_LoopStackTop))
-    ProcedureReturn ""
+    ProcedureReturn
   EndIf
 
-  ; TRUE/FALSE + operadores compostos
+  ; INCLUDE: expande cada linha "INCLUDE "arquivo"" recursivamente,
+  ; substituindo-a pelas linhas logicas ja processadas do arquivo incluido
+  ; (que ja passou pelo seu proprio FuncCalls_Piece/ScanLabelRefs_Piece dentro
+  ; da chamada recursiva abaixo - nao devem ser reprocessadas aqui de novo).
+  Protected NewList splicedLines.DigLogLine()
+  ForEach logLines()
+    If logLines()\IsComment Or UCase(StringField(Trim(logLines()\Text), 1, " ")) <> "INCLUDE"
+      AddElement(splicedLines())
+      splicedLines()\Text = logLines()\Text
+      splicedLines()\LabelNames = logLines()\LabelNames
+      splicedLines()\SrcLine = logLines()\SrcLine
+      splicedLines()\IsComment = logLines()\IsComment
+      Continue
+    EndIf
+
+    Protected incArg.s = Trim(Mid(Trim(logLines()\Text), 8))
+    If Len(incArg) < 2 Or Left(incArg, 1) <> Chr(34) Or Right(incArg, 1) <> Chr(34)
+      Dig_Fail(logLines()\SrcLine, "INCLUDE mal formado (esperado INCLUDE " + Chr(34) + "arquivo" + Chr(34) + "): " + logLines()\Text)
+      ProcedureReturn
+    EndIf
+    Protected incPath.s = Dig_ResolveIncludePath(Mid(incArg, 2, Len(incArg) - 2), OwnBasePath)
+    Protected incKey.s = UCase(incPath)
+
+    If ListSize(Dig_IncludeStack()) >= #Dig_MaxIncludeDepth
+      Dig_Fail(logLines()\SrcLine, "INCLUDE excede profundidade maxima (" + Str(#Dig_MaxIncludeDepth) + "): " + incPath)
+      ProcedureReturn
+    EndIf
+    ForEach Dig_IncludeStack()
+      If Dig_IncludeStack() = incKey
+        Dig_Fail(logLines()\SrcLine, "INCLUDE circular detectado: " + incPath)
+        ProcedureReturn
+      EndIf
+    Next
+
+    Protected incContent.s = Dig_ReadTextFile(incPath, logLines()\SrcLine)
+    If Dig_HasError : ProcedureReturn : EndIf
+
+    Dig_IncludeCounter + 1
+    Protected childPrefix.s = Dig_CurrentPrefix + "__inc" + Str(Dig_IncludeCounter) + "$"
+    Protected childBasePath.s = GetPathPart(incPath)
+
+    AddElement(Dig_IncludeStack()) : Dig_IncludeStack() = incKey
+    Protected NewList childLogLines.DigLogLine()
+    Dig_ProcessSource(incContent, childPrefix, childBasePath, #False, childLogLines())
+    DeleteElement(Dig_IncludeStack())
+    Dig_CurrentPrefix = Prefix ; a chamada recursiva ja restaura o dela, isto e so defensivo
+    If Dig_HasError : ProcedureReturn : EndIf
+
+    Protected pendingFromInclude.s = logLines()\LabelNames
+    Protected firstChild.b = #True
+    ForEach childLogLines()
+      AddElement(splicedLines())
+      splicedLines()\Text = childLogLines()\Text
+      splicedLines()\SrcLine = childLogLines()\SrcLine
+      splicedLines()\IsComment = childLogLines()\IsComment
+      splicedLines()\LabelNames = childLogLines()\LabelNames
+      If firstChild And pendingFromInclude <> ""
+        If splicedLines()\LabelNames <> ""
+          splicedLines()\LabelNames = pendingFromInclude + ";" + splicedLines()\LabelNames
+        Else
+          splicedLines()\LabelNames = pendingFromInclude
+        EndIf
+      EndIf
+      firstChild = #False
+    Next
+
+    If firstChild And pendingFromInclude <> ""
+      ; arquivo incluido nao gerou nenhuma linha - o label pendente ficaria sem alvo
+      Dig_Fail(logLines()\SrcLine, "Label aponta para INCLUDE vazio: " + pendingFromInclude)
+      ProcedureReturn
+    EndIf
+  Next
+
+  CopyList(splicedLines(), OutLogLines())
+
+  ; restaura o estado isolado deste arquivo antes de devolver ao chamador
+  CopyMap(savedDefines(), Dig_Defines())
+  CopyMap(savedKeeps(), Dig_Keeps())
+  Dig_KeepAll = savedKeepAll
+  Dig_KeepNone = savedKeepNone
+  CopyMap(savedFuncParams(), Dig_FuncParams())
+  CopyMap(savedFuncDefaults(), Dig_FuncDefaults())
+  CopyMap(savedFuncRets(), Dig_FuncRets())
+  Dig_InFunc = savedInFunc
+  Dig_CurrentPrefix = savedPrefix
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Funcao principal (orquestra o merge final da arvore inteira)
+;- ------------------------------------------------------------
+
+Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "")
+  Dig_HasError = #False
+  Dig_ErrorMsg = ""
+  Dig_ErrorLine = 0
+
+  Dig_InitReservedKw()
+
+  ClearMap(Dig_Declares())
+  ClearMap(Dig_HardShort())
+  ClearMap(Dig_HardLong())
+  Dig_VarIndex = 675
+  Dig_LoopStackTop = -1
+  Dig_CurrentPrefix = ""
+  Dig_IncludeCounter = 0
+  ClearList(Dig_IncludeStack())
+  Dig_BasePath = BasePath
+  Dig_ExportFileOverride = ""
+  Dig_RemtagHelpRequested = #False
+
+  Protected NewList logLines.DigLogLine()
+  Dig_ProcessSource(SourceText, "", Dig_BasePath, #True, logLines())
+  If Dig_HasError : ProcedureReturn "" : EndIf
+
+  ; TRUE/FALSE + operadores compostos - aplicado uma unica vez, sobre a
+  ; arvore inteira ja mesclada (arquivo principal + todos os includes), igual
+  ; ao pass_5 do original (so roda depois do merge completo dos includes)
   ForEach logLines()
     If Not logLines()\IsComment
       logLines()\Text = Dig_MapCodeSegments(logLines()\Text, logLines()\SrcLine, @Dig_BoolOps_Piece())
     EndIf
   Next
 
-  ; variaveis longas -> curtas (opera sobre o texto de todas as linhas nao-comentario)
+  ; variaveis longas -> curtas (Dig_Declares/HardShort/HardLong/VarIndex nunca
+  ; sao tocados por Dig_ProcessSource - ja saem compartilhados entre arquivo
+  ; principal e includes por natureza, sem nenhum tratamento extra aqui)
   Protected NewList varLines.s() : Protected NewList varComment.b() : Protected NewList varSrc.i()
   ForEach logLines()
     AddElement(varLines()) : varLines() = logLines()\Text
@@ -2199,7 +2537,10 @@ Procedure.s Dig_Preprocess(SourceText.s)
             EndIf
             resolved + Str(Dig_LabelLine())
           Case "G"
-            If Not FindMapElement(Dig_LabelLine(), "__func_" + refName)
+            ; refName ja e o nome completo (prefixo de namespace + "__func_" +
+            ; nome), construido por Dig_FuncLabelName() nos dois lados
+            ; (registro do label e emissao do marcador GOSUB) - ver Dig_ProcessSource.
+            If Not FindMapElement(Dig_LabelLine(), refName)
               Dig_Fail(finalLines()\SrcLine, "Funcao nao existe: " + refName)
               ProcedureReturn ""
             EndIf

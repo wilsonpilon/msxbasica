@@ -50,7 +50,7 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -Version <versao>         Versao embutida no executavel (padrao: 5.1.3).
+  -Version <versao>         Versao embutida no executavel (padrao: 5.3.1).
   -SourceFile <arquivo>     Arquivo fonte a compilar
                              (padrao: editor\BadigEditor.pb).
   -OutputExe <arquivo>      Caminho do executavel de saida
@@ -68,7 +68,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "5.1.3"
+$Version = "5.3.1"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
 

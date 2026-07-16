@@ -70,7 +70,7 @@ um traço).
 | `-C`, `--compiler <caminho>` | Caminho para o `pbcompiler.exe`. |
 | `-R`, `--run` | Executa o programa automaticamente após uma compilação sem erros. |
 | `-H`, `--help` | Mostra a lista de opções e sai. |
-| `-Version` | Versão embutida no executável (padrão `5.1.3`). |
+| `-Version` | Versão embutida no executável (padrão `5.3.1`). |
 | `-SourceFile` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
 | `-OutputExe` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
 
@@ -90,7 +90,7 @@ um traço).
 
 A cada compilação, o script grava no executável (via `/CONSTANT` do `pbcompiler.exe`):
 
-- **Versão** — string livre (`-Version`, padrão `5.1.3`).
+- **Versão** — string livre (`-Version`, padrão `5.3.1`).
 - **Build** — data/hora **UTC** do momento da compilação, convertida para **hexadecimal**
   (segundos desde a época Unix, ex.: `6A57EA80`). Cada build tem um identificador único e
   ordenável.
@@ -193,6 +193,15 @@ que fica sem destaque.
 
 Esses comandos também estão disponíveis pelo menu **Arquivo**.
 
+**Tipos de arquivo**: o menu **Arquivo** tem dois comandos de "criar novo" — **Novo** (`Ctrl+N`) cria
+uma aba MSX-BASIC/Dignified (`.dmx`), **Novo Assembly** (`Ctrl+Shift+N`) cria uma aba Z80 Assembly
+(`.asm`). Cada aba lembra seu próprio tipo (detectado automaticamente pela extensão ao abrir um
+arquivo existente — `.asm`/`.z80`/`.mac` viram Assembly, o resto vira Dignified) e aplica o destaque
+de sintaxe certo: o dialeto Dignified numa aba `.dmx`, ou o vocabulário do assembler
+**N80/Nestor80** (mnemônicos, registradores, diretivas, literais numéricos em qualquer radix) numa
+aba `.asm`. O motor que monta `.asm` em binário Z80 ainda não existe — por enquanto a aba `.asm` é só
+edição com destaque de sintaxe, ver [`SPEC.md`](SPEC.md#2-assembler-z80).
+
 ### Desfazer / refazer
 
 | Tecla | Ação |
@@ -236,8 +245,16 @@ Fica para uma próxima etapa (o JOE tem bem mais comandos que isso — veja a re
 - **Configurar → Editor...** — fonte (só monoespaçadas, com botão para baixar fontes
   [Nerd Fonts](https://www.nerdfonts.com/) direto de dentro da IDE), tema claro/escuro,
   estilo de abas, caminho de instalação do editor.
-- **Configurar → Basic Dignified...** — opções do pré-processador/tokenizador/emulador e
-  diretório de instalação do toolchain Python de referência (com botão para baixar via
-  `git clone` ou `.zip` do GitHub).
+- **Configurar → Basic Dignified...** — três abas:
+  - **Basic Dignified** — opções do pré-processador/tokenizador e diretório de instalação do
+    toolchain Python de referência (com botão para baixar via `git clone` ou `.zip` do GitHub).
+  - **MSX** — opções específicas do dialeto/tokenizador MSX.
+  - **Emulador** — caminho do executável do openMSX, **Máquina** e **Extensão de disco** (cada
+    campo tem um botão "..." que lista as máquinas/extensões disponíveis em `share/machines`/
+    `share/extensions` a partir do caminho do openMSX configurado, sem precisar digitar o nome de
+    cabeça), e a opção **"Abrir o openMSX e rodar o código após gerar"**: quando marcada, o menu
+    **Arquivo → Dignified → tokenizado nativo (.bmx)...** passa a montar um disquete com o programa
+    gerado (mais um `AUTOEXEC.BAS` para rodar automaticamente) e abrir o openMSX direto nele, já
+    com a máquina/extensão escolhidas.
 - **Ajuda → Sobre...** — versão, build e data de compilação (ver
   [Versão e build](#versão-e-build)).
