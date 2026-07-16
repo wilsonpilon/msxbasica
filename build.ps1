@@ -17,8 +17,8 @@
     data/hora UTC do momento da compilacao, convertida para hexadecimal
     (segundos desde a epoch Unix).
 
-    Todas as opcoes (-H/--help, -C/--compiler, -R/--run, -Version, -SourceFile,
-    -OutputExe) sao lidas manualmente de $args abaixo, em vez de um bloco
+    Todas as opcoes (-H/--help, -C/--compiler, -R/--run, -V/--version,
+    -i/--sourcefile, -o/--outputexe) sao lidas manualmente de $args abaixo, em vez de um bloco
     param() do PowerShell: PowerShell 7 faz *binding posicional* de qualquer
     token que nao reconhece (ex.: "--run") para o primeiro parametro
     declarado, mesmo sem "-" na frente - com param(), ".\build.ps1 --run"
@@ -32,7 +32,7 @@
 .EXAMPLE
     .\build.ps1 --compiler "D:\PureBasic\Compilers\pbcompiler.exe" --run
 .EXAMPLE
-    .\build.ps1 -Version "5.2.0" -R
+    .\build.ps1 -V "5.2.0" -R
 .EXAMPLE
     .\build.ps1 -H
 #>
@@ -50,17 +50,17 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -Version <versao>         Versao embutida no executavel (padrao: 5.3.1).
-  -SourceFile <arquivo>     Arquivo fonte a compilar
+  -V, --version <versao>    Versao embutida no executavel (padrao: 5.3.1).
+  -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: editor\BadigEditor.pb).
-  -OutputExe <arquivo>      Caminho do executavel de saida
+  -o, --outputexe <arquivo> Caminho do executavel de saida
                              (padrao: editor\BadigEditor.exe).
 
 Exemplos:
   .\build.ps1
   .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"
   .\build.ps1 --compiler "C:\Basic\Compilers\pbcompiler.exe" --run
-  .\build.ps1 -Version "5.2.0" -R
+  .\build.ps1 -V "5.2.0" -R
 "@ | Write-Host
 }
 
@@ -89,19 +89,19 @@ while ($i -lt $args.Count) {
 
         '^(-R|--run)$' { $Run = $true }
 
-        '^-Version$' {
+        '^(-V|--version)$' {
             $i++
             if ($i -ge $args.Count) { Write-Error "Falta a versao depois de $token."; exit 1 }
             $Version = $args[$i]
         }
 
-        '^-SourceFile$' {
+        '^(-i|--sourcefile)$' {
             $i++
             if ($i -ge $args.Count) { Write-Error "Falta o caminho depois de $token."; exit 1 }
             $SourceFile = $args[$i]
         }
 
-        '^-OutputExe$' {
+        '^(-o|--outputexe)$' {
             $i++
             if ($i -ge $args.Count) { Write-Error "Falta o caminho depois de $token."; exit 1 }
             $OutputExe = $args[$i]

@@ -58,6 +58,7 @@ Enumeration MenuItems
   #Menu_Exit
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
+  #Menu_HelpCommands
   #Menu_HelpAbout
 EndEnumeration
 
@@ -261,6 +262,7 @@ Declare   WS_AttachSubclass(Sci)   ; WordStarKeys.pbi (incluido no fim do arquiv
 Declare   WS_SetupIndicator(Sci)
 Declare   WS_CreateHelpGadget()
 Declare   WS_SetupHelpStyles()
+Declare   WS_ShowHelp()
 Declare.s ComputeTabCaption(Position)
 Declare   RedrawTabBar()
 Declare   RedrawRuler()
@@ -1815,7 +1817,7 @@ SetWindowColor(#MainWindow, Color_AppBg)
 
 CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
-    MenuItem(#Menu_New,      "Novo" + Chr(9) + "Ctrl+N")
+    MenuItem(#Menu_New,      "Novo" + Chr(9) + "Alt+N")
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
@@ -1827,22 +1829,26 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuBar()
     MenuItem(#Menu_TokenizeNative, "ASCII classico ja aberto -> tokenizado nativo (.bmx)...")
     MenuBar()
-    MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Ctrl+W")
+    MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Alt+W")
     MenuBar()
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
   MenuTitle("Ajuda")
+    MenuItem(#Menu_HelpCommands, "Comandos..." + Chr(9) + "Ctrl+K H")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
-AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
+; Novo/Fechar aba usam Alt (nao Ctrl) porque Ctrl+N e Ctrl+W tem funcao propria
+; no teclado WordStar/JOE (^N = quebra de linha, ^W = scroll da tela para cima -
+; ver WordStarKeys.pbi) e nao podem ficar reservados para o app.
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_N, #Menu_New)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_N, #Menu_NewAssembly)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Open)
 ; Ctrl+S NAO fica com "Salvar" - no teclado WordStar/JOE (ver WordStarKeys.pbi)
 ; Ctrl+S move o cursor para a esquerda. Salvar passou a ser Ctrl+K D.
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
-AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_W, #Menu_CloseTab)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_W, #Menu_CloseTab)
 
 CanvasGadget(#TabBarGadget, 0, 0, WindowWidth(#MainWindow), #TabBar_Height)
 CanvasGadget(#RulerGadget, 0, #TabBar_Height, WindowWidth(#MainWindow), #Ruler_Height)
@@ -1910,6 +1916,9 @@ Repeat
             WS_SetupHelpStyles()
             ResizeInterface()
           EndIf
+
+        Case #Menu_HelpCommands
+          WS_ShowHelp()
 
         Case #Menu_HelpAbout
           ShowAboutDialog()
