@@ -176,7 +176,7 @@ Write-Host "Versao     : $Version"
 Write-Host "Build      : $BuildHex ($BuildDateText)"
 Write-Host ""
 
-& $CompilerPath $SourceFile /OUTPUT $OutputExe /QUIET `
+& $CompilerPath $SourceFile /OUTPUT $OutputExe /QUIET /CONSOLE `
     /CONSTANT "App_Version=$Version" `
     /CONSTANT "App_Build=$BuildHex" `
     /CONSTANT "App_BuildDate=$BuildDateText"

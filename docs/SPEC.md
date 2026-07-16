@@ -50,7 +50,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 9 | Extensão NestorBASIC (nbasic) | médio | Definido, com exemplo de sintaxe (seção 7) |
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
-| 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
+| 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 
 ## Decisões fechadas
 
@@ -551,6 +551,73 @@ Dignified...`). Fluxo atual:
    `editor/BadigSettings.pbi`) que lista os arquivos `.xml` de `share/machines/`/`share/extensions/`
    a partir do diretório do executável do openMSX configurado (nome sem a extensão `.xml`), numa
    janela picker simples; ao trocar a extensão, um `:slot` já digitado é preservado.
+
+**CLI de disco embutida (2026-07-16)**: além de montar o disco internamente para "rodar no openMSX",
+o `BadigEditor.exe` agora expõe `MSXDisk.pbi` também como utilitário de linha de comando standalone,
+mesma sintaxe/comandos do `msxdisk.exe` original (`msxDiskUtil/msxdisk.pb`) do usuário:
+`BadigEditor.exe --diskmanipulator <create|list|add|extract|delete> <disco.dsk> [argumentos...]`
+(`RunDiskManipulatorCli()`, `editor/BadigEditor.pb`). Detectado no início do `Programa principal`,
+antes de qualquer janela abrir — roda a CLI e sai (`End`), sem custo para o caminho normal do editor
+gráfico. Para a CLI herdar o console do terminal que chamou (em vez de abrir uma janela de console nova
+e desconectada), o `.exe` passou a ser compilado com `/CONSOLE` (`build.ps1`); como isso faz o Windows
+anexar um console a *qualquer* execução, o caminho normal (GUI) chama `FreeConsole_()` logo em seguida
+para fechar essa janela indesejada antes de `InitKeywordMaps()`/abrir a janela principal. Testado ao
+vivo via terminal (não precisa de GUI automation): os 8 comandos (`create`/`add` com curinga e
+arquivo único/`list` simples e `-l` detalhado/`extract` com `-d` e máscara/`delete`/ajuda sem
+argumentos) rodados ponta a ponta contra um disco novo, e o editor gráfico normal (sem argumentos)
+confirmado abrindo sem nenhuma janela de console residual.
+
+**Gerenciador grafico de disco — menu "Criar -> Disco..." (2026-07-16)**: `editor/DiskManagerGui.pbi`
+(`DiskMgr_OpenWindow()`), novo menu de topo "Criar" logo apos "Arquivo" (`#Menu_CreateDisk`, ID de menu
+10). Janela com dois paineis estilo Norton/Total Commander: esquerda = sistema de arquivos local
+(comeca no diretorio corrente do `BadigEditor.exe`, navegacao por duplo-clique em pastas/".."), direita
+= conteudo do disco MSX aberto/em criacao. Botoes centrais "Adicionar >>"/"<< Extrair" transferem os
+arquivos selecionados (suporta selecao multipla) — **sempre por copia nos dois sentidos** (decisao
+confirmada com o usuario; nunca apaga o arquivo de origem). Mais dois botoes centrais, adicionados a
+pedido do usuario logo depois (2026-07-16): **"Remover local"** (exclui de verdade os arquivos
+selecionados no painel esquerdo, do sistema de arquivos do Windows — sempre habilitado, nao depende de
+disco aberto) e **"Remover disco"** (exclui os arquivos selecionados de dentro do disco via
+`MSXDisk::DeleteMSXFile`, desabilitado enquanto nenhum disco esta carregado). Ambos pedem confirmacao
+(`MessageRequester` Sim/Nao) antes de excluir, por serem destrutivos. Campo superior com botao "..."
+(`OpenFileRequester`, filtro `*.dsk`) escolhe um `.dsk` existente para abrir ou digita um caminho novo
+para criar.
+
+**Modelo de rascunho (staging), tambem confirmado com o usuario**: ao escolher/criar o disco, todas as
+operacoes acontecem numa **copia temporaria** (`GetTemporaryDirectory()`, arquivo unico por sessao) via
+`MSXDisk::CreateDisk`/`OpenDisk`/`AddFile`/`ExtractFile` — o arquivo `.dsk` escolhido no campo superior
+so e gravado de verdade nos botoes:
+- **Salvar**: fecha o disco temporario, copia para o caminho escolhido, fecha a janela.
+- **Salvar como...**: igual, mas pergunta um caminho novo (`SaveFileRequester`) e passa a ser esse o
+  destino.
+- **Duplicar...**: copia o rascunho atual para um caminho extra escolhido pelo usuario **sem** fechar a
+  sessao (reabre o mesmo temporario e continua trabalhando no disco original).
+- **Excluir disco...**: com confirmacao, apaga o arquivo `.dsk` de destino (se existir) e o rascunho,
+  reseta a janela para o estado inicial (sem fechar).
+- **Cancelar** (ou fechar a janela): descarta o rascunho sem tocar no arquivo de destino — nao ha o que
+  desfazer porque nada foi escrito nele ainda.
+
+Verificado ao vivo (via automação de janela por `WM_COMMAND`/`BM_CLICK` direto nos HWNDs, sem mover o
+cursor real — ver nota de cuidado abaixo): layout da janela, listagem/ordenacao do painel esquerdo
+(pastas antes de arquivos, alfabetico dentro do grupo, ".." primeiro), habilitação/desabilitação dos
+botões de sessão conforme o estado, o fluxo completo de "..." → escolher caminho novo → disco de
+rascunho criado e populado, e o **Cancelar** descartando de fato o arquivo temporário sem tocar no
+destino (confirmado inspecionando a pasta temp do Windows antes/depois). **Não verificado ao vivo**:
+Adicionar/Extrair/Salvar/Salvar como/Duplicar/Excluir disco em si — essas chamadas reusam literalmente
+as mesmas funções do `MSXDisk` já validadas ponta a ponta pela CLI `--diskmanipulator` (module acima),
+envolvidas por um laço simples sobre os itens selecionados (`GetGadgetItemState`/`#PB_ListIcon_Selected`),
+então o risco residual é baixo, mas fica registrado como lacuna de teste ao vivo. Motivo de ter parado a
+automação nesse ponto: **tentar selecionar uma linha do `ListIconGadget` via mensagem nativa
+(`LVM_SETITEMSTATE`) travou o processo do editor** — essa mensagem espera um ponteiro para uma struct
+`LVITEM` valida no espaço de memoria do processo ALVO, e um ponteiro alocado no processo automatizador
+não é válido lá (mesma classe de problema já documentada em [[gui_automation_focus_caution]] para
+`SCI_SETTEXT`); e **`SetCursorPos`/`mouse_event` (clique real do mouse) não deve ser usado neste
+ambiente** porque a maquina é usada interativamente pelo proprio usuario em paralelo (ex.: Steam em
+primeiro plano no meio do teste) — mover o cursor de verdade arrisca clicar em algo do usuário. Prática
+segura confirmada nesta sessão: `WM_COMMAND` (menu) e `BM_CLICK` (botão) enviados direto ao HWND
+funcionam bem sem mover o cursor nem precisar de foco; qualquer coisa que exija um ponteiro
+cross-process (`LVM_SETITEMSTATE`, `LVM_GETITEMRECT`, `SCI_SETTEXT`) ou input real de mouse/teclado deve
+ser evitada — preferir testar essa lógica por trás das cortinas (harness CLI) quando possível.
+confirmado abrindo sem nenhuma janela de console residual.
 
 **Não implementado ainda** (a fatia "difícil" do módulo): controle via socket/protocolo XML em tempo
 real, envio de input simulado durante a execução, e detecção de erro em runtime com retorno à linha

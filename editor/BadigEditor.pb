@@ -22,6 +22,254 @@ XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
 XIncludeFile "FontDownloader.pbi"
 XIncludeFile "MSXDisk.pbi"
+XIncludeFile "DiskManagerGui.pbi"
+
+;- ------------------------------------------------------------
+;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
+;- <comando> <disco.dsk> [argumentos...]" - mesmos comandos/sintaxe do
+;- msxdisk.exe original (msxDiskUtil/msxdisk.pb), rodando com o modulo
+;- MSXDisk.pbi ja incorporado no proprio executavel (sem chamar msxdisk.exe
+;- como processo externo). Detectada e tratada bem no inicio do programa
+;- principal (ver "Programa principal", perto do fim do arquivo), antes de
+;- qualquer janela ser aberta.
+;- ------------------------------------------------------------
+
+Procedure CliShowHelp()
+  PrintN("MSX Disk Manager (embutido no Basic Dignified Editor)")
+  PrintN("Uso: BadigEditor.exe --diskmanipulator <comando> <imagem_disco.dsk> [argumentos...]")
+  PrintN("")
+  PrintN("Comandos disponiveis:")
+  PrintN("  create <disk.dsk> [bootsector.bin]")
+  PrintN("            Cria uma nova imagem de disco MSX em branco (720KB).")
+  PrintN("            Opcionalmente, pode ser informado um setor de boot customizado.")
+  PrintN("")
+  PrintN("  list <disk.dsk> [-l]")
+  PrintN("            Lista os arquivos contidos no disco.")
+  PrintN("            Use '-l' para visualizacao detalhada (tamanho, data/hora).")
+  PrintN("")
+  PrintN("  add <disk.dsk> <local_file1> [local_file2 ...]")
+  PrintN("            Adiciona um ou mais arquivos locais ao disco MSX.")
+  PrintN("            Suporta curingas locais (ex: *.TXT, *.BAS).")
+  PrintN("")
+  PrintN("  extract <disk.dsk> [-d out_dir] [mask1 mask2 ...]")
+  PrintN("            Extrai arquivos do disco MSX.")
+  PrintN("            Use '-d out_dir' para especificar a pasta de destino.")
+  PrintN("            Opcionalmente, passe mascaras de arquivos (ex: *.BAS, AUTOEXEC.BAT).")
+  PrintN("")
+  PrintN("  delete <disk.dsk> <filename>")
+  PrintN("            Exclui um arquivo da imagem de disco MSX.")
+  PrintN("")
+EndProcedure
+
+Procedure CliAddFilesWithWildcards(FilePattern.s)
+  Protected Dir.s = GetPathPart(FilePattern)
+  Protected Pattern.s = GetFilePart(FilePattern)
+
+  If Dir = ""
+    Dir = "." + #PS$
+  EndIf
+
+  If FindString(Pattern, "*") Or FindString(Pattern, "?")
+    Protected d = ExamineDirectory(#PB_Any, Dir, Pattern)
+    If d
+      Protected cnt = 0
+      While NextDirectoryEntry(d)
+        If DirectoryEntryType(d) = #PB_DirectoryEntry_File
+          Protected FileName.s = DirectoryEntryName(d)
+          Protected FullPath.s = Dir + FileName
+          Print("Adicionando: " + FileName + " ... ")
+          If Not MSXDisk::AddFile(FullPath, FileName)
+            PrintN("FALHA: " + MSXDisk::GetLastErrorMessage())
+          Else
+            PrintN("OK")
+            cnt + 1
+          EndIf
+        EndIf
+      Wend
+      FinishDirectory(d)
+      PrintN(Str(cnt) + " arquivo(s) adicionado(s).")
+    Else
+      PrintN("Nenhum arquivo encontrado correspondendo a: " + FilePattern)
+    EndIf
+  Else
+    Print("Adicionando: " + Pattern + " ... ")
+    If Not MSXDisk::AddFile(FilePattern, Pattern)
+      PrintN("FALHA: " + MSXDisk::GetLastErrorMessage())
+    Else
+      PrintN("OK")
+      PrintN("1 arquivo adicionado.")
+    EndIf
+  EndIf
+EndProcedure
+
+; Todos os argumentos do msxdisk.exe original ficam deslocados +1 posicao
+; aqui dentro, porque ProgramParameter(0) e sempre "--diskmanipulator" (quem
+; chama ja conferiu isso antes de entrar aqui).
+Procedure.i RunDiskManipulatorCli()
+  OpenConsole()
+
+  Protected TotalCount = CountProgramParameters()
+  Protected Count = TotalCount - 1
+  If Count < 2
+    CliShowHelp()
+    ProcedureReturn 0
+  EndIf
+
+  Protected Cmd.s = LCase(ProgramParameter(1))
+  Protected Disk.s = ProgramParameter(2)
+  Protected i
+
+  Select Cmd
+    Case "create"
+      Protected Boot.s = ""
+      If Count > 2
+        Boot = ProgramParameter(3)
+      EndIf
+
+      PrintN("Criando disco: " + Disk + " ...")
+      If MSXDisk::CreateDisk(Disk, Boot)
+        PrintN("Disco criado e formatado com sucesso (720KB).")
+        MSXDisk::CloseDisk()
+      Else
+        PrintN("Erro ao criar o disco: " + MSXDisk::GetLastErrorMessage())
+        ProcedureReturn 1
+      EndIf
+
+    Case "list"
+      Protected Detailed.b = #False
+      If Count > 2 And ProgramParameter(3) = "-l"
+        Detailed = #True
+      EndIf
+
+      If Not MSXDisk::OpenDisk(Disk)
+        PrintN("Erro ao abrir disco: " + MSXDisk::GetLastErrorMessage())
+        ProcedureReturn 1
+      EndIf
+
+      NewList Files.MSXDisk::FileInfo()
+      If MSXDisk::ListFiles(Files())
+        If Detailed
+          PrintN("Nome         Tamanho     Data / Hora")
+          PrintN("---------------------------------------------")
+          ForEach Files()
+            Protected Dt.s = FormatDate("%yyyy-%mm-%dd %hh:%ii:%ss", Files()\DateTime)
+            PrintN(LSet(Files()\FileName, 12) + " " + RSet(Str(Files()\Size), 8) + "    " + Dt)
+          Next
+        Else
+          ForEach Files()
+            PrintN(Files()\FileName)
+          Next
+        EndIf
+      Else
+        PrintN("Erro ao listar arquivos: " + MSXDisk::GetLastErrorMessage())
+      EndIf
+      MSXDisk::CloseDisk()
+
+    Case "add"
+      If Not MSXDisk::OpenDisk(Disk)
+        PrintN("Erro ao abrir disco: " + MSXDisk::GetLastErrorMessage())
+        ProcedureReturn 1
+      EndIf
+
+      For i = 3 To TotalCount - 1
+        CliAddFilesWithWildcards(ProgramParameter(i))
+      Next
+
+      MSXDisk::CloseDisk()
+
+    Case "extract"
+      Protected OutDir.s = ""
+      Protected MaskStart = 3
+
+      If Count > 2 And ProgramParameter(3) = "-d"
+        If Count > 3
+          OutDir = ProgramParameter(4)
+          MaskStart = 5
+        Else
+          PrintN("Erro: Diretorio de saida nao especificado apos -d.")
+          ProcedureReturn 1
+        EndIf
+      EndIf
+
+      If Not MSXDisk::OpenDisk(Disk)
+        PrintN("Erro ao abrir disco: " + MSXDisk::GetLastErrorMessage())
+        ProcedureReturn 1
+      EndIf
+
+      NewList Masks.s()
+      For i = MaskStart To TotalCount - 1
+        AddElement(Masks())
+        Masks() = MSXDisk::ConvertToFAT11(ProgramParameter(i))
+      Next
+
+      If OutDir <> ""
+        If FileSize(OutDir) <> -2
+          CreateDirectory(OutDir)
+        EndIf
+        If Right(OutDir, 1) <> #PS$
+          OutDir + #PS$
+        EndIf
+      EndIf
+
+      NewList ExtractFiles.MSXDisk::FileInfo()
+      If MSXDisk::ListFiles(ExtractFiles())
+        Protected Cnt = 0
+        ForEach ExtractFiles()
+          Protected Match.b = #False
+          If ListSize(Masks()) = 0
+            Match = #True
+          Else
+            ForEach Masks()
+              If MSXDisk::MatchesFAT11(MSXDisk::ConvertToFAT11(ExtractFiles()\FileName), Masks())
+                Match = #True
+                Break
+              EndIf
+            Next
+          EndIf
+
+          If Match
+            Protected Dest.s = OutDir + ExtractFiles()\FileName
+            Print("Extraindo: " + ExtractFiles()\FileName + " -> " + Dest + " ... ")
+            If MSXDisk::ExtractFile(ExtractFiles()\FileName, Dest)
+              PrintN("OK")
+              Cnt + 1
+            Else
+              PrintN("FALHA: " + MSXDisk::GetLastErrorMessage())
+            EndIf
+          EndIf
+        Next
+        PrintN(Str(Cnt) + " arquivo(s) extraido(s).")
+      Else
+        PrintN("Erro ao ler arquivos do disco: " + MSXDisk::GetLastErrorMessage())
+      EndIf
+      MSXDisk::CloseDisk()
+
+    Case "delete"
+      If Count < 3
+        PrintN("Erro: Nome do arquivo a ser excluido nao informado.")
+        ProcedureReturn 1
+      EndIf
+
+      Protected FileToDelete.s = ProgramParameter(3)
+      If Not MSXDisk::OpenDisk(Disk)
+        PrintN("Erro ao abrir disco: " + MSXDisk::GetLastErrorMessage())
+        ProcedureReturn 1
+      EndIf
+
+      Print("Excluindo: " + FileToDelete + " ... ")
+      If MSXDisk::DeleteMSXFile(FileToDelete)
+        PrintN("OK")
+      Else
+        PrintN("FALHA: " + MSXDisk::GetLastErrorMessage())
+      EndIf
+      MSXDisk::CloseDisk()
+
+    Default
+      CliShowHelp()
+  EndSelect
+
+  ProcedureReturn 0
+EndProcedure
 
 ;- ------------------------------------------------------------
 ;- Constantes gerais
@@ -56,6 +304,7 @@ Enumeration MenuItems
   #Menu_DignifiedToTokenized
   #Menu_CloseTab
   #Menu_Exit
+  #Menu_CreateDisk
   #Menu_RunBasic
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
@@ -1864,6 +2113,20 @@ EndProcedure
 ;- Programa principal
 ;- ------------------------------------------------------------
 
+; "BadigEditor.exe --diskmanipulator ..." roda so a CLI de disco (ver
+; RunDiskManipulatorCli()) e sai, sem abrir nenhuma janela.
+If ProgramParameter(0) = "--diskmanipulator"
+  End RunDiskManipulatorCli()
+EndIf
+
+; O executavel e compilado com /CONSOLE (ver build.ps1) para a CLI acima
+; funcionar de verdade (herdar o console do terminal que chamou, em vez de
+; abrir uma janela de console nova e desconectada) - isso faz o Windows
+; anexar um console automaticamente a QUALQUER execucao, inclusive o uso
+; normal como editor grafico. FreeConsole_() fecha essa janela de console
+; indesejada antes de abrir a GUI.
+FreeConsole_()
+
 InitKeywordMaps()
 InitZ80KeywordMaps()
 EditorCfg_Load()
@@ -1893,6 +2156,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Alt+W")
     MenuBar()
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
+  MenuTitle("Criar")
+    MenuItem(#Menu_CreateDisk, "Disco...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
   MenuTitle("Configurar")
@@ -1965,6 +2230,9 @@ Repeat
 
         Case #Menu_Exit
           Quit = 1
+
+        Case #Menu_CreateDisk
+          DiskMgr_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()

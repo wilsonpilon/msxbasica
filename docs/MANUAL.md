@@ -26,6 +26,9 @@
    - [Barra de status](#barra-de-status)
    - [O que ainda não está implementado](#o-que-ainda-não-está-implementado)
 4. [Telas de configuração](#telas-de-configuração)
+5. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
+   - [Menu Criar → Disco... (gerenciador gráfico)](#menu-criar--disco-gerenciador-gráfico)
+   - [Linha de comando (`--diskmanipulator`)](#linha-de-comando---diskmanipulator)
 
 ---
 
@@ -258,3 +261,58 @@ Fica para uma próxima etapa (o JOE tem bem mais comandos que isso — veja a re
     com a máquina/extensão escolhidas.
 - **Ajuda → Sobre...** — versão, build e data de compilação (ver
   [Versão e build](#versão-e-build)).
+
+---
+
+## Gerenciador de disco MSX
+
+### Menu Criar → Disco... (gerenciador gráfico)
+
+O menu **Criar → Disco...** abre uma janela com dois painéis (estilo Norton/Total Commander) para
+montar imagens de disco MSX (`.dsk`) sem sair do editor:
+
+- **Campo "Arquivo do disco"** (topo) — o botão **"..."** abre o diálogo padrão do Windows para
+  escolher um `.dsk` já existente (abre para edição) ou digitar um caminho novo (cria um disco em
+  branco de 720 KB).
+- **Painel esquerdo** — sistema de arquivos local, começando no diretório onde o `BadigEditor.exe`
+  está rodando. Duplo-clique numa pasta entra nela; duplo-clique em `..` sobe um nível.
+- **Painel direito** — conteúdo do disco aberto/em criação.
+- **`Adicionar >>` / `<< Extrair`** — transferem os arquivos selecionados (seleção múltipla suportada)
+  entre os dois painéis. **Sempre por cópia** — o arquivo de origem nunca é apagado.
+- **`Remover local` / `Remover disco`** — excluem de verdade os arquivos selecionados (do sistema de
+  arquivos do Windows ou de dentro do disco, respectivamente), pedindo confirmação antes por serem
+  ações destrutivas. `Remover disco` fica desabilitado até que um disco esteja aberto.
+- **Salvar / Salvar como... / Duplicar... / Excluir disco... / Cancelar** — todas as operações acima
+  acontecem numa **cópia de rascunho temporária**; o arquivo `.dsk` escolhido no topo só é gravado de
+  verdade num destes botões:
+  - **Salvar** — grava no arquivo escolhido e fecha a janela.
+  - **Salvar como...** — pergunta um caminho novo e grava lá (a janela continua fechando ao final).
+  - **Duplicar...** — grava uma cópia extra num caminho escolhido **sem** fechar a sessão — o
+    trabalho continua no disco original.
+  - **Excluir disco...** — apaga o arquivo `.dsk` de destino (se já existir) e reinicia a janela do
+    zero, pronta para outro disco.
+  - **Cancelar** (ou fechar a janela) — descarta o rascunho sem tocar no arquivo escolhido no topo.
+
+### Linha de comando (`--diskmanipulator`)
+
+O mesmo motor de disco também está disponível como utilitário de linha de comando, sem abrir
+nenhuma janela — útil em scripts:
+
+```powershell
+BadigEditor.exe --diskmanipulator create disco.dsk
+BadigEditor.exe --diskmanipulator list disco.dsk -l
+BadigEditor.exe --diskmanipulator add disco.dsk arquivo.bas *.txt
+BadigEditor.exe --diskmanipulator extract disco.dsk -d pasta_saida *.bas
+BadigEditor.exe --diskmanipulator delete disco.dsk arquivo.bas
+```
+
+| Comando | Descrição |
+|---|---|
+| `create <disco.dsk> [boot.bin]` | Cria uma imagem de disco MSX em branco (720 KB), com setor de boot customizado opcional. |
+| `list <disco.dsk> [-l]` | Lista os arquivos do disco (`-l` mostra tamanho e data/hora). |
+| `add <disco.dsk> <arquivo...>` | Adiciona um ou mais arquivos locais (aceita curingas como `*.BAS`). |
+| `extract <disco.dsk> [-d pasta] [máscara...]` | Extrai arquivos do disco, opcionalmente filtrando por máscara. |
+| `delete <disco.dsk> <arquivo>` | Remove um arquivo de dentro do disco. |
+
+Diferente da versão gráfica, a CLI grava direto no arquivo informado (sem cópia de rascunho) — mesmo
+comportamento do utilitário `msxdisk.exe` original.

@@ -34,6 +34,8 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   visual), régua de colunas, margem de números de linha dinâmica, tema claro/escuro e estilo de abas
   moderno/clássico configuráveis. Menu **Arquivo → Novo** (`.dmx`) e **Novo Assembly** (`.asm`,
   `Ctrl+Shift+N`) — cada aba detecta e lembra seu próprio tipo.
+
+  ![Aba de Assembly Z80 com syntax highlight (mnemônicos, registradores, diretivas, rótulos)](images/msxbasica-02.png)
 - **Pré-processador Dignified nativo** (`editor/DignifiedPreprocessor.pbi`) — **cobre 100% do escopo
   do `badig.py` original**: labels, loop labels, `EXIT`, `DEFINE` recursivo, `DECLARE` com redução
   automática de nomes longos, comentários/blocos de comentário, `TRUE`/`FALSE`, operadores compostos,
@@ -62,6 +64,18 @@ Python — que serve de referência de comportamento a ser portada, não de depe
     editor.
 - **CLI de teste de regressão** (`editor/tools/DigTestCli.pb`) — roda o pipeline completo
   (Dignified → ASCII → tokenizado) fora do editor, para validar mudanças no pré-processador/tokenizador.
+- **Gerenciador de disco MSX** — `MSXDisk.pbi` (FAT12, vendorizado de `msxDiskUtil`) agora também é
+  exposto de duas formas prontas para uso, além de montar o disco de "rodar no openMSX":
+  - **CLI embutida** (`BadigEditor.exe --diskmanipulator <create|list|add|extract|delete> disco.dsk
+    ...`) — mesma sintaxe do `msxdisk.exe` original, roda e sai sem abrir janela nenhuma.
+  - **Menu Criar → Disco...** (`editor/DiskManagerGui.pbi`) — gerenciador gráfico com dois painéis
+    (estilo Norton/Total Commander): esquerda é o sistema de arquivos local, direita é o conteúdo do
+    disco. Botões **Adicionar >>**/**<< Extrair** sempre copiam (nunca apagam a origem); **Remover
+    local**/**Remover disco** excluem de verdade, com confirmação. Todas as operações acontecem numa
+    cópia de rascunho temporária — o `.dsk` escolhido só é gravado de fato em **Salvar**/**Salvar
+    como...**/**Duplicar...**; **Cancelar** descarta a sessão sem tocar nele.
+
+  ![Gerenciador gráfico de disco MSX (Criar → Disco...) com painel local à esquerda e disco à direita](images/msxbasica-03.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
@@ -107,7 +121,12 @@ volta da emulação para a IDE).
   vendorizadas de `msxDiskUtil/MSXDisk.pbi`, compiladas no próprio executável). Menu **Arquivo → Novo
   Assembly** (`Ctrl+Shift+N`) cria abas `.asm` com syntax highlight do dialeto
   [N80/Nestor80](https://github.com/Konamiman/Nestor80) (mnemônicos, registradores, diretivas,
-  literais numéricos em qualquer radix). Versão embutida no executável atualizada para `5.3.1`.
+  literais numéricos em qualquer radix). Versão embutida no executável atualizada para `5.3.1`. Mais
+  tarde no mesmo dia: `MSXDisk.pbi` ganhou uma **CLI embutida** (`--diskmanipulator`, mesma sintaxe do
+  `msxdisk.exe` original) e um **gerenciador gráfico** completo (menu **Criar → Disco...**, dois
+  painéis estilo Norton/Total Commander, botões Adicionar/Extrair sempre por cópia e Remover
+  local/disco com confirmação, tudo sobre uma cópia de rascunho — só grava no disco escolhido em
+  Salvar/Salvar como/Duplicar, Cancelar descarta sem tocar nele).
 
 ## Ferramentas e ambiente
 
