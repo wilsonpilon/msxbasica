@@ -56,6 +56,7 @@ Enumeration MenuItems
   #Menu_DignifiedToTokenized
   #Menu_CloseTab
   #Menu_Exit
+  #Menu_RunBasic
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_HelpCommands
@@ -1665,6 +1666,48 @@ Procedure SaveAsTokenizedFromDignified()
   EndIf
 EndProcedure
 
+; Menu "Executar -> BASIC" (F5): preprocessa (Dignified -> ASCII), tokeniza e
+; manda direto para RunOnOpenMSX() - mesmo pipeline final de
+; SaveAsTokenizedFromDignified() quando "Abrir o openMSX e rodar o codigo
+; apos gerar" esta marcado, so que aqui e sempre (acao explicita de "rodar",
+; sem depender do checkbox EmRun nem passar pelo dialogo de Salvar Como).
+Procedure RunBasicFromActiveTab()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  If Docs()\Mode = "ASM"
+    MessageRequester("Executar -> BASIC",
+                     "A aba ativa e Assembly (.asm), nao MSX-BASIC/Dignified." + Chr(10) +
+                     "Executar Assembly ainda nao e suportado.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  Protected AsciiOut.s = RunDignifiedPreprocessor()
+  If AsciiOut = ""
+    ProcedureReturn
+  EndIf
+
+  Protected HexOut.s = Tok_Tokenize(AsciiOut)
+  If Tok_HasError
+    MessageRequester("Erro ao tokenizar",
+                     "Linha " + Str(Tok_ErrorLine) + ": " + Tok_ErrorMsg,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Protected BaseName.s = GetFilePart(Suggestion, #PB_FileSystem_NoExtension)
+
+  Protected DmxSource.s = ReadSciText(Docs()\SciGadget)
+  RunOnOpenMSX(BaseName, DmxSource, AsciiOut, HexOut)
+EndProcedure
+
 ;- ------------------------------------------------------------
 ;- Rodar no openMSX: monta um disquete .dsk com o .dmx/.amx/.bmx
 ;- gerados e abre o openMSX ja com esse disco montado (menu "Dignified
@@ -1687,6 +1730,22 @@ Procedure.s RunOnOpenMSX_DiskDir()
   ProcedureReturn Dir
 EndProcedure
 
+; Apaga o conteudo de DiskDir antes de montar um disco novo - sem isso, cada
+; "Executar" com um BaseName diferente (outro projeto/arquivo) so acumulava
+; .dmx/.amx/.bmx/autoexec.bas de execucoes anteriores na mesma pasta (o
+; MSXDisk::CreateDisk() sobrescreve o run.dsk, mas os arquivos LOCAIS soltos
+; ao lado ficavam para tras). So arquivos (nao entra em subpastas).
+Procedure ClearDiskDir(Dir.s)
+  Protected d = ExamineDirectory(#PB_Any, Dir, "*.*")
+  If Not d : ProcedureReturn : EndIf
+  While NextDirectoryEntry(d)
+    If DirectoryEntryType(d) = #PB_DirectoryEntry_File
+      DeleteFile(Dir + DirectoryEntryName(d))
+    EndIf
+  Wend
+  FinishDirectory(d)
+EndProcedure
+
 Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
   If BadigCfg\EmulatorPath = ""
     MessageRequester("openMSX nao configurado",
@@ -1702,6 +1761,8 @@ Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
     ProcedureReturn
   EndIf
+
+  ClearDiskDir(DiskDir)
 
   Protected UBase.s = UCase(BaseName)
 
@@ -1832,6 +1893,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Alt+W")
     MenuBar()
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
+  MenuTitle("Executar")
+    MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
@@ -1849,6 +1912,7 @@ AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Op
 ; Ctrl+S move o cursor para a esquerda. Salvar passou a ser Ctrl+K D.
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_W, #Menu_CloseTab)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F5, #Menu_RunBasic)
 
 CanvasGadget(#TabBarGadget, 0, 0, WindowWidth(#MainWindow), #TabBar_Height)
 CanvasGadget(#RulerGadget, 0, #TabBar_Height, WindowWidth(#MainWindow), #Ruler_Height)
@@ -1901,6 +1965,9 @@ Repeat
 
         Case #Menu_Exit
           Quit = 1
+
+        Case #Menu_RunBasic
+          RunBasicFromActiveTab()
 
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)

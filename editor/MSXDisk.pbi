@@ -211,11 +211,23 @@ Module MSXDisk
   EndProcedure
 
   ; Check if filename matches FAT11 mask (with wildcard support)
+  ;
+  ; DIVERGE do msxDiskUtil original: aqui compara BYTE CRU (PeekA a passo de 1
+  ; byte), nao Mid()/Asc() por indice de caractere. ConvertToFAT11() grava os
+  ; 11 bytes FAT11 via PokeA a passo de 1 byte numa string Space(11) - que sob
+  ; #PB_Compiler_Unicode=1 (padrao deste compilador/projeto) tem 22 bytes reais
+  ; (2 bytes/caractere), entao os bytes ficam corretos na memoria mas Mid()
+  ; enxerga "caracteres" de 2 bytes cada, juntando pares de bytes originais
+  ; num unico char errado - dai casamento por curinga (ex.: extract *.BAS)
+  ; sempre falhava, mesmo com bytes identicos. Comparacao/copia por bytes crus
+  ; (aqui e em CopyMemory/GetEntryName) nao sofre disso; so a leitura via
+  ; Mid()/indice de caractere sofria. Bug real, ainda presente no
+  ; msxDiskUtil/MSXDisk.pbi original (nao corrigido la ainda).
   Procedure.i MatchesFAT11(FAT11_Entry$, FAT11_Mask$)
     Protected k
     For k = 0 To 10
-      Protected entryChar = Asc(Mid(FAT11_Entry$, k + 1, 1))
-      Protected maskChar = Asc(Mid(FAT11_Mask$, k + 1, 1))
+      Protected entryChar = PeekA(@FAT11_Entry$ + k) & $FF
+      Protected maskChar = PeekA(@FAT11_Mask$ + k) & $FF
       If entryChar <> maskChar And maskChar <> Asc("?")
         ProcedureReturn #False
       EndIf
