@@ -56,7 +56,8 @@
       "Bash(echo \"ExitCode=$?\")",
       "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE test_build.exe; Write-Output \"ExitCode=$LASTEXITCODE\")",
       "Skill(run)",
-      "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE BadigEditor.exe; Write-Output \"ExitCode=$LASTEXITCODE\")"
+      "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE BadigEditor.exe; Write-Output \"ExitCode=$LASTEXITCODE\")",
+      "Bash(git status *)"
     ]
   }
 }
