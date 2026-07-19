@@ -678,6 +678,108 @@ Procedure SpriteEd_CreatePasteIcon(Size.i)
   ProcedureReturn Img
 EndProcedure
 
+; Icone do botao "Injetar": pagina de codigo (retangulo com linhas de texto)
+; recebendo uma seta apontando pra baixo - simbolo de "inserir/injetar".
+Procedure SpriteEd_CreateInjectIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(2, 11, Size - 4, Size - 13, RGB(90, 90, 90))
+    DrawingMode(#PB_2DDrawing_Default)
+    Line(5, 15, Size - 10, 0, RGB(150, 150, 150))
+    Line(5, 19, Size - 10, 0, RGB(150, 150, 150))
+    Protected i
+    For i = -1 To 1
+      LineXY(Size / 2 + i, 1, Size / 2 + i, 9, RGB(40, 140, 70))
+    Next
+    LineXY(Size / 2 - 4, 6, Size / 2, 11, RGB(40, 140, 70))
+    LineXY(Size / 2 + 4, 6, Size / 2, 11, RGB(40, 140, 70))
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; Empacota um bloco 8x8 da grade (comecando em RowOff,ColOff) em 8 bytes hex
+; (um por linha, bit 7 = pixel mais a esquerda) - bloco basico tanto do
+; sprite 8x8 (um bloco so) quanto de cada quadrante do sprite 16x16.
+Procedure.s SpriteEd_PackBlockHex(Array Grid.b(2), RowOff.i, ColOff.i)
+  Protected Result.s = "", Row, Col, ByteVal
+  For Row = 0 To 7
+    ByteVal = 0
+    For Col = 0 To 7
+      If Grid(RowOff + Row, ColOff + Col) > 0
+        ByteVal = ByteVal | (1 << (7 - Col))
+      EndIf
+    Next
+    Result = Result + "&H" + RSet(Hex(ByteVal), 2, "0") + ","
+  Next
+  ProcedureReturn Result
+EndProcedure
+
+; Bytes do padrao (silhueta) do sprite inteiro, em hexadecimal de 2 digitos:
+; 8 bytes pra 8x8; pra 16x16 sao 4 blocos de 8 bytes, na ordem de quadrantes
+; TL,BL,TR,BR que o MSX-BASIC exige pra sprite grande (SPRITE$).
+Procedure.s SpriteEd_PackPatternHex(Array Grid.b(2), GridSize.i)
+  Protected Result.s
+  If GridSize = 8
+    Result = SpriteEd_PackBlockHex(Grid(), 0, 0)
+  Else
+    Result = SpriteEd_PackBlockHex(Grid(), 0, 0) +
+             SpriteEd_PackBlockHex(Grid(), 8, 0) +
+             SpriteEd_PackBlockHex(Grid(), 0, 8) +
+             SpriteEd_PackBlockHex(Grid(), 8, 8)
+  EndIf
+  If Right(Result, 1) = ","
+    Result = Left(Result, Len(Result) - 1)
+  EndIf
+  ProcedureReturn Result
+EndProcedure
+
+; Cor(es) do sprite em hexadecimal de 2 digitos: um valor so no MSX1 (sprite
+; inteiro com uma cor); um valor por linha no MSX2 (a cor do primeiro bloco
+; pintado daquela linha, ou 0 se a linha estiver vazia).
+Procedure.s SpriteEd_PackColorsHex(Array Grid.b(2), GridSize.i, SpriteMode.i, SelectedColor.i)
+  Protected Result.s = ""
+  If SpriteMode = 1
+    Result = "&H" + RSet(Hex(SelectedColor), 2, "0")
+  Else
+    Protected Row, Col, RowColor
+    For Row = 0 To GridSize - 1
+      RowColor = 0
+      For Col = 0 To GridSize - 1
+        If Grid(Row, Col) > 0
+          RowColor = Grid(Row, Col)
+          Break
+        EndIf
+      Next
+      Result = Result + "&H" + RSet(Hex(RowColor), 2, "0") + ","
+    Next
+    If Right(Result, 1) = ","
+      Result = Left(Result, Len(Result) - 1)
+    EndIf
+  EndIf
+  ProcedureReturn Result
+EndProcedure
+
+; Monta o texto completo (comentario + 3 linhas DATA) que o botao "Injetar"
+; cola no cursor - formato lido pela rotina generica de sample/sprite_loader.dmx:
+; 1) tamanho da grade + modo, 2) cor(es), 3) bytes do padrao.
+Procedure.s SpriteEd_BuildInjectText(Array Grid.b(2), GridSize.i, SpriteMode.i, SelectedColor.i, SpriteNumber.i, SpriteTag.s)
+  Protected TagSuffix.s = ""
+  If SpriteTag <> ""
+    TagSuffix = " (" + SpriteTag + ")"
+  EndIf
+
+  Protected Text.s = "' Sprite #" + Str(SpriteNumber) + TagSuffix + " - " + Str(GridSize) + "x" + Str(GridSize) +
+                      " MSX" + Str(SpriteMode) + #CRLF$
+  Text + "data &H" + RSet(Hex(GridSize), 2, "0") + ",&H" + RSet(Hex(SpriteMode), 2, "0") + #CRLF$
+  Text + "data " + SpriteEd_PackColorsHex(Grid(), GridSize, SpriteMode, SelectedColor) + #CRLF$
+  Text + "data " + SpriteEd_PackPatternHex(Grid(), GridSize) + #CRLF$
+  ProcedureReturn Text
+EndProcedure
+
 ; Grade principal (editavel): cada bloco pintado usa a cor da palheta
 ; associada a ele; blocos em 0 (transparente) ficam com o fundo branco.
 Procedure SpriteEd_Redraw(Canvas, GridSize.i, CellSize.i, Array Grid.b(2), Array Palette.l(1))
@@ -853,7 +955,7 @@ EndProcedure
 
 Procedure SpriteEditor_OpenWindow(ParentWindow)
   Protected RightW = 170
-  Protected WinW = 15 + #SpriteEd_CanvasSize + 20 + RightW + 15 + 20
+  Protected WinW = 15 + #SpriteEd_CanvasSize + 20 + RightW + 15 + 45
   Protected TopOffset = 38   ; altura reservada pra barra de projeto (numero/navegacao/tag/novo/registrar/copiar/colar)
   Protected ToolY = (78 + TopOffset) + #SpriteEd_CanvasSize + 10, ToolH = 28
   Protected ToolY2 = ToolY + ToolH + 8
@@ -914,6 +1016,11 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   Protected PasteIcon = SpriteEd_CreatePasteIcon(22)
   Protected G_SpritePaste = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(PasteIcon))
   GadgetToolTip(G_SpritePaste, "Colar o sprite copiado aqui")
+  Cx + 34 + 16
+
+  Protected InjectIcon = SpriteEd_CreateInjectIcon(22)
+  Protected G_Inject = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(InjectIcon))
+  GadgetToolTip(G_Inject, "Injetar: insere o codigo DATA deste sprite no cursor da aba de texto ativa")
 
   TextGadget(#PB_Any, 15, 18 + TopOffset, 90, 20, "Tipo de sprite:")
   Protected G_Size8  = OptionGadget(#PB_Any, 110, 16 + TopOffset, 70, 22, "8 x 8")
@@ -1599,6 +1706,16 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
               MessageRequester("Nada copiado", "Copie um sprite primeiro (botao Copiar).", #PB_MessageRequester_Ok)
             EndIf
 
+          Case G_Inject
+            Protected InjectText.s = SpriteEd_BuildInjectText(Grid(), GridSize, SpriteMode, SelectedColor, SpriteNumber, SpriteTag)
+            If InjectTextAtCursor(InjectText)
+              SetGadgetText(G_Status, "Codigo do sprite #" + Str(SpriteNumber) + " injetado no cursor.")
+            Else
+              MessageRequester("Nao foi possivel injetar",
+                                "Nenhuma aba de texto ativa no editor pra receber o codigo.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            EndIf
+
           Case G_Close
             If Not SpriteDirty Or SpriteEd_ConfirmDiscardSprite()
               Quit = #True
@@ -1650,4 +1767,5 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   FreeImage(RegisterIcon)
   FreeImage(CopyIcon)
   FreeImage(PasteIcon)
+  FreeImage(InjectIcon)
 EndProcedure

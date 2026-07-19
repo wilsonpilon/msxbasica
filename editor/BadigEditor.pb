@@ -16,6 +16,12 @@ EnableExplicit
 ; BadigCfg_ExtractZip) - forward declaration para quebrar a dependencia circular.
 Declare.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
 
+; Referenciada pelo botao "Injetar" do editor de sprites (SpriteEditorGui.pbi,
+; incluido antes de Docs()/ActiveSciGadget() existirem) mas definida so mais
+; abaixo neste arquivo - mesma forward declaration de FontDownloader_OpenWindow
+; acima, mesmo motivo (dependencia circular do include).
+Declare.b InjectTextAtCursor(Text.s)
+
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
 XIncludeFile "EditorSettings.pbi"
@@ -1326,6 +1332,23 @@ Procedure ActiveSciGadget()
     ProcedureReturn 0
   EndIf
   ProcedureReturn Docs()\SciGadget
+EndProcedure
+
+; Insere Text na posicao do cursor (substituindo a selecao, se houver) da aba
+; ativa no momento - usado pelo botao "Injetar" do editor de sprites
+; (SpriteEditorGui.pbi) pra colar o DATA gerado direto no codigo. O proprio
+; Scintilla dispara a notificacao de mudanca normalmente (mesmo caminho que
+; marca Docs()\Modified para edicao via teclado), entao nao precisa mexer
+; nisso aqui manualmente.
+Procedure.b InjectTextAtCursor(Text.s)
+  Protected Sci = ActiveSciGadget()
+  If Not Sci
+    ProcedureReturn #False
+  EndIf
+  Protected *Buffer = UTF8(Text)
+  ScintillaSendMessage(Sci, #SCI_REPLACESEL, 0, *Buffer)
+  FreeMemory(*Buffer)
+  ProcedureReturn #True
 EndProcedure
 
 ; Torna a aba em Position a aba visivel/ativa: mostra o ScintillaGadget dela e
