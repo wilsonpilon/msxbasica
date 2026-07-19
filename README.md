@@ -2,7 +2,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.3.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 5.5.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -76,14 +76,36 @@ Python — que serve de referência de comportamento a ser portada, não de depe
     como...**/**Duplicar...**; **Cancelar** descarta a sessão sem tocar nele.
 
   ![Gerenciador gráfico de disco MSX (Criar → Disco...) com painel local à esquerda e disco à direita](images/msxbasica-03.png)
+- **Sistema de projeto** (`editor/ProjectDB.pbi`) — um projeto MSX inteiro (por enquanto, Sprites; os
+  demais tipos de conteúdo ganham tabela quando tiverem editor próprio) vive num único arquivo SQLite
+  (`.msxproject`). Ao abrir sem nenhum parâmetro de linha de comando, a IDE já cria/usa de cara um
+  projeto implícito **"noname.msxproject"** num arquivo temporário — tudo que for registrado vai
+  sendo gravado nele sem precisar criar um projeto antes. **Arquivo → Novo projeto...** troca para um
+  projeto novo e vazio num local escolhido (oferece salvar o atual primeiro, se tiver conteúdo não
+  salvo); **Arquivo → Abrir projeto...** abre um `.msxproject` já existente. Ao sair, se o projeto
+  implícito tiver conteúdo registrado e ainda não tiver sido salvo num arquivo permanente, a IDE
+  pergunta se quer salvar (e onde, com nome definitivo) antes de fechar.
+- **Editor de sprites** (`editor/SpriteEditorGui.pbi`, menu **Criar → Sprite...**) — grade clicável
+  8×8 ou 16×16 com a **palheta original de 16 cores do MSX1** (TMS9918), e radios **MSX1** (sprite
+  inteiro com uma única cor) / **MSX2** (uma cor por linha, aplicada automaticamente conforme o
+  sprite é pintado). Ferramentas com ícone próprio: lápis, borracha, pincel (bloco 2×2), balde de
+  preenchimento, reta, retângulo e elipse/círculo (vazios ou cheios) — as ferramentas de dois pontos
+  mostram prévia ao vivo da forma e um marcador piscando no primeiro ponto, com **Esc** ou o botão
+  direito do mouse cancelando sem traçar nada. Botões de rotacionar (com quebra nas bordas) e
+  deslocar (sem quebra) nas quatro direções, inverter e limpar. Cada sprite é numerado, tem uma tag
+  (nome curto, até 16 caracteres) e fica gravado no projeto atual via o botão **Registrar**; **Novo**
+  cria o próximo sprite em sequência, os botões de navegação vão para o primeiro/anterior/próximo/
+  último sprite já registrado, e **Copiar**/**Colar** duplicam um sprite para outro número.
+
+  ![Editor de sprites (Criar → Sprite...) com grade 16×16, paleta MSX1, barra de projeto (número, navegação, tag) e prévia em escala reduzida](images/msxbasica-04.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
-em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editores visuais
-(sprite/char, LINE/CIRCLE/DRAW, som, tracker, MML/`PLAY`), extensão NestorBASIC, saída via
-`msxbas2rom`, controle do openMSX via socket/XML em tempo real (input simulado, detecção de erro com
-retorno à linha no editor — hoje só "gerar disco e abrir o openMSX" está pronto, sem comunicação de
-volta da emulação para a IDE).
+em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), demais editores
+visuais (char/tile, LINE/CIRCLE/DRAW, som, tracker, MML/`PLAY`) e sua integração ao sistema de
+projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em tempo
+real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e abrir
+o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
 
 ## Changelog resumido
 
@@ -127,6 +149,21 @@ volta da emulação para a IDE).
   painéis estilo Norton/Total Commander, botões Adicionar/Extrair sempre por cópia e Remover
   local/disco com confirmação, tudo sobre uma cópia de rascunho — só grava no disco escolhido em
   Salvar/Salvar como/Duplicar, Cancelar descarta sem tocar nele).
+- **2026-07-18** — Novo **editor de sprites** (menu **Criar → Sprite...**, `editor/SpriteEditorGui.pbi`):
+  grade 8×8/16×16, palheta MSX1 de 16 cores fixas, modos MSX1/MSX2 (uma cor por sprite vs. uma cor por
+  linha, aplicados automaticamente), ferramentas com ícone (lápis, borracha, pincel, balde, reta,
+  retângulo, elipse — com prévia ao vivo, marcador piscando e cancelamento por Esc/botão direito),
+  rotacionar/deslocar, inverter, limpar. Junto veio um **sistema de projeto** novo
+  (`editor/ProjectDB.pbi`): cada projeto MSX é um arquivo SQLite único (`.msxproject`); sem nenhum
+  parâmetro na linha de comando a IDE já abre um projeto implícito `noname.msxproject` num arquivo
+  temporário, com **Arquivo → Novo projeto...**/**Abrir projeto...** para trocar de projeto (oferecendo
+  salvar o atual antes, se tiver conteúdo não salvo) e aviso automático ao sair perguntando onde salvar
+  em definitivo. O editor de sprites já usa esse sistema: cada sprite tem número sequencial e uma tag
+  (até 16 caracteres), com botões **Registrar**/**Novo**/navegação (primeiro/anterior/próximo/último)/
+  **Copiar**/**Colar**. Validado com um novo harness de console (`editor/tools/ProjectDBTestCli.pb`)
+  cobrindo round-trip completo dos dados (criar, salvar, listar, recarregar byte a byte, promover para
+  arquivo permanente, reabrir). Nome padrão de aba sem título mudou de "Sem titulo N" para "nonameN".
+  Versão embutida no executável atualizada para `5.5.3`.
 
 ## Ferramentas e ambiente
 

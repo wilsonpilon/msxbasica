@@ -219,9 +219,48 @@ Resumo do escopo definido até aqui:
 
 ---
 
+## 12. Log de implementação (Claude Code)
+
+> Diferente das seções 1–11 (transcrição reconstruída do chat de planejamento original no claude.ai,
+> antes de qualquer código existir), esta seção é um log cronológico do que foi efetivamente
+> implementado depois, via Claude Code, sessão a sessão. Ver `docs/SPEC.md` para o detalhe técnico de
+> cada módulo e `README.md` para o changelog resumido — aqui fica só um resumo curto por sessão,
+> como continuação natural da transcrição de planejamento acima.
+
+**2026-07-18** — Editor de sprites e sistema de projeto:
+
+- **Editor de sprites** (menu **Criar → Sprite...**, módulo 4 do `SPEC.md`): grade 8×8/16×16, palheta
+  fixa de 16 cores do MSX1, modos MSX1 (sprite inteiro com uma cor) e MSX2 (uma cor por linha,
+  aplicada automaticamente). Ferramentas com ícone próprio (desenhadas em memória, sem depender de
+  arquivo externo): lápis, borracha, pincel 2×2, balde de preenchimento, reta, retângulo e elipse —
+  as três últimas com prévia ao vivo da forma, marcador piscando no primeiro ponto, e cancelamento por
+  Esc ou botão direito do mouse. Rotacionar (com quebra) e deslocar (sem quebra) nas quatro direções,
+  inverter, limpar.
+- **Sistema de projeto** (módulo 13 do `SPEC.md`): cada projeto MSX vira um arquivo `.msxproject`
+  (SQLite puro, driver estático do PureBasic — sem DLL extra para distribuir). Sem nenhum parâmetro na
+  linha de comando, a IDE já abre um projeto implícito `noname.msxproject` num arquivo temporário;
+  **Arquivo → Novo projeto...**/**Abrir projeto...** trocam de projeto (oferecendo salvar o atual
+  primeiro, se tiver conteúdo não salvo); ao sair, pergunta onde salvar em definitivo se o projeto
+  implícito ainda tiver conteúdo registrado. Por enquanto só a tabela de Sprites está de fato ligada a
+  um editor — os demais tipos de conteúdo do projeto (Basic, Assembly, telas, sons, músicas, listagens
+  LM, documentos) ganham tabela quando tiverem editor próprio.
+- O editor de sprites usa o sistema de projeto: cada sprite tem número sequencial e uma tag (até 16
+  caracteres), grava no projeto atual via **Registrar**, **Novo** cria o próximo sprite da sequência,
+  botões de navegação vão para o primeiro/anterior/próximo/último sprite já registrado, e
+  **Copiar**/**Colar** duplicam um sprite para outro número.
+- Validação de dados feita por um novo harness de console (`editor/tools/ProjectDBTestCli.pb`) — a
+  automação de clique no canvas do editor de sprites se mostrou não confiável neste ambiente (máquina
+  de uso interativo real do usuário, não um ambiente de teste isolado), então o harness ficou como
+  principal forma de garantir que os dados batem (criar, salvar, listar, recarregar byte a byte,
+  sobrescrever sem duplicar, promover para arquivo permanente, reabrir do zero).
+- Nome padrão de aba sem título mudou de `"Sem titulo N"` para `"nonameN"`. Versão embutida no
+  executável atualizada de `5.3.1` para `5.5.3`.
+
+---
+
 ## Notas para continuar com Claude Code / CLI
 
 - Este documento foi reconstruído a partir do histórico de conversas do Claude.ai (busca por trechos relevantes), então pode haver pequenas lacunas de conteúdo (marcadas no texto onde identificadas). Nada foi inventado — apenas reorganizado cronologicamente.
-- Nenhuma linha de código foi escrita ainda nesta fase; tudo é levantamento de viabilidade e arquitetura.
+- Nenhuma linha de código foi escrita ainda nesta fase (seções 1–11); tudo era levantamento de viabilidade e arquitetura. A seção 12 em diante é o log real de implementação via Claude Code, continuado sessão a sessão.
 - Linguagem principal do projeto: **PureBasic** (licença vitalícia já disponível).
 - Ferramentas/dependências externas mencionadas: sjasmplus, z88dk (referência de opcodes Z80, não como dependência de runtime), msxbas2rom (CLI externo, chamado via subprocess), openMSX (controle via socket/named pipe com protocolo XML).

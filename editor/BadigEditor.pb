@@ -23,6 +23,8 @@ XIncludeFile "BadigSettings.pbi"
 XIncludeFile "FontDownloader.pbi"
 XIncludeFile "MSXDisk.pbi"
 XIncludeFile "DiskManagerGui.pbi"
+XIncludeFile "ProjectDB.pbi"
+XIncludeFile "SpriteEditorGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -296,6 +298,8 @@ EndEnumeration
 Enumeration MenuItems
   #Menu_New
   #Menu_NewAssembly
+  #Menu_NewProject
+  #Menu_OpenProject
   #Menu_Open
   #Menu_Save
   #Menu_SaveAs
@@ -305,6 +309,7 @@ Enumeration MenuItems
   #Menu_CloseTab
   #Menu_Exit
   #Menu_CreateDisk
+  #Menu_CreateSprite
   #Menu_RunBasic
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
@@ -335,6 +340,7 @@ EndEnumeration
 #App_Title      = "Basic Dignified Editor"
 #File_Pattern     = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
 #File_Pattern_ASM = "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
+#File_Pattern_Project = "Projeto MSX (*.msxproject)|*.msxproject|Todos os arquivos (*.*)|*.*"
 #File_Pattern_Open = "Todos os suportados (*.dmx;*.amx;*.asm)|*.dmx;*.amx;*.asm|" +
                      "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|" +
                      "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
@@ -444,7 +450,7 @@ Structure Document
   Mode.s            ; "DMX" (MSX-BASIC/Dignified, default) ou "ASM" (Z80 Assembly)
   Modified.b        ; 1 se ha alteracoes nao salvas
   SciGadget.i       ; ScintillaGadget associado a esta aba
-  UntitledName.s    ; nome estavel ("Sem titulo N"), so usado enquanto Path = ""
+  UntitledName.s    ; nome estavel ("nonameN"), so usado enquanto Path = ""
   DisplayCaption.s  ; rotulo ja computado (nome + " *" se modificado), cache para RedrawTabBar
   TabX1.i           ; retangulo da aba inteira na tab bar (hit-test de clique/hover)
   TabX2.i
@@ -523,6 +529,7 @@ Declare   UpdateTabCaption(Position)
 Declare   OpenDocumentDialog()
 Declare.b SaveDocument(SaveAs.b = #False)
 Declare.b ConfirmDiscard(Text.s)
+Declare.b OfferSaveProject()
 Declare   CloseTab(Position)
 Declare   SaveAsTokenizedNative()
 Declare   SaveAsAsciiFromDignified()
@@ -1380,7 +1387,7 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
 
   If Path = ""
     UntitledCount + 1
-    Docs()\UntitledName = "Sem titulo " + Str(UntitledCount)
+    Docs()\UntitledName = "noname" + Str(UntitledCount)
   EndIf
 
   If Content <> ""
@@ -1676,6 +1683,41 @@ EndProcedure
 Procedure.b ConfirmDiscard(Text.s)
   Protected Result = MessageRequester(#App_Title, Text, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning)
   ProcedureReturn Bool(Result = #PB_MessageRequester_Yes)
+EndProcedure
+
+; Se o projeto atual (implicito "noname") ainda nao foi salvo num arquivo
+; permanente e ja tem sprites registrados, oferece salvar antes de seguir
+; em frente (usado antes de "Novo projeto" e ao sair). Devolve #True se e
+; seguro continuar (nao havia nada a salvar, ou salvou com sucesso, ou o
+; usuario preferiu descartar); #False so quando o usuario cancelou o
+; dialogo de salvar - nesse caso a acao que chamou deve ser abortada, para
+; nao perder dado silenciosamente.
+Procedure.b OfferSaveProject()
+  If Not ProjectDB::HasUnsavedContent()
+    ProcedureReturn #True
+  EndIf
+
+  Protected Answer = MessageRequester("Projeto nao salvo",
+                        "O projeto atual (noname) ainda nao foi salvo num arquivo permanente" + Chr(10) +
+                        "e ja tem sprites registrados." + Chr(10) + Chr(10) +
+                        "Deseja salvar antes de continuar?",
+                        #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning)
+  If Answer <> #PB_MessageRequester_Yes
+    ProcedureReturn #True
+  EndIf
+
+  Protected SavePath.s = SaveFileRequester("Salvar projeto como...", "", #File_Pattern_Project, 0)
+  If SavePath = ""
+    ProcedureReturn #False
+  EndIf
+
+  If Not ProjectDB::SaveAs(SavePath)
+    MessageRequester("Erro ao salvar projeto",
+                      "Nao foi possivel salvar em:" + Chr(10) + SavePath + Chr(10) + ProjectDB::GetLastError(),
+                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn #False
+  EndIf
+  ProcedureReturn #True
 EndProcedure
 
 ; Versao/build/data sao constantes de compilacao injetadas pelo build.ps1
@@ -2134,6 +2176,17 @@ EditorCfg_LoadCustomFonts()
 ApplyTheme()
 BadigCfg_Load()
 
+; Sem nenhum parametro de linha de comando (uso normal, clicando no .exe),
+; ja abre o projeto implicito "noname.msxproject" de cara, pra qualquer
+; recurso (por enquanto so Sprites) poder ir sendo gravado nele sem precisar
+; que o usuario crie um projeto primeiro. Se algum parametro foi passado
+; (hoje so --diskmanipulator, que ja terminou o processo antes daqui, mas
+; deixa a porta aberta pra um futuro "abrir projeto X.msxproject direto"),
+; nao forca a criacao do projeto implicito.
+If CountProgramParameters() = 0
+  ProjectDB::EnsureOpen()
+EndIf
+
 If Not OpenWindow(#MainWindow, 0, 0, 1000, 700, #App_Title, #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
   End
 EndIf
@@ -2143,6 +2196,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
     MenuItem(#Menu_New,      "Novo" + Chr(9) + "Alt+N")
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
+    MenuItem(#Menu_NewProject, "Novo projeto...")
+    MenuItem(#Menu_OpenProject, "Abrir projeto...")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
     MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+K D")
@@ -2158,6 +2213,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
   MenuTitle("Criar")
     MenuItem(#Menu_CreateDisk, "Disco...")
+    MenuItem(#Menu_CreateSprite, "Sprite...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
   MenuTitle("Configurar")
@@ -2207,6 +2263,30 @@ Repeat
         Case #Menu_NewAssembly
           AddDocumentTab("", "", "ASM")
 
+        Case #Menu_NewProject
+          If OfferSaveProject()
+            Define NewProjectPath.s = SaveFileRequester("Novo projeto MSX", "", #File_Pattern_Project, 0)
+            If NewProjectPath <> ""
+              If Not ProjectDB::CreateNew(NewProjectPath)
+                MessageRequester("Erro ao criar projeto",
+                                  "Nao foi possivel criar:" + Chr(10) + NewProjectPath + Chr(10) + ProjectDB::GetLastError(),
+                                  #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+              EndIf
+            EndIf
+          EndIf
+
+        Case #Menu_OpenProject
+          If OfferSaveProject()
+            Define OpenProjectPath.s = OpenFileRequester("Abrir projeto MSX", "", #File_Pattern_Project, 0)
+            If OpenProjectPath <> ""
+              If Not ProjectDB::OpenExisting(OpenProjectPath)
+                MessageRequester("Erro ao abrir projeto",
+                                  "Nao foi possivel abrir:" + Chr(10) + OpenProjectPath + Chr(10) + ProjectDB::GetLastError(),
+                                  #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+              EndIf
+            EndIf
+          EndIf
+
         Case #Menu_Open
           OpenDocumentDialog()
 
@@ -2233,6 +2313,9 @@ Repeat
 
         Case #Menu_CreateDisk
           DiskMgr_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateSprite
+          SpriteEditor_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()
@@ -2367,10 +2450,20 @@ Repeat
         Quit = 0
       EndIf
     EndIf
+
+    ; Projeto (sprites) nao salvo permanentemente - so pergunta se os
+    ; documentos de texto ja deixaram passar (senao seria uma segunda
+    ; confirmacao em cima da primeira).
+    If Quit And ProjectDB::HasUnsavedContent()
+      If Not OfferSaveProject()
+        Quit = 0
+      EndIf
+    EndIf
   EndIf
 
 Until Quit = 1
 
+ProjectDB::Close()
 End
 
 ; Incluido so aqui no fim (nao junto com os demais XIncludeFile no topo) porque

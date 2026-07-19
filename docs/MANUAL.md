@@ -7,7 +7,8 @@
 > veja [`SPEC.md`](SPEC.md).
 >
 > Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
-> etc.) forem ficando prontas. Hoje cobre o editor de texto e o processo de build.
+> etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
+> editor de sprites, o sistema de projeto e o processo de build.
 
 ---
 
@@ -29,6 +30,14 @@
 5. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
    - [Menu Criar → Disco... (gerenciador gráfico)](#menu-criar--disco-gerenciador-gráfico)
    - [Linha de comando (`--diskmanipulator`)](#linha-de-comando---diskmanipulator)
+6. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
+   - [Projeto implícito "noname"](#projeto-implícito-noname)
+   - [Menu Arquivo → Novo projeto... / Abrir projeto...](#menu-arquivo--novo-projeto--abrir-projeto)
+   - [Ao sair](#ao-sair)
+7. [Editor de sprites](#editor-de-sprites)
+   - [Grade, tamanho e modo de cor](#grade-tamanho-e-modo-de-cor)
+   - [Ferramentas de desenho](#ferramentas-de-desenho)
+   - [Barra de projeto (registrar, navegar, copiar/colar)](#barra-de-projeto-registrar-navegar-copiarcolar)
 
 ---
 
@@ -73,7 +82,7 @@ um traço).
 | `-C`, `--compiler <caminho>` | Caminho para o `pbcompiler.exe`. |
 | `-R`, `--run` | Executa o programa automaticamente após uma compilação sem erros. |
 | `-H`, `--help` | Mostra a lista de opções e sai. |
-| `-Version` | Versão embutida no executável (padrão `5.3.1`). |
+| `-Version` | Versão embutida no executável (padrão `5.5.3`). |
 | `-SourceFile` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
 | `-OutputExe` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
 
@@ -93,7 +102,7 @@ um traço).
 
 A cada compilação, o script grava no executável (via `/CONSTANT` do `pbcompiler.exe`):
 
-- **Versão** — string livre (`-Version`, padrão `5.3.1`).
+- **Versão** — string livre (`-Version`, padrão `5.5.3`).
 - **Build** — data/hora **UTC** do momento da compilação, convertida para **hexadecimal**
   (segundos desde a época Unix, ex.: `6A57EA80`). Cada build tem um identificador único e
   ordenável.
@@ -316,3 +325,100 @@ BadigEditor.exe --diskmanipulator delete disco.dsk arquivo.bas
 
 Diferente da versão gráfica, a CLI grava direto no arquivo informado (sem cópia de rascunho) — mesmo
 comportamento do utilitário `msxdisk.exe` original.
+
+---
+
+## Sistema de projeto (arquivo `.msxproject`)
+
+Um **projeto** MSX inteiro (por enquanto, os sprites criados no [editor de sprites](#editor-de-sprites);
+outros tipos de conteúdo — Basic, Assembly, telas, sons, músicas, listagens LM, documentos — entram
+conforme ganharem editor próprio) fica guardado num único arquivo `.msxproject` (um banco SQLite).
+
+### Projeto implícito "noname"
+
+Ao abrir a IDE **sem passar nenhum parâmetro na linha de comando** (o uso normal, clicando no `.exe`),
+um projeto implícito chamado **`noname.msxproject`** já é criado de cara, num arquivo temporário. Não
+é preciso criar ou escolher um projeto antes de usar o editor de sprites — tudo que for registrado vai
+sendo gravado nesse projeto automaticamente.
+
+### Menu Arquivo → Novo projeto... / Abrir projeto...
+
+- **Novo projeto...** — pede um caminho (diálogo padrão do Windows, escolhe pasta e nome de uma vez) e
+  troca para um projeto novo e vazio nesse local. Se o projeto atual ainda for o `noname` temporário e
+  já tiver conteúdo registrado, pergunta antes se você quer salvá-lo permanentemente (cancelar esse
+  diálogo de salvar cancela a troca de projeto também — nada é descartado sem avisar).
+- **Abrir projeto...** — mesma lógica, mas abre um arquivo `.msxproject` já existente em vez de criar
+  um novo.
+
+### Ao sair
+
+Se o projeto atual ainda for o `noname` temporário **e** já tiver algo registrado (pelo menos um
+sprite), a IDE pergunta, ao fechar, se você quer salvá-lo — respondendo que sim, abre o mesmo diálogo
+de "escolher pasta e nome definitivo" do **Novo projeto...**. Se não houver nada registrado, ou se o
+projeto já estiver salvo num arquivo permanente, a IDE fecha direto, sem perguntar nada.
+
+---
+
+## Editor de sprites
+
+![Editor de sprites (Criar → Sprite...) com grade 16×16, paleta MSX1, barra de projeto (número, navegação, tag) e prévia em escala reduzida](../images/msxbasica-04.png)
+
+O menu **Criar → Sprite...** abre o editor gráfico de sprites MSX, numa janela própria.
+
+### Grade, tamanho e modo de cor
+
+- **Tipo de sprite** — radio **8×8** / **16×16**, os dois tamanhos reais de sprite do VDP do MSX. A
+  área de desenho (canvas) tem sempre o mesmo tamanho em pixels; é o tamanho de cada bloco que muda ao
+  trocar entre os dois.
+- **Modo** — radio **MSX1** / **MSX2**, controla a regra de cor do hardware real:
+  - **MSX1**: o sprite inteiro só pode ter **uma cor**. Trocar a cor atual (ou pintar) recolore
+    instantaneamente tudo que já estava pintado.
+  - **MSX2**: **cada linha** pode ter a sua própria cor (recurso real do VDP do MSX2), mas só uma cor
+    dentro da mesma linha — pintar um bloco numa linha recolore automaticamente o resto da linha para
+    bater com a cor usada.
+- **Cor atual** — seletor com as 16 cores fixas da palheta original do MSX1 (TMS9918); o primeiro
+  quadro (com um "X") é o índice 0, transparente.
+- **Prévia** — canto da janela mostra o sprite em escala reduzida, mais perto do tamanho real (sem as
+  linhas de grade da área de edição).
+
+### Ferramentas de desenho
+
+Barra de ícones logo abaixo da grade — só uma ferramenta fica ativa por vez:
+
+| Ícone | Ferramenta | Como usar |
+|---|---|---|
+| Lápis | Pinta um bloco por vez | Clique, ou arraste com o botão esquerdo pressionado para riscar continuamente. |
+| Borracha | Apaga um bloco por vez | Mesmo gesto do lápis, mas apagando. |
+| Pincel | Pinta um bloco 2×2 por vez | Mesmo gesto do lápis, "mais grosso". |
+| Balde | Preenche uma área conectada | Clique dentro de uma região fechada — pinta tudo que estiver conectado com a mesma cor. |
+| Reta | Traça uma linha reta | Marque o ponto inicial (fica piscando) e o final — veja abaixo. |
+| Retângulo (vazio/cheio) | Desenha um retângulo | Marque dois cantos opostos. |
+| Elipse/círculo (vazio/cheio) | Desenha uma elipse | Marque dois cantos da caixa delimitadora. |
+
+**Ferramentas de dois pontos** (reta, retângulo, elipse): o primeiro clique marca o ponto inicial — um
+marcador fica **piscando** nele — e, conforme o mouse se move, a forma que seria traçada aparece **em
+prévia** sobre a grade. O segundo clique confirma. Para **cancelar sem traçar nada**, aperte **Esc**
+ou clique com o **botão direito** do mouse.
+
+Abaixo das ferramentas de desenho:
+
+- **Rotacionar** (com "quebra" nas bordas — o que sai de um lado reaparece do outro) e **Deslocar**
+  (sem quebra — o que sai se perde, o espaço liberado vira transparente), nas quatro direções.
+- **Inverter** todos os pontos, **Limpar** tudo.
+
+### Barra de projeto (registrar, navegar, copiar/colar)
+
+Barra no topo da janela, ligada ao [sistema de projeto](#sistema-de-projeto-arquivo-msxproject):
+
+- **Número do sprite** — mostrado como `#N`; cada sprite registrado tem um número sequencial.
+- **Tag** — nome curto (até 16 caracteres) para identificar o sprite.
+- **Navegação** — botões **Primeiro** / **Anterior** / **Próximo** / **Último**, andam entre os
+  sprites já registrados no projeto atual (param nas pontas, não dão volta).
+- **Novo** — cria o próximo sprite da sequência (maior número já registrado + 1), com a grade em
+  branco.
+- **Registrar** — grava (ou atualiza, se já existir) o sprite atual no projeto.
+- **Copiar** / **Colar** — copiam o sprite atual (grade, tamanho e modo) para colar em outro número —
+  útil para duplicar um sprite parecido antes de fazer variações.
+
+Alterações feitas num sprite e ainda não registradas pedem confirmação antes de trocar de sprite ou
+fechar a janela, para não perder trabalho sem querer.

@@ -42,7 +42,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
 | 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Lado editor pronto (arquivo `.asm` + syntax highlight, 2026-07-16) — motor do assembler em si ainda não iniciado |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
-| 4 | Editor sprite/char | baixo | **Gap**: explicação detalhada não recuperada da conversa original |
+| 4 | Editor sprite/char | baixo | **Sprite implementado (2026-07-18)** — `editor/SpriteEditorGui.pbi`, ver seção 4. Char/tile ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
 | 6 | Editor de som SOUND (PSG) | baixo | Definido (seção 6) |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
@@ -51,6 +51,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
+| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18)** — `editor/ProjectDB.pbi`, ver seção 13. Por enquanto só a tabela de Sprites está ligada; demais tipos de conteúdo entram quando tiverem editor próprio |
 
 ## Decisões fechadas
 
@@ -400,6 +401,51 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
   imprime a lista de remtags disponíveis e sai do processo, o que não faz sentido dentro do fluxo do
   editor GUI.
 
+### 4. Editor sprite/char — sprite implementado (2026-07-18)
+
+- **Arquivo**: `editor/SpriteEditorGui.pbi`, menu **Criar → Sprite...**. Janela própria (não modal em
+  relação ao editor de texto — desabilita a janela principal enquanto aberta, mesmo padrão do
+  gerenciador de disco).
+- **Grade**: 8×8 ou 16×16 blocos (os dois tamanhos de sprite reais do VDP do MSX), cada bloco guarda um
+  índice de cor 0–15 (0 = transparente). Canvas sempre com a mesma área em pixels — o tamanho de cada
+  bloco (não o número de blocos) que muda ao trocar 8×8/16×16.
+- **Palheta**: as 16 cores fixas do MSX1 (TMS9918), seletor 4×4 clicável; índice 0 mostrado com um "X"
+  em vez de preenchimento.
+- **Modos de cor MSX1/MSX2** (radio ao lado do tamanho): no **MSX1** o sprite inteiro só pode ter uma
+  cor — trocar a cor atual ou pintar recolore instantaneamente todos os blocos já pintados
+  (`SpriteEd_RecolorAll`); no **MSX2** cada **linha** pode ter a sua própria cor, mas só uma dentro da
+  linha — qualquer linha que receba a cor atual tem seus blocos já pintados recolorados para bater
+  (`SpriteEd_EnforceMSX2ForColor`), sem precisar saber de antemão quais linhas uma operação afetou
+  (funciona igual para pintar, formas geométricas e balde).
+- **Ferramentas** (barra de ícones, todas mutuamente exclusivas — `SpriteEd_UnpressOtherTools`):
+  - **Lápis**, **borracha**, **pincel** (bloco 2×2 por clique) — clique único ou arrastar com o botão
+    esquerdo pressionado risca/apaga/pinta continuamente.
+  - **Reta**, **retângulo** (vazio/cheio), **elipse/círculo** (vazio/cheio) — ferramentas de dois
+    pontos: o primeiro clique marca o ponto inicial (marcador piscando via `AddWindowTimer`, 500 ms) e,
+    conforme o mouse se move, uma **prévia ao vivo** da forma é recalculada numa máscara separada
+    (`SpriteEd_ComputePreviewMask`, reaproveita as mesmas rotinas de desenho de verdade) e desenhada
+    por cima da grade (`SpriteEd_DrawPreviewOverlay`) sem tocar nos dados reais. O segundo clique
+    confirma e traça; **Esc** (atalho de janela via `AddKeyboardShortcut`) ou o **botão direito** do
+    mouse cancelam sem alterar nada.
+  - **Balde** — preenchimento por área conectada (flood fill 4-direções, pilha explícita).
+  - **Rotacionar** (com "quebra" nas bordas — o que sai de um lado reaparece do outro) e **deslocar**
+    (sem quebra — o que sai se perde, o espaço liberado vira transparente) nas quatro direções
+    (`SpriteEd_TranslateGrid`), **inverter** todos os pontos, **limpar** tudo.
+- **Prévia**: canto da janela mostra o sprite em escala reduzida, mais perto da proporção real (sem as
+  linhas de grade da área de edição).
+- **Integração com o sistema de projeto** (ver módulo 13): barra própria no topo da janela —
+  - Número do sprite atual e tag (nome curto, até 16 caracteres, truncada tanto ao digitar quanto ao
+    registrar).
+  - **Registrar** — grava (INSERT ou substitui) o sprite atual no projeto aberto no momento.
+  - **Novo** — cria o próximo sprite em sequência (maior número já registrado + 1), grade em branco.
+  - **Primeiro/Anterior/Próximo/Último** — navegam pelos sprites já registrados no projeto (consulta
+    `ProjectDB::ListSpriteNumbers()`, trava nas pontas em vez de dar volta).
+  - **Copiar/Colar** — clipboard de sessão (grade + tamanho + modo), só dura enquanto a janela do
+    editor de sprites está aberta; permite duplicar um sprite para outro número.
+  - Qualquer alteração não registrada (`SpriteDirty`) pede confirmação antes de navegar para outro
+    sprite ou fechar a janela.
+- **Char/tile**: ainda não iniciado — mesma lacuna original, sem detalhe de conversa recuperado.
+
 ### 5. Editor gráfico LINE/CIRCLE/PSET/DRAW
 - Mais simples que DRAW puro isolado porque LINE/CIRCLE/PSET são coordenadas absolutas (sem estado de
   posição/ângulo atual).
@@ -625,9 +671,49 @@ certa no editor — nenhuma das duas abordagens documentadas acima (script Tcl+c
 hook de erro via `POKE`+breakpoint) foi implementada. O fluxo atual é "gerar disco e abrir o openMSX
 já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
 
+### 13. Sistema de projeto (arquivo `.msxproject`, SQLite) — implementado (2026-07-18)
+
+- **Arquivo**: `editor/ProjectDB.pbi`, módulo `ProjectDB` (`DeclareModule`/`Module`, mesmo padrão de
+  `MSXDisk.pbi` — chamadas qualificadas `ProjectDB::...`). `UseSQLiteDatabase()` — driver estático
+  (`sqlite3.lib` do PureBasic), sem DLL extra pra distribuir junto do `.exe`.
+- **Um projeto = um arquivo `.msxproject`** (SQLite puro). Schema atual: `project_info` (chave/valor,
+  reservada) e `sprites` (`sprite_number` chave primária, `tag`, `grid_size`, `sprite_mode`,
+  `pixel_data`, `updated_at`). Demais tipos de conteúdo do projeto (Basic, Assembly, Telas, Sons,
+  Músicas, listagens LM, documentos) ganham tabela própria só quando tiverem editor implementado —
+  decisão deliberada de não desenhar schema para funcionalidade que ainda não existe.
+- **Serialização da grade do sprite**: em vez de usar a API de bind de BLOB do driver SQLite do
+  PureBasic (não exercitada em nenhum exemplo local, risco desnecessário), `pixel_data` é uma coluna
+  `TEXT` com um dígito hexadecimal por bloco (0–F, cobre os 16 índices de cor), `grid_size*grid_size`
+  caracteres, linha a linha. `SaveSprite`/`FetchSprite` viraram `StoreSprite`/`FetchSprite` (o driver
+  Sprite nativo do PureBasic reserva os nomes `SaveSprite`/`LoadSprite` — colisão só percebida ao
+  compilar: "Invalid name: same as a command (from library 'Sprite')"). Texto do usuário (tag) sempre
+  passa por escape de aspas simples antes de entrar numa string SQL montada por concatenação.
+- **Projeto implícito "noname"**: `EnsureOpen()` cria (se ainda não existe um banco aberto)
+  `GetTemporaryDirectory() + "noname.msxproject"` e roda o schema — chamado explicitamente no início
+  do "Programa principal" de `BadigEditor.pb` quando `CountProgramParameters() = 0`, então o projeto já
+  existe antes de qualquer janela abrir (não é mais lazy, criado só na primeira gravação).
+- **Arquivo → Novo projeto...** / **Arquivo → Abrir projeto...** — `SaveFileRequester`/
+  `OpenFileRequester` com filtro `.msxproject` (dialogo único, mesmo padrão já usado no gerenciador de
+  disco, em vez de dois passos separados pasta+nome). Os dois passam por `OfferSaveProject()` antes:
+  se o projeto atual ainda é o temporário implícito e já tem conteúdo, pergunta se quer salvar antes de
+  trocar (cancelar o `SaveFileRequester` cancela a ação toda, sem descartar nada silenciosamente).
+- **Ao sair**: mesmo `OfferSaveProject()` reaproveitado no fluxo de saída de `BadigEditor.pb` (depois do
+  aviso já existente sobre abas de texto não salvas) — só pergunta se `HasUnsavedContent()` (projeto
+  ainda temporário E com pelo menos um sprite registrado); `Close()` sempre roda antes do `End` final e
+  apaga o arquivo temporário se ele nunca foi promovido a um local permanente.
+- **Harness de teste**: `editor/tools/ProjectDBTestCli.pb` (mesmo padrão `/CONSOLE` de
+  `MSXDiskTestCli.pb`) — round-trip completo sem GUI: cria projeto temporário, registra sprites de
+  tamanhos/modos diferentes, lista, recarrega e compara byte a byte, sobrescreve sem duplicar,
+  `SaveAs` para um arquivo permanente, `OpenExisting` reabrindo do zero, falha graciosa com arquivo
+  inexistente. Foi o principal jeito de validar a lógica de dados nesta sessão — automação de clique
+  no canvas do editor de sprites se mostrou não confiável neste ambiente (mesmo tipo de fragilidade já
+  observada em telas anteriores, ver seção 12 acima sobre `LVM_SETITEMSTATE`/`SCI_SETTEXT`).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
-- Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.
+- ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
+  resolvida (2026-07-18)**: a parte de sprite foi implementada com spec própria (não precisou do
+  detalhe original recuperado, ver seção 4 acima); char/tile continua em aberto.
 - Seção 8 (editor MML/`PLAY`): detalhe da conversa original não foi recuperado.
 - Mapeamento completo de funções/parâmetros NestorBASIC (módulo 9).
 - Lista de comandos suportados/incompatíveis do msxbas2rom (módulo 10), antes de decidir se vale a pena.
@@ -646,6 +732,19 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-18**: duas frentes novas, a maior parte validada por harness de console
+(`ProjectDBTestCli.exe`, round-trip de dados completo) já que automação de clique no canvas do editor
+de sprites não se mostrou confiável neste ambiente — ver detalhe nas seções dos módulos acima:
+- **Editor de sprites** (módulo 4, seção 4 acima): grade 8×8/16×16, palheta MSX1 fixa, modos MSX1/MSX2,
+  ferramentas de desenho completas (lápis/borracha/pincel/balde/reta/retângulo/elipse com prévia ao
+  vivo), rotacionar/deslocar/inverter/limpar. Char/tile continua não iniciado.
+- **Sistema de projeto em SQLite** (módulo 13, seção 13 acima): `.msxproject`, projeto implícito
+  "noname" criado ao iniciar sem parâmetros, **Arquivo → Novo/Abrir projeto...**, aviso ao sair. Só a
+  tabela de Sprites está ligada a editores de verdade por enquanto — o schema cresce quando Basic/
+  Assembly/Telas/Sons/Músicas/listagens LM/documentos ganharem integração ou editor próprio.
+- Nome padrão de aba sem título mudou de `"Sem titulo N"` para `"nonameN"`. Versão embutida no
+  executável atualizada para **5.5.3**.
 
 **Estado ao fim de 2026-07-16**: três frentes novas, todas testadas ao vivo (GUI automation +
 screenshot/pixel-sampling, não só compilação):
@@ -678,7 +777,9 @@ de instalação configurável e um botão de download para o Basic Dignified Sui
 módulo 3f).
 
 **Próximo passo sugerido (ainda não decidido com o usuário)**: candidatos sem nenhum código de motor
-ainda: o assembler Z80 em si (módulo 2, o editor já aceita `.asm` mas não monta nada), editor
-sprite/char (módulo 4, spec original com lacuna de conteúdo não recuperado), ou aprofundar o módulo 12
-(input simulado em runtime, detecção de erro com retorno à linha no editor — o cuidado já registrado
-sobre suporte a Windows incerto para a parte de detecção de erro continua valendo).
+ainda: o assembler Z80 em si (módulo 2, o editor já aceita `.asm` mas não monta nada), editor char/tile
+(módulo 4 — a parte de sprite já está pronta, char continua com a lacuna de conteúdo original não
+recuperada), estender o sistema de projeto (módulo 13) para Basic/Assembly/demais tipos de conteúdo,
+ou aprofundar o módulo 12 (input simulado em runtime, detecção de erro com retorno à linha no editor —
+o cuidado já registrado sobre suporte a Windows incerto para a parte de detecção de erro continua
+valendo).

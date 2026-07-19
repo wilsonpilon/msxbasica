@@ -1,5 +1,0 @@
-1 ' Converted with Basic Dignified (native PureBasic port)
-2 screen 0:key off:width 40:color 15,1,1
-3 ?"Carga de trabalho em DSK"
-4 a$=input$(1)
-5 end
