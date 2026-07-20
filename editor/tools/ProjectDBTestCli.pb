@@ -135,6 +135,107 @@ CheckTrue(Bool(Not ProjectDB::HasSprite(99)), "SpriteExists(99) = #False")
 ; 8) HasUnsavedContent - projeto ainda e temporario e ja tem sprites
 CheckTrue(ProjectDB::HasUnsavedContent(), "HasUnsavedContent() = #True (temporario com sprites)")
 
+; 8b) Diretorio de trabalho (project_info) - round trip simples
+ProjectDB::SetWorkingDir("C:\meu\projeto")
+CheckTrue(Bool(ProjectDB::GetWorkingDir() = "C:\meu\projeto"), "GetWorkingDir() bate com SetWorkingDir()")
+
+; 8c) StoreDocument/FetchDocument - copia do conteudo das abas de texto,
+; guardada junto com o projeto a cada "Salvar"/"Salvar como" de uma aba
+; (ver SaveDocument() em BadigEditor.pb).
+Define DocPath1.s = WorkDir + "fonte1.dmx"
+Define DocContent1.s = "label inicio:" + Chr(10) + "print " + Chr(34) + "ola" + Chr(34) + Chr(10)
+CheckTrue(ProjectDB::StoreDocument(DocPath1, "DMX", DocContent1), "StoreDocument(fonte1.dmx)")
+CheckTrue(ProjectDB::FetchDocument(DocPath1), "FetchDocument(fonte1.dmx)")
+CheckTrue(Bool(ProjectDB::LastDocumentContent() = DocContent1), "Documento: conteudo bate com o salvo")
+CheckTrue(Bool(ProjectDB::LastDocumentMode() = "DMX"), "Documento: modo = DMX")
+
+; Salvar a mesma aba de novo (edicao) tem que atualizar, nao duplicar
+Define DocContent1b.s = DocContent1 + "' mais uma linha"
+CheckTrue(ProjectDB::StoreDocument(DocPath1, "DMX", DocContent1b), "StoreDocument(fonte1.dmx) de novo (edicao)")
+ProjectDB::FetchDocument(DocPath1)
+CheckTrue(Bool(ProjectDB::LastDocumentContent() = DocContent1b), "Documento: conteudo atualizado apos segunda gravacao")
+
+; Conteudo com aspas simples tem que sobreviver ao escape da query SQL
+Define DocPath2.s = WorkDir + "fonte2.asm"
+Define DocContent2.s = "; it's a test" + Chr(10) + "ld a,'x'" + Chr(10)
+CheckTrue(ProjectDB::StoreDocument(DocPath2, "ASM", DocContent2), "StoreDocument(fonte2.asm) com aspas simples no conteudo")
+ProjectDB::FetchDocument(DocPath2)
+CheckTrue(Bool(ProjectDB::LastDocumentContent() = DocContent2), "Documento: aspas simples preservadas (escape correto)")
+
+; 8d) StoreAlphabet/FetchAlphabet - alfabetos (charset 256x8) do projeto,
+; mesmo padrao Store/Fetch/List dos sprites.
+Procedure FillAlphaPattern(Array CharsetBytes.a(2), Seed.i)
+  Protected Row, Col
+  For Row = 0 To 255
+    For Col = 0 To 7
+      CharsetBytes(Row, Col) = (Row * 8 + Col + Seed) % 256
+    Next
+  Next
+EndProcedure
+
+Procedure.i AlphaBytesMatch(Array A.a(2), Array B.a(2))
+  Protected Row, Col
+  For Row = 0 To 255
+    For Col = 0 To 7
+      If A(Row, Col) <> B(Row, Col)
+        ProcedureReturn #False
+      EndIf
+    Next
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+Dim AlphaA.a(255, 7) : FillAlphaPattern(AlphaA(), 0)
+Dim AlphaB.a(255, 7) : FillAlphaPattern(AlphaB(), 37)
+
+CheckTrue(ProjectDB::StoreAlphabet(1, "fonte1", AlphaA()), "StoreAlphabet #1 (tag 'fonte1')")
+CheckTrue(ProjectDB::StoreAlphabet(2, "fonte2", AlphaB()), "StoreAlphabet #2 (tag 'fonte2')")
+
+NewList AlphaNumbers.i()
+ProjectDB::ListAlphabetNumbers(AlphaNumbers())
+CheckTrue(Bool(ListSize(AlphaNumbers()) = 2), "ListAlphabetNumbers (esperado 2, achou " + Str(ListSize(AlphaNumbers())) + ")")
+
+Dim LoadedAlphaA.a(255, 7)
+CheckTrue(ProjectDB::FetchAlphabet(1, LoadedAlphaA()), "FetchAlphabet #1")
+CheckTrue(Bool(ProjectDB::LastAlphabetTag() = "fonte1"), "Alfabeto #1: tag = 'fonte1'")
+CheckTrue(AlphaBytesMatch(AlphaA(), LoadedAlphaA()), "Alfabeto #1: 2048 bytes batem com o original")
+
+; Sobrescreve o alfabeto #1 (tag diferente) - nao pode duplicar
+CheckTrue(ProjectDB::StoreAlphabet(1, "fonte1b", AlphaB()), "StoreAlphabet #1 de novo (sobrescrevendo tag/dados)")
+ClearList(AlphaNumbers())
+ProjectDB::ListAlphabetNumbers(AlphaNumbers())
+CheckTrue(Bool(ListSize(AlphaNumbers()) = 2), "Ainda 2 alfabetos apos sobrescrever #1 (nao duplicou)")
+ProjectDB::FetchAlphabet(1, LoadedAlphaA())
+CheckTrue(Bool(ProjectDB::LastAlphabetTag() = "fonte1b"), "Alfabeto #1: tag atualizada para 'fonte1b'")
+CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #1: dados atualizados apos sobrescrever")
+
+CheckTrue(ProjectDB::HasAlphabet(2), "HasAlphabet(2) = #True")
+CheckTrue(Bool(Not ProjectDB::HasAlphabet(99)), "HasAlphabet(99) = #False")
+
+; "Projeto 0" (defaults, sempre em memoria): alfabeto 0 = msx.alf embutido
+; no executavel - confere que bate byte a byte com o .alf real do
+; repositorio (alfabetos\msx.alf, dois niveis acima de editor\tools\), pra
+; pegar caso o embutido fique desatualizado em relacao ao arquivo fonte.
+Dim DefaultAlpha.a(255, 7)
+CheckTrue(ProjectDB::FetchDefaultAlphabet(0, DefaultAlpha()), "FetchDefaultAlphabet(0) (projeto 0/defaults)")
+
+Define RealAlfPath.s = GetPathPart(ProgramFilename()) + "..\..\alfabetos\msx.alf"
+Define RealAlfMatches.i = #False
+Define AlfFile = ReadFile(#PB_Any, RealAlfPath)
+If AlfFile
+  Dim RealAlfBytes.a(255, 7)
+  FileSeek(AlfFile, 7)   ; pula o cabecalho binario MSX (ID + enderecos)
+  Define RRow, RCol
+  For RRow = 0 To 255
+    For RCol = 0 To 7
+      RealAlfBytes(RRow, RCol) = ReadByte(AlfFile) & $FF
+    Next
+  Next
+  CloseFile(AlfFile)
+  RealAlfMatches = AlphaBytesMatch(RealAlfBytes(), DefaultAlpha())
+EndIf
+CheckTrue(RealAlfMatches, "Alfabeto 0 (defaults) bate byte a byte com alfabetos\msx.alf real")
+
 ; 9) SaveAs promove pro arquivo permanente
 Define SavedPath.s = WorkDir + "meuprojeto.msxproject"
 CheckTrue(ProjectDB::SaveAs(SavedPath), "SaveAs(" + SavedPath + ")")
@@ -150,6 +251,14 @@ CheckTrue(Bool(ListSize(Numbers()) = 3), "ListSpriteNumbers ainda mostra 3 sprit
 Dim FinalA.b(15, 15)
 ProjectDB::FetchSprite(3, FinalA())
 CheckTrue(GridsMatch(GridC(), FinalA(), 16), "Sprite #3 ainda bate byte a byte apos SaveAs + reabrir")
+CheckTrue(Bool(ProjectDB::GetWorkingDir() = "C:\meu\projeto"), "GetWorkingDir() ainda bate apos SaveAs")
+ProjectDB::FetchDocument(DocPath1)
+CheckTrue(Bool(ProjectDB::LastDocumentContent() = DocContent1b), "Documento fonte1.dmx ainda bate apos SaveAs")
+ClearList(AlphaNumbers())
+ProjectDB::ListAlphabetNumbers(AlphaNumbers())
+CheckTrue(Bool(ListSize(AlphaNumbers()) = 2), "ListAlphabetNumbers ainda mostra 2 alfabetos apos SaveAs")
+ProjectDB::FetchAlphabet(2, LoadedAlphaA())
+CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #2 ainda bate byte a byte apos SaveAs")
 
 ; 11) OpenExisting - simula "Arquivo -> Abrir projeto...": fecha tudo e
 ; reabre do zero so a partir do caminho salvo, sem passar por EnsureOpen.
@@ -163,6 +272,14 @@ CheckTrue(Bool(ListSize(Numbers()) = 3), "ListSpriteNumbers mostra 3 sprites apo
 Dim ReopenedB.b(15, 15)
 ProjectDB::FetchSprite(2, ReopenedB())
 CheckTrue(GridsMatch(GridB(), ReopenedB(), 8), "Sprite #2 ainda bate byte a byte apos OpenExisting")
+CheckTrue(Bool(ProjectDB::GetWorkingDir() = "C:\meu\projeto"), "GetWorkingDir() ainda bate apos OpenExisting")
+ProjectDB::FetchDocument(DocPath2)
+CheckTrue(Bool(ProjectDB::LastDocumentContent() = DocContent2), "Documento fonte2.asm ainda bate apos OpenExisting")
+ClearList(AlphaNumbers())
+ProjectDB::ListAlphabetNumbers(AlphaNumbers())
+CheckTrue(Bool(ListSize(AlphaNumbers()) = 2), "ListAlphabetNumbers ainda mostra 2 alfabetos apos OpenExisting")
+ProjectDB::FetchAlphabet(1, LoadedAlphaA())
+CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #1 ainda bate byte a byte apos OpenExisting")
 CheckTrue(Bool(Not ProjectDB::OpenExisting(WorkDir + "nao_existe.msxproject")), "OpenExisting falha graciosamente com arquivo inexistente")
 
 ; 12) Close nao deve travar (limpeza final)

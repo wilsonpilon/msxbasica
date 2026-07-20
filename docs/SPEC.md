@@ -42,7 +42,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
 | 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Lado editor pronto (arquivo `.asm` + syntax highlight, 2026-07-16) — motor do assembler em si ainda não iniciado |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
-| 4 | Editor sprite/char | baixo | **Sprite implementado (2026-07-18)** — `editor/SpriteEditorGui.pbi`, ver seção 4. Char/tile ainda não iniciado |
+| 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. Tile (além do charset/fonte 8×8) ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
 | 6 | Editor de som SOUND (PSG) | baixo | Definido (seção 6) |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
@@ -51,7 +51,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
-| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18)** — `editor/ProjectDB.pbi`, ver seção 13. Por enquanto só a tabela de Sprites está ligada; demais tipos de conteúdo entram quando tiverem editor próprio |
+| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
 
 ## Decisões fechadas
 
@@ -401,7 +401,7 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
   imprime a lista de remtags disponíveis e sai do processo, o que não faz sentido dentro do fluxo do
   editor GUI.
 
-### 4. Editor sprite/char — sprite implementado (2026-07-18)
+### 4. Editor sprite/char — sprite e alfabeto (charset) implementados (2026-07-19)
 
 - **Arquivo**: `editor/SpriteEditorGui.pbi`, menu **Criar → Sprite...**. Janela própria (não modal em
   relação ao editor de texto — desabilita a janela principal enquanto aberta, mesmo padrão do
@@ -444,7 +444,61 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
     editor de sprites está aberta; permite duplicar um sprite para outro número.
   - Qualquer alteração não registrada (`SpriteDirty`) pede confirmação antes de navegar para outro
     sprite ou fechar a janela.
-- **Char/tile**: ainda não iniciado — mesma lacuna original, sem detalhe de conversa recuperado.
+- **Char/tile - Alfabeto (Graphos III)**: `editor/CharsetEditorGui.pbi`, menu **Criar → Alfabeto...**,
+  janela própria (mesmo padrão desabilita-a-principal-enquanto-aberta do sprite/disco). Edita o mesmo
+  formato de charset do Graphos III: 256 caracteres × 8 bytes (bitmap 8×8, 1 bit por pixel) = 2048 bytes,
+  originalmente carregado em VRAM no endereço `&H9200` (Pattern Generator Table).
+  - **Arquivo `.ALF`**: binário MSX clássico — cabeçalho de 7 bytes (byte de tipo `&HFE`, endereço
+    inicial/final/execução, 2 bytes cada, little-endian) seguido dos 2048 bytes de dados. Endereço final
+    é o do **último** byte (inclusive, `início + 2047`) — confirmado contra o cabeçalho de um `.alf` real
+    do Graphos III (`CharEd_LoadAlf`/`CharEd_SaveAlf`); validado na leitura (byte de tipo + tamanho
+    mínimo), rejeita com mensagem de erro em vez de carregar lixo silenciosamente.
+  - **Tabela de 256 caracteres** (16×16, `CharEd_RedrawTable`): cabeçalho hex de linha (byte alto) e
+    coluna (nibble baixo) — a posição na grade já é o próprio código do caractere, como um mapa de
+    caracteres clássico. Cada célula é uma miniatura 8×8 (zoom 2×) do glifo atual; a seleção ganha um
+    contorno vermelho.
+  - **Grade grande editável** (8×8, `CharEd_RedrawEditCanvas`): clique liga/desliga um pixel; arrastar
+    com o botão esquerdo pressionado pinta uma sequência de pixels com o mesmo valor do primeiro clique
+    (mesmo padrão de arrastar do lápis/borracha do editor de sprites). **Registrar** é que de fato grava
+    os pixels editados de volta nos 8 bytes do caractere selecionado (e atualiza a miniatura na tabela) —
+    trocar de caractere ou fechar a janela sem registrar pede confirmação (`CharEd_ConfirmDiscardChar`,
+    mesmo padrão do `SpriteEd_ConfirmDiscardSprite`). **Limpar**/**Inverter** operam na grade em edição
+    (não registram sozinhos). Leitura auxiliar dos 8 bytes hex do caractere em edição ao lado da grade.
+  - **Abrir.../Salvar como...**: diálogos com filtro `*.alf`; extensão `.alf` acrescentada
+    automaticamente se o usuário não digitar nenhuma (`EnsureExtension`, mesma rotina do fluxo de
+    projeto) — continuam independentes do sistema de projeto abaixo, servem pra importar/exportar
+    arquivos `.alf` de verdade (compatibilidade Graphos III).
+  - **Integrado ao sistema de projeto** (2026-07-19, módulo 13) — mesmo padrão do editor de sprites:
+    tabela `alphabets` no `.msxproject` (`alphabet_number` chave primária, `tag`, `charset_data` — TEXT
+    hex, 2 dígitos por byte, 4096 caracteres —, `updated_at`). Barra de projeto própria no topo da
+    janela: número do alfabeto atual + **Primeiro/Anterior/Próximo/Último** (`ProjectDB::
+    ListAlphabetNumbers()` + `SpriteEd_FindNavTarget()`, reaproveitado do editor de sprites — função
+    genérica, sem nada específico de sprite), campo de **tag** (até 16 caracteres), **Registrar
+    alfabeto** (grava o alfabeto inteiro — 256 caracteres — no projeto; também aplica antes qualquer
+    edição pendente do caractere atual, pra não perder pixels não registrados a nível de caractere) e
+    **Novo alfabeto** (numera automaticamente, maior número já registrado + 1). Duas camadas de "não
+    registrado" rastreadas separadamente (`EditDirty` por caractere, `AlphaDirty` pelo alfabeto inteiro)
+    — qualquer uma pendente pede confirmação (`CharEd_ConfirmDiscardAlphabet`) antes de navegar, criar
+    novo ou fechar a janela.
+  - **"Projeto 0" (defaults, 2026-07-19)** — `ProjectDB::EnsureDefaultsOpen()`: uma **segunda conexão
+    SQLite** (`#DefaultsDB`), sempre `OpenDatabase(#DefaultsDB, ":memory:", ...)`, nunca em arquivo,
+    recriada do zero a cada vez que a IDE abre, completamente independente do projeto ativo (`#DB`) —
+    o usuário não tem como "Salvar" esse projeto porque não existe nenhum caminho de código que grave
+    nele. Semeada com o **alfabeto 0 = charset padrão do MSX**, embutido no próprio `.exe` via
+    `editor/DefaultCharsetMsx.pbi` (`DataSection` com os 2048 bytes de `alfabetos\msx.alf`, gerado por
+    script a partir do `.alf` real — ver comentário no topo do arquivo dizendo pra regenerar, não editar
+    à mão). **Novo alfabeto** sempre parte desse alfabeto 0 (`ProjectDB::FetchDefaultAlphabet(0, ...)`),
+    nunca em branco — diferente do "Novo sprite", que começa vazio; foi um pedido explícito. Mesma fonte
+    também usada como charset inicial ao abrir a janela quando o projeto ainda não tem nenhum alfabeto
+    registrado. **Detalhe de PureBasic**: um `Module` não enxerga uma `Procedure`/`DataSection` externa
+    definida fora dele mesmo com forward `Declare` — só funciona com `XIncludeFile
+    "DefaultCharsetMsx.pbi"` de dentro do próprio `Module ProjectDB ... EndModule` (ver comentário em
+    `ProjectDB.pbi`).
+  - **Harness**: `ProjectDBTestCli.pb` ganhou cobertura completa (Store/Fetch/List/Has de alfabetos,
+    round-trip via `SaveAs`/`OpenExisting`, e um teste que lê `alfabetos\msx.alf` direto do disco e
+    confere que bate byte a byte com `FetchDefaultAlphabet(0, ...)` — pega qualquer futura
+    dessincronização entre o `.alf` fonte e os bytes embutidos no `.exe`).
+  - **Tile** (além do charset/fonte 8×8): ainda não iniciado.
 
 ### 5. Editor gráfico LINE/CIRCLE/PSET/DRAW
 - Mais simples que DRAW puro isolado porque LINE/CIRCLE/PSET são coordenadas absolutas (sem estado de
@@ -701,11 +755,34 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   aviso já existente sobre abas de texto não salvas) — só pergunta se `HasUnsavedContent()` (projeto
   ainda temporário E com pelo menos um sprite registrado); `Close()` sempre roda antes do `End` final e
   apaga o arquivo temporário se ele nunca foi promovido a um local permanente.
+- **Arquivo → Salvar projeto / Salvar projeto como...** (2026-07-19) — `SaveProject(SaveAsFlag.b =
+  #False)`: se o projeto já tem caminho permanente e não é "salvar como", não faz nada (o `ProjectDB`
+  grava cada `StoreSprite()` na hora via SQLite, nunca fica "sujo" em memória como uma aba de texto);
+  senão pede um caminho (`SaveFileRequester`, sugerindo o caminho atual quando já permanente, para
+  facilitar salvar uma cópia com outro nome) e promove/copia via `ProjectDB::SaveAs()`. `OfferSaveProject()`
+  foi refatorado para chamar `SaveProject(#True)` em vez de duplicar esse bloco. **Extensão automática**:
+  `EnsureExtension(Path.s, Ext.s)` (`BadigEditor.pb`) acrescenta `.msxproject` quando o `SaveFileRequester`
+  volta um caminho sem nenhuma extensão (usuário só digitou um nome) — aplicado tanto em "Novo projeto..."
+  quanto em "Salvar projeto como..."; se o usuário digitar outra extensão, respeita a escolha.
+- **Cópia do conteúdo das abas de texto dentro do projeto** (2026-07-19) — nova tabela `documents`
+  (`path` chave primária, `mode`, `content`, `updated_at`) e `ProjectDB::StoreDocument()`/`FetchDocument()`/
+  `LastDocumentContent()`/`LastDocumentMode()`, mesmo padrão Store/Fetch dos sprites. `SaveDocument()` em
+  `BadigEditor.pb` chama `StoreDocument()` logo depois de escrever o arquivo `.dmx`/`.amx`/`.asm` em disco
+  — o projeto passa a ter uma cópia sempre atualizada do texto-fonte, além do arquivo físico já salvo.
+  Só sincroniza abas que já têm caminho em disco (`Path <> ""`); abas "nonameN" ainda não salvas ficam de
+  fora, por enquanto não há como reabri-las a partir do projeto sem passar por esse primeiro save.
+- **Diretório de trabalho** (2026-07-19) — chave `working_dir` em `project_info`
+  (`ProjectDB::SetWorkingDir()`/`GetWorkingDir()`), inicializada com `GetCurrentDirectory()` quando o
+  projeto é criado (implícito "noname" ou "Novo projeto...") e atualizada para a pasta do arquivo (via
+  `GetPathPart()`) a cada `SaveDocument()` bem-sucedido — reflete "a pasta que está sendo trabalhada", ou
+  o diretório corrente se nenhum arquivo ainda foi salvo explicitamente.
 - **Harness de teste**: `editor/tools/ProjectDBTestCli.pb` (mesmo padrão `/CONSOLE` de
   `MSXDiskTestCli.pb`) — round-trip completo sem GUI: cria projeto temporário, registra sprites de
   tamanhos/modos diferentes, lista, recarrega e compara byte a byte, sobrescreve sem duplicar,
-  `SaveAs` para um arquivo permanente, `OpenExisting` reabrindo do zero, falha graciosa com arquivo
-  inexistente. Foi o principal jeito de validar a lógica de dados nesta sessão — automação de clique
+  testa `working_dir` e `documents` (incluindo conteúdo com aspas simples, pra validar o escape SQL),
+  `SaveAs` para um arquivo permanente, `OpenExisting` reabrindo do zero (confirma que sprites, documents
+  e working_dir sobrevivem aos dois), falha graciosa com arquivo inexistente. Foi o principal jeito de
+  validar a lógica de dados nesta sessão — automação de clique
   no canvas do editor de sprites se mostrou não confiável neste ambiente (mesmo tipo de fragilidade já
   observada em telas anteriores, ver seção 12 acima sobre `LVM_SETITEMSTATE`/`SCI_SETTEXT`).
 
@@ -732,6 +809,37 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-19 (sessão 2)**: editor de alfabetos ganhou **integração com o sistema de
+projeto** (módulo 4/13 acima) — tabela `alphabets` no `.msxproject`, barra de projeto (número/tag/
+Primeiro/Anterior/Próximo/Último/**Registrar alfabeto**/**Novo alfabeto**), mesmo padrão do editor de
+sprites (`SpriteEd_FindNavTarget` reaproveitado diretamente). Novidade arquitetural: **"projeto 0"**
+(`ProjectDB::EnsureDefaultsOpen()`) — segunda conexão SQLite sempre `:memory:`, nunca salva, semeada com
+o charset padrão do MSX embutido no `.exe` (`editor/DefaultCharsetMsx.pbi`, `DataSection` gerada a partir
+de `alfabetos\msx.alf`) como alfabeto 0; "Novo alfabeto" sempre parte dele. Harness `ProjectDBTestCli`
+cobre tudo, incluindo um teste que compara os bytes embutidos contra o `.alf` real no disco (pega
+dessincronização futura). Validado por build + harness + verificação visual ao vivo (menu → janela abriu
+com a barra de projeto completa, "Alfabeto: #1" carregado do defaults corretamente) — **não foi
+confirmado ao vivo** o clique de navegação/registrar em si (mesma ressalva de automação de mouse pouco
+confiável já registrada na sessão 1 abaixo), mas a lógica é a mesma já usada no editor de sprites.
+
+**Estado ao fim de 2026-07-19 (sessão 1)**: **Arquivo → Salvar projeto / Salvar projeto como...** (módulo 13),
+extensão `.msxproject`/`.alf` automática (`EnsureExtension`), cópia do conteúdo das abas de texto e
+diretório de trabalho passaram a ser guardados no `.msxproject` (ver módulo 13). Novo **editor de
+alfabetos** (módulo 4, seção 4 acima, menu **Criar → Alfabeto...**): formato `.ALF` do Graphos III (256
+caracteres × 8 bytes, cabeçalho binário MSX de 7 bytes), tabela 16×16 com miniaturas + grade grande
+editável + **Registrar**, abrir/salvar `.alf`, carrega `alfabetos\msx.alf` como padrão ao abrir. Validado
+por build + verificação visual ao vivo (menu → janela abriu, `alfabetos\msx.alf` carregou e renderizou
+corretamente na tabela, botão Inverter confirmado). O clique-para-selecionar-caractere na tabela e o
+arrastar-para-pintar na grade grande **não foram confirmados ao vivo** nesta sessão — automação por
+`PostMessage`/coordenadas de mouse ficou pouco confiável no ambiente (havia outra janela/app real
+disputando foco na mesma máquina), mas o código replica exatamente o padrão já validado em produção do
+`SpriteEd_` (mesmo uso de `GetGadgetAttribute(#PB_Canvas_MouseX/Y)` e divisão por tamanho de célula) —
+revisão de código deu a mesma aritmética correta, só falta uma confirmação visual ao vivo numa sessão
+futura. Ainda **não integrado ao sistema de projeto**: alfabeto vive só no arquivo `.alf`.
+Alfabeto padrão `alfabetos\msx.alf` foi recapturado pelo usuário durante a sessão (versão anterior tinha
+um trecho de texto de sessão MSX BASIC em vez de bitmap, por um bug na captura original via
+`VPEEK`/`POKE`).
 
 **Estado ao fim de 2026-07-18**: duas frentes novas, a maior parte validada por harness de console
 (`ProjectDBTestCli.exe`, round-trip de dados completo) já que automação de clique no canvas do editor

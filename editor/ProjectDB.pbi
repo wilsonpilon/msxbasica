@@ -35,6 +35,14 @@ DeclareModule ProjectDB
   Declare.i HasUnsavedContent()
   Declare Close()
 
+  Declare SetWorkingDir(Dir.s)
+  Declare.s GetWorkingDir()
+
+  Declare.i StoreDocument(Path.s, Mode.s, Content.s)
+  Declare.i FetchDocument(Path.s)
+  Declare.s LastDocumentContent()
+  Declare.s LastDocumentMode()
+
   Declare.i StoreSprite(Number.i, Tag.s, GridSize.i, SpriteMode.i, Array Grid.b(2))
   Declare.i FetchSprite(Number.i, Array Grid.b(2))
   Declare.i LastGridSize()
@@ -43,11 +51,31 @@ DeclareModule ProjectDB
   Declare.i HasSprite(Number.i)
   Declare ListSpriteNumbers(List Numbers.i())
 
+  Declare.i StoreAlphabet(Number.i, Tag.s, Array CharsetBytes.a(2))
+  Declare.i FetchAlphabet(Number.i, Array CharsetBytes.a(2))
+  Declare.s LastAlphabetTag()
+  Declare.i HasAlphabet(Number.i)
+  Declare ListAlphabetNumbers(List Numbers.i())
+
+  ; "Projeto 0": banco SQLite a parte, sempre em memoria (nunca em arquivo,
+  ; nunca salvo), recriado do zero a cada vez que a IDE abre - fonte interna
+  ; de conteudo padrao (hoje so o alfabeto 0 = msx.alf embutido no executavel
+  ; via DefaultCharsetMsx.pbi; outros tipos de conteudo ganham entrada aqui
+  ; conforme forem sendo desenvolvidos). So leitura pelo resto do app.
+  Declare.i FetchDefaultAlphabet(Number.i, Array CharsetBytes.a(2))
+
   Declare.s GetLastError()
 EndDeclareModule
 
 Module ProjectDB
+  ; Incluido de dentro do proprio Module (nao no topo de BadigEditor.pb como
+  ; os demais XIncludeFile) porque um Module do PureBasic nao enxerga
+  ; procedures/DataSection definidas fora dele, mesmo com forward
+  ; declaration - so funciona se a inclusao acontecer aqui dentro.
+  XIncludeFile "DefaultCharsetMsx.pbi"
+
   #DB = 0
+  #DefaultsDB = 1   ; "projeto 0" - conexao SQLite separada, sempre :memory:
 
   Global IsOpen.b = #False
   Global TempFlag.b = #False
@@ -56,6 +84,10 @@ Module ProjectDB
   Global FetchedGridSize.i = 0
   Global FetchedSpriteMode.i = 0
   Global FetchedTag.s = ""
+  Global FetchedDocContent.s = ""
+  Global FetchedDocMode.s = ""
+  Global FetchedAlphabetTag.s = ""
+  Global DefaultsOpen.b = #False
 
   Procedure.s NewTempPath()
     ProcedureReturn GetTemporaryDirectory() + "noname.msxproject"
@@ -69,6 +101,16 @@ Module ProjectDB
                          "grid_size INTEGER NOT NULL, " +
                          "sprite_mode INTEGER NOT NULL, " +
                          "pixel_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS documents (" +
+                         "path TEXT PRIMARY KEY, " +
+                         "mode TEXT NOT NULL, " +
+                         "content TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS alphabets (" +
+                         "alphabet_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "charset_data TEXT NOT NULL, " +
                          "updated_at TEXT)")
   EndProcedure
 
@@ -108,6 +150,7 @@ Module ProjectDB
     EndIf
     RunSchema()
     TempFlag = #True
+    SetWorkingDir(GetCurrentDirectory())
     ProcedureReturn #True
   EndProcedure
 
@@ -123,6 +166,7 @@ Module ProjectDB
     EndIf
     RunSchema()
     TempFlag = #False
+    SetWorkingDir(GetCurrentDirectory())
 
     If WasTemp And OldPath <> "" And OldPath <> Path
       DeleteFile(OldPath)
@@ -234,6 +278,88 @@ Module ProjectDB
     CurrentPath = ""
   EndProcedure
 
+  ; Diretorio "de trabalho" do projeto: pasta onde os arquivos-fonte (abas de
+  ; texto) estao sendo salvos - atualizado a cada SaveDocument() bem-sucedido
+  ; em BadigEditor.pb (GetPathPart do caminho salvo). Chave/valor avulsa em
+  ; project_info, inicializada com GetCurrentDirectory() quando o projeto e
+  ; criado (implicito "noname" ou "Novo projeto..."), antes de qualquer
+  ; arquivo ter sido salvo - "o diretorio corrente se o usuario usou o
+  ; padrao".
+  Procedure SetWorkingDir(Dir.s)
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    Protected SafeDir.s = ReplaceString(Dir, "'", "''")
+    DatabaseUpdate(#DB, "DELETE FROM project_info WHERE key='working_dir'")
+    DatabaseUpdate(#DB, "INSERT INTO project_info (key, value) VALUES ('working_dir', '" + SafeDir + "')")
+  EndProcedure
+
+  Procedure.s GetWorkingDir()
+    If Not EnsureOpen()
+      ProcedureReturn ""
+    EndIf
+
+    Protected Result.s = ""
+    If DatabaseQuery(#DB, "SELECT value FROM project_info WHERE key='working_dir'")
+      If NextDatabaseRow(#DB)
+        Result = GetDatabaseString(#DB, 0)
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Result
+  EndProcedure
+
+  ; Guarda uma copia atualizada do conteudo de uma aba de texto ja salva em
+  ; disco (Path sempre um caminho absoluto real, nunca aba "noname" ainda nao
+  ; salva) - chamado por SaveDocument() em BadigEditor.pb logo apos escrever
+  ; o arquivo .dmx/.amx/.asm, mantendo o projeto com uma copia em sincronia
+  ; com o que esta no disco. DELETE + INSERT (mesmo padrao de StoreSprite)
+  ; chaveado por path, entao salvar a mesma aba de novo so atualiza a linha.
+  Procedure.i StoreDocument(Path.s, Mode.s, Content.s)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafePath.s = ReplaceString(Path, "'", "''")
+    Protected SafeMode.s = ReplaceString(Mode, "'", "''")
+    Protected SafeContent.s = ReplaceString(Content, "'", "''")
+
+    DatabaseUpdate(#DB, "DELETE FROM documents WHERE path='" + SafePath + "'")
+    Protected SQL.s = "INSERT INTO documents (path, mode, content, updated_at) VALUES ('" +
+                       SafePath + "', '" + SafeMode + "', '" + SafeContent + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; Le de volta a copia de uma aba guardada por StoreDocument(); mesmo padrao
+  ; de FetchSprite() (campos extras via LastDocumentContent()/LastDocumentMode()
+  ; em vez de parametro de saida por ponteiro de string).
+  Procedure.i FetchDocument(Path.s)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafePath.s = ReplaceString(Path, "'", "''")
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT mode, content FROM documents WHERE path='" + SafePath + "'")
+      If NextDatabaseRow(#DB)
+        FetchedDocMode = GetDatabaseString(#DB, 0)
+        FetchedDocContent = GetDatabaseString(#DB, 1)
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastDocumentContent()
+    ProcedureReturn FetchedDocContent
+  EndProcedure
+
+  Procedure.s LastDocumentMode()
+    ProcedureReturn FetchedDocMode
+  EndProcedure
+
   Procedure.i StoreSprite(Number.i, Tag.s, GridSize.i, SpriteMode.i, Array Grid.b(2))
     If Not EnsureOpen()
       ProcedureReturn #False
@@ -329,6 +455,132 @@ Module ProjectDB
       Wend
       FinishDatabaseQuery(#DB)
     EndIf
+  EndProcedure
+
+  ; Empacota CharsetBytes (256x8) num unico TEXT hex (2 digitos por byte,
+  ; 4096 caracteres) e grava (DELETE+INSERT, mesmo padrao de StoreSprite) na
+  ; tabela alphabets de DBNum - interna, usada tanto pelo projeto ativo
+  ; (#DB) quanto pelo projeto de defaults (#DefaultsDB, so na semeadura do
+  ; alfabeto 0).
+  Procedure.i StoreAlphabetInto(DBNum.i, Number.i, Tag.s, Array CharsetBytes.a(2))
+    Protected Row, Col
+    Protected HexData.s = ""
+    For Row = 0 To 255
+      For Col = 0 To 7
+        HexData = HexData + RSet(Hex(CharsetBytes(Row, Col)), 2, "0")
+      Next
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+
+    DatabaseUpdate(DBNum, "DELETE FROM alphabets WHERE alphabet_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO alphabets (alphabet_number, tag, charset_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', '" + HexData + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(DBNum, SQL)
+  EndProcedure
+
+  ; Le de volta um alfabeto de DBNum pra dentro de CharsetBytes (256x8) -
+  ; tag extra via LastAlphabetTag() (mesmo padrao de FetchSprite/FetchDocument).
+  Procedure.i FetchAlphabetFrom(DBNum.i, Number.i, Array CharsetBytes.a(2))
+    Protected Found.b = #False
+    If DatabaseQuery(DBNum, "SELECT tag, charset_data FROM alphabets WHERE alphabet_number=" + Str(Number))
+      If NextDatabaseRow(DBNum)
+        FetchedAlphabetTag = GetDatabaseString(DBNum, 0)
+        Protected HexData.s = GetDatabaseString(DBNum, 1)
+        Protected Row, Col, Idx = 0
+        For Row = 0 To 255
+          For Col = 0 To 7
+            CharsetBytes(Row, Col) = Val("$" + Mid(HexData, Idx * 2 + 1, 2))
+            Idx + 1
+          Next
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(DBNum)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.i StoreAlphabet(Number.i, Tag.s, Array CharsetBytes.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    ProcedureReturn StoreAlphabetInto(#DB, Number, Tag, CharsetBytes())
+  EndProcedure
+
+  Procedure.i FetchAlphabet(Number.i, Array CharsetBytes.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    ProcedureReturn FetchAlphabetFrom(#DB, Number, CharsetBytes())
+  EndProcedure
+
+  Procedure.s LastAlphabetTag()
+    ProcedureReturn FetchedAlphabetTag
+  EndProcedure
+
+  Procedure.i HasAlphabet(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM alphabets WHERE alphabet_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListAlphabetNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT alphabet_number FROM alphabets ORDER BY alphabet_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; Abre (uma unica vez por sessao) o banco SQLite ":memory:" do "projeto 0"
+  ; e semeia o alfabeto 0 com o charset padrao do MSX embutido no executavel
+  ; (FillDefaultMsxCharset(), de DefaultCharsetMsx.pbi) - nunca toca em
+  ; disco, nunca e salvo, nao interfere no projeto ativo (#DB e #DefaultsDB
+  ; sao conexoes separadas).
+  Procedure.i EnsureDefaultsOpen()
+    If DefaultsOpen
+      ProcedureReturn #True
+    EndIf
+
+    If Not OpenDatabase(#DefaultsDB, ":memory:", "", "")
+      LastError = "Nao foi possivel abrir o projeto de defaults em memoria."
+      ProcedureReturn #False
+    EndIf
+
+    DatabaseUpdate(#DefaultsDB, "CREATE TABLE IF NOT EXISTS alphabets (" +
+                                 "alphabet_number INTEGER PRIMARY KEY, " +
+                                 "tag TEXT, " +
+                                 "charset_data TEXT NOT NULL, " +
+                                 "updated_at TEXT)")
+
+    Dim SeedBytes.a(255, 7)
+    FillDefaultMsxCharset(SeedBytes())
+    StoreAlphabetInto(#DefaultsDB, 0, "msx", SeedBytes())
+
+    DefaultsOpen = #True
+    ProcedureReturn #True
+  EndProcedure
+
+  Procedure.i FetchDefaultAlphabet(Number.i, Array CharsetBytes.a(2))
+    If Not EnsureDefaultsOpen()
+      ProcedureReturn #False
+    EndIf
+    ProcedureReturn FetchAlphabetFrom(#DefaultsDB, Number, CharsetBytes())
   EndProcedure
 
   Procedure.s GetLastError()

@@ -2,7 +2,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.5.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 5.7.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -82,9 +82,14 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   projeto implícito **"noname.msxproject"** num arquivo temporário — tudo que for registrado vai
   sendo gravado nele sem precisar criar um projeto antes. **Arquivo → Novo projeto...** troca para um
   projeto novo e vazio num local escolhido (oferece salvar o atual primeiro, se tiver conteúdo não
-  salvo); **Arquivo → Abrir projeto...** abre um `.msxproject` já existente. Ao sair, se o projeto
-  implícito tiver conteúdo registrado e ainda não tiver sido salvo num arquivo permanente, a IDE
-  pergunta se quer salvar (e onde, com nome definitivo) antes de fechar.
+  salvo); **Arquivo → Abrir projeto...** abre um `.msxproject` já existente. **Arquivo → Salvar
+  projeto**/**Salvar projeto como...** salvam o projeto atual (o primeiro reaproveita o caminho já
+  escolhido, sem diálogo; o segundo sempre pergunta um caminho novo, permitindo salvar uma cópia com
+  outro nome) — extensão `.msxproject` é acrescentada automaticamente se não digitada. Ao sair, se o
+  projeto implícito tiver conteúdo registrado e ainda não tiver sido salvo num arquivo permanente, a
+  IDE pergunta se quer salvar (e onde, com nome definitivo) antes de fechar. O projeto também guarda
+  uma cópia sempre atualizada do conteúdo de cada aba de texto já salva em disco e o diretório de
+  trabalho (pasta do último arquivo salvo, ou o diretório corrente enquanto nada foi salvo ainda).
 - **Editor de sprites** (`editor/SpriteEditorGui.pbi`, menu **Criar → Sprite...**) — grade clicável
   8×8 ou 16×16 com a **palheta original de 16 cores do MSX1** (TMS9918), e radios **MSX1** (sprite
   inteiro com uma única cor) / **MSX2** (uma cor por linha, aplicada automaticamente conforme o
@@ -98,14 +103,29 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   último sprite já registrado, e **Copiar**/**Colar** duplicam um sprite para outro número.
 
   ![Editor de sprites (Criar → Sprite...) com grade 16×16, paleta MSX1, barra de projeto (número, navegação, tag) e prévia em escala reduzida](images/msxbasica-04.png)
+- **Editor de alfabetos** (`editor/CharsetEditorGui.pbi`, menu **Criar → Alfabeto...**) — edita charsets
+  no formato **`.ALF` do Graphos III**: 256 caracteres de 8×8 pixels (2048 bytes), binário MSX clássico
+  com cabeçalho de 7 bytes (tipo `&HFE`, endereços inicial/final/execução — carregado originalmente em
+  `&H9200`, a Pattern Generator Table da VRAM). Tabela com os 256 caracteres (16 por linha, cabeçalho
+  hex de linha/coluna, miniatura de cada glifo) — clicar num caractere carrega seus pixels numa grade
+  8×8 bem ampliada, onde dá pra ligar/apagar cada pixel (clique ou arrastar); **Registrar** grava os
+  pixels editados de volta no caractere selecionado e atualiza a miniatura na tabela. **Abrir...**/
+  **Salvar como...** leem e gravam `.alf` (extensão acrescentada automaticamente se não digitada) —
+  independente do projeto, pra compatibilidade Graphos III. Também integrado ao **sistema de projeto**,
+  igual ao editor de sprites: um projeto pode ter vários alfabetos, com barra própria de número/tag/
+  **Primeiro**/**Anterior**/**Próximo**/**Último**/**Registrar alfabeto**/**Novo alfabeto** (numera
+  automaticamente e sempre parte do charset padrão do MSX, nunca em branco). Esse charset padrão vem de
+  um **"projeto 0"** interno (`ProjectDB::EnsureDefaultsOpen()`) — um banco SQLite à parte, sempre em
+  memória, nunca salvo, semeado com `alfabetos\msx.alf` **embutido no próprio `.exe`**
+  (`editor/DefaultCharsetMsx.pbi`).
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
-em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), demais editores
-visuais (char/tile, LINE/CIRCLE/DRAW, som, tracker, MML/`PLAY`) e sua integração ao sistema de
-projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em tempo
-real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e abrir
-o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
+em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editor de tile (além do
+charset/fonte 8×8), demais editores visuais (LINE/CIRCLE/DRAW, som, tracker, MML/`PLAY`) e sua
+integração ao sistema de projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via
+socket/XML em tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só
+"gerar disco e abrir o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
 
 ## Changelog resumido
 
@@ -164,6 +184,37 @@ o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
   cobrindo round-trip completo dos dados (criar, salvar, listar, recarregar byte a byte, promover para
   arquivo permanente, reabrir). Nome padrão de aba sem título mudou de "Sem titulo N" para "nonameN".
   Versão embutida no executável atualizada para `5.5.3`.
+- **2026-07-19** — Novos itens **Arquivo → Salvar projeto** / **Salvar projeto como...**: salvar
+  reaproveita o caminho já escolhido (sem diálogo, já que o `ProjectDB` grava cada sprite na hora via
+  SQLite); "salvar como" sempre pergunta um caminho novo, sugerindo o atual, permitindo salvar uma
+  cópia do projeto com outro nome. `OfferSaveProject()` (usado em "Novo projeto..."/ao sair) passou a
+  reaproveitar essa mesma rotina em vez de duplicar a lógica de salvar. Se o nome digitado no diálogo
+  não tiver extensão, `.msxproject` é acrescentado automaticamente. O projeto SQLite ganhou duas
+  novidades: uma cópia sempre atualizada do conteúdo de cada aba de texto já salva em disco (tabela
+  `documents`, sincronizada a cada "Salvar"/"Salvar como" de uma aba — além do arquivo `.dmx`/`.amx`/
+  `.asm`/tokenizado que já ia pro disco) e o diretório de trabalho (`working_dir`, a pasta do último
+  arquivo salvo, ou o diretório corrente enquanto nada foi salvo ainda). Harness `ProjectDBTestCli`
+  ganhou cobertura pra essas duas novidades, incluindo round-trip através de `SaveAs`/`OpenExisting`.
+  Mais tarde no mesmo dia: novo **editor de alfabetos** (menu **Criar → Alfabeto...**,
+  `editor/CharsetEditorGui.pbi`) para o formato `.ALF` do Graphos III (256 caracteres 8×8 = 2048 bytes,
+  binário MSX com cabeçalho de 7 bytes carregado em `&H9200`) — tabela com os 256 caracteres (16 por
+  linha, cabeçalho hex de linha/coluna), grade grande editável (clique/arrastar liga-desliga pixel),
+  botão **Registrar** grava os pixels de volta no caractere e atualiza a miniatura na tabela,
+  **Abrir...**/**Salvar como...** leem/gravam `.alf` (extensão automática), carrega
+  `alfabetos\msx.alf` como padrão ao abrir. Ainda mais tarde no mesmo dia: **integração com o sistema de
+  projeto**, igual ao editor de sprites — tabela `alphabets` no `.msxproject`, barra própria com número/
+  tag/**Primeiro**/**Anterior**/**Próximo**/**Último**/**Registrar alfabeto**/**Novo alfabeto** (sempre
+  parte do charset padrão do MSX, nunca em branco). Esse padrão passou a vir de um **"projeto 0"**
+  interno — segundo banco SQLite, sempre `:memory:`, nunca salvo, semeado com `alfabetos\msx.alf`
+  **embutido no `.exe`** (`editor/DefaultCharsetMsx.pbi`, gerado a partir do `.alf` real). Harness
+  `ProjectDBTestCli` ganhou cobertura completa de alfabetos, incluindo um teste que compara os bytes
+  embutidos contra o arquivo `.alf` real no disco. Versão embutida no executável atualizada para
+  `5.7.3` (padrão de `build.ps1` e do fallback de compilação direta em `BadigEditor.pb`), fechando o
+  dia de trabalho no editor de alfabetos e no sistema de projeto. Documentação revisada:
+  `docs/MANUAL.md` ganhou a seção **Editor de alfabetos** e as novas opções de projeto (Salvar
+  projeto/Salvar projeto como..., cópia das abas de texto, diretório de trabalho); a tabela de
+  parâmetros do `build.ps1` no manual também foi corrigida (estava documentando nomes de flag
+  desatualizados, `-Version`/`-SourceFile`/`-OutputExe`, em vez dos reais `-V`/`-i`/`-o`).
 
 ## Ferramentas e ambiente
 

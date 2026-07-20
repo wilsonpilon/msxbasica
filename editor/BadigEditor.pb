@@ -22,6 +22,12 @@ Declare.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
 ; acima, mesmo motivo (dependencia circular do include).
 Declare.b InjectTextAtCursor(Text.s)
 
+; Referenciada pelos dialogos de "Abrir"/"Salvar como" do editor de alfabetos
+; (CharsetEditorGui.pbi) e do fluxo de projeto mais abaixo - mesmo motivo das
+; duas declaracoes acima (definida so mais abaixo neste arquivo).
+Declare.s EnsureExtension(Path.s, Ext.s)
+
+
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
 XIncludeFile "EditorSettings.pbi"
@@ -31,6 +37,7 @@ XIncludeFile "MSXDisk.pbi"
 XIncludeFile "DiskManagerGui.pbi"
 XIncludeFile "ProjectDB.pbi"
 XIncludeFile "SpriteEditorGui.pbi"
+XIncludeFile "CharsetEditorGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -306,6 +313,8 @@ Enumeration MenuItems
   #Menu_NewAssembly
   #Menu_NewProject
   #Menu_OpenProject
+  #Menu_SaveProject
+  #Menu_SaveProjectAs
   #Menu_Open
   #Menu_Save
   #Menu_SaveAs
@@ -316,6 +325,7 @@ Enumeration MenuItems
   #Menu_Exit
   #Menu_CreateDisk
   #Menu_CreateSprite
+  #Menu_CreateAlphabet
   #Menu_RunBasic
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
@@ -355,7 +365,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "5.3.1"
+  #App_Version = "5.7.3"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -535,6 +545,7 @@ Declare   UpdateTabCaption(Position)
 Declare   OpenDocumentDialog()
 Declare.b SaveDocument(SaveAs.b = #False)
 Declare.b ConfirmDiscard(Text.s)
+Declare.b SaveProject(SaveAsFlag.b = #False)
 Declare.b OfferSaveProject()
 Declare   CloseTab(Position)
 Declare   SaveAsTokenizedNative()
@@ -1694,18 +1705,71 @@ Procedure.b SaveDocument(SaveAs.b = #False)
     ProcedureReturn #False
   EndIf
 
-  WriteString(FileNum, ReadSciText(Docs()\SciGadget))
+  Protected Text.s = ReadSciText(Docs()\SciGadget)
+  WriteString(FileNum, Text)
   CloseFile(FileNum)
 
   Docs()\Path     = Path
   Docs()\Modified = #False
   UpdateTabCaption(Position)
+
+  ; Alem do arquivo em disco, mantem uma copia atualizada do conteudo desta
+  ; aba dentro do projeto atual (.msxproject) e registra a pasta como "onde
+  ; os arquivos estao sendo trabalhados" - ver ProjectDB::StoreDocument()/
+  ; SetWorkingDir() em ProjectDB.pbi.
+  ProjectDB::StoreDocument(Path, Docs()\Mode, Text)
+  ProjectDB::SetWorkingDir(GetPathPart(Path))
+
   ProcedureReturn #True
 EndProcedure
 
 Procedure.b ConfirmDiscard(Text.s)
   Protected Result = MessageRequester(#App_Title, Text, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning)
   ProcedureReturn Bool(Result = #PB_MessageRequester_Yes)
+EndProcedure
+
+; Se Path nao tem nenhuma extensao, acrescenta Ext (sem ponto) - usado nos
+; dialogos de projeto (.msxproject) pra garantir a extensao padrao mesmo
+; quando o usuario so digita um nome no SaveFileRequester; nao mexe na
+; escolha se o usuario ja digitou alguma outra extensao.
+Procedure.s EnsureExtension(Path.s, Ext.s)
+  If GetExtensionPart(Path) = ""
+    ProcedureReturn Path + "." + Ext
+  EndIf
+  ProcedureReturn Path
+EndProcedure
+
+; Salva o projeto atual (menu Arquivo -> Salvar projeto / Salvar projeto
+; como...). Se ja tem um caminho permanente e SaveAsFlag e #False, nao ha
+; nada a fazer: ao contrario das abas de texto, o ProjectDB grava cada
+; StoreSprite() na hora (SQLite), entao nunca fica "sujo" em memoria. Se
+; ainda e o projeto temporario "noname" (ou SaveAsFlag = #True, pedindo
+; explicitamente um novo nome/local), pede o caminho e promove/copia pra
+; la via ProjectDB::SaveAs() - sugere o caminho atual quando ja permanente,
+; pra facilitar "salvar uma copia com outro nome".
+Procedure.b SaveProject(SaveAsFlag.b = #False)
+  If Not SaveAsFlag And Not ProjectDB::IsTemp()
+    ProcedureReturn #True
+  EndIf
+
+  Protected Suggestion.s = ""
+  If Not ProjectDB::IsTemp()
+    Suggestion = ProjectDB::GetPath()
+  EndIf
+
+  Protected SavePath.s = SaveFileRequester("Salvar projeto como...", Suggestion, #File_Pattern_Project, 0)
+  If SavePath = ""
+    ProcedureReturn #False
+  EndIf
+  SavePath = EnsureExtension(SavePath, "msxproject")
+
+  If Not ProjectDB::SaveAs(SavePath)
+    MessageRequester("Erro ao salvar projeto",
+                      "Nao foi possivel salvar em:" + Chr(10) + SavePath + Chr(10) + ProjectDB::GetLastError(),
+                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn #False
+  EndIf
+  ProcedureReturn #True
 EndProcedure
 
 ; Se o projeto atual (implicito "noname") ainda nao foi salvo num arquivo
@@ -1729,18 +1793,7 @@ Procedure.b OfferSaveProject()
     ProcedureReturn #True
   EndIf
 
-  Protected SavePath.s = SaveFileRequester("Salvar projeto como...", "", #File_Pattern_Project, 0)
-  If SavePath = ""
-    ProcedureReturn #False
-  EndIf
-
-  If Not ProjectDB::SaveAs(SavePath)
-    MessageRequester("Erro ao salvar projeto",
-                      "Nao foi possivel salvar em:" + Chr(10) + SavePath + Chr(10) + ProjectDB::GetLastError(),
-                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
-    ProcedureReturn #False
-  EndIf
-  ProcedureReturn #True
+  ProcedureReturn SaveProject(#True)
 EndProcedure
 
 ; Versao/build/data sao constantes de compilacao injetadas pelo build.ps1
@@ -2221,6 +2274,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
     MenuItem(#Menu_NewProject, "Novo projeto...")
     MenuItem(#Menu_OpenProject, "Abrir projeto...")
+    MenuItem(#Menu_SaveProject, "Salvar projeto")
+    MenuItem(#Menu_SaveProjectAs, "Salvar projeto como...")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
     MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+K D")
@@ -2237,6 +2292,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Criar")
     MenuItem(#Menu_CreateDisk, "Disco...")
     MenuItem(#Menu_CreateSprite, "Sprite...")
+    MenuItem(#Menu_CreateAlphabet, "Alfabeto...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
   MenuTitle("Configurar")
@@ -2290,6 +2346,7 @@ Repeat
           If OfferSaveProject()
             Define NewProjectPath.s = SaveFileRequester("Novo projeto MSX", "", #File_Pattern_Project, 0)
             If NewProjectPath <> ""
+              NewProjectPath = EnsureExtension(NewProjectPath, "msxproject")
               If Not ProjectDB::CreateNew(NewProjectPath)
                 MessageRequester("Erro ao criar projeto",
                                   "Nao foi possivel criar:" + Chr(10) + NewProjectPath + Chr(10) + ProjectDB::GetLastError(),
@@ -2309,6 +2366,12 @@ Repeat
               EndIf
             EndIf
           EndIf
+
+        Case #Menu_SaveProject
+          SaveProject(#False)
+
+        Case #Menu_SaveProjectAs
+          SaveProject(#True)
 
         Case #Menu_Open
           OpenDocumentDialog()
@@ -2339,6 +2402,9 @@ Repeat
 
         Case #Menu_CreateSprite
           SpriteEditor_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateAlphabet
+          CharsetEditor_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()

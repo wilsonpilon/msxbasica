@@ -8,7 +8,7 @@
 >
 > Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
 > etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
-> editor de sprites, o sistema de projeto e o processo de build.
+> editor de sprites, o editor de alfabetos, o sistema de projeto e o processo de build.
 
 ---
 
@@ -33,11 +33,17 @@
 6. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
    - [Projeto implícito "noname"](#projeto-implícito-noname)
    - [Menu Arquivo → Novo projeto... / Abrir projeto...](#menu-arquivo--novo-projeto--abrir-projeto)
+   - [Menu Arquivo → Salvar projeto / Salvar projeto como...](#menu-arquivo--salvar-projeto--salvar-projeto-como)
+   - [Cópia das abas de texto e diretório de trabalho](#cópia-das-abas-de-texto-e-diretório-de-trabalho)
    - [Ao sair](#ao-sair)
 7. [Editor de sprites](#editor-de-sprites)
    - [Grade, tamanho e modo de cor](#grade-tamanho-e-modo-de-cor)
    - [Ferramentas de desenho](#ferramentas-de-desenho)
    - [Barra de projeto (registrar, navegar, copiar/colar)](#barra-de-projeto-registrar-navegar-copiarcolar)
+8. [Editor de alfabetos](#editor-de-alfabetos)
+   - [Tabela de caracteres e grade de edição](#tabela-de-caracteres-e-grade-de-edição)
+   - [Arquivo .ALF (Graphos III)](#arquivo-alf-graphos-iii)
+   - [Barra de projeto e o alfabeto padrão ("projeto 0")](#barra-de-projeto-e-o-alfabeto-padrão-projeto-0)
 
 ---
 
@@ -82,9 +88,9 @@ um traço).
 | `-C`, `--compiler <caminho>` | Caminho para o `pbcompiler.exe`. |
 | `-R`, `--run` | Executa o programa automaticamente após uma compilação sem erros. |
 | `-H`, `--help` | Mostra a lista de opções e sai. |
-| `-Version` | Versão embutida no executável (padrão `5.5.3`). |
-| `-SourceFile` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
-| `-OutputExe` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
+| `-V`, `--version <versão>` | Versão embutida no executável (padrão `5.7.3`). |
+| `-i`, `--sourcefile <arquivo>` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
+| `-o`, `--outputexe <arquivo>` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
 
 ```powershell
 # Compila e ja abre o programa
@@ -92,7 +98,7 @@ um traço).
 .\build.ps1 --run
 
 # Marca uma nova versao
-.\build.ps1 -Version "5.2.0" -R
+.\build.ps1 -V "5.8.0" -R
 
 # Lista as opcoes
 .\build.ps1 -H
@@ -102,7 +108,7 @@ um traço).
 
 A cada compilação, o script grava no executável (via `/CONSTANT` do `pbcompiler.exe`):
 
-- **Versão** — string livre (`-Version`, padrão `5.5.3`).
+- **Versão** — string livre (`-V`/`--version`, padrão `5.7.3`).
 - **Build** — data/hora **UTC** do momento da compilação, convertida para **hexadecimal**
   (segundos desde a época Unix, ex.: `6A57EA80`). Cada build tem um identificador único e
   ordenável.
@@ -330,16 +336,18 @@ comportamento do utilitário `msxdisk.exe` original.
 
 ## Sistema de projeto (arquivo `.msxproject`)
 
-Um **projeto** MSX inteiro (por enquanto, os sprites criados no [editor de sprites](#editor-de-sprites);
-outros tipos de conteúdo — Basic, Assembly, telas, sons, músicas, listagens LM, documentos — entram
-conforme ganharem editor próprio) fica guardado num único arquivo `.msxproject` (um banco SQLite).
+Um **projeto** MSX inteiro — os sprites do [editor de sprites](#editor-de-sprites), os alfabetos do
+[editor de alfabetos](#editor-de-alfabetos), uma cópia do conteúdo das abas de texto já salvas em disco
+e o diretório de trabalho (outros tipos de conteúdo — Basic, Assembly, telas, sons, músicas, listagens
+LM — entram conforme ganharem editor próprio) — fica guardado num único arquivo `.msxproject` (um banco
+SQLite).
 
 ### Projeto implícito "noname"
 
 Ao abrir a IDE **sem passar nenhum parâmetro na linha de comando** (o uso normal, clicando no `.exe`),
 um projeto implícito chamado **`noname.msxproject`** já é criado de cara, num arquivo temporário. Não
-é preciso criar ou escolher um projeto antes de usar o editor de sprites — tudo que for registrado vai
-sendo gravado nesse projeto automaticamente.
+é preciso criar ou escolher um projeto antes de usar o editor de sprites/alfabetos — tudo que for
+registrado vai sendo gravado nesse projeto automaticamente.
 
 ### Menu Arquivo → Novo projeto... / Abrir projeto...
 
@@ -350,12 +358,33 @@ sendo gravado nesse projeto automaticamente.
 - **Abrir projeto...** — mesma lógica, mas abre um arquivo `.msxproject` já existente em vez de criar
   um novo.
 
+### Menu Arquivo → Salvar projeto / Salvar projeto como...
+
+- **Salvar projeto** — se o projeto atual já tem um caminho permanente, não faz nada visível (o
+  `.msxproject` já grava cada sprite/alfabeto/documento registrado na hora, não existe estado "sujo" em
+  memória à espera de um save); se ainda for o `noname` temporário, cai no mesmo fluxo do item abaixo.
+- **Salvar projeto como...** — sempre pergunta um caminho novo (sugerindo o atual, se já for
+  permanente) e promove/copia o projeto pra lá — é como se salva **uma cópia do projeto com outro
+  nome**. Se o nome digitado não tiver extensão, `.msxproject` é acrescentada automaticamente.
+
+### Cópia das abas de texto e diretório de trabalho
+
+Além dos sprites e alfabetos, o projeto também guarda automaticamente:
+
+- Uma **cópia sempre atualizada** do conteúdo de cada aba de texto (`.dmx`/`.amx`/`.asm`) já salva em
+  disco pelo menos uma vez — sincronizada a cada `Ctrl+K D`/"Salvar como" de uma aba, além do arquivo
+  físico que já ia para o disco. Abas ainda não salvas ("nonameN") não entram, por não terem um
+  caminho ainda.
+- O **diretório de trabalho** — a pasta do último arquivo salvo, ou o diretório corrente enquanto nada
+  foi salvo ainda.
+
 ### Ao sair
 
 Se o projeto atual ainda for o `noname` temporário **e** já tiver algo registrado (pelo menos um
-sprite), a IDE pergunta, ao fechar, se você quer salvá-lo — respondendo que sim, abre o mesmo diálogo
-de "escolher pasta e nome definitivo" do **Novo projeto...**. Se não houver nada registrado, ou se o
-projeto já estiver salvo num arquivo permanente, a IDE fecha direto, sem perguntar nada.
+sprite ou alfabeto), a IDE pergunta, ao fechar, se você quer salvá-lo — respondendo que sim, abre o
+mesmo diálogo de "escolher pasta e nome definitivo" do **Novo projeto...**. Se não houver nada
+registrado, ou se o projeto já estiver salvo num arquivo permanente, a IDE fecha direto, sem perguntar
+nada.
 
 ---
 
@@ -422,3 +451,63 @@ Barra no topo da janela, ligada ao [sistema de projeto](#sistema-de-projeto-arqu
 
 Alterações feitas num sprite e ainda não registradas pedem confirmação antes de trocar de sprite ou
 fechar a janela, para não perder trabalho sem querer.
+
+---
+
+## Editor de alfabetos
+
+O menu **Criar → Alfabeto...** abre o editor de charsets (fontes de caracteres 8×8) MSX, no formato
+de arquivo **`.ALF` do [Graphos III](https://www.msx.org/wiki/Graphos)**, numa janela própria.
+
+### Tabela de caracteres e grade de edição
+
+- **Tabela** — os 256 caracteres do alfabeto (16 colunas × 16 linhas), cada um mostrado como uma
+  miniatura do seu desenho 8×8 atual. O cabeçalho de linha/coluna é hexadecimal — a própria posição na
+  grade já é o código do caractere (linha = byte alto, coluna = nibble baixo), como um mapa de
+  caracteres clássico. Clicar num caractere carrega o desenho dele na grade grande à direita; o
+  selecionado ganha um contorno vermelho.
+- **Grade de edição** — versão bem ampliada (8×8 quadrados grandes) do caractere selecionado. Clique
+  liga/desliga um pixel; arrastar com o botão esquerdo pressionado pinta uma sequência de pixels com o
+  mesmo valor do primeiro clique (não fica alternando a cada pixel passado por cima). Os 8 bytes
+  hexadecimais resultantes aparecem ao lado, atualizados a cada pixel alterado.
+- **Registrar** — grava os pixels editados de volta nos 8 bytes do caractere selecionado (e atualiza a
+  miniatura dele na tabela). **Editar sem clicar em "Registrar" não muda o alfabeto** — trocar de
+  caractere ou fechar a janela com edições pendentes pede confirmação.
+- **Limpar** / **Inverter** — limpam ou invertem todos os pixels da grade de edição (ainda precisam de
+  "Registrar" para valer).
+
+### Arquivo .ALF (Graphos III)
+
+- **Abrir...** / **Salvar como...** — leem e gravam arquivos `.alf` de verdade, no formato binário
+  clássico do MSX: um cabeçalho de 7 bytes (byte de tipo `&HFE`, endereços inicial/final/execução, 2
+  bytes cada) seguido dos 2048 bytes de dados (256 caracteres × 8 bytes) — originalmente carregado no
+  endereço de VRAM `&H9200`, a Pattern Generator Table. Se o nome digitado não tiver extensão, `.alf` é
+  acrescentada automaticamente. Um cabeçalho com byte de tipo ou tamanho inválido é rejeitado com
+  mensagem de erro, em vez de carregar dados sem sentido silenciosamente.
+- Esses dois botões são **independentes do sistema de projeto** abaixo — servem pra importar/exportar
+  arquivos `.alf` compatíveis com o Graphos III de verdade, não pra guardar o alfabeto no
+  `.msxproject`.
+
+### Barra de projeto e o alfabeto padrão ("projeto 0")
+
+Barra no topo da janela, ligada ao [sistema de projeto](#sistema-de-projeto-arquivo-msxproject) — mesmo
+padrão da barra de projeto do editor de sprites:
+
+- **Número do alfabeto** — mostrado como `#N`; cada alfabeto registrado tem um número sequencial.
+- **Tag** — nome curto (até 16 caracteres) para identificar o alfabeto.
+- **Navegação** — botões **Primeiro** / **Anterior** / **Próximo** / **Último**, andam entre os
+  alfabetos já registrados no projeto atual (param nas pontas, não dão volta).
+- **Novo alfabeto** — cria o próximo alfabeto da sequência (maior número já registrado + 1), **sempre
+  partindo do charset padrão do MSX** (nunca em branco — diferente do "Novo" do editor de sprites).
+- **Registrar alfabeto** — grava (ou atualiza, se já existir) o alfabeto inteiro (os 256 caracteres) no
+  projeto. Também aplica antes qualquer edição pendente do caractere que estiver selecionado, para não
+  deixar pixels não registrados de fora.
+
+O **charset padrão do MSX** usado como ponto de partida (ao abrir a janela sem nenhum alfabeto ainda
+registrado no projeto, e sempre em "Novo alfabeto") vem de um **alfabeto embutido no próprio
+executável** — não depende de nenhum arquivo externo em tempo de execução. Internamente ele mora num
+**"projeto 0"**: um banco de dados separado, sempre em memória, nunca salvo em disco, recriado do zero
+a cada vez que a IDE é aberta — só serve como fonte interna de conteúdo padrão.
+
+Alterações feitas num alfabeto (ou num caractere dele) e ainda não registradas pedem confirmação antes
+de navegar para outro alfabeto, criar um novo ou fechar a janela.
