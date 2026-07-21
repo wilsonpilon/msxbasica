@@ -50,7 +50,7 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida no executavel (padrao: 5.7.3).
+  -V, --version <versao>    Versao embutida no executavel (padrao: 5.7.7).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
@@ -68,7 +68,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "5.7.3"
+$Version = "5.7.7"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
 
@@ -169,6 +169,19 @@ $BuildEpoch = [DateTimeOffset]::new($UtcNow, [TimeSpan]::Zero).ToUnixTimeSeconds
 $BuildHex = "{0:X8}" -f $BuildEpoch
 $BuildDateText = $UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
 
+# Icone padrao do app (Explorer/propriedades do .exe). Embutido como recurso
+# via /ICON do pbcompiler; em runtime, App_ApplyWindowIcon() (BadigEditor.pb)
+# reextrai esse mesmo recurso do proprio .exe (ExtractIconEx) pra aplicar em
+# cada janela (barra de titulo/sistema, barra de tarefas, Alt+Tab) - nao
+# depende do arquivo .ico sobreviver ao lado do executavel depois do build.
+$IconFile = Join-Path $PSScriptRoot "msxbasica.ico"
+$IconArgs = @()
+if (Test-Path $IconFile) {
+    $IconArgs = @("/ICON", $IconFile)
+} else {
+    Write-Warning "Icone nao encontrado em $IconFile - compilando sem /ICON."
+}
+
 Write-Host "Compilador : $CompilerPath"
 Write-Host "Fonte      : $SourceFile"
 Write-Host "Saida      : $OutputExe"
@@ -176,7 +189,7 @@ Write-Host "Versao     : $Version"
 Write-Host "Build      : $BuildHex ($BuildDateText)"
 Write-Host ""
 
-& $CompilerPath $SourceFile /OUTPUT $OutputExe /QUIET /CONSOLE `
+& $CompilerPath $SourceFile /OUTPUT $OutputExe /QUIET /CONSOLE @IconArgs `
     /CONSTANT "App_Version=$Version" `
     /CONSTANT "App_Build=$BuildHex" `
     /CONSTANT "App_BuildDate=$BuildDateText"

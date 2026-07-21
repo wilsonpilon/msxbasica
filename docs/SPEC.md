@@ -462,12 +462,74 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
     (mesmo padrão de arrastar do lápis/borracha do editor de sprites). **Registrar** é que de fato grava
     os pixels editados de volta nos 8 bytes do caractere selecionado (e atualiza a miniatura na tabela) —
     trocar de caractere ou fechar a janela sem registrar pede confirmação (`CharEd_ConfirmDiscardChar`,
-    mesmo padrão do `SpriteEd_ConfirmDiscardSprite`). **Limpar**/**Inverter** operam na grade em edição
-    (não registram sozinhos). Leitura auxiliar dos 8 bytes hex do caractere em edição ao lado da grade.
-  - **Abrir.../Salvar como...**: diálogos com filtro `*.alf`; extensão `.alf` acrescentada
-    automaticamente se o usuário não digitar nenhuma (`EnsureExtension`, mesma rotina do fluxo de
-    projeto) — continuam independentes do sistema de projeto abaixo, servem pra importar/exportar
-    arquivos `.alf` de verdade (compatibilidade Graphos III).
+    mesmo padrão do `SpriteEd_ConfirmDiscardSprite`). **Limpar** opera na grade em edição (não registra
+    sozinho). Leitura auxiliar dos 8 bytes hex do caractere em edição ao lado da grade.
+  - **Clipboard de caractere** (2026-07-21, `CharEd_PackGridBytes`/`CharEd_UnpackGridBytes`): botões
+    **Copiar**/**Colar** guardam/restauram os 8 bytes do caractere em edição num array local à janela
+    (`ClipChar`/`ClipCharValid`, mesma vida útil do clipboard de sprite — só dura enquanto a janela
+    estiver aberta). Copiar lê direto do `EditGrid` (o que está desenhado agora, mesmo sem
+    "Registrar"); Colar escreve no `EditGrid` e marca `EditDirty` (ainda precisa de "Registrar").
+    Funciona entre caracteres do mesmo alfabeto ou de alfabetos diferentes, já que o clipboard não é
+    tocado por `CharEd_LoadAlphabetUI` (navegação entre alfabetos).
+  - **Clipboard de alfabeto inteiro** (2026-07-21): botões **Copiar alfabeto**/**Colar alfabeto**
+    (barra de projeto) guardam/restauram os 256 caracteres via `CopyArray()` num array local
+    (`ClipAlpha`/`ClipAlphaValid`, 255×7 igual a `CharsetBytes`). Copiar aplica antes qualquer edição
+    pendente do caractere selecionado (mesmo bloco de código do evento `G_AlphaRegister`, reaproveitado
+    inline) pra não deixar pixels de fora; Colar substitui `CharsetBytes` inteiro e marca `AlphaDirty`
+    (ainda precisa de "Registrar alfabeto"), pedindo confirmação de descarte se havia edição pendente.
+  - **Inverter em bloco** (2026-07-21): `BlockStart`/`BlockEnd` (`Protected .i = -1`, "nenhum bloco")
+    são marcados pelos botões **Marcar início**/**Marcar fim** (gravam o caractere selecionado na
+    tabela no momento do clique) e desfeitos por **Limpar bloco**; `CharEd_BlockStatusText()` mostra o
+    intervalo normalizado (`$41..$5A (26 caracteres)`) e `CharEd_RedrawTable()` ganhou um 4º/5º
+    parâmetro opcional (`BlockStart.i = -1, BlockEnd.i = -1`) que desenha um contorno azul em cada
+    caractere do intervalo (além do contorno vermelho do selecionado). O botão **Inverter** (evento
+    `G_Invert`) passou a ramificar: **sem bloco marcado**, comportamento de sempre (inverte só o
+    `EditGrid`, via `CharEd_InvertEditGrid`, precisa de "Registrar"); **com bloco marcado**, inverte
+    bit a bit (`(~CharsetBytes(i,row)) & $FF`) todos os caracteres do intervalo **direto em
+    `CharsetBytes`**, ignorando o `EditGrid` — operação de alfabeto, não de pixel, marca `AlphaDirty`
+    em vez de `EditDirty`. Se o caractere selecionado está dentro do intervalo e tem edição pendente
+    não registrada, ela seria perdida (o bloco sobrescreve `CharsetBytes` do próprio caractere
+    selecionado) — pede confirmação (`CharEd_ConfirmDiscardChar`) antes. `BlockStart`/`BlockEnd` são
+    independentes do alfabeto carregado (persistem através de `CharEd_LoadAlphabetUI` durante
+    navegação), permitindo repetir a mesma inversão de intervalo em vários alfabetos sem remarcar.
+    Layout: linhas dos novos botões (`Copiar alfabeto`/`Colar alfabeto` acima da tabela; `Marcar
+    início`/`Marcar fim` numa linha e `Limpar bloco`/status numa segunda, abaixo da tabela; `Copiar`/
+    `Colar` de caractere abaixo de `Registrar`/`Limpar`/`Inverter`) foi dimensionado pra caber dentro
+    da largura da própria tabela (`#CharEd_TableCanvasW`), evitando invadir a coluna direita (grade de
+    edição) na mesma altura — colisão real encontrada e corrigida durante o desenvolvimento (a primeira
+    tentativa botou o status do bloco numa única linha larga ao lado dos botões de marcar, que invadia
+    a coluna direita e sobrepunha os botões `Copiar`/`Colar` de caractere).
+  - **Copiar bloco/Colar bloco** (2026-07-21, mesmo dia): dois botões extras na linha do `Limpar
+    bloco`, copiando/colando o **intervalo inteiro** marcado (não um único caractere) — pedido explícito
+    do usuário pra permitir ter duas versões (normal e invertida) do mesmo conjunto de caracteres no
+    mesmo alfabeto. `Copiar bloco` normaliza `BlockStart`/`BlockEnd`, aplica qualquer pixel pendente do
+    caractere selecionado se ele cair dentro do intervalo (mesmo padrão de `G_CopyAlpha`) e copia
+    `CpEnd-CpStart+1` caracteres pra um array local (`ClipBlock` 255×7 + `ClipBlockLen` +
+    `ClipBlockValid`). `Colar bloco` usa o **caractere atualmente selecionado na tabela** como início do
+    destino (`PasteStart = Selected`) — rejeita com mensagem de erro se `PasteStart + ClipBlockLen - 1`
+    passar de 255 (não cabe), em vez de truncar ou dar volta silenciosamente; senão escreve direto em
+    `CharsetBytes` (mesmo cuidado de confirmação de descarte do Inverter em bloco se o caractere
+    selecionado, dentro do destino, tiver edição pendente) e **remarca `BlockStart`/`BlockEnd` pro
+    intervalo de destino recém-colado** — permite clicar `Inverter` na sequência sem remarcar,
+    fechando o fluxo completo do pedido original (marcar A..Z, copiar, selecionar "a", colar,
+    inverter → A..Z normal e a..z invertido, prontos como dois conjuntos). Verificado: compilação
+    limpa, screenshot da linha de 3 botões (`Limpar bloco`/`Copiar bloco`/`Colar bloco`, larguras
+    100+100+100 com gaps de 6, ainda dentro de `#CharEd_TableCanvasW`) e um smoke test ao vivo via
+    `BM_CLICK` (Marcar início + Marcar fim apontando pro mesmo caractere por causa da mesma limitação
+    de clique em canvas já registrada acima, depois Copiar bloco e Colar bloco em sequência) confirmando
+    que o fluxo roda sem erro e sem travar em nenhum `MessageRequester` inesperado — teste
+    deliberadamente evitou os caminhos de erro (`MessageRequester` é modal, travaria a automação) e não
+    exercitou um destino realmente diferente do intervalo copiado (depende de clique em canvas, mesma
+    ressalva de sempre), mas a lógica é direta e seguiu o mesmo padrão já validado do Inverter em bloco.
+  - **Carregar do Graphos III.../Salvar como...** (renomeado de "Abrir..." em 2026-07-21): diálogos
+    com filtro `*.alf`; extensão `.alf` acrescentada automaticamente se o usuário não digitar nenhuma
+    em "Salvar como..." (`EnsureExtension`, mesma rotina do fluxo de projeto). "Carregar do Graphos
+    III..." deixou de sobrescrever o alfabeto atualmente selecionado — agora consulta
+    `ProjectDB::ListAlphabetNumbers()` (mesma lógica de "Novo alfabeto") e importa sempre como um
+    **alfabeto novo** (`AlphaDirty = #True`, ainda precisa de "Registrar alfabeto" pra valer no
+    projeto), evitando sobrescrever sem querer um banco já registrado; "Salvar como..." continua
+    independente do sistema de projeto, exporta só o buffer em edição pra um `.alf` de verdade
+    (compatibilidade Graphos III).
   - **Integrado ao sistema de projeto** (2026-07-19, módulo 13) — mesmo padrão do editor de sprites:
     tabela `alphabets` no `.msxproject` (`alphabet_number` chave primária, `tag`, `charset_data` — TEXT
     hex, 2 dígitos por byte, 4096 caracteres —, `updated_at`). Barra de projeto própria no topo da
@@ -809,6 +871,72 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-21 (sessão 3)**: todos os botões do editor de alfabetos (`CharsetEditorGui.pbi`)
+viraram **ícones monocromáticos** — pedido explícito do usuário. Doze procedures `CharEd_CreateXxxIcon()`
+(mesmo padrão `CreateImage`+`StartDrawing` já usado em `SpriteEd_CreateXxxIcon()` no editor de sprites,
+mas em tons de cinza só — `#CharEd_IconInk`/`#CharEd_IconInkLt` — em vez de coloridas) desenham cada
+ícone em memória (22×22, botão 34×26 via `ButtonImageGadget`, constantes `#CharEd_IconSize`/
+`#CharEd_IconBtnW`/`#CharEd_IconBtnH`), sem depender de arquivo externo. Decisão de design: em vez de um
+ícone distinto por botão (20 desenhos diferentes), **reaproveitar o mesmo ícone-base entre botões de
+escopo diferente** — `CharEd_CreateCopyIcon`/`CreatePasteIcon`/`CreateRegisterIcon` são usados tanto na
+versão "caractere" quanto "alfabeto"/"bloco" do respectivo botão; só a posição na janela e o texto do
+`GadgetToolTip` diferenciam o escopo. Considerado e descartado: um "selo" (badge) extra no canto do
+ícone pra marcar o escopo (grade pequena = alfabeto, colchetes pequenos = bloco) — a 22px o selo ficaria
+espremido/pouco legível, e o agrupamento espacial já existente (barra de projeto vs. barra de bloco vs.
+área de edição de caractere) já comunica o escopo sozinho. `CharEd_CreateNavIcon(Size, Direction,
+WithBar)` é o único ícone parametrizado, reaproveitado pelos 4 botões de navegação (Primeiro/Anterior/
+Próximo/Último) via um triângulo preenchido por varredura de linhas horizontais (`Frac`/`EdgeX` em
+ponto flutuante) mais uma barra vertical opcional. `G_Close` ("Fechar") deliberadamente **não** virou
+ícone — mesmo precedente já usado em `SpriteEditorGui.pbi` (`G_Close` também é texto lá), evita duplicar
+visualmente o "X" que a barra de título já mostra. Efeito colateral positivo: a janela encolheu de
+~732px pra ~606px de largura, já que botões de 34px ocupam bem menos espaço que os textos antigos
+("Carregar do Graphos III...", "Registrar alfabeto" etc.). Verificado: compilação limpa, screenshot
+geral (sem sobreposição) e recortes ampliados (nearest-neighbor 4×) de cada grupo de ícones confirmando
+legibilidade, e um clique real (`BM_CLICK` via `PostMessage`) em `G_MarkStart`/`G_MarkEnd` (agora
+`ButtonImageGadget`) confirmando que o evento `#PB_Event_Gadget`/`EventGadget()` continua disparando
+normalmente (troca de `ButtonGadget` pra `ButtonImageGadget` não muda o tipo de evento). Versão
+embutida no executável atualizada para `5.7.7`.
+
+**Estado ao fim de 2026-07-21 (sessão 2)**: editor de alfabetos ganhou clipboard e edição em lote —
+ver módulo 4 acima para o detalhe completo (`CharEd_PackGridBytes`/`UnpackGridBytes`, `ClipChar`/
+`ClipAlpha`, `BlockStart`/`BlockEnd`, ramificação do evento `G_Invert`). Resumo: **Copiar**/**Colar**
+de um caractere isolado (entre caracteres do mesmo alfabeto ou de alfabetos diferentes); **Copiar
+alfabeto**/**Colar alfabeto** (os 256 caracteres de uma vez); **Marcar início**/**Marcar fim de
+bloco**/**Limpar bloco** definem um intervalo (contorno azul na tabela) que faz o botão **Inverter**
+passar a inverter o intervalo inteiro direto em `CharsetBytes`, em vez de só o caractere selecionado.
+Verificado: compilação limpa (`/CHECK` + build completo), screenshot confirmando o layout das novas
+linhas de botão sem sobreposição (uma primeira tentativa colidiu o status do bloco com os botões
+`Copiar`/`Colar` de caractere — corrigido dando ao status sua própria linha, larguras dimensionadas
+pra caber dentro de `#CharEd_TableCanvasW`), e um teste ao vivo do fluxo marcar-bloco+inverter via
+mensagens `BM_CLICK`/`WM_LBUTTONDOWN` postadas direto nos HWNDs dos controles (mesma técnica seguindo
+[[gui_automation_focus_caution]] descrita no módulo 12 — sem mover o cursor real). O clique sintético
+no **canvas da tabela** pra selecionar um caractere específico não se mostrou confiável neste ambiente
+(mesma classe de fragilidade já registrada pra outros canvases do projeto — `WM_LBUTTONDOWN`/`UP`
+postados não pareceram ser processados pela `CanvasGadget` antes do próximo evento, ao contrário de
+`BM_CLICK` em botões normais, que funcionou de forma confiável); como resultado, os dois marcadores de
+bloco acabaram apontando pro mesmo caractere ($00) no teste, mas isso foi suficiente pra confirmar a
+lógica ponta a ponta: `CharEd_BlockStatusText` calculou `"Bloco: $00..$00 (1 caracteres)"` corretamente
+e o botão Inverter, em modo bloco, converteu os 8 bytes de `&H00` pra `&HFF` como esperado. Copiar/
+colar de caractere e de alfabeto não foram exercitados ao vivo (mesma ressalva de sempre pra cliques em
+canvas), mas a lógica é direta e reaproveita padrões já validados (`CharEd_PackChar`/`UnpackChar`,
+clipboard de sessão do editor de sprites). Versão embutida no executável atualizada para `5.7.5`.
+
+**Estado ao fim de 2026-07-21 (sessão 1)**: dois ajustes pequenos, sem mudança de escopo. Editor de alfabetos:
+botão "Abrir..." virou **"Carregar do Graphos III..."** e passou a importar sempre como alfabeto novo
+(numeração automática) em vez de sobrescrever o alfabeto selecionado — ver módulo 4 acima. **Ícone do
+aplicativo**: `msxbasica.ico` (raiz do projeto) embutido no `.exe` via `/ICON` do `pbcompiler.exe`
+(`build.ps1`, cobre o ícone mostrado pelo Windows Explorer/propriedades do arquivo) e reaplicado em
+runtime a cada janela top-level (`App_ApplyWindowIcon()` em `editor/BadigEditor.pb`, chamada logo após
+cada `OpenWindow()` — janela principal e as seis janelas secundárias: sprite, alfabeto, disco,
+configurações do editor, configurações do Basic Dignified, download de fontes). Em vez de carregar o
+`.ico` de um caminho relativo ao `.exe` (frágil se o arquivo não acompanhar a distribuição),
+`App_ApplyWindowIcon()` usa `ExtractIconEx_()` pra reler o recurso já embutido do **próprio processo em
+execução** (`ProgramFilename()`) e aplica via `WM_SETICON` (`#ICON_BIG`/`#ICON_SMALL`) — cobre barra de
+título, menu de sistema (canto superior esquerdo), barra de tarefas e Alt+Tab, mantendo o `.exe`
+autocontido. Verificado ao vivo: `ExtractAssociatedIcon` no `.exe` compilado retorna um ícone válido
+(Explorer) e `WM_GETICON` na janela principal em execução retorna handles não nulos para
+`ICON_BIG`/`ICON_SMALL`. Versão embutida no executável atualizada para `5.7.4`.
 
 **Estado ao fim de 2026-07-19 (sessão 2)**: editor de alfabetos ganhou **integração com o sistema de
 projeto** (módulo 4/13 acima) — tabela `alphabets` no `.msxproject`, barra de projeto (número/tag/

@@ -27,6 +27,12 @@ Declare.b InjectTextAtCursor(Text.s)
 ; duas declaracoes acima (definida so mais abaixo neste arquivo).
 Declare.s EnsureExtension(Path.s, Ext.s)
 
+; Referenciada pelas janelas de disco/sprite/alfabeto/configuracoes
+; (DiskManagerGui.pbi, SpriteEditorGui.pbi, CharsetEditorGui.pbi,
+; BadigSettings.pbi, EditorSettings.pbi, FontDownloader.pbi, todas incluidas
+; antes da definicao mais abaixo) - mesmo motivo das declaracoes acima.
+Declare App_ApplyWindowIcon(WinNum)
+
 
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
@@ -365,7 +371,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "5.7.3"
+  #App_Version = "5.7.7"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -1739,6 +1745,33 @@ Procedure.s EnsureExtension(Path.s, Ext.s)
   ProcedureReturn Path
 EndProcedure
 
+; Icone do aplicativo (msxbasica.ico) para toda janela top-level (barra de
+; titulo/sistema, barra de tarefas, Alt+Tab) - extraido do proprio .exe em
+; runtime via ExtractIconEx, nao de um arquivo .ico ao lado do executavel:
+; o .ico ja fica embutido como recurso do binario pelo /ICON do build.ps1
+; (o mesmo recurso que o Windows Explorer usa pra mostrar o icone do
+; arquivo), entao ler de volta do proprio processo mantem o .exe
+; autocontido, sem depender de um arquivo externo sobreviver ao lado dele.
+; Carregado uma unica vez (cache nos Globals) e reaplicado em cada janela
+; nova via WM_SETICON.
+Global App_IconBig.i, App_IconSmall.i, App_IconLoaded.b = #False
+
+Procedure App_ApplyWindowIcon(WinNum)
+  If Not App_IconLoaded
+    App_IconLoaded = #True
+    ExtractIconEx_(ProgramFilename(), 0, @App_IconBig, @App_IconSmall, 1)
+  EndIf
+  If Not IsWindow(WinNum)
+    ProcedureReturn
+  EndIf
+  If App_IconBig
+    SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_BIG, App_IconBig)
+  EndIf
+  If App_IconSmall
+    SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_SMALL, App_IconSmall)
+  EndIf
+EndProcedure
+
 ; Salva o projeto atual (menu Arquivo -> Salvar projeto / Salvar projeto
 ; como...). Se ja tem um caminho permanente e SaveAsFlag e #False, nao ha
 ; nada a fazer: ao contrario das abas de texto, o ProjectDB grava cada
@@ -2267,6 +2300,7 @@ If Not OpenWindow(#MainWindow, 0, 0, 1000, 700, #App_Title, #PB_Window_SystemMen
   End
 EndIf
 SetWindowColor(#MainWindow, Color_AppBg)
+App_ApplyWindowIcon(#MainWindow)
 
 CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")

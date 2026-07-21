@@ -289,6 +289,7 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
   If Not Win
     ProcedureReturn #False
   EndIf
+  App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
 

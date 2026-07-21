@@ -42,6 +42,8 @@
    - [Barra de projeto (registrar, navegar, copiar/colar)](#barra-de-projeto-registrar-navegar-copiarcolar)
 8. [Editor de alfabetos](#editor-de-alfabetos)
    - [Tabela de caracteres e grade de edição](#tabela-de-caracteres-e-grade-de-edição)
+   - [Marcar bloco (inverter um intervalo de caracteres de uma vez)](#marcar-bloco-inverter-um-intervalo-de-caracteres-de-uma-vez)
+   - [Copiar/colar um alfabeto inteiro](#copiarcolar-um-alfabeto-inteiro)
    - [Arquivo .ALF (Graphos III)](#arquivo-alf-graphos-iii)
    - [Barra de projeto e o alfabeto padrão ("projeto 0")](#barra-de-projeto-e-o-alfabeto-padrão-projeto-0)
 
@@ -459,6 +461,12 @@ fechar a janela, para não perder trabalho sem querer.
 O menu **Criar → Alfabeto...** abre o editor de charsets (fontes de caracteres 8×8) MSX, no formato
 de arquivo **`.ALF` do [Graphos III](https://www.msx.org/wiki/Graphos)**, numa janela própria.
 
+Todos os botões de ação da janela são **ícones monocromáticos** (sem texto) — passe o mouse por cima
+para ver uma dica explicando a função exata. Vários botões de escopo diferente reaproveitam o mesmo
+desenho (ex.: o ícone de "copiar" é o mesmo para copiar um caractere, um alfabeto inteiro ou um bloco)
+— a posição na janela e a dica ao passar o mouse é que indicam o escopo. Nas seções abaixo, os nomes em
+**negrito** correspondem ao texto da dica de cada ícone, não a um rótulo visível no botão.
+
 ### Tabela de caracteres e grade de edição
 
 - **Tabela** — os 256 caracteres do alfabeto (16 colunas × 16 linhas), cada um mostrado como uma
@@ -473,20 +481,63 @@ de arquivo **`.ALF` do [Graphos III](https://www.msx.org/wiki/Graphos)**, numa j
 - **Registrar** — grava os pixels editados de volta nos 8 bytes do caractere selecionado (e atualiza a
   miniatura dele na tabela). **Editar sem clicar em "Registrar" não muda o alfabeto** — trocar de
   caractere ou fechar a janela com edições pendentes pede confirmação.
-- **Limpar** / **Inverter** — limpam ou invertem todos os pixels da grade de edição (ainda precisam de
-  "Registrar" para valer).
+- **Limpar** — apaga todos os pixels da grade de edição (ainda precisa de "Registrar" para valer).
+- **Copiar** / **Colar** (caractere) — copiam o caractere em edição para uma área de transferência da
+  sessão (dura enquanto a janela estiver aberta) e colam de volta em qualquer outro caractere, do mesmo
+  alfabeto ou de um alfabeto diferente (navegue para outro alfabeto e o valor copiado continua
+  disponível). Colar substitui a grade de edição — ainda precisa de "Registrar" para valer no alfabeto.
+- **Inverter** — com **nenhum bloco marcado** (ver abaixo), inverte só os pixels da grade de edição do
+  caractere atual (ainda precisa de "Registrar"). Com um **bloco marcado**, inverte de uma vez **todos
+  os caracteres do intervalo**, direto no alfabeto em memória (não passa pela grade de edição nem
+  precisa de "Registrar" por caractere — mas o alfabeto inteiro ainda precisa de "Registrar alfabeto"
+  para valer no projeto).
+
+### Marcar bloco (inverter um intervalo de caracteres de uma vez)
+
+Abaixo da tabela: **Marcar início** / **Marcar fim** marcam o caractere atualmente selecionado na
+tabela como início/fim de um intervalo (por exemplo, clique em "A", **Marcar início**, clique em "Z",
+**Marcar fim**). O intervalo marcado aparece com um contorno azul na tabela, e o texto de status mostra
+algo como `Bloco: $41..$5A (26 caracteres)`. Com o intervalo marcado, o botão **Inverter** (na grade de
+edição, à direita) passa a inverter todos os caracteres do intervalo de uma vez, em vez de só o
+caractere atual. **Limpar bloco** desmarca o intervalo, voltando "Inverter" ao comportamento normal (só
+o caractere atual). O intervalo marcado é independente do alfabeto sendo editado no momento — navegar
+entre alfabetos não desmarca o bloco, então dá para repetir a mesma inversão de intervalo em vários
+alfabetos.
+
+- **Copiar bloco** — copia todos os caracteres do intervalo marcado (não só um) para a área de
+  transferência da sessão. Precisa de um intervalo marcado primeiro (Marcar início/Marcar fim).
+- **Colar bloco** — cola o intervalo copiado a partir do **caractere atualmente selecionado** na
+  tabela (o destino), substituindo tantos caracteres quantos foram copiados. Depois de colar, o
+  intervalo de destino vira automaticamente o novo bloco marcado — dá pra clicar **Inverter** na
+  sequência sem precisar remarcar. Exemplo do fluxo completo: marcar A..Z, **Copiar bloco**, clicar no
+  caractere "a" na tabela, **Colar bloco** (a..z passam a ter os mesmos desenhos de A..Z, e o intervalo
+  a..z já fica marcado), **Inverter** (inverte só a..z) — resultado: A..Z normais e a..z como a mesma
+  fonte invertida, prontos para usar como dois conjuntos diferentes no mesmo alfabeto.
+
+### Copiar/colar um alfabeto inteiro
+
+Acima da tabela: **Copiar alfabeto** / **Colar alfabeto** copiam os 256 caracteres do alfabeto em
+edição para uma área de transferência da sessão e colam de volta em outro alfabeto (por exemplo,
+"Novo alfabeto" seguido de "Colar alfabeto" duplica um alfabeto inteiro para um número novo). "Copiar
+alfabeto" aplica antes qualquer pixel pendente do caractere selecionado, para não deixar nada de fora;
+"Colar alfabeto" substitui o alfabeto inteiro em edição — ainda precisa de "Registrar alfabeto" para
+valer no projeto.
 
 ### Arquivo .ALF (Graphos III)
 
-- **Abrir...** / **Salvar como...** — leem e gravam arquivos `.alf` de verdade, no formato binário
-  clássico do MSX: um cabeçalho de 7 bytes (byte de tipo `&HFE`, endereços inicial/final/execução, 2
-  bytes cada) seguido dos 2048 bytes de dados (256 caracteres × 8 bytes) — originalmente carregado no
-  endereço de VRAM `&H9200`, a Pattern Generator Table. Se o nome digitado não tiver extensão, `.alf` é
-  acrescentada automaticamente. Um cabeçalho com byte de tipo ou tamanho inválido é rejeitado com
-  mensagem de erro, em vez de carregar dados sem sentido silenciosamente.
-- Esses dois botões são **independentes do sistema de projeto** abaixo — servem pra importar/exportar
-  arquivos `.alf` compatíveis com o Graphos III de verdade, não pra guardar o alfabeto no
-  `.msxproject`.
+- **Carregar do Graphos III...** — lê um arquivo `.alf` de verdade, no formato binário clássico do
+  MSX: um cabeçalho de 7 bytes (byte de tipo `&HFE`, endereços inicial/final/execução, 2 bytes cada)
+  seguido dos 2048 bytes de dados (256 caracteres × 8 bytes) — originalmente carregado no endereço de
+  VRAM `&H9200`, a Pattern Generator Table. Um cabeçalho com byte de tipo ou tamanho inválido é
+  rejeitado com mensagem de erro, em vez de carregar dados sem sentido silenciosamente. O alfabeto
+  importado sempre vira um **alfabeto novo** no projeto (numeração automática, igual a "Novo
+  alfabeto") — nunca sobrescreve um banco já registrado sem querer. Depois de carregar, use **Registrar
+  alfabeto** (barra de projeto abaixo) pra gravá-lo de fato no `.msxproject`; assim dá pra ter vários
+  alfabetos Graphos III diferentes no mesmo projeto.
+- **Salvar como...** — grava o alfabeto em edição num arquivo `.alf` de verdade, no mesmo formato. Se o
+  nome digitado não tiver extensão, `.alf` é acrescentada automaticamente. Independente do sistema de
+  projeto abaixo — serve pra exportar um `.alf` compatível com o Graphos III de verdade, não pra
+  guardar o alfabeto no `.msxproject`.
 
 ### Barra de projeto e o alfabeto padrão ("projeto 0")
 

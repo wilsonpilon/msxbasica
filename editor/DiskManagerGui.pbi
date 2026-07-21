@@ -152,6 +152,7 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
   Protected LeftW = 380, MidW = 110, RightW = 350

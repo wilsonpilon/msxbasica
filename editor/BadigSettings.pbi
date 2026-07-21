@@ -468,6 +468,7 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
   If Not Win
     ProcedureReturn ""
   EndIf
+  App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
   Protected G_List = ListViewGadget(#PB_Any, 15, 15, WinW - 30, WinH - 70)
@@ -542,6 +543,7 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
 

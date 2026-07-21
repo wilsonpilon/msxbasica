@@ -203,6 +203,7 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
   If Not Win
     ProcedureReturn ""
   EndIf
+  App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
 

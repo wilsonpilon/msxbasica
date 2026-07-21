@@ -966,6 +966,7 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
   AddKeyboardShortcut(Win, #PB_Shortcut_Escape, #SpriteEd_CancelShortcut)
 

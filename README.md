@@ -1,8 +1,10 @@
 # MSX BASIC + Z80 IDE
 
+![MSX BASIC + Z80 IDE — Basic Dignified, Assembly, integrado](msxbasica.png)
+
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.7.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 5.7.7** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -109,15 +111,25 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   `&H9200`, a Pattern Generator Table da VRAM). Tabela com os 256 caracteres (16 por linha, cabeçalho
   hex de linha/coluna, miniatura de cada glifo) — clicar num caractere carrega seus pixels numa grade
   8×8 bem ampliada, onde dá pra ligar/apagar cada pixel (clique ou arrastar); **Registrar** grava os
-  pixels editados de volta no caractere selecionado e atualiza a miniatura na tabela. **Abrir...**/
-  **Salvar como...** leem e gravam `.alf` (extensão acrescentada automaticamente se não digitada) —
-  independente do projeto, pra compatibilidade Graphos III. Também integrado ao **sistema de projeto**,
-  igual ao editor de sprites: um projeto pode ter vários alfabetos, com barra própria de número/tag/
+  pixels editados de volta no caractere selecionado e atualiza a miniatura na tabela. **Carregar do
+  Graphos III...**/**Salvar como...** leem e gravam `.alf` (extensão acrescentada automaticamente se não
+  digitada) — carregar sempre importa como um alfabeto novo (nunca sobrescreve um já registrado).
+  **Copiar**/**Colar** de um caractere isolado, de um **alfabeto inteiro** (Copiar alfabeto/Colar
+  alfabeto) ou de um **intervalo marcado** (Marcar início/Marcar fim de bloco + Copiar bloco/Colar
+  bloco) — todos com área de transferência da própria sessão. Com um intervalo marcado, o botão
+  **Inverter** passa a inverter todos os caracteres do intervalo de uma vez direto no alfabeto (sem
+  bloco marcado, afeta só o caractere atual) — combinado com Copiar/Colar bloco, permite duplicar um
+  conjunto de caracteres (ex.: A..Z para a..z) e inverter só a cópia, tendo as duas versões lado a lado.
+  Todos os botões de ação são **ícones monocromáticos** desenhados em memória (sem arquivo externo),
+  com dica ao passar o mouse explicando cada função. Também integrado ao **sistema de projeto**, igual
+  ao editor de sprites: um projeto pode ter vários alfabetos, com barra própria de número/tag/
   **Primeiro**/**Anterior**/**Próximo**/**Último**/**Registrar alfabeto**/**Novo alfabeto** (numera
   automaticamente e sempre parte do charset padrão do MSX, nunca em branco). Esse charset padrão vem de
   um **"projeto 0"** interno (`ProjectDB::EnsureDefaultsOpen()`) — um banco SQLite à parte, sempre em
   memória, nunca salvo, semeado com `alfabetos\msx.alf` **embutido no próprio `.exe`**
   (`editor/DefaultCharsetMsx.pbi`).
+
+  ![Editor de alfabetos (Criar → Alfabeto...) com tabela de 256 caracteres, grade de edição ampliada e botões-ícone](images/msxbasica-05.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
@@ -215,6 +227,56 @@ socket/XML em tempo real (input simulado, detecção de erro com retorno à linh
   projeto/Salvar projeto como..., cópia das abas de texto, diretório de trabalho); a tabela de
   parâmetros do `build.ps1` no manual também foi corrigida (estava documentando nomes de flag
   desatualizados, `-Version`/`-SourceFile`/`-OutputExe`, em vez dos reais `-V`/`-i`/`-o`).
+
+- **2026-07-21** — Editor de alfabetos: o botão genérico "Abrir..." virou **"Carregar do Graphos
+  III..."** — além de deixar explícito que o botão importa um `.alf` real do Graphos III, importar
+  agora sempre cria um **alfabeto novo** no projeto (numeração automática, igual a "Novo alfabeto") em
+  vez de sobrescrever silenciosamente o alfabeto atualmente selecionado; depois de carregar, **Registrar
+  alfabeto** grava a importação no `.msxproject`, permitindo vários alfabetos Graphos III diferentes no
+  mesmo projeto. Também: **ícone do aplicativo** (`msxbasica.ico`) embutido no `.exe` via `/ICON` do
+  `pbcompiler.exe` (novo passo em `build.ps1`) — aparece no Windows Explorer/propriedades do arquivo —
+  e reaplicado em tempo de execução (`App_ApplyWindowIcon()`, `editor/BadigEditor.pb`, extraído do
+  próprio processo via `ExtractIconEx`, sem depender do `.ico` sobreviver ao lado do `.exe`) em toda
+  janela top-level do editor (principal, sprite, alfabeto, disco, configurações, download de fontes),
+  cobrindo barra de título/menu de sistema, barra de tarefas e Alt+Tab. Versão embutida no executável
+  atualizada para `5.7.4`.
+
+- **2026-07-21 (mais tarde no mesmo dia)** — Editor de alfabetos ganhou clipboard e edição em lote:
+  **Copiar/Colar** de um único caractere (área de transferência da sessão, funciona entre caracteres do
+  mesmo alfabeto ou de alfabetos diferentes) e **Copiar alfabeto/Colar alfabeto** (os 256 caracteres de
+  uma vez, para duplicar um alfabeto inteiro para outro número). Também: **Marcar início de bloco** /
+  **Marcar fim de bloco** / **Limpar bloco** — marcam um intervalo de caracteres na tabela (contorno
+  azul, ex.: A..Z); com um intervalo marcado, o botão **Inverter** passa a inverter todos os caracteres
+  do intervalo de uma vez direto no alfabeto em memória, em vez de só o caractere selecionado (sem
+  bloco marcado, "Inverter" continua afetando só o caractere atual, como antes). Verificado por
+  compilação limpa, screenshot da janela (layout das novas linhas de botões sem sobreposição) e um
+  teste ao vivo do fluxo de marcar bloco + inverter (confirmado via texto de status "Bloco:
+  $00..$00 (1 caracteres)" e os bytes do caractere virando `&HFF` após inverter) — clique sintético no
+  canvas da tabela para selecionar um caractere específico não se mostrou confiável neste ambiente de
+  teste (mesma limitação já registrada para os editores de sprite/alfabeto em sessões anteriores), mas
+  a lógica de marcação/inversão de bloco em si foi confirmada funcionando. Versão embutida no
+  executável atualizada para `5.7.5`.
+
+- **2026-07-21 (ainda mais tarde no mesmo dia)** — Editor de alfabetos ganhou **Copiar bloco**/**Colar
+  bloco**, ao lado de "Limpar bloco": copiam/colam o **intervalo inteiro** marcado (não um caractere
+  só). "Colar bloco" cola a partir do caractere selecionado na tabela e remarca o destino como o novo
+  bloco, permitindo inverter na sequência sem remarcar — fluxo pedido: marcar A..Z, Copiar bloco,
+  selecionar "a", Colar bloco (a..z passam a ter os desenhos de A..Z), Inverter (só a..z) — resultado:
+  A..Z normal e a..z invertido, dois conjuntos prontos no mesmo alfabeto. Versão embutida no executável
+  atualizada para `5.7.6`.
+
+- **2026-07-21 (fim do dia)** — Todos os botões do editor de alfabetos viraram **ícones
+  monocromáticos** desenhados em memória (34×26, cinza sobre branco, sem depender de arquivo externo —
+  mesma técnica já usada no editor de sprites, `SpriteEd_CreateXxxIcon`), com dica ao passar o mouse
+  explicando cada função: setas de navegação, página+"+" (Novo alfabeto), ficha (Registrar), duas
+  folhas (Copiar), prancheta (Colar), pasta (Carregar do Graphos III), disquete (Salvar como),
+  colchetes `[`/`]` (Marcar início/fim de bloco), colchetes riscados (Limpar bloco), grade riscada
+  (Limpar caractere) e círculo meio preto/meio branco (Inverter). Vários botões de escopo diferente
+  (caractere/alfabeto/bloco) reaproveitam o mesmo desenho — só a posição na janela e o tooltip mudam.
+  A troca encolheu a janela de ~732px para ~606px de largura. Verificado por compilação limpa,
+  screenshots (geral + recortes ampliados de cada grupo de ícones) e um clique real confirmando que os
+  botões de imagem continuam disparando os mesmos eventos de antes. Versão embutida no executável
+  atualizada para `5.7.7`.
 
 ## Ferramentas e ambiente
 
