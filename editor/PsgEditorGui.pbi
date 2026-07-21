@@ -274,11 +274,13 @@ Procedure PsgEditor_OpenWindow(ParentWindow)
   GadgetToolTip(G_Tag, "Nome curto pra identificar o som (ate 16 caracteres)")
   Cx + 130 + 16
 
-  Protected G_New = ButtonGadget(#PB_Any, Cx, 12, 70, 26, "Novo")
+  Protected NewSoundIcon = SpriteEd_CreateNewSpriteIcon(22)
+  Protected G_New = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(NewSoundIcon))
   GadgetToolTip(G_New, "Novo som (numera automaticamente)")
-  Cx + 70 + 8
+  Cx + 34 + 6
 
-  Protected G_Register = ButtonGadget(#PB_Any, Cx, 12, 90, 26, "Registrar")
+  Protected RegisterSoundIcon = SpriteEd_CreateRegisterIcon(22)
+  Protected G_Register = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(RegisterSoundIcon))
   GadgetToolTip(G_Register, "Registrar: grava este som no banco do projeto")
 
   ; --- Canais A/B/C ---

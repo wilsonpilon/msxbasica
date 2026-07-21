@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.9.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 5.9.5** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -147,14 +147,32 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   navegação/Registrar/Novo dos editores de sprite e alfabeto.
 
   ![Editor de som PSG (Criar → Som (PSG)...) com os 3 canais, ruído/envelope compartilhados, lista de passos e código BASIC gerado](images/msxbasica-06.png)
+- **Editor de música MML** (`editor/MmlSynth.pbi` + `editor/MmlEditorGui.pbi`, menu **Criar → Música
+  (PLAY)...**) — editor de MML (Music Macro Language) para o comando `PLAY` do MSX-BASIC, cobrindo os
+  3 canais **A/B/C em paralelo**. Cada canal tem uma "linha atual" editável que os botões vão
+  preenchendo — notas **A-G** (sustenido/bemol, duração, pontos de aumento), **pausa (R)**, **nota
+  absoluta por número (N)**, **oitava (O, 1-8, com `>`/`<`)**, **duração padrão (L)**, **andamento
+  (T)**, **volume (V)** e o **modulador/padrão de envelope (M/S)** — mesmo hardware de envelope
+  compartilhado do editor de som. **Inserir nova linha** fecha a linha atual como uma entrada na lista
+  do canal (mesmo espírito "sequenciador" do editor de som); **Atualizar**/**Remover**/**Mover** editam
+  as linhas já inseridas. **Tocar**/**Parar** sintetizam os 3 canais juntos — o motor reaproveita quase
+  integralmente o `PsgSynth.pbi` do editor de som (mesmo chip, mesmo gerador de envelope compartilhado),
+  só parseando o MML e mesclando cronologicamente os 3 canais num único fluxo de registradores.
+  **Gerar código PLAY** monta o `PLAY "...","...","..."` final (concatenação literal do que foi
+  montado); **Injetar no cursor**/**Copiar** colocam o código na aba ativa ou na área de transferência.
+  Integrado ao sistema de projeto, mesma barra de número/tag/navegação/Registrar/Novo dos demais
+  editores — os botões de ícone (**Novo**/**Registrar**) são os mesmos desenhos já usados no editor de
+  sprites, reaproveitados para ficar visualmente uniforme em toda a IDE.
+
+  ![Editor de música MML (Criar → Música (PLAY)...) com os 3 canais em paralelo, lista de linhas por canal e código PLAY gerado](images/msxbasica-07.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
 em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editor de tile (além do
-charset/fonte 8×8), demais editores visuais (LINE/CIRCLE/DRAW, tracker, MML/`PLAY`) e sua integração ao
-sistema de projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em
-tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e
-abrir o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
+charset/fonte 8×8), demais editores visuais (LINE/CIRCLE/DRAW, tracker) e sua integração ao sistema de
+projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em tempo real
+(input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e abrir o
+openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
 
 ## Changelog resumido
 
@@ -315,6 +333,34 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   antigo) — substituídos por campos de texto simples, digitáveis, resolvendo tanto o "spin não funciona"
   quanto o "sem som" (volume ficava preso em 0 sem o usuário conseguir ver/confirmar o ajuste). Versão
   embutida no executável atualizada para `5.9.3`.
+
+- **2026-07-21 (madrugada)** — Novo **editor de música MML** (menu **Criar → Música (PLAY)...**,
+  `editor/MmlSynth.pbi` + `editor/MmlEditorGui.pbi`): cobre o dialeto MML do MSX-BASIC completo (notas
+  A-G com sustenido/bemol, `L` duração, 8 oitavas `O`/`>`/`<`, pausa `R`, andamento `T`, volume `V`,
+  nota absoluta `N`, envelope `M`/`S`, ponto de aumento `.`). O motor reaproveita quase 100% do
+  `PsgSynth.pbi` do editor de som — mesmo chip, mesmo gerador de envelope compartilhado pelos 3 canais
+  — só adicionando um parser MML por canal e uma mesclagem cronológica dos 3 canais independentes num
+  único fluxo de registradores do PSG (chamando `PsgSynth_RenderStep()` sem alterar). UI com os 3 canais
+  em paralelo, cada um com uma "linha atual" editável preenchida por botões, lista de linhas por canal
+  e a mesma barra de projeto (Registrar/Novo/navegação) dos demais editores. Persistência em nova
+  tabela `mml_songs` no `.msxproject`, coberta por round-trip em `ProjectDBTestCli.pb`. Validado por
+  `editor/tools/MmlTestCli.pb` (frequências de nota corretas, duração/pontos batendo com a matemática
+  esperada, `N` batendo com `O`+nota equivalente) e ao vivo via mensagens do Windows (nunca cursor
+  real). Preencheu o módulo 8 do `docs/SPEC.md`, que estava marcado como "Gap" (sem nenhuma
+  especificação registrada).
+
+  Logo em seguida, dois ajustes pedidos depois de ver a janela funcionando: **disposição dos botões**
+  compactada (notas + pausa numa fileira só; os antigos botões largos "Definir O"/"Definir L"/"Definir
+  T"/"Definir V"/"Definir M"/"Definir S"/"Inserir N" viraram um ícone "+" ao lado de cada campo — a
+  letra do campo já diz o comando MML; campos relacionados como N+O, L+T e M+S passaram a dividir a
+  mesma fileira) — a janela encolheu de ~820px pra ~740px de altura; e os botões **Novo**/**Registrar**
+  do editor de música (e também do editor de som, pra ficar uniforme) trocados de texto para os mesmos
+  ícones já desenhados no editor de sprites (`SpriteEd_CreateNewSpriteIcon`/`CreateRegisterIcon`,
+  reaproveitados sem duplicar nenhum desenho). Nessa checagem apareceu um bug real de
+  `HasUnsavedContent()` (a função que decide se avisa "salvar antes de sair"): só contava a tabela de
+  sprites, então um projeto só com alfabetos, sons ou músicas nunca disparava o aviso — risco real de
+  perder esse conteúdo ao fechar sem salvar. Corrigido somando as 4 tabelas (`sprites`+`alphabets`+
+  `psg_sounds`+`mml_songs`). Versão embutida no executável atualizada para `5.9.5`.
 
 ## Ferramentas e ambiente
 

@@ -46,7 +46,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
 | 6 | Editor de som SOUND (PSG) | baixo | **Implementado (2026-07-21)** — `editor/PsgSynth.pbi` (motor)/`editor/PsgEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 6 |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
-| 8 | Editor MML (comando `PLAY`) | médio | **Gap**: explicação não recuperada |
+| 8 | Editor MML (comando `PLAY`) | médio | **Implementado (2026-07-21)** — `editor/MmlSynth.pbi` (motor)/`editor/MmlEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 8 |
 | 9 | Extensão NestorBASIC (nbasic) | médio | Definido, com exemplo de sintaxe (seção 7) |
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
@@ -599,18 +599,101 @@ usado pelo editor de sprites) e **Copiar** (`SetClipboardText`).
 
 **Persistência**: tabela `psg_sounds` em `ProjectDB.pbi` (mesmo padrão de `sprites`/`alphabets`,
 `StoreSound`/`FetchSound`/`ListSoundNumbers`/`HasSound`), com barra de projeto idêntica à dos editores
-de sprite/alfabeto (número do som, tag, Primeiro/Anterior/Próximo/Último, Novo, Registrar). Os 14
-registradores por passo são serializados como um array **1D achatado** (`Regs(i*14+r)`), não uma
-matriz 2D — armadilha real encontrada durante o desenvolvimento: `ReDim` no PureBasic só redimensiona
-a **última** dimensão de um array, então `FetchSound` tentando `ReDim` a primeira dimensão (número de
-passos) de uma matriz 2D corrompia a heap (crash `STATUS_HEAP_CORRUPTION`); o array 1D resolve porque
-sempre tem uma única dimensão redimensionável. Coberto por round-trip em `editor/tools/ProjectDBTestCli.pb`
-(store/fetch/list/overwrite/SaveAs/OpenExisting).
+de sprite/alfabeto (número do som, tag, Primeiro/Anterior/Próximo/Último, **Novo**/**Registrar** — desde
+2026-07-21 (sessão 6) os dois últimos são ícones (`ButtonImageGadget`), reaproveitando
+`SpriteEd_CreateNewSpriteIcon`/`SpriteEd_CreateRegisterIcon` do editor de sprites em vez de texto, pra
+ficar uniforme com o resto da IDE). Os 14 registradores por passo são serializados como um array **1D
+achatado** (`Regs(i*14+r)`), não uma matriz 2D — armadilha real encontrada durante o desenvolvimento:
+`ReDim` no PureBasic só redimensiona a **última** dimensão de um array, então `FetchSound` tentando
+`ReDim` a primeira dimensão (número de passos) de uma matriz 2D corrompia a heap (crash
+`STATUS_HEAP_CORRUPTION`); o array 1D resolve porque sempre tem uma única dimensão redimensionável.
+Coberto por round-trip em `editor/tools/ProjectDBTestCli.pb` (store/fetch/list/overwrite/SaveAs/
+OpenExisting).
 
 ### 7. Tracker (escopo alto, não detalhado)
 - Sequenciador de padrões, editor de padrão (grade linha × canal, nota/volume/efeito), motor de
   playback (tempo real ou geração de trilha para tocar via Z80/interrupção), "instrumentos" = envelope +
   volume ao longo do tempo (sem sample/wavetable, diferente de tracker MOD).
+
+### 8. Editor MML (comando `PLAY`)
+
+**Status (2026-07-21): implementado.** Menu **Criar → Música (PLAY)...**, mesma arquitetura triádica
+motor/janela/harness dos módulos 6/12: `editor/MmlSynth.pbi` (parser MML + mixagem, sem GUI),
+`editor/MmlEditorGui.pbi` (janela), `editor/tools/MmlTestCli.pb` (harness headless).
+
+**Dialeto MML coberto** (MSX-BASIC — confirmado por pesquisa como distinto do MML genérico
+GW-BASIC/Microsoft BASIC, que usa `P` para pausa e `M`/`MF`/`MB`/`MN`/`ML`/`MS` para modo de
+articulação; o MSX repropõe `M`/`S` para controlar o **envelope de hardware do PSG**, recurso que o
+GW-BASIC genérico não tem):
+
+| Comando | Significado | Faixa | Default |
+|---|---|---|---|
+| `A`-`G` [`+`/`#`\|`-`] [n] [`.`...] | Nota (sustenido/bemol, duração 1-64, pontos) | | usa `L`/oitava atual |
+| `R` [n] [`.`...] | Pausa | | usa `L` atual |
+| `N`n | Nota absoluta cromática (8 oitavas × 12 semitons) | 1-96 | — |
+| `O`n | Define oitava | 1-8 | 4 |
+| `>` / `<` | Sobe/desce 1 oitava | | |
+| `L`n | Duração padrão | 1-64 | 4 |
+| `T`n | Andamento (BPM) | 32-255 | 120 |
+| `V`n | Volume do canal (desliga o modo envelope) | 0-15 | 8 |
+| `M`n | Período do envelope (= R11/R12 do PSG) | 1-65535 | 1000 (default de UI) |
+| `S`n | Forma do envelope (= R13 do PSG) — liga o modo envelope neste canal, retrigga | 0-15 | — |
+| `.` | Ponto de aumento — cada ponto multiplica a duração corrente por 1,5× (multiplicativo, não a
+  fórmula aditiva clássica de teoria musical — confirmado como o comportamento real de interpretadores
+  MML tipo BASIC) | 0-3 pontos | 0 |
+
+Mapeamento nota→frequência: temperamento igual, `A` na oitava 4 = 440 Hz. Caracteres não reconhecidos
+(inclusive espaço) são ignorados pelo parser — nunca bloqueia a prévia sonora por erro de digitação; o
+código `PLAY` final gerado nunca passa pelo parser, é sempre o texto literal que o usuário montou.
+
+**Decisão de arquitetura — reaproveitar `PsgSynth.pbi` ao máximo**: o `PLAY` toca no mesmo chip que o
+`SOUND` (mesmos 3 osciladores de tom, mesmo único gerador de envelope compartilhado pelos 3 canais —
+confirmado por pesquisa). `MmlSynth.pbi` não duplica nenhum DSP: (1) parseia cada string de canal numa
+lista de `MmlNoteEvent` (início/duração em amostras, período de tom via `PsgSynth_HzToPeriod()`, volume,
+usa-envelope) mais uma lista de comandos `M`/`S` com seu instante absoluto; (2) mescla cronologicamente
+os 3 canais — uma lista global de pontos de corte (início/fim de nota nos 3 canais + instante de cada
+`S`), montando um `PsgStepData` por intervalo, só retriggando o envelope (`Regs[13]` mudando) nos
+instantes reais de `S` e herdando o valor do intervalo anterior nos demais (mesmo truque de diff do
+módulo 6); (3) chama `PsgSynth_RenderStep()` (inalterado) com o número exato de amostras de cada
+intervalo — sem passar pelo caminho baseado em quadros/`DurationFrames` do módulo 6, evitando
+arredondamento e ganhando precisão de tempo musical. Um único `PsgChipState` persiste pela música
+inteira. `M` sozinho só atualiza um período pendente; só `S` de fato retrigga (write real em R13, igual
+ao hardware).
+
+**Janela**: três colunas lado a lado (canal A/B/C "em paralelo", pedido explícito do usuário), cada uma
+com uma **"linha atual"** editável (`StringGadget`, os botões de comando acrescentam texto nela, mas
+também é digitável direto — mesmo espírito de escape-hatch dos campos numéricos do módulo 6) — notas
+(C-B) e **Pausa (`R`)** numa única fileira, com combo de acidente + campo de duração + campo de pontos
+ao lado; N, O (+ `>`/`<`), L, T, V, M, S como campo + um ícone `+` compacto ao lado (**layout
+compactado em 2026-07-21, sessão 6**: os botões largos originais "Definir O"/"Definir L"/etc. viraram
+esse `+` — o rótulo de uma letra já diz o comando MML —, e campos relacionados N+O/L+T/M+S passaram a
+dividir a mesma fileira, reduzindo a altura da janela de ~820px pra ~740px); **Limpar linha**,
+**Atualizar** (aplica a linha atual sobre a linha selecionada na lista) e **Inserir nova linha** (fecha
+a linha atual como uma entrada na lista abaixo e limpa o buffer — pedido explícito do usuário, "mais ou
+menos como o sequenciador" do módulo 6). Lista de linhas por canal (`ListIconGadget`) com Remover
+(ícone `-`)/Mover ▲▼. Barra comum: **Tocar** (concatena linhas já commitadas + a linha em edição de
+cada canal, toca os 3 juntos via `.wav` temporário) / **Parar**; **Gerar código PLAY** (concatenação
+literal — sem separador, cada linha já é um trecho MML válido por si só — omitindo canais vazios à
+direita) / **Injetar no cursor**
+(`InjectTextAtCursor()`, mesmo helper do módulo 6) / **Copiar**. Barra de projeto no topo, mesmo padrão
+exato dos módulos 4/6 (número/tag/Primeiro/Anterior/Próximo/Último/**Novo**/**Registrar** — os dois
+últimos como ícone desde a sessão 6, mesmo reaproveitamento de `SpriteEd_CreateNewSpriteIcon`/
+`CreateRegisterIcon` descrito no módulo 6).
+
+**Persistência**: tabela `mml_songs` em `ProjectDB.pbi` — três colunas TEXT (`lines_a`/`lines_b`/
+`lines_c`), cada uma com as linhas daquele canal unidas por `Chr(10)`. Diferente de `psg_sounds`
+(módulo 6), aqui **não** houve necessidade do truque de array 1D achatado: `Lines()` é uma matriz 2D
+**fixa** (`Dim Lines.s(2, N-1)`, dimensionada uma vez pelo chamador, nunca redimensionada — `LineCount()`
+controla quantas linhas de cada canal estão em uso), então a limitação de `ReDim` (só redimensiona a
+última dimensão) documentada no módulo 6 nunca chega a ser um problema aqui. Coberto por round-trip em
+`editor/tools/ProjectDBTestCli.pb`.
+
+**Verificado ao vivo** (mensagens do Windows, nunca cursor real — mesma técnica do módulo 12/6): abrir a
+janela (153 controles, sem crash), digitar num campo `L` e clicar "Definir L" (bug de mapeamento
+encontrado e corrigido — não no app, no próprio script de teste: peguei o handle do campo `O` por
+engano), clicar as 7 notas, "Inserir nova linha", "Gerar código PLAY" produzindo exatamente
+`PLAY "L4CDEFGABL8C"` pra duas linhas commitadas, "Tocar" sem travar o processo, "Fechar" devolvendo o
+editor principal intacto.
 
 ### 9. Extensão NestorBASIC (nbasic)
 - Todas as funções do NestorMan/InterNestor Suite/InterNestor Lite passam por um único `USR` com array
@@ -824,11 +907,13 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
 - **Arquivo**: `editor/ProjectDB.pbi`, módulo `ProjectDB` (`DeclareModule`/`Module`, mesmo padrão de
   `MSXDisk.pbi` — chamadas qualificadas `ProjectDB::...`). `UseSQLiteDatabase()` — driver estático
   (`sqlite3.lib` do PureBasic), sem DLL extra pra distribuir junto do `.exe`.
-- **Um projeto = um arquivo `.msxproject`** (SQLite puro). Schema atual: `project_info` (chave/valor,
-  reservada) e `sprites` (`sprite_number` chave primária, `tag`, `grid_size`, `sprite_mode`,
-  `pixel_data`, `updated_at`). Demais tipos de conteúdo do projeto (Basic, Assembly, Telas, Sons,
-  Músicas, listagens LM, documentos) ganham tabela própria só quando tiverem editor implementado —
-  decisão deliberada de não desenhar schema para funcionalidade que ainda não existe.
+- **Um projeto = um arquivo `.msxproject`** (SQLite puro). Schema atual (2026-07-21): `project_info`
+  (chave/valor), `documents` (cópia do conteúdo de cada aba de texto já salva), `sprites`, `alphabets`
+  (módulo 4), `psg_sounds` (módulo 6) e `mml_songs` (módulo 8) — cada um com sua própria chave primária
+  numérica (`sprite_number`/`alphabet_number`/`sound_number`/`song_number`), `tag` e `updated_at`; os
+  demais tipos de conteúdo do projeto (Basic/Assembly/Telas/listagens LM permanecem só como `documents`,
+  sem tabela dedicada) ganham tabela própria só quando tiverem editor implementado — decisão deliberada
+  de não desenhar schema para funcionalidade que ainda não existe.
 - **Serialização da grade do sprite**: em vez de usar a API de bind de BLOB do driver SQLite do
   PureBasic (não exercitada em nenhum exemplo local, risco desnecessário), `pixel_data` é uma coluna
   `TEXT` com um dígito hexadecimal por bloco (0–F, cobre os 16 índices de cor), `grid_size*grid_size`
@@ -847,8 +932,14 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   trocar (cancelar o `SaveFileRequester` cancela a ação toda, sem descartar nada silenciosamente).
 - **Ao sair**: mesmo `OfferSaveProject()` reaproveitado no fluxo de saída de `BadigEditor.pb` (depois do
   aviso já existente sobre abas de texto não salvas) — só pergunta se `HasUnsavedContent()` (projeto
-  ainda temporário E com pelo menos um sprite registrado); `Close()` sempre roda antes do `End` final e
-  apaga o arquivo temporário se ele nunca foi promovido a um local permanente.
+  ainda temporário E com pelo menos um registro nas tabelas que só existem dentro do banco — sprites,
+  alphabets, psg_sounds, mml_songs; `documents` fica de fora do critério porque é cópia de um arquivo
+  que já existe em disco por conta própria, perder a cópia do banco temporário não perde trabalho de
+  verdade); `Close()` sempre roda antes do `End` final e apaga o arquivo temporário se ele nunca foi
+  promovido a um local permanente. **Bug corrigido (2026-07-21, sessão de ajuste do editor de música)**:
+  `HasUnsavedContent()` originalmente só contava `sprites` — um projeto só com alfabetos, sons ou
+  músicas nunca disparava o aviso de salvar, risco real de perder esse conteúdo ao fechar sem salvar
+  explicitamente. Corrigido somando `COUNT(*)` das 4 tabelas numa única query.
 - **Arquivo → Salvar projeto / Salvar projeto como...** (2026-07-19) — `SaveProject(SaveAsFlag.b =
   #False)`: se o projeto já tem caminho permanente e não é "salvar como", não faz nada (o `ProjectDB`
   grava cada `StoreSprite()` na hora via SQLite, nunca fica "sujo" em memória como uma aba de texto);
@@ -885,7 +976,9 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
   resolvida (2026-07-18)**: a parte de sprite foi implementada com spec própria (não precisou do
   detalhe original recuperado, ver seção 4 acima); char/tile continua em aberto.
-- Seção 8 (editor MML/`PLAY`): detalhe da conversa original não foi recuperado.
+- ~~Seção 8 (editor MML/`PLAY`): detalhe da conversa original não foi recuperado.~~ — **resolvida
+  (2026-07-21)**: implementada com spec própria, não precisou do detalhe original recuperado (dialeto
+  MML confirmado por pesquisa direta, não pela conversa perdida) — ver seção 8 acima.
 - Mapeamento completo de funções/parâmetros NestorBASIC (módulo 9).
 - Lista de comandos suportados/incompatíveis do msxbas2rom (módulo 10), antes de decidir se vale a pena.
 - `badig/msx/openmsx_output.tcl` ainda não foi lido (script que faz a tela do openMSX ecoar para o
@@ -903,6 +996,65 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-21 (sessão 6)**: dois ajustes pedidos depois de ver a janela do editor de
+música funcionando (sessão 5 abaixo) — nenhum deles muda escopo, só polimento de UI e um bugfix real
+encontrado no processo.
+- **Disposição dos botões do editor de música compactada**: notas + pausa (`R`) passaram a dividir uma
+  única fileira (em vez de "Pausa (R)" numa linha à parte); os antigos botões largos "Definir O"/
+  "Definir L"/"Definir T"/"Definir V"/"Definir M"/"Definir S"/"Inserir N" viraram um ícone `+` compacto
+  ao lado de cada campo — o rótulo de uma letra (N/O/L/T/V/M/S) já diz o comando MML, o botão só
+  confirma "acrescenta na linha atual"; campos relacionados (N+O, L+T, M+S) passaram a dividir a mesma
+  fileira. A janela encolheu de ~820px pra ~740px de altura (~430px de `ColH` por coluna, contra os
+  520px originais). Verificado ao vivo (mensagens do Windows, nunca cursor real): sem sobreposição de
+  controles, fluxo nota+pausa (`C`+`R` → `"CR"`) continua funcionando.
+- **Ícones "Novo"/"Registrar" uniformizados**: trocados de `ButtonGadget` de texto pra
+  `ButtonImageGadget`, reaproveitando **os mesmos ícones já desenhados** no editor de sprites
+  (`SpriteEd_CreateNewSpriteIcon`/`SpriteEd_CreateRegisterIcon` em `SpriteEditorGui.pbi`, chamados
+  diretamente de `PsgEditorGui.pbi`/`MmlEditorGui.pbi` — nenhum desenho novo, `SpriteEditorGui.pbi` já
+  é incluído antes dos dois no `BadigEditor.pb`). Aplicado nos **dois** editores (som e música): o
+  pedido original era só sobre música, mas deixar só o editor de som com texto contrariaria o próprio
+  objetivo de "ficar uniforme com o resto dos programas". Verificado ao vivo em ambas as janelas
+  (clique no ícone "Novo" dispara o evento certo, `GetWindowText` confirma que os botões realmente não
+  têm mais texto).
+- **Bug real encontrado nessa checagem**: `HasUnsavedContent()` (módulo 13) só contava a tabela
+  `sprites` — um projeto só com alfabetos, sons (PSG) ou músicas (MML) nunca disparava o aviso de
+  "salvar antes de sair", risco real de perda silenciosa desse conteúdo (que só existe dentro do banco
+  do projeto, sem nenhum arquivo de backup em disco). Corrigido somando `COUNT(*)` de `sprites` +
+  `alphabets` + `psg_sounds` + `mml_songs` numa única query — ver módulo 13 acima para o detalhe.
+  Coberto pela suíte existente de `ProjectDBTestCli.pb` (o teste já cobre o caso "com conteúdo" desde
+  que as 4 tabelas têm registro nesse ponto do teste; não foi adicionado um teste isolado por tipo —
+  ver nota de baixo risco abaixo).
+- Documentação atualizada na mesma sessão: `README.md` (bullet do editor de música com a imagem
+  `images/msxbasica-07.png` — a `06` já era do editor de som —, novo item de changelog),
+  `docs/MANUAL.md` (nova seção "Editor de música (MML/PLAY)", corrigida também uma duplicata órfã de
+  texto que tinha sobrado no fim do arquivo de uma edição anterior), este arquivo (módulo 13 atualizado
+  com o schema completo e o bugfix, esta entrada de log). Versão embutida no executável atualizada para
+  `5.9.5`.
+- **Risco de baixa prioridade aceito**: a cobertura de `HasUnsavedContent()` em `ProjectDBTestCli.pb`
+  não isola cada uma das 4 tabelas (testa só o agregado, já que o teste registra sprite+alfabeto+som+
+  música em sequência antes de qualquer verificação) — um regresso que quebrasse a contagem de só uma
+  tabela específica não seria pego. Melhoria futura de baixo risco, não bloqueante.
+
+**Estado ao fim de 2026-07-21 (sessão 5)**: novo **editor de música MML** (módulo 8, ver seção 8 acima)
+— menu **Criar → Música (PLAY)...**, `editor/MmlSynth.pbi` (motor, sem GUI) + `editor/MmlEditorGui.pbi`
+(janela) + `editor/tools/MmlTestCli.pb` (harness headless), mesma arquitetura triádica dos módulos
+6/12. Decisão central: reaproveitar o `PsgSynth.pbi` do módulo 6 quase por completo (mesmo chip, mesmo
+gerador de envelope compartilhado pelos 3 canais) — só um parser MML por canal e uma mesclagem
+cronológica dos 3 canais independentes num único fluxo de `PsgStepData`, chamando `PsgSynth_RenderStep()`
+sem alterar nenhuma linha de DSP. Dialeto MML confirmado por pesquisa direta (distinto do MML genérico
+GW-BASIC/Microsoft BASIC — o MSX repropõe `M`/`S` para o envelope de hardware do PSG). UI com os 3
+canais em paralelo (pedido explícito do usuário), cada um com uma "linha atual" editável que os botões
+de comando vão preenchendo, "Inserir nova linha" fecha a linha como uma entrada na lista do canal (mesmo
+espírito "sequenciador" do módulo 6). Integrado ao sistema de projeto (tabela `mml_songs`, linhas de
+cada canal unidas por `Chr(10)` em 3 colunas TEXT — diferente de `psg_sounds`, aqui não houve
+necessidade do truque de array 1D achatado porque `Lines()` é uma matriz 2D **fixa**, nunca
+redimensionada), com round-trip coberto em `editor/tools/ProjectDBTestCli.pb`. Validado por
+`editor/tools/MmlTestCli.pb` (frequência de nota bate com o esperado, duração/pontos batem com a
+matemática, `N` bate com `O`+nota equivalente, `S`/`V` ligam/desligam o modo envelope corretamente) e ao
+vivo via mensagens do Windows (abrir a janela, montar `L4CDEFGAB` clicando nos botões, "Inserir nova
+linha", "Gerar código PLAY" produzindo exatamente o esperado, "Tocar" sem travar). Preencheu o módulo 8,
+que estava marcado como "Gap" (nenhuma especificação registrada) — ver lacuna resolvida acima.
 
 **Estado ao fim de 2026-07-21 (sessão 4)**: novo **editor de som PSG** (módulo 6, ver seção 6 acima) —
 menu **Criar → Som (PSG)...**, `editor/PsgSynth.pbi` (motor, sem GUI) + `editor/PsgEditorGui.pbi`

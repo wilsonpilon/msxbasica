@@ -268,6 +268,65 @@ CheckTrue(Bool(ProjectDB::LastSoundStepCount() = 1), "Som #1: step_count atualiz
 CheckTrue(ProjectDB::HasSound(2), "HasSound(2) = #True")
 CheckTrue(Bool(Not ProjectDB::HasSound(99)), "HasSound(99) = #False")
 
+; 8f) StoreSong/FetchSong - musicas MML/PLAY (3 canais de linhas de texto),
+; mesmo padrao Store/Fetch/List dos demais tipos de conteudo.
+Procedure.i SongLinesMatch(Array A.s(2), Array CountA.i(1), Array B.s(2), Array CountB.i(1))
+  Protected c, i
+  For c = 0 To 2
+    If CountA(c) <> CountB(c)
+      ProcedureReturn #False
+    EndIf
+    For i = 0 To CountA(c) - 1
+      If A(c, i) <> B(c, i)
+        ProcedureReturn #False
+      EndIf
+    Next
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+Dim SongLinesA.s(2, 9)
+Dim SongCountA.i(2)
+SongLinesA(0, 0) = "T120O4L8CDEFGAB" : SongLinesA(0, 1) = "L4CEG"
+SongCountA(0) = 2
+SongLinesA(1, 0) = "O3L4EGB"
+SongCountA(1) = 1
+SongCountA(2) = 0   ; canal C vazio
+
+CheckTrue(ProjectDB::StoreSong(1, "cancao1", SongLinesA(), SongCountA()), "StoreSong #1 (2 linhas A, 1 linha B, C vazio)")
+
+Dim SongLinesB.s(2, 9)
+Dim SongCountB.i(2)
+SongLinesB(0, 0) = "T140O5CDE"
+SongCountB(0) = 1
+CheckTrue(ProjectDB::StoreSong(2, "cancao2", SongLinesB(), SongCountB()), "StoreSong #2 (1 linha so no canal A)")
+
+NewList SongNumbers.i()
+ProjectDB::ListSongNumbers(SongNumbers())
+CheckTrue(Bool(ListSize(SongNumbers()) = 2), "ListSongNumbers (esperado 2, achou " + Str(ListSize(SongNumbers())) + ")")
+
+Dim LoadedSongA.s(2, 9)
+Dim LoadedSongCountA.i(2)
+CheckTrue(ProjectDB::FetchSong(1, LoadedSongA(), LoadedSongCountA()), "FetchSong #1")
+CheckTrue(Bool(ProjectDB::LastSongTag() = "cancao1"), "Musica #1: tag = 'cancao1'")
+CheckTrue(SongLinesMatch(SongLinesA(), SongCountA(), LoadedSongA(), LoadedSongCountA()), "Musica #1: linhas dos 3 canais batem com o original")
+
+; Sobrescreve a musica #1 (menos linhas, tag diferente) - nao pode duplicar
+Dim SongLinesA2.s(2, 9)
+Dim SongCountA2.i(2)
+SongLinesA2(0, 0) = "R1"
+SongCountA2(0) = 1
+CheckTrue(ProjectDB::StoreSong(1, "cancao1b", SongLinesA2(), SongCountA2()), "StoreSong #1 de novo (sobrescrevendo, agora com 1 linha)")
+ClearList(SongNumbers())
+ProjectDB::ListSongNumbers(SongNumbers())
+CheckTrue(Bool(ListSize(SongNumbers()) = 2), "Ainda 2 musicas apos sobrescrever #1 (nao duplicou)")
+ProjectDB::FetchSong(1, LoadedSongA(), LoadedSongCountA())
+CheckTrue(Bool(ProjectDB::LastSongTag() = "cancao1b"), "Musica #1: tag atualizada para 'cancao1b'")
+CheckTrue(Bool(LoadedSongCountA(0) = 1), "Musica #1: contagem de linhas do canal A atualizada para 1")
+
+CheckTrue(ProjectDB::HasSong(2), "HasSong(2) = #True")
+CheckTrue(Bool(Not ProjectDB::HasSong(99)), "HasSong(99) = #False")
+
 ; "Projeto 0" (defaults, sempre em memoria): alfabeto 0 = msx.alf embutido
 ; no executavel - confere que bate byte a byte com o .alf real do
 ; repositorio (alfabetos\msx.alf, dois niveis acima de editor\tools\), pra
@@ -320,6 +379,11 @@ ProjectDB::ListSoundNumbers(SoundNumbers())
 CheckTrue(Bool(ListSize(SoundNumbers()) = 2), "ListSoundNumbers ainda mostra 2 sons apos SaveAs")
 ProjectDB::FetchSound(2, LoadedSoundA(), SoundDursB())
 CheckTrue(Bool(ProjectDB::LastSoundTag() = "beep"), "Som #2 ainda bate (tag 'beep') apos SaveAs")
+ClearList(SongNumbers())
+ProjectDB::ListSongNumbers(SongNumbers())
+CheckTrue(Bool(ListSize(SongNumbers()) = 2), "ListSongNumbers ainda mostra 2 musicas apos SaveAs")
+ProjectDB::FetchSong(2, LoadedSongA(), LoadedSongCountA())
+CheckTrue(Bool(ProjectDB::LastSongTag() = "cancao2"), "Musica #2 ainda bate (tag 'cancao2') apos SaveAs")
 
 ; 11) OpenExisting - simula "Arquivo -> Abrir projeto...": fecha tudo e
 ; reabre do zero so a partir do caminho salvo, sem passar por EnsureOpen.
@@ -346,6 +410,11 @@ ProjectDB::ListSoundNumbers(SoundNumbers())
 CheckTrue(Bool(ListSize(SoundNumbers()) = 2), "ListSoundNumbers ainda mostra 2 sons apos OpenExisting")
 ProjectDB::FetchSound(1, LoadedSoundA(), SoundDursA2())
 CheckTrue(Bool(ProjectDB::LastSoundTag() = "laser2" And ProjectDB::LastSoundStepCount() = 1), "Som #1 ainda bate (tag 'laser2', 1 passo) apos OpenExisting")
+ClearList(SongNumbers())
+ProjectDB::ListSongNumbers(SongNumbers())
+CheckTrue(Bool(ListSize(SongNumbers()) = 2), "ListSongNumbers ainda mostra 2 musicas apos OpenExisting")
+ProjectDB::FetchSong(1, LoadedSongA(), LoadedSongCountA())
+CheckTrue(Bool(ProjectDB::LastSongTag() = "cancao1b" And LoadedSongCountA(0) = 1), "Musica #1 ainda bate (tag 'cancao1b', 1 linha) apos OpenExisting")
 CheckTrue(Bool(Not ProjectDB::OpenExisting(WorkDir + "nao_existe.msxproject")), "OpenExisting falha graciosamente com arquivo inexistente")
 
 ; 12) Close nao deve travar (limpeza final)

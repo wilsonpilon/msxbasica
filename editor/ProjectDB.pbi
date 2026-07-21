@@ -1,9 +1,9 @@
 ;
 ; ------------------------------------------------------------
 ;  ProjectDB.pbi - armazenamento de "projeto MSX" num arquivo SQLite unico.
-;  Guarda por enquanto so os Sprites (ver docs/SPEC.md / CLAUDE.md); outros
-;  tipos de conteudo do projeto (Basic, Assembly, Telas, Sons, Musicas,
-;  listagens LM, documentos) ganham tabela quando tiverem editor propio.
+;  Guarda hoje Sprites, Alfabetos, Sons (PSG) e Musicas (MML/PLAY) - ver
+;  docs/SPEC.md / CLAUDE.md; outros tipos de conteudo do projeto (Basic,
+;  Assembly, Telas, listagens LM) ganham tabela quando tiverem editor propio.
 ;
 ;  Ao iniciar sem nenhum parametro de linha de comando, BadigEditor.pb chama
 ;  EnsureOpen() logo de cara, que cria "noname.msxproject" dentro da pasta
@@ -73,6 +73,19 @@ DeclareModule ProjectDB
   Declare.i HasSound(Number.i)
   Declare ListSoundNumbers(List Numbers.i())
 
+  ; Uma "musica" MML/PLAY guarda as linhas de texto MML montadas em cada um
+  ; dos 3 canais (A/B/C) - ver editor/MmlSynth.pbi/MmlEditorGui.pbi. Lines()
+  ; e uma matriz 2D FIXA (canal 0-2, indice de linha) dimensionada pelo
+  ; chamador (Dim Lines.s(2, N-1)) - nunca redimensionada aqui dentro
+  ; (LineCount() controla quantas linhas de cada canal estao realmente em
+  ; uso), entao nao esbarra na limitacao de ReDim documentada acima pra
+  ; StoreSound/FetchSound.
+  Declare.i StoreSong(Number.i, Tag.s, Array Lines.s(2), Array LineCount.i(1))
+  Declare.i FetchSong(Number.i, Array Lines.s(2), Array LineCount.i(1))
+  Declare.s LastSongTag()
+  Declare.i HasSong(Number.i)
+  Declare ListSongNumbers(List Numbers.i())
+
   ; "Projeto 0": banco SQLite a parte, sempre em memoria (nunca em arquivo,
   ; nunca salvo), recriado do zero a cada vez que a IDE abre - fonte interna
   ; de conteudo padrao (hoje so o alfabeto 0 = msx.alf embutido no executavel
@@ -105,6 +118,7 @@ Module ProjectDB
   Global FetchedAlphabetTag.s = ""
   Global FetchedSoundTag.s = ""
   Global FetchedStepCount.i = 0
+  Global FetchedSongTag.s = ""
   Global DefaultsOpen.b = #False
 
   Procedure.s NewTempPath()
@@ -135,6 +149,13 @@ Module ProjectDB
                          "tag TEXT, " +
                          "step_count INTEGER NOT NULL, " +
                          "steps_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS mml_songs (" +
+                         "song_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "lines_a TEXT NOT NULL, " +
+                         "lines_b TEXT NOT NULL, " +
+                         "lines_c TEXT NOT NULL, " +
                          "updated_at TEXT)")
   EndProcedure
 
@@ -271,15 +292,24 @@ Module ProjectDB
   EndProcedure
 
   ; True quando o projeto ainda e o temporario implicito (nunca foi salvo
-  ; num local permanente) E ja tem pelo menos um sprite registrado - e o
-  ; sinal usado pra avisar o usuario ao sair ou ao criar outro projeto.
+  ; num local permanente) E ja tem pelo menos um registro num dos tipos de
+  ; conteudo que so existem dentro do banco do projeto (sprites, alfabetos,
+  ; sons PSG, musicas MML) - e o sinal usado pra avisar o usuario ao sair ou
+  ; ao criar outro projeto. Documentos (.dmx/.asm/tokenizado) ficam de fora
+  ; de proposito: sao copia de um arquivo que ja existe em disco por conta
+  ; propria, entao perder a copia do banco temporario nao perde trabalho de
+  ; verdade (diferente de sprite/alfabeto/som/musica, que so vivem aqui).
   Procedure.i HasUnsavedContent()
     If Not IsOpen Or Not TempFlag
       ProcedureReturn #False
     EndIf
 
     Protected Count.i = 0
-    If DatabaseQuery(#DB, "SELECT COUNT(*) FROM sprites")
+    If DatabaseQuery(#DB, "SELECT " +
+                           "(SELECT COUNT(*) FROM sprites) + " +
+                           "(SELECT COUNT(*) FROM alphabets) + " +
+                           "(SELECT COUNT(*) FROM psg_sounds) + " +
+                           "(SELECT COUNT(*) FROM mml_songs)")
       If NextDatabaseRow(#DB)
         Count = Val(GetDatabaseString(#DB, 0))
       EndIf
@@ -665,6 +695,103 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT sound_number FROM psg_sounds ORDER BY sound_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; Grava as linhas MML dos 3 canais (Lines(canal, indice), LineCount(canal)
+  ; linhas validas por canal) como 3 colunas TEXT, cada uma com as linhas
+  ; daquele canal unidas por Chr(10) (DELETE+INSERT, mesmo padrao dos demais).
+  Procedure.i StoreSong(Number.i, Tag.s, Array Lines.s(2), Array LineCount.i(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected c, i
+    Dim Joined.s(2)
+    For c = 0 To 2
+      Joined(c) = ""
+      For i = 0 To LineCount(c) - 1
+        If i > 0
+          Joined(c) = Joined(c) + Chr(10)
+        EndIf
+        Joined(c) = Joined(c) + Lines(c, i)
+      Next
+      Joined(c) = ReplaceString(Joined(c), "'", "''")
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+
+    DatabaseUpdate(#DB, "DELETE FROM mml_songs WHERE song_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO mml_songs (song_number, tag, lines_a, lines_b, lines_c, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', '" + Joined(0) + "', '" + Joined(1) + "', '" + Joined(2) +
+                       "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; Le de volta uma musica pra dentro de Lines()/LineCount() (arrays fixos,
+  ; dimensionados pelo chamador - so preenche ate a capacidade, nunca
+  ; redimensiona); tag extra via LastSongTag().
+  Procedure.i FetchSong(Number.i, Array Lines.s(2), Array LineCount.i(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, lines_a, lines_b, lines_c FROM mml_songs WHERE song_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedSongTag = GetDatabaseString(#DB, 0)
+        Protected c, p, Parts
+        Protected RawText.s
+        Protected MaxIdx = ArraySize(Lines(), 2)
+        For c = 0 To 2
+          RawText = GetDatabaseString(#DB, 1 + c)
+          LineCount(c) = 0
+          If RawText <> ""
+            Parts = CountString(RawText, Chr(10)) + 1
+            For p = 1 To Parts
+              If LineCount(c) <= MaxIdx
+                Lines(c, LineCount(c)) = StringField(RawText, p, Chr(10))
+                LineCount(c) + 1
+              EndIf
+            Next
+          EndIf
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastSongTag()
+    ProcedureReturn FetchedSongTag
+  EndProcedure
+
+  Procedure.i HasSong(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM mml_songs WHERE song_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListSongNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT song_number FROM mml_songs ORDER BY song_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))

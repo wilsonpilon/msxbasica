@@ -8,8 +8,8 @@
 >
 > Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
 > etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
-> editor de sprites, o editor de alfabetos, o editor de som, o sistema de projeto e o
-> processo de build.
+> editor de sprites, o editor de alfabetos, o editor de som, o editor de música, o sistema
+> de projeto e o processo de build.
 
 ---
 
@@ -53,6 +53,12 @@
    - [Tocar / Parar](#tocar--parar)
    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor)
    - [Barra de projeto](#barra-de-projeto)
+10. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
+    - [Montando uma linha](#montando-uma-linha)
+    - [Lista de linhas por canal](#lista-de-linhas-por-canal)
+    - [Tocar / Parar](#tocar--parar-1)
+    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-1)
+    - [Barra de projeto](#barra-de-projeto-1)
 
 ---
 
@@ -97,7 +103,7 @@ um traço).
 | `-C`, `--compiler <caminho>` | Caminho para o `pbcompiler.exe`. |
 | `-R`, `--run` | Executa o programa automaticamente após uma compilação sem erros. |
 | `-H`, `--help` | Mostra a lista de opções e sai. |
-| `-V`, `--version <versão>` | Versão embutida no executável (padrão `5.9.3`). |
+| `-V`, `--version <versão>` | Versão embutida no executável (padrão `5.9.5`). |
 | `-i`, `--sourcefile <arquivo>` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
 | `-o`, `--outputexe <arquivo>` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
 
@@ -117,7 +123,7 @@ um traço).
 
 A cada compilação, o script grava no executável (via `/CONSTANT` do `pbcompiler.exe`):
 
-- **Versão** — string livre (`-V`/`--version`, padrão `5.9.3`).
+- **Versão** — string livre (`-V`/`--version`, padrão `5.9.5`).
 - **Build** — data/hora **UTC** do momento da compilação, convertida para **hexadecimal**
   (segundos desde a época Unix, ex.: `6A57EA80`). Cada build tem um identificador único e
   ordenável.
@@ -649,5 +655,70 @@ padrão da barra de projeto dos editores de sprite e alfabeto:
 Alterações feitas num som e ainda não registradas pedem confirmação antes de trocar de som ou fechar a
 janela, para não perder trabalho sem querer.
 
-Alterações feitas num alfabeto (ou num caractere dele) e ainda não registradas pedem confirmação antes
-de navegar para outro alfabeto, criar um novo ou fechar a janela.
+---
+
+## Editor de música (MML/PLAY)
+
+![Editor de música MML (Criar → Música (PLAY)...) com os 3 canais em paralelo, lista de linhas por canal e código PLAY gerado](../images/msxbasica-07.png)
+
+O menu **Criar → Música (PLAY)...** abre o editor de MML (Music Macro Language) para o comando `PLAY`
+do MSX-BASIC, numa janela própria com os **3 canais A/B/C lado a lado, em paralelo**. `PLAY` toca até 3
+vozes simultâneas, cada uma controlada por uma string MML própria — o motor de áudio deste editor
+reaproveita quase por completo o motor do [editor de som](#editor-de-som-psg) (mesmo chip PSG, mesmo
+gerador de envelope compartilhado pelos 3 canais), então o que você ouve na prévia deve soar muito
+parecido com o `PLAY` real rodando no MSX/openMSX.
+
+### Montando uma linha
+
+Cada canal tem uma **linha atual** (campo de texto editável — os botões abaixo acrescentam nela, mas
+também dá pra digitar direto):
+
+- **Notas** — botões `C D E F G A B` e **`R`** (pausa) na mesma fileira. O **acidente** (Natural/
+  Sustenido/Bemol), a **duração** (campo `D`, vazio = usa a duração padrão `L`) e os **pontos de
+  aumento** (campo `.`, 0-3 — cada ponto multiplica a duração por 1,5×) ficam ao lado e valem para a
+  **próxima** nota ou pausa clicada.
+- **`N`** — nota absoluta por número (1-96, cromática, cobre as 8 oitavas de uma vez). Campo + botão
+  `+` insere.
+- **`O`** — define a oitava atual (1-8). Campo + botão `+` define; botões **`>`**/**`<`** sobem/descem
+  1 oitava direto, sem precisar digitar.
+- **`L`** — duração padrão (1-64) das notas/pausas que não têm duração explícita.
+- **`T`** — andamento em BPM (32-255).
+- **`V`** — volume do canal (0-15) — volta ao modo de volume fixo (desliga o envelope neste canal).
+- **`M`** / **`S`** — período e forma do envelope de hardware (mesmos registradores do editor de som);
+  escrever `S` liga o modo envelope neste canal e retrigga o gerador (só existe **um** gerador de
+  envelope, compartilhado pelos 3 canais — mesma limitação do hardware real).
+
+Todos os campos parametrizados (N, O, L, T, V, M, S) têm um botão **`+`** compacto ao lado — o rótulo
+de uma letra já diz o comando MML, o `+` só confirma "acrescenta na linha atual".
+
+- **Limpar linha** — apaga a linha atual (recomeça do zero).
+- **Inserir nova linha** — fecha a linha atual como uma nova entrada na lista do canal (abaixo) e limpa
+  o campo pra começar a próxima.
+- **Atualizar** — aplica a linha atual sobre a linha selecionada na lista (em vez de criar uma nova).
+
+### Lista de linhas por canal
+
+Cada canal tem sua própria lista — clicar numa linha carrega o texto dela de volta no campo pra
+edição. **`-`** remove a linha selecionada; **▲**/**▼** movem a linha selecionada pra cima/baixo.
+
+### Tocar / Parar
+
+**Tocar** sintetiza os **3 canais juntos** (as linhas já inseridas mais a linha em edição de cada
+canal, permitindo ouvir uma prévia antes de "Inserir nova linha") e toca via `.wav` temporário, sem
+depender de biblioteca de áudio externa. **Parar** interrompe a reprodução.
+
+### Gerar código e injetar no editor
+
+- **Gerar código PLAY** — concatena o texto MML de cada canal (sem separador — cada linha já é um
+  trecho válido por si só) no comando final `PLAY "...","...","..."`, omitindo canais vazios à direita
+  (ex.: só os canais A e B usados gera `PLAY "...","..."`, sem a terceira string).
+- **Injetar no cursor** — insere o código gerado direto no cursor da aba de texto ativa no editor.
+- **Copiar** — copia o código gerado para a área de transferência do Windows.
+
+### Barra de projeto
+
+Mesmo padrão de barra de projeto dos demais editores (som, sprite, alfabeto) — número da música (`#N`),
+tag, navegação **Primeiro**/**Anterior**/**Próximo**/**Último**, e os botões de ícone **Novo** (cria a
+próxima música da sequência, com os 3 canais vazios) e **Registrar** (grava a música atual — todas as
+linhas dos 3 canais — no projeto). Alterações ainda não registradas pedem confirmação antes de trocar
+de música ou fechar a janela.
