@@ -57,6 +57,22 @@ DeclareModule ProjectDB
   Declare.i HasAlphabet(Number.i)
   Declare ListAlphabetNumbers(List Numbers.i())
 
+  ; Um "som" e uma sequencia de passos, cada um com os 14 registradores crus
+  ; do PSG (SOUND 0-13) + duracao em quadros - ver editor/PsgSynth.pbi/
+  ; PsgEditorGui.pbi. Regs() e 1D "achatado" (Regs(i*14+r), NumSteps*14
+  ; elementos - nao uma matriz 2D, porque ReDim so redimensiona a ULTIMA
+  ; dimensao de um array no PureBasic, e FetchSound precisa devolver um
+  ; numero de passos variavel); Durations() tem NumSteps elementos. Arrays
+  ; primitivos (nao a estrutura PsgStepData de PsgSynth.pbi) pra este modulo
+  ; nao depender da ordem de XIncludeFile de PsgSynth.pbi - mesmo espirito de
+  ; Array Grid.b(2)/CharsetBytes.a(2) acima.
+  Declare.i StoreSound(Number.i, Tag.s, NumSteps.i, Array Regs.a(1), Array Durations.w(1))
+  Declare.i FetchSound(Number.i, Array Regs.a(1), Array Durations.w(1))
+  Declare.i LastSoundStepCount()
+  Declare.s LastSoundTag()
+  Declare.i HasSound(Number.i)
+  Declare ListSoundNumbers(List Numbers.i())
+
   ; "Projeto 0": banco SQLite a parte, sempre em memoria (nunca em arquivo,
   ; nunca salvo), recriado do zero a cada vez que a IDE abre - fonte interna
   ; de conteudo padrao (hoje so o alfabeto 0 = msx.alf embutido no executavel
@@ -87,6 +103,8 @@ Module ProjectDB
   Global FetchedDocContent.s = ""
   Global FetchedDocMode.s = ""
   Global FetchedAlphabetTag.s = ""
+  Global FetchedSoundTag.s = ""
+  Global FetchedStepCount.i = 0
   Global DefaultsOpen.b = #False
 
   Procedure.s NewTempPath()
@@ -111,6 +129,12 @@ Module ProjectDB
                          "alphabet_number INTEGER PRIMARY KEY, " +
                          "tag TEXT, " +
                          "charset_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS psg_sounds (" +
+                         "sound_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "step_count INTEGER NOT NULL, " +
+                         "steps_data TEXT NOT NULL, " +
                          "updated_at TEXT)")
   EndProcedure
 
@@ -539,6 +563,108 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT alphabet_number FROM alphabets ORDER BY alphabet_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; Empacota Regs()/Durations() (Regs "achatado" em 1D, NumSteps*14
+  ; elementos - Regs(i*14+r) - e nao uma matriz 2D, porque ReDim so
+  ; redimensiona a ULTIMA dimensao de um array no PureBasic; um array 1D e a
+  ; unica forma segura de FetchSound devolver um numero de passos variavel)
+  ; num unico TEXT hex de largura fixa (32 digitos por passo: 28 dos 14
+  ; registradores de 1 byte + 4 da duracao de 2 bytes) e grava (DELETE+INSERT,
+  ; mesmo padrao de StoreSprite/StoreAlphabet).
+  Procedure.i StoreSound(Number.i, Tag.s, NumSteps.i, Array Regs.a(1), Array Durations.w(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected i, r
+    Protected HexData.s = ""
+    For i = 0 To NumSteps - 1
+      For r = 0 To 13
+        HexData = HexData + RSet(Hex(Regs(i * 14 + r)), 2, "0")
+      Next
+      HexData = HexData + RSet(Hex(Durations(i)), 4, "0")
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+
+    DatabaseUpdate(#DB, "DELETE FROM psg_sounds WHERE sound_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO psg_sounds (sound_number, tag, step_count, steps_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', " + Str(NumSteps) + ", '" + HexData + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; Le de volta um som pra dentro de Regs()/Durations() (redimensionados aqui
+  ; dentro pro tamanho certo - Array passado por referencia, ReDim afeta o
+  ; array do chamador; Regs e 1D "achatado", ver comentario de StoreSound);
+  ; tag/numero de passos extras via LastSoundTag()/LastSoundStepCount()
+  ; (mesmo padrao de FetchSprite/FetchAlphabet).
+  Procedure.i FetchSound(Number.i, Array Regs.a(1), Array Durations.w(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, step_count, steps_data FROM psg_sounds WHERE sound_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedSoundTag = GetDatabaseString(#DB, 0)
+        FetchedStepCount = Val(GetDatabaseString(#DB, 1))
+        Protected HexData.s = GetDatabaseString(#DB, 2)
+
+        If FetchedStepCount > 0
+          ReDim Regs(FetchedStepCount * 14 - 1)
+          ReDim Durations(FetchedStepCount - 1)
+          Protected i, r, Pos = 1
+          For i = 0 To FetchedStepCount - 1
+            For r = 0 To 13
+              Regs(i * 14 + r) = Val("$" + Mid(HexData, Pos, 2))
+              Pos + 2
+            Next
+            Durations(i) = Val("$" + Mid(HexData, Pos, 4))
+            Pos + 4
+          Next
+        EndIf
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.i LastSoundStepCount()
+    ProcedureReturn FetchedStepCount
+  EndProcedure
+
+  Procedure.s LastSoundTag()
+    ProcedureReturn FetchedSoundTag
+  EndProcedure
+
+  Procedure.i HasSound(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM psg_sounds WHERE sound_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListSoundNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT sound_number FROM psg_sounds ORDER BY sound_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))

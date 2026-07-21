@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.7.7** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 5.9.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -130,14 +130,31 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   (`editor/DefaultCharsetMsx.pbi`).
 
   ![Editor de alfabetos (Criar → Alfabeto...) com tabela de 256 caracteres, grade de edição ampliada e botões-ícone](images/msxbasica-05.png)
+- **Editor de som PSG** (`editor/PsgSynth.pbi` + `editor/PsgEditorGui.pbi`, menu **Criar → Som
+  (PSG)...**) — editor de efeitos sonoros para o chip de som do MSX (AY-3-8910/YM2149), espelhando
+  registrador por registrador o comando `SOUND` do MSX-BASIC. Painel com os 3 canais **A/B/C**
+  (frequência em Hz, volume 0-15, "usar envelope", liga/desliga tom e ruído no mixer), **ruído**
+  (período compartilhado) e **envelope** (período + as 10 formas de hardware nomeadas). Um "som" é um
+  **mini-sequenciador de passos** — cada passo guarda os 14 registradores + uma duração em quadros,
+  permitindo desenhar efeitos que variam ao longo do tempo (tiro, explosão etc.), com botões
+  **Adicionar/Atualizar/Remover/Mover/Duplicar passo**. **Tocar**/**Parar** sintetizam a sequência
+  inteira em PCM (motor próprio por acumulador de fase — osciladores de tom, LFSR de ruído de 17 bits,
+  gerador de envelope, tabela de volume logarítmica de 16 níveis) e tocam via `.wav` temporário, sem
+  depender de nenhuma biblioteca externa. **Gerar código BASIC** produz `SOUND n,valor` prontos
+  (só os registradores que mudaram a cada passo) e **Gerar bytes crus** produz um bloco `DATA` para uma
+  futura rotina Z80; **Injetar no cursor**/**Copiar** colocam o código gerado direto na aba de texto
+  ativa ou na área de transferência. Integrado ao sistema de projeto, mesma barra de número/tag/
+  navegação/Registrar/Novo dos editores de sprite e alfabeto.
+
+  ![Editor de som PSG (Criar → Som (PSG)...) com os 3 canais, ruído/envelope compartilhados, lista de passos e código BASIC gerado](images/msxbasica-06.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
 em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editor de tile (além do
-charset/fonte 8×8), demais editores visuais (LINE/CIRCLE/DRAW, som, tracker, MML/`PLAY`) e sua
-integração ao sistema de projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via
-socket/XML em tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só
-"gerar disco e abrir o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
+charset/fonte 8×8), demais editores visuais (LINE/CIRCLE/DRAW, tracker, MML/`PLAY`) e sua integração ao
+sistema de projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em
+tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e
+abrir o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
 
 ## Changelog resumido
 
@@ -277,6 +294,27 @@ socket/XML em tempo real (input simulado, detecção de erro com retorno à linh
   screenshots (geral + recortes ampliados de cada grupo de ícones) e um clique real confirmando que os
   botões de imagem continuam disparando os mesmos eventos de antes. Versão embutida no executável
   atualizada para `5.7.7`.
+
+- **2026-07-21 (à noite)** — Novo **editor de som PSG** (menu **Criar → Som (PSG)...**,
+  `editor/PsgSynth.pbi` + `editor/PsgEditorGui.pbi`): motor de emulação do AY-3-8910/YM2149 escrito do
+  zero (osciladores de tom por acumulador de fase, LFSR de ruído de 17 bits, gerador de envelope com as
+  10 formas de hardware, tabela de volume logarítmica de 16 níveis), validado por harness de console
+  (`editor/tools/PsgTestCli.pb` — frequência medida bate com a esperada, volume 0 é silêncio). Um "som"
+  é um mini-sequenciador de passos (cada um com os 14 registradores do `SOUND` + duração em quadros),
+  editável na janela com **Adicionar/Atualizar/Remover/Mover/Duplicar passo**, **Tocar**/**Parar**
+  (renderiza para `.wav` temporário e toca) e geração de código (**Gerar código BASIC**/**Gerar bytes
+  crus**, com **Injetar no cursor**/**Copiar**). Integrado ao sistema de projeto (tabela `psg_sounds`,
+  mesma barra de projeto dos editores de sprite/alfabeto) — coberto por round-trip em
+  `editor/tools/ProjectDBTestCli.pb`. Durante o desenvolvimento apareceu um bug real de corrupção de
+  heap: `ReDim` no PureBasic só redimensiona a **última** dimensão de um array multi-dimensional, então
+  guardar os registradores como matriz 2D (passos × registradores) quebrava ao carregar do projeto —
+  corrigido serializando como array 1D achatado. Logo em seguida, teste ao vivo revelou que os campos
+  numéricos (Volume, período de ruído/envelope, duração) usavam `SpinGadget` (campo com setinhas ▲▼) e o
+  texto do campo nunca atualizava visualmente ao clicar nas setas (confirmado enviando a mensagem nativa
+  `UDM_SETPOS32` direto no controle: o valor mudava por dentro, mas a tela continuava mostrando o número
+  antigo) — substituídos por campos de texto simples, digitáveis, resolvendo tanto o "spin não funciona"
+  quanto o "sem som" (volume ficava preso em 0 sem o usuário conseguir ver/confirmar o ajuste). Versão
+  embutida no executável atualizada para `5.9.3`.
 
 ## Ferramentas e ambiente
 

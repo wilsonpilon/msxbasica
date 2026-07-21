@@ -8,7 +8,8 @@
 >
 > Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
 > etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
-> editor de sprites, o editor de alfabetos, o sistema de projeto e o processo de build.
+> editor de sprites, o editor de alfabetos, o editor de som, o sistema de projeto e o
+> processo de build.
 
 ---
 
@@ -46,6 +47,12 @@
    - [Copiar/colar um alfabeto inteiro](#copiarcolar-um-alfabeto-inteiro)
    - [Arquivo .ALF (Graphos III)](#arquivo-alf-graphos-iii)
    - [Barra de projeto e o alfabeto padrão ("projeto 0")](#barra-de-projeto-e-o-alfabeto-padrão-projeto-0)
+9. [Editor de som (PSG)](#editor-de-som-psg)
+   - [Canais A/B/C, ruído e envelope](#canais-abc-ruído-e-envelope)
+   - [Sequência de passos](#sequência-de-passos)
+   - [Tocar / Parar](#tocar--parar)
+   - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor)
+   - [Barra de projeto](#barra-de-projeto)
 
 ---
 
@@ -90,7 +97,7 @@ um traço).
 | `-C`, `--compiler <caminho>` | Caminho para o `pbcompiler.exe`. |
 | `-R`, `--run` | Executa o programa automaticamente após uma compilação sem erros. |
 | `-H`, `--help` | Mostra a lista de opções e sai. |
-| `-V`, `--version <versão>` | Versão embutida no executável (padrão `5.7.3`). |
+| `-V`, `--version <versão>` | Versão embutida no executável (padrão `5.9.3`). |
 | `-i`, `--sourcefile <arquivo>` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
 | `-o`, `--outputexe <arquivo>` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
 
@@ -110,7 +117,7 @@ um traço).
 
 A cada compilação, o script grava no executável (via `/CONSTANT` do `pbcompiler.exe`):
 
-- **Versão** — string livre (`-V`/`--version`, padrão `5.7.3`).
+- **Versão** — string livre (`-V`/`--version`, padrão `5.9.3`).
 - **Build** — data/hora **UTC** do momento da compilação, convertida para **hexadecimal**
   (segundos desde a época Unix, ex.: `6A57EA80`). Cada build tem um identificador único e
   ordenável.
@@ -559,6 +566,88 @@ registrado no projeto, e sempre em "Novo alfabeto") vem de um **alfabeto embutid
 executável** — não depende de nenhum arquivo externo em tempo de execução. Internamente ele mora num
 **"projeto 0"**: um banco de dados separado, sempre em memória, nunca salvo em disco, recriado do zero
 a cada vez que a IDE é aberta — só serve como fonte interna de conteúdo padrão.
+
+---
+
+## Editor de som (PSG)
+
+![Editor de som PSG (Criar → Som (PSG)...) com os 3 canais, ruído/envelope compartilhados, lista de passos e código BASIC gerado](../images/msxbasica-06.png)
+
+O menu **Criar → Som (PSG)...** abre o editor de efeitos sonoros para o chip de som do MSX
+(AY-3-8910/YM2149), numa janela própria. Ele espelha, registrador por registrador, exatamente o que o
+comando `SOUND` do MSX-BASIC escreve no chip — o que você ouve na janela é sintetizado pelo mesmo
+motor de emulação que gera o código, então o resultado real no MSX/openMSX deve soar muito parecido.
+
+Um **som** é um **mini-sequenciador de passos**: uma lista curta onde cada passo guarda os 14
+registradores do PSG (tom, ruído, volume, envelope) mais uma duração em quadros — é o time-line de UM
+efeito/instrumento (tiro, explosão, bipe etc.), não um sequenciador multi-canal de música completa
+(isso fica para um futuro editor de Tracker, ainda não implementado).
+
+### Canais A/B/C, ruído e envelope
+
+- **Canal A / B / C** — cada um com **Frequência (Hz)** (convertida automaticamente para o período de
+  registrador do PSG), **Volume (0-15)**, **Usar envelope** (ignora o campo Volume e usa o gerador de
+  envelope compartilhado abaixo) e dois interruptores de mixer: **Tom** (oscilador de onda quadrada) e
+  **Ruído** (gerador de ruído, compartilhado pelos 3 canais).
+- **Ruído (compartilhado)** — **Período (0-31)**: quanto menor, mais agudo o ruído.
+- **Envelope (compartilhado)** — **Período** (1 a 65535) e a **forma** (lista com as 10 formas de
+  hardware do chip, cada uma com uma descrição curta — ex. "9 - decai e para", "12 - sobe repetindo").
+  Só afeta os canais com **Usar envelope** marcado.
+
+Todos esses campos são digitáveis diretamente (não são controles de "setinha") — digite o valor e
+troque de campo ou clique em **Adicionar passo**/**Atualizar passo** para aplicar.
+
+### Sequência de passos
+
+- **Adicionar passo** — acrescenta um novo passo ao fim da sequência, com os valores atuais do painel.
+- **Atualizar passo** — aplica os valores atuais do painel ao passo selecionado na lista.
+- **Remover** — apaga o passo selecionado.
+- **▲** / **▼** — move o passo selecionado para cima/baixo na sequência.
+- **Duplicar passo** — insere uma cópia do passo selecionado logo depois dele.
+
+Clicar num passo da lista carrega os valores dele de volta no painel para edição. A lista mostra um
+resumo de cada passo (ex. `A=440Hz v12  10q`) — só os canais que realmente produzem som (tom ligado e
+volume maior que zero, ou usando envelope) aparecem no resumo.
+
+### Tocar / Parar
+
+**Tocar** sintetiza a sequência inteira em áudio PCM — motor próprio por acumulador de fase (osciladores
+de tom dos 3 canais, LFSR de ruído de 17 bits, gerador de envelope com tabela de volume logarítmica de
+16 níveis, mesmo clock do PSG do MSX) — e toca via um arquivo `.wav` temporário, sem depender de
+nenhuma biblioteca de áudio externa. **Parar** interrompe a reprodução. Cada clique em Tocar renderiza
+de novo do zero, então qualquer alteração no painel ou na lista de passos já sai atualizada na próxima
+reprodução.
+
+### Gerar código e injetar no editor
+
+- **Gerar código BASIC** — produz linhas `SOUND n,valor` prontas para colar: o primeiro passo escreve
+  os 14 registradores, os passos seguintes só escrevem os registradores que **mudaram** em relação ao
+  anterior (um registrador não tocado mantém o valor de antes no hardware real). Entre passos, uma
+  espera aproximada via `FOR/NEXT` (a constante de calibração é aproximada, não sample-accurate contra
+  hardware real — ajuste conforme necessário).
+- **Gerar bytes crus** — produz um bloco `DATA` com os 14 bytes de registrador mais a duração de cada
+  passo, pensado para uma futura rotina Z80 que escreva direto nas portas do PSG (mais rápido que várias
+  chamadas `SOUND` em runtime).
+- **Injetar no cursor** — insere o código gerado (mostrado na caixa de texto abaixo dos botões) direto
+  no cursor da aba de texto ativa no editor.
+- **Copiar** — copia o código gerado para a área de transferência do Windows.
+
+### Barra de projeto
+
+Barra no topo da janela, ligada ao [sistema de projeto](#sistema-de-projeto-arquivo-msxproject) — mesmo
+padrão da barra de projeto dos editores de sprite e alfabeto:
+
+- **Número do som** — mostrado como `#N`; cada som registrado tem um número sequencial.
+- **Tag** — nome curto (até 16 caracteres) para identificar o som.
+- **Navegação** — botões **Primeiro** / **Anterior** / **Próximo** / **Último**, andam entre os sons já
+  registrados no projeto atual (param nas pontas, não dão volta).
+- **Novo** — cria o próximo som da sequência (maior número já registrado + 1), com a lista de passos
+  vazia.
+- **Registrar** — grava (ou atualiza, se já existir) o som atual — todos os passos da sequência — no
+  projeto.
+
+Alterações feitas num som e ainda não registradas pedem confirmação antes de trocar de som ou fechar a
+janela, para não perder trabalho sem querer.
 
 Alterações feitas num alfabeto (ou num caractere dele) e ainda não registradas pedem confirmação antes
 de navegar para outro alfabeto, criar um novo ou fechar a janela.

@@ -44,6 +44,8 @@ XIncludeFile "DiskManagerGui.pbi"
 XIncludeFile "ProjectDB.pbi"
 XIncludeFile "SpriteEditorGui.pbi"
 XIncludeFile "CharsetEditorGui.pbi"
+XIncludeFile "PsgSynth.pbi"
+XIncludeFile "PsgEditorGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -332,6 +334,7 @@ Enumeration MenuItems
   #Menu_CreateDisk
   #Menu_CreateSprite
   #Menu_CreateAlphabet
+  #Menu_CreateSound
   #Menu_RunBasic
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
@@ -371,7 +374,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "5.7.7"
+  #App_Version = "5.9.3"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2327,6 +2330,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateDisk, "Disco...")
     MenuItem(#Menu_CreateSprite, "Sprite...")
     MenuItem(#Menu_CreateAlphabet, "Alfabeto...")
+    MenuItem(#Menu_CreateSound, "Som (PSG)...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
   MenuTitle("Configurar")
@@ -2439,6 +2443,9 @@ Repeat
 
         Case #Menu_CreateAlphabet
           CharsetEditor_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateSound
+          PsgEditor_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()

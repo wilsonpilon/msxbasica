@@ -44,7 +44,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. Tile (além do charset/fonte 8×8) ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
-| 6 | Editor de som SOUND (PSG) | baixo | Definido (seção 6) |
+| 6 | Editor de som SOUND (PSG) | baixo | **Implementado (2026-07-21)** — `editor/PsgSynth.pbi` (motor)/`editor/PsgEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 6 |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
 | 8 | Editor MML (comando `PLAY`) | médio | **Gap**: explicação não recuperada |
 | 9 | Extensão NestorBASIC (nbasic) | médio | Definido, com exemplo de sintaxe (seção 7) |
@@ -569,11 +569,43 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
   desenhada, para injeção como bloco/include.
 
 ### 6. Editor de som SOUND (PSG / AY-3-8910 / YM2149)
-- 3 canais de tom + 1 de ruído + envelope de volume por hardware.
-- UI: sliders/campos para tom (frequência → período de registrador), volume (0-15 ou "usar envelope"),
-  forma de envelope (~10 formatos de hardware), período de envelope.
-- Saída: sequência de `SOUND n, valor`, ou bytes de registrador crus para rotina Z80 (mais rápido que
-  várias chamadas `SOUND`).
+
+**Status (2026-07-21): implementado.** Menu **Criar → Som (PSG)...**, arquitetura em três partes
+(mesmo padrão de `MSXDisk.pbi`/`DiskManagerGui.pbi`/`--diskmanipulator`): motor de emulação sem GUI
+(`editor/PsgSynth.pbi`), janela (`editor/PsgEditorGui.pbi`) e harness headless
+(`editor/tools/PsgTestCli.pb`).
+
+**Escopo fechado com o usuário**: um "som" é um **mini-sequenciador de passos** (lista curta, cada
+passo com seus 14 registradores + duração em quadros) — um time-line de UM instrumento/efeito
+(tiro, explosão, etc.), não um sequenciador multi-canal/multi-padrão (isso continua sendo escopo do
+módulo 7/Tracker, ainda não detalhado). Playback é "sob demanda" (botão Tocar renderiza a sequência
+inteira e toca via `.wav` temporário), não streaming ao vivo enquanto arrasta controle.
+
+**Motor (`PsgSynth.pbi`)**: emulação por acumulador de fase (osciladores de tom dos 3 canais, LFSR de
+17 bits do ruído, gerador de envelope com as 10 formas de hardware documentadas + tabela de volume
+logarítmica de 16 passos), clock `1789772.5` Hz (PSG do MSX = clock da CPU / 2). Estado do chip
+persiste entre passos da sequência (fases de tom/ruído nunca resetam; o envelope só reinicia quando um
+passo realmente escreve um R13 diferente do anterior, espelhando o hardware real). Validado contra um
+tom puro (frequência medida por cruzamento de zero bate com `Clock/(16×TP)` dentro de 5%) e contra
+volume 0 = silêncio absoluto (`PsgTestCli.exe <pasta>`).
+
+**Geração de código**: `PsgGen_BasicLines` emite `SOUND n,valor` só para os registradores que mudaram
+em relação ao passo anterior (registrador não tocado mantém o valor no hardware real), com um
+`FOR/NEXT` de espera aproximada entre passos (constante de calibração `#PsgGen_LoopItersPerFrame`,
+deliberadamente não calibrada sample-accurate contra hardware/emulador real — ver comentário no código).
+`PsgGen_RawBytes` emite um bloco `DATA` com os 14 bytes crus + duração por passo, para uma futura
+rotina Z80/`#asm`. Botões **Injetar no cursor** (reaproveita `InjectTextAtCursor()`, o mesmo helper já
+usado pelo editor de sprites) e **Copiar** (`SetClipboardText`).
+
+**Persistência**: tabela `psg_sounds` em `ProjectDB.pbi` (mesmo padrão de `sprites`/`alphabets`,
+`StoreSound`/`FetchSound`/`ListSoundNumbers`/`HasSound`), com barra de projeto idêntica à dos editores
+de sprite/alfabeto (número do som, tag, Primeiro/Anterior/Próximo/Último, Novo, Registrar). Os 14
+registradores por passo são serializados como um array **1D achatado** (`Regs(i*14+r)`), não uma
+matriz 2D — armadilha real encontrada durante o desenvolvimento: `ReDim` no PureBasic só redimensiona
+a **última** dimensão de um array, então `FetchSound` tentando `ReDim` a primeira dimensão (número de
+passos) de uma matriz 2D corrompia a heap (crash `STATUS_HEAP_CORRUPTION`); o array 1D resolve porque
+sempre tem uma única dimensão redimensionável. Coberto por round-trip em `editor/tools/ProjectDBTestCli.pb`
+(store/fetch/list/overwrite/SaveAs/OpenExisting).
 
 ### 7. Tracker (escopo alto, não detalhado)
 - Sequenciador de padrões, editor de padrão (grade linha × canal, nota/volume/efeito), motor de
@@ -871,6 +903,41 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-21 (sessão 4)**: novo **editor de som PSG** (módulo 6, ver seção 6 acima) —
+menu **Criar → Som (PSG)...**, `editor/PsgSynth.pbi` (motor, sem GUI) + `editor/PsgEditorGui.pbi`
+(janela) + `editor/tools/PsgTestCli.pb` (harness headless), mesma arquitetura triádica de
+`MSXDisk.pbi`/`DiskManagerGui.pbi`/`--diskmanipulator`. Escopo fechado com o usuário antes de
+implementar: um "som" é um mini-sequenciador de passos (não um tracker multi-canal, que continua sendo
+o módulo 7), e o playback é "sob demanda" (renderiza e toca via `.wav` temporário, sem streaming ao
+vivo). Integrado ao sistema de projeto (tabela `psg_sounds`, mesmo padrão Store/Fetch/List de
+sprites/alfabetos), com round-trip coberto em `editor/tools/ProjectDBTestCli.pb`.
+
+Dois bugs reais encontrados e corrigidos durante a sessão, ambos documentados como memória de projeto
+para não reintroduzir:
+- **Corrupção de heap em `ProjectDB::FetchSound`**: `ReDim` no PureBasic só redimensiona a **última**
+  dimensão de um array multi-dimensional — a primeira tentativa guardava os registradores como matriz
+  2D (passos × 14) e tentava `ReDim` o número de passos (primeira dimensão), corrompendo a heap
+  silenciosamente até um crash `STATUS_HEAP_CORRUPTION` bem depois do ponto real do erro. Corrigido
+  serializando `Regs` como array **1D achatado** (`Regs(i*14+r)`), a única forma segura de devolver
+  um número de passos variável por um parâmetro `Array` de saída.
+- **`SpinGadget` com texto que nunca atualizava visualmente**: reportado pelo usuário como "os spin
+  buttons não funcionam" e "sem som". Diagnosticado ao vivo enviando a mensagem nativa `UDM_SETPOS32`
+  direto no controle `msctls_updown32` (via `PostMessage`/`SendMessage` num HWND específico, mesma
+  técnica de automação segura já documentada no módulo 12) — o valor interno mudava (confirmado por
+  `UDM_GETPOS32`) mas o texto do "buddy" `Edit` nunca refletia a mudança, mesmo bypassando o PureBasic
+  inteiramente. Como o painel sempre começa com Volume=0 e mixer todo desligado (silêncio proposital,
+  ver `PsgEd_ResetPanel`), a combinação "campo parece travado" + "usuário não confia que ajustou o
+  volume" explicava as duas queixas de uma vez. Corrigido substituindo os 4 campos afetados (Volume,
+  período de ruído, período de envelope, duração) de `SpinGadget` por `StringGadget` digitável — mais
+  simples e comprovadamente confiável neste ambiente. Reproduzido/confirmado corrigido com um teste
+  ponta a ponta via mensagens do Windows: digitar frequência/volume, marcar "Tom", adicionar passo,
+  gerar código (saiu `SOUND 8,12` com `SOUND 7,62` de mixer correto) e Tocar sem travar.
+
+Documentação atualizada na mesma sessão: `README.md` (nova entrada em "O que já temos" com a imagem
+`images/msxbasica-06.png`, novo item de changelog), `docs/MANUAL.md` (nova seção "Editor de som (PSG)"),
+este arquivo (módulo 6 + esta entrada). Versão embutida no executável atualizada para `5.9.3`
+(`build.ps1` e o fallback de compilação direta em `BadigEditor.pb`).
 
 **Estado ao fim de 2026-07-21 (sessão 3)**: todos os botões do editor de alfabetos (`CharsetEditorGui.pbi`)
 viraram **ícones monocromáticos** — pedido explícito do usuário. Doze procedures `CharEd_CreateXxxIcon()`

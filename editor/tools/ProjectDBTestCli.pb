@@ -212,6 +212,62 @@ CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #1: dados atualiz
 CheckTrue(ProjectDB::HasAlphabet(2), "HasAlphabet(2) = #True")
 CheckTrue(Bool(Not ProjectDB::HasAlphabet(99)), "HasAlphabet(99) = #False")
 
+; 8e) StoreSound/FetchSound - efeitos PSG (sequencia de passos com 14
+; registradores + duracao), mesmo padrao Store/Fetch/List dos sprites/alfabetos.
+; Regs e 1D "achatado" (Regs(i*14+r)) - ver comentario de StoreSound em
+; ProjectDB.pbi (ReDim so redimensiona a ultima dimensao de um array).
+Procedure.i SoundRegsMatch(Array A.a(1), Array B.a(1), NumSteps.i)
+  Protected i
+  For i = 0 To NumSteps * 14 - 1
+    If A(i) <> B(i)
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+Dim SoundRegsA.a(27)
+SoundRegsA(0 * 14 + 0) = 60  : SoundRegsA(0 * 14 + 1) = 0 : SoundRegsA(0 * 14 + 7) = %00111110 : SoundRegsA(0 * 14 + 8) = 15
+SoundRegsA(1 * 14 + 6) = 8   : SoundRegsA(1 * 14 + 7) = %00110110 : SoundRegsA(1 * 14 + 8) = 16
+SoundRegsA(1 * 14 + 11) = 40 : SoundRegsA(1 * 14 + 13) = 9
+Dim SoundDursA.w(1)
+SoundDursA(0) = 6 : SoundDursA(1) = 12
+
+CheckTrue(ProjectDB::StoreSound(1, "laser", 2, SoundRegsA(), SoundDursA()), "StoreSound #1 (2 passos, tag 'laser')")
+
+Dim SoundRegsB.a(13)
+SoundRegsB(0) = 200 : SoundRegsB(1) = 1 : SoundRegsB(7) = %00111110 : SoundRegsB(8) = 10
+Dim SoundDursB.w(0)
+SoundDursB(0) = 30
+CheckTrue(ProjectDB::StoreSound(2, "beep", 1, SoundRegsB(), SoundDursB()), "StoreSound #2 (1 passo, tag 'beep')")
+
+NewList SoundNumbers.i()
+ProjectDB::ListSoundNumbers(SoundNumbers())
+CheckTrue(Bool(ListSize(SoundNumbers()) = 2), "ListSoundNumbers (esperado 2, achou " + Str(ListSize(SoundNumbers())) + ")")
+
+Dim LoadedSoundA.a(0)
+CheckTrue(ProjectDB::FetchSound(1, LoadedSoundA(), SoundDursA()), "FetchSound #1")
+CheckTrue(Bool(ProjectDB::LastSoundTag() = "laser"), "Som #1: tag = 'laser'")
+CheckTrue(Bool(ProjectDB::LastSoundStepCount() = 2), "Som #1: step_count = 2 (achou " + Str(ProjectDB::LastSoundStepCount()) + ")")
+CheckTrue(SoundRegsMatch(SoundRegsA(), LoadedSoundA(), 2), "Som #1: registradores recarregados batem com o original")
+CheckTrue(Bool(SoundDursA(0) = 6 And SoundDursA(1) = 12), "Som #1: duracoes recarregadas batem com o original")
+
+; Sobrescreve o som #1 (menos passos, tag diferente) - nao pode duplicar
+Dim SoundRegsA2.a(13)
+SoundRegsA2(8) = 5
+Dim SoundDursA2.w(0)
+SoundDursA2(0) = 3
+CheckTrue(ProjectDB::StoreSound(1, "laser2", 1, SoundRegsA2(), SoundDursA2()), "StoreSound #1 de novo (sobrescrevendo, agora com 1 passo)")
+ClearList(SoundNumbers())
+ProjectDB::ListSoundNumbers(SoundNumbers())
+CheckTrue(Bool(ListSize(SoundNumbers()) = 2), "Ainda 2 sons apos sobrescrever #1 (nao duplicou)")
+ProjectDB::FetchSound(1, LoadedSoundA(), SoundDursA())
+CheckTrue(Bool(ProjectDB::LastSoundTag() = "laser2"), "Som #1: tag atualizada para 'laser2'")
+CheckTrue(Bool(ProjectDB::LastSoundStepCount() = 1), "Som #1: step_count atualizado para 1")
+
+CheckTrue(ProjectDB::HasSound(2), "HasSound(2) = #True")
+CheckTrue(Bool(Not ProjectDB::HasSound(99)), "HasSound(99) = #False")
+
 ; "Projeto 0" (defaults, sempre em memoria): alfabeto 0 = msx.alf embutido
 ; no executavel - confere que bate byte a byte com o .alf real do
 ; repositorio (alfabetos\msx.alf, dois niveis acima de editor\tools\), pra
@@ -259,6 +315,11 @@ ProjectDB::ListAlphabetNumbers(AlphaNumbers())
 CheckTrue(Bool(ListSize(AlphaNumbers()) = 2), "ListAlphabetNumbers ainda mostra 2 alfabetos apos SaveAs")
 ProjectDB::FetchAlphabet(2, LoadedAlphaA())
 CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #2 ainda bate byte a byte apos SaveAs")
+ClearList(SoundNumbers())
+ProjectDB::ListSoundNumbers(SoundNumbers())
+CheckTrue(Bool(ListSize(SoundNumbers()) = 2), "ListSoundNumbers ainda mostra 2 sons apos SaveAs")
+ProjectDB::FetchSound(2, LoadedSoundA(), SoundDursB())
+CheckTrue(Bool(ProjectDB::LastSoundTag() = "beep"), "Som #2 ainda bate (tag 'beep') apos SaveAs")
 
 ; 11) OpenExisting - simula "Arquivo -> Abrir projeto...": fecha tudo e
 ; reabre do zero so a partir do caminho salvo, sem passar por EnsureOpen.
@@ -280,6 +341,11 @@ ProjectDB::ListAlphabetNumbers(AlphaNumbers())
 CheckTrue(Bool(ListSize(AlphaNumbers()) = 2), "ListAlphabetNumbers ainda mostra 2 alfabetos apos OpenExisting")
 ProjectDB::FetchAlphabet(1, LoadedAlphaA())
 CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #1 ainda bate byte a byte apos OpenExisting")
+ClearList(SoundNumbers())
+ProjectDB::ListSoundNumbers(SoundNumbers())
+CheckTrue(Bool(ListSize(SoundNumbers()) = 2), "ListSoundNumbers ainda mostra 2 sons apos OpenExisting")
+ProjectDB::FetchSound(1, LoadedSoundA(), SoundDursA2())
+CheckTrue(Bool(ProjectDB::LastSoundTag() = "laser2" And ProjectDB::LastSoundStepCount() = 1), "Som #1 ainda bate (tag 'laser2', 1 passo) apos OpenExisting")
 CheckTrue(Bool(Not ProjectDB::OpenExisting(WorkDir + "nao_existe.msxproject")), "OpenExisting falha graciosamente com arquivo inexistente")
 
 ; 12) Close nao deve travar (limpeza final)
