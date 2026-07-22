@@ -976,6 +976,16 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
   resolvida (2026-07-18)**: a parte de sprite foi implementada com spec própria (não precisou do
   detalhe original recuperado, ver seção 4 acima); char/tile continua em aberto.
+- **Editor de alfabetos — suporte a mais formatos/modos além do que já existe** (2026-07-21, em
+  aberto): (1) importar fontes `.FNT` do **Aquarela** (outro editor de fonte MSX, alternativa ao
+  Graphos III já suportado) — formato reverse-engineered em `docs/reference/aquarela.md`
+  (registro de 32 bytes, sem cabeçalho, 71 posições por arquivo confirmado em 4 amostras), mas a
+  âncora absoluta de código de caractere ainda não está confirmada, não implementar o mapeamento
+  sem uma UI que deixe o código inicial ajustável; (2) suporte a **SCREEN 2** além do SCREEN 1 atual
+  — hoje o editor só modela a Pattern Generator Table de SCREEN 1 (1 tabela de 256×8 bytes, sem
+  cor); SCREEN 2 precisa de 3 bancos dessa tabela (6144 bytes) mais uma Color Table do mesmo
+  tamanho (cor por linha de pixel, não por caractere inteiro) — mudança de modelo de dados maior
+  que só formato de arquivo, ver detalhe em `docs/reference/aquarela.md`.
 - ~~Seção 8 (editor MML/`PLAY`): detalhe da conversa original não foi recuperado.~~ — **resolvida
   (2026-07-21)**: implementada com spec própria, não precisou do detalhe original recuperado (dialeto
   MML confirmado por pesquisa direta, não pela conversa perdida) — ver seção 8 acima.
