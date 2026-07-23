@@ -57,7 +57,8 @@
       "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE test_build.exe; Write-Output \"ExitCode=$LASTEXITCODE\")",
       "Skill(run)",
       "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE BadigEditor.exe; Write-Output \"ExitCode=$LASTEXITCODE\")",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(python3 -c \"print\\('no python check'\\)\")"
     ]
   }
 }

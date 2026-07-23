@@ -42,7 +42,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
 | 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Lado editor pronto (arquivo `.asm` + syntax highlight, 2026-07-16) — motor do assembler em si ainda não iniciado |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
-| 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. Tile (além do charset/fonte 8×8) ainda não iniciado |
+| 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. **Editor de alfabetos Aquarela (.FNT) implementado (2026-07-23)** — `editor/AquarelaCharsetEditorGui.pbi`, ferramenta autocontida baseada em arquivo, sem integração com o sistema de projeto, ver seção 4b. **Editor de alfabetos Graphos III ganhou 13 efeitos de edição em lote (2026-07-23)** — desfazer/refazer, marcar tudo, espelhar/girar/apagar/estreitar/itálico/negrito/largo (+ variantes bold e largo-bold), ver seção 4c. Tile (além do charset/fonte 8×8) ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
 | 6 | Editor de som SOUND (PSG) | baixo | **Implementado (2026-07-21)** — `editor/PsgSynth.pbi` (motor)/`editor/PsgEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 6 |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
@@ -562,6 +562,104 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
     dessincronização entre o `.alf` fonte e os bytes embutidos no `.exe`).
   - **Tile** (além do charset/fonte 8×8): ainda não iniciado.
 
+### 4b. Editor de alfabetos Aquarela (.FNT) — implementado (2026-07-23)
+
+**Arquivo**: `editor/AquarelaCharsetEditorGui.pbi`, menu **Criar → Alfabeto Aquarela...**. Edita o
+formato `.FNT` do **Aquarela** (outro editor de fonte MSX, alternativa ao Graphos III do módulo 4) —
+engenharia reversa completa em `docs/reference/aquarela.md`. Diferente do editor Graphos III, esta é
+uma ferramenta **autocontida baseada em arquivo** (Abrir/Salvar/Salvar como, no espírito do fluxo
+"Carregar do Graphos III.../Salvar como..." do módulo 4), **sem** integração com `ProjectDB` (que só
+modela o formato 256×8 do Graphos III) e **sem** os efeitos de bloco/desfazer do módulo 4c.
+
+**Formato do glifo**: 16×16 real (não 8×8), armazenado em 2 planos de 16 bytes (bytes 0-15 = coluna
+esquerda de cada linha, bytes 16-31 = coluna direita) — a grade de edição sempre mostra as 16 colunas
+inteiras, mesmo para os glifos "8×8" do Aquarela (a maioria das amostras reais) que só usam a metade
+esquerda. Cada registro de 32 bytes começa **7 bytes depois** do que a fórmula ingênua sugeriria
+(`#AqEd_RecordOffset = 7`) — descoberta por comparação pixel a pixel contra uma screenshot real do
+Aquarela rodando num emulador (ver `docs/reference/aquarela.md`, seção "DESLOCAMENTO DE 7 BYTES"); sem
+esse ajuste, cada caractere aparecia com um "floreio" desconexo no topo (na real, a ponta final do
+caractere anterior) e faltavam as últimas ~7 linhas do caractere de verdade.
+
+**46 caracteres editáveis** (grade de 8 colunas × 6 linhas, as 2 últimas células sem uso —
+`#AqEd_Slots = 46`), ordem confirmada por teste real do usuário contra o Aquarela de verdade e contra
+`LOGO.FNT` (fonte 8×8 completa do disco original): `A-Z`, `&`, `?`, `!`, `"`, `0-9`, `.`, `:`, `-`,
+`(`, `)`, `,`. Ampliado de 32 para 46 nesta sessão (os 14 caracteres novos: `2-9`, `.`, `:`, `-`, `(`,
+`)`, `,` — antes só ia até `1`, o caso que o usuário reportou como "parece corrompido"). Ao salvar,
+grava sempre no formato de 2304 bytes (72 registros — a variante confirmada carregando sem erro contra
+todo o corpus de amostras testado), com os 26 registros além dos 46 editáveis preenchidos com o byte
+de posição-vazia `$40` e os 7 bytes de deslocamento replicados corretamente.
+
+**Botões** (mesmo estilo de ícones monocromáticos do módulo 4, sem texto): **Novo** (alfabeto em
+branco), **Abrir...**/**Salvar**/**Salvar como...** (arquivo `.fnt`), **Registrar** (grava os pixels
+editados nos 32 bytes do caractere selecionado), **Limpar**, **Inverter** (todos afetando só o
+`EditGrid`, precisam de "Registrar" — sem conceito de bloco/All aqui), **Copiar**/**Colar** de um
+caractere isolado (clipboard de sessão, mesmo padrão do módulo 4).
+
+**Validação de arquivo**: `AqEd_LoadFnt` só exige que o arquivo tenha pelo menos 46 registros de 32
+bytes (os arquivos reais têm até 71/72); não valida ainda se a posição 0 decodifica como 'A' (a marca
+de arquivo íntegro documentada em `docs/reference/aquarela.md`) — fica a cargo do usuário conferir
+visualmente por enquanto, mesma lacuna citada em "Lacunas conhecidas" abaixo.
+
+### 4c. Efeitos de edição em lote do editor de alfabetos Graphos III (2026-07-23)
+
+Onze novos botões-ícone no editor Graphos III (módulo 4), todos seguindo o **mesmo padrão dual** já
+estabelecido pelo "Inverter" original: **sem bloco marcado**, afetam só o `EditGrid` do caractere em
+edição (precisa de "Registrar" pra valer); **com um bloco marcado** (ver "Marcar bloco" no módulo 4,
+ou o novo botão **All**), aplicam direto em `CharsetBytes`, em todo o intervalo de uma vez, sem passar
+por "Registrar" caractere a caractere. `CharEd_ApplyGridEffectToRange()` centraliza essa aplicação em
+lote (unpack → transforma → pack por caractere do intervalo), reaproveitada por todos os efeitos
+abaixo em vez de duplicar a lógica de bits em cada botão.
+
+- **All** — marca o alfabeto inteiro (0..255) como bloco de uma vez, sem precisar clicar num caractere
+  duas vezes (Marcar início + Marcar fim no mesmo caractere) — atalho pra aplicar um efeito a todos os
+  256 caracteres.
+- **Desfazer**/**Refazer** — pilha de instantâneos do alfabeto **inteiro** (256×8 = 2048 bytes,
+  `CharEd_AlphaSnapshot`, barato de copiar em memória), limitada a `#CharEd_MaxUndo = 50` níveis.
+  Empilha um instantâneo só nas operações que de fato gravam em `CharsetBytes` (Registrar, qualquer
+  efeito em modo bloco/All, Colar bloco, Colar alfabeto) — pixels editados mas ainda não registrados
+  não entram na pilha, mesmo espírito de "editar sem registrar não muda o alfabeto em memória" do
+  resto do editor. A pilha é zerada sempre que o alfabeto em edição troca (navegação/Novo/Carregar),
+  já que um instantâneo de outro alfabeto não faz sentido pra desfazer o atual. Botões
+  habilitados/desabilitados (`DisableGadget`) conforme o que há em cada pilha.
+- **Espelhar horizontal**/**Espelhar vertical** — espelha o glifo 8×8 na horizontal/vertical
+  (`CharEd_FlipHEditGrid`/`FlipVEditGrid`).
+- **Girar 90 graus** — rotação horária de matriz quadrada (`novo(Row,Col) = antigo(7-Col,Row)`,
+  `CharEd_RotateEditGrid`).
+- **Apagar** — mesmo efeito de "Limpar", mas com o modo dual (bloco/All apaga todo o intervalo direto
+  no alfabeto); reaproveita o ícone de "Limpar" (mesma convenção já documentada no módulo 4 — botões
+  de escopo diferente reaproveitam o mesmo desenho, a posição/dica é que diferencia).
+- **Estreitar** — condensa as 5 colunas da metade esquerda do glifo (0-4) em só 3 colunas de saída,
+  juntando pares de colunas por OR: colunas 0-1 → coluna 0, coluna 2 → coluna 1, colunas 3-4 →
+  coluna 2, colunas 5-7 sempre apagadas. Truque clássico de texto MSX pra caber 64 colunas onde só
+  caberiam 32 (célula de 8px com o glifo condensado nas 3 colunas mais à esquerda).
+- **Itálico** — desloca cada linha do glifo à direita por uma quantidade que diminui de cima pra
+  baixo: linhas 0-1 deslocam 2 bits, linhas 2-4 deslocam 1 bit, linhas 5-7 ficam iguais (0 bits) —
+  "deslocar N bits à direita" empurra as colunas (`NovaCol(c) = VelhaCol(c-N)` para `c≥N`, senão 0;
+  as N colunas mais à direita da linha original se perdem, mesmo comportamento de um `SHR` real).
+- **Negrito** — cada linha vira OR entre ela mesma e ela deslocada 1 bit à direita
+  (`NovaCol(c) = VelhaCol(c) OR VelhaCol(c-1)` para `c≥1`), engrossando cada traço vertical em 1px.
+- **Largo** — combina as colunas 0-2 do byte original com as colunas 3-7 do byte deslocado 1 bit à
+  direita (`ByteA = Original AND %11100000` OR `ByteB = (Original>>1) AND %00011111`), esticando o
+  glifo em 1px (repete a coluna 2 nas posições 2 e 3 do resultado; coluna 7 do original se perde).
+- **Bold (esquerda)**/**Bold (direita)** — variantes do Largo que também engrossam (OR, não só
+  desloca) um dos lados: **Bold (esquerda)** = `(Original AND %11100000) OR (Original>>1)` inteiro
+  (colunas 1-2 recebem OR com a cópia deslocada, colunas 3-7 vêm só da cópia deslocada); **Bold
+  (direita)** = espelho, `((Original>>1) AND %00011111) OR Original` inteiro (colunas 0-2 ficam iguais
+  ao original, colunas 3-7 recebem o OR). Nomeados/renomeados nesta sessão depois de uma correção do
+  usuário — inicialmente chamados "Largo (direita)"/"Largo (esquerda)".
+- **Largo (bold)** — `Bold(Largo(x))`: aplica o efeito Largo comum e depois o Negrito em cima do
+  resultado já alargado, reaproveitando as duas transformações existentes em vez de uma fórmula de
+  bits nova.
+
+Ícones desenhados em memória (mesmo estilo do módulo 4): seta circular de ~270° com ponta triangular
+(Desfazer/Refazer, espelhados via `Mirrored.b` — um único desenho, a versão "Desfazer" é a "Refazer"
+com cada ponto espelhado no eixo X), setas triangulares apontando pra dentro/fora de uma linha
+pontilhada ou barra central (Espelhar H/V, Estreitar, Largo e variantes), quadrado com arco horário ao
+redor (Girar), barras empilhadas deslocando (Itálico), barra clara+escura sobrepostas (Negrito),
+retângulo pontilhado tipo "marquee" (All). `CharEd_DrawFilledHTri`/`DrawFilledVTri` (extraídos do
+desenho de seta de navegação já existente) desenham triângulos preenchidos por faixas de `LineXY`, sem
+precisar de preenchimento de polígono — reaproveitados por vários ícones novos.
+
 ### 5. Editor gráfico LINE/CIRCLE/PSET/DRAW
 - Mais simples que DRAW puro isolado porque LINE/CIRCLE/PSET são coordenadas absolutas (sem estado de
   posição/ângulo atual).
@@ -977,15 +1075,15 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   resolvida (2026-07-18)**: a parte de sprite foi implementada com spec própria (não precisou do
   detalhe original recuperado, ver seção 4 acima); char/tile continua em aberto.
 - **Editor de alfabetos — suporte a mais formatos/modos além do que já existe** (2026-07-21, em
-  aberto): (1) importar fontes `.FNT` do **Aquarela** (outro editor de fonte MSX, alternativa ao
-  Graphos III já suportado) — formato reverse-engineered em `docs/reference/aquarela.md`
-  (registro de 32 bytes, sem cabeçalho, 71 posições por arquivo confirmado em 4 amostras), mas a
-  âncora absoluta de código de caractere ainda não está confirmada, não implementar o mapeamento
-  sem uma UI que deixe o código inicial ajustável; (2) suporte a **SCREEN 2** além do SCREEN 1 atual
-  — hoje o editor só modela a Pattern Generator Table de SCREEN 1 (1 tabela de 256×8 bytes, sem
-  cor); SCREEN 2 precisa de 3 bancos dessa tabela (6144 bytes) mais uma Color Table do mesmo
-  tamanho (cor por linha de pixel, não por caractere inteiro) — mudança de modelo de dados maior
-  que só formato de arquivo, ver detalhe em `docs/reference/aquarela.md`.
+  aberto): ~~(1) importar fontes `.FNT` do Aquarela~~ — **resolvida (2026-07-23)**: editor dedicado
+  próprio (`editor/AquarelaCharsetEditorGui.pbi`, não uma importação para dentro do formato Graphos
+  III), ver seção 4b. Segue em aberto: (2) suporte a **SCREEN 2** além do SCREEN 1 atual — hoje os
+  dois editores de charset (Graphos III e Aquarela) só modelam a Pattern Generator Table de SCREEN 1
+  (256×8 bytes, sem cor); SCREEN 2 precisa de 3 bancos dessa tabela (6144 bytes) mais uma Color Table
+  do mesmo tamanho (cor por linha de pixel, não por caractere inteiro) — mudança de modelo de dados
+  maior que só formato de arquivo, ver detalhe em `docs/reference/aquarela.md`; (3) validação da
+  âncora de posição (posição 0 = 'A') na leitura de `.FNT` do Aquarela — documentada como necessária
+  em `docs/reference/aquarela.md` mas ainda não implementada em `AqEd_LoadFnt`.
 - ~~Seção 8 (editor MML/`PLAY`): detalhe da conversa original não foi recuperado.~~ — **resolvida
   (2026-07-21)**: implementada com spec própria, não precisou do detalhe original recuperado (dialeto
   MML confirmado por pesquisa direta, não pela conversa perdida) — ver seção 8 acima.

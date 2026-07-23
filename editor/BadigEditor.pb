@@ -44,6 +44,7 @@ XIncludeFile "DiskManagerGui.pbi"
 XIncludeFile "ProjectDB.pbi"
 XIncludeFile "SpriteEditorGui.pbi"
 XIncludeFile "CharsetEditorGui.pbi"
+XIncludeFile "AquarelaCharsetEditorGui.pbi"
 XIncludeFile "PsgSynth.pbi"
 XIncludeFile "PsgEditorGui.pbi"
 XIncludeFile "MmlSynth.pbi"
@@ -336,6 +337,7 @@ Enumeration MenuItems
   #Menu_CreateDisk
   #Menu_CreateSprite
   #Menu_CreateAlphabet
+  #Menu_CreateAlphabetAquarela
   #Menu_CreateSound
   #Menu_CreateMml
   #Menu_RunBasic
@@ -2332,7 +2334,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Criar")
     MenuItem(#Menu_CreateDisk, "Disco...")
     MenuItem(#Menu_CreateSprite, "Sprite...")
-    MenuItem(#Menu_CreateAlphabet, "Alfabeto...")
+    MenuItem(#Menu_CreateAlphabet, "Alfabeto Graphos III...")
+    MenuItem(#Menu_CreateAlphabetAquarela, "Alfabeto Aquarela...")
     MenuItem(#Menu_CreateSound, "Som (PSG)...")
     MenuItem(#Menu_CreateMml, "Musica (PLAY)...")
   MenuTitle("Executar")
@@ -2447,6 +2450,9 @@ Repeat
 
         Case #Menu_CreateAlphabet
           CharsetEditor_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateAlphabetAquarela
+          AquarelaCharsetEditor_OpenWindow(#MainWindow)
 
         Case #Menu_CreateSound
           PsgEditor_OpenWindow(#MainWindow)

@@ -127,9 +127,28 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   automaticamente e sempre parte do charset padrão do MSX, nunca em branco). Esse charset padrão vem de
   um **"projeto 0"** interno (`ProjectDB::EnsureDefaultsOpen()`) — um banco SQLite à parte, sempre em
   memória, nunca salvo, semeado com `alfabetos\msx.alf` **embutido no próprio `.exe`**
-  (`editor/DefaultCharsetMsx.pbi`).
+  (`editor/DefaultCharsetMsx.pbi`). Ganhou **11 botões de efeito** (todos com **Desfazer**/**Refazer**
+  próprios, pilha de até 50 níveis): **All** (marca o alfabeto inteiro como bloco de uma vez),
+  **Espelhar horizontal/vertical**, **Girar 90°**, **Apagar**, **Estreitar** (condensa o glifo em 3
+  colunas, útil pra caber 64 colunas de texto onde só caberiam 32), **Itálico** (desloca linhas
+  progressivamente), **Negrito**, **Largo** (+ variantes **Bold esquerda/direita** e **Largo bold**,
+  que combinam alargar com engrossar) — todos seguindo o mesmo padrão dual já usado pelo Inverter: sem
+  bloco marcado afetam só o caractere atual (precisa de "Registrar"), com bloco/All aplicam direto em
+  todo o intervalo.
 
   ![Editor de alfabetos (Criar → Alfabeto...) com tabela de 256 caracteres, grade de edição ampliada e botões-ícone](images/msxbasica-05.png)
+- **Editor de alfabetos Aquarela** (`editor/AquarelaCharsetEditorGui.pbi`, menu **Criar → Alfabeto
+  Aquarela...**) — edita o formato `.FNT` do **Aquarela**, outro editor de fonte MSX (alternativa ao
+  Graphos III acima), com engenharia reversa completa documentada em `docs/reference/aquarela.md`.
+  Diferente do editor Graphos III, é uma ferramenta **autocontida baseada em arquivo** (Novo/Abrir/
+  Salvar/Salvar como), sem integração com o sistema de projeto. Glifo real **16×16** (2 planos de 16
+  bytes — coluna esquerda e direita —, cada registro de 32 bytes começando 7 bytes depois do início
+  nominal, confirmado pixel a pixel contra o Aquarela rodando de verdade num emulador). **46
+  caracteres editáveis** (grade de 8 colunas × 6 linhas): `A-Z`, `&`, `?`, `!`, `"`, `0-9`, `.`, `:`,
+  `-`, `(`, `)`, `,` — ordem confirmada por teste real do usuário. Salva sempre no formato de 2304
+  bytes (72 registros), preenchendo o restante com o byte de posição-vazia padrão. Botões de ícone
+  **Registrar**/**Limpar**/**Inverter**/**Copiar**/**Colar**, mesmo estilo visual do editor Graphos
+  III.
 - **Editor de som PSG** (`editor/PsgSynth.pbi` + `editor/PsgEditorGui.pbi`, menu **Criar → Som
   (PSG)...**) — editor de efeitos sonoros para o chip de som do MSX (AY-3-8910/YM2149), espelhando
   registrador por registrador o comando `SOUND` do MSX-BASIC. Painel com os 3 canais **A/B/C**
@@ -361,6 +380,38 @@ openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
   sprites, então um projeto só com alfabetos, sons ou músicas nunca disparava o aviso — risco real de
   perder esse conteúdo ao fechar sem salvar. Corrigido somando as 4 tabelas (`sprites`+`alphabets`+
   `psg_sounds`+`mml_songs`). Versão embutida no executável atualizada para `5.9.5`.
+- **2026-07-23** — Novo **editor de alfabetos Aquarela** (menu **Criar → Alfabeto Aquarela...**,
+  `editor/AquarelaCharsetEditorGui.pbi`): edita o formato `.FNT` de outro editor de fonte MSX
+  (alternativa ao Graphos III), com engenharia reversa completa registrada em
+  `docs/reference/aquarela.md`. Descoberta principal da sessão: cada registro de 32 bytes **não**
+  começa no byte `N×32` do arquivo como a fórmula inicial supunha, mas 7 bytes depois — confirmado
+  comparando pixel a pixel a decodificação contra uma screenshot real do Aquarela rodando num
+  emulador (sem esse ajuste, cada glifo aparecia com um "floreio" desconexo no topo, na real a ponta
+  final do caractere anterior vazando pro caractere seguinte). Glifo real 16×16 (2 planos de 16 bytes,
+  coluna esquerda/direita), ferramenta autocontida baseada em arquivo (Novo/Abrir/Salvar/Salvar como),
+  sem integração com o sistema de projeto. Tabela inicial cobria 32 caracteres (A-Z + `& ? ! "` +
+  `0 1`) — ampliada depois pra **46 caracteres** (`A-Z`, `& ? ! "`, `0-9`, `. : - ( ) ,`), a ordem
+  completa confirmada por teste real do usuário e por `LOGO.FNT` (fonte 8×8 completa do disco
+  original do Aquarela, que lê perfeitamente até bem depois dos 46 glifos "oficiais").
+- **2026-07-23 (mais tarde no mesmo dia)** — Editor de alfabetos Graphos III ganhou **11 botões de
+  efeito** novos, todos seguindo o mesmo padrão dual já usado pelo "Inverter" (sem bloco marcado,
+  afeta só o caractere em edição; com bloco marcado — ou o novo botão **All** — aplica direto em todo
+  o intervalo, sem precisar de "Registrar" por caractere): **All** (marca o alfabeto inteiro de uma
+  vez), **Desfazer**/**Refazer** (pilha de instantâneos do alfabeto inteiro, até 50 níveis, zerada ao
+  trocar de alfabeto), **Espelhar horizontal**/**Espelhar vertical**, **Girar 90°** (sentido horário),
+  **Apagar** (mesmo efeito de "Limpar", com o modo dual), **Estreitar** (condensa as 5 colunas da
+  metade esquerda do glifo em 3, truque clássico de MSX pra caber 64 colunas de texto onde só
+  caberiam 32), **Itálico** (desloca as linhas do glifo progressivamente — 2 bits nas 2 primeiras, 1
+  bit nas 3 seguintes, nenhuma nas 3 últimas), **Negrito** (OR de cada linha com ela mesma deslocada 1
+  bit, engrossando os traços) e **Largo** (funde as colunas 0-2 do original com as colunas 3-7 do
+  original deslocado, esticando o glifo). Duas rodadas de refinamento a pedido do usuário: os efeitos
+  Largo tiveram uma variante "Largo (direita)" que virou, depois de uma correção do próprio pedido,
+  **Bold (esquerda)** e **Bold (direita)** (engrossam um lado específico do glifo via OR em vez de só
+  deslocar); e **Largo (bold)**, literalmente `Bold(Largo(x))`, reaproveitando as duas transformações
+  já existentes em vez de uma fórmula de bits nova. Ícones novos (seta circular, setas de espelhar/
+  esticar, quadrado com arco de rotação, barras de itálico/negrito, retângulo pontilhado do "All")
+  reaproveitam os mesmos helpers de triângulo preenchido (`CharEd_DrawFilledHTri`/`DrawFilledVTri`)
+  extraídos do desenho da seta de navegação já existente.
 
 ## Ferramentas e ambiente
 

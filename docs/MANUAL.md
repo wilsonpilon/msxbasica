@@ -8,8 +8,8 @@
 >
 > Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
 > etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
-> editor de sprites, o editor de alfabetos, o editor de som, o editor de música, o sistema
-> de projeto e o processo de build.
+> editor de sprites, o editor de alfabetos (Graphos III e Aquarela), o editor de som, o
+> editor de música, o sistema de projeto e o processo de build.
 
 ---
 
@@ -43,7 +43,9 @@
    - [Barra de projeto (registrar, navegar, copiar/colar)](#barra-de-projeto-registrar-navegar-copiarcolar)
 8. [Editor de alfabetos](#editor-de-alfabetos)
    - [Tabela de caracteres e grade de edição](#tabela-de-caracteres-e-grade-de-edição)
-   - [Marcar bloco (inverter um intervalo de caracteres de uma vez)](#marcar-bloco-inverter-um-intervalo-de-caracteres-de-uma-vez)
+   - [Marcar bloco (aplicar um efeito num intervalo de caracteres de uma vez)](#marcar-bloco-aplicar-um-efeito-num-intervalo-de-caracteres-de-uma-vez)
+   - [Desfazer / refazer](#desfazer--refazer-1)
+   - [Efeitos de glifo (espelhar, girar, estreitar, itálico, negrito, largo)](#efeitos-de-glifo-espelhar-girar-estreitar-itálico-negrito-largo)
    - [Copiar/colar um alfabeto inteiro](#copiarcolar-um-alfabeto-inteiro)
    - [Arquivo .ALF (Graphos III)](#arquivo-alf-graphos-iii)
    - [Barra de projeto e o alfabeto padrão ("projeto 0")](#barra-de-projeto-e-o-alfabeto-padrão-projeto-0)
@@ -59,6 +61,9 @@
     - [Tocar / Parar](#tocar--parar-1)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-1)
     - [Barra de projeto](#barra-de-projeto-1)
+11. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
+    - [Tabela de 46 caracteres e grade 16x16](#tabela-de-46-caracteres-e-grade-16x16)
+    - [Arquivo .FNT](#arquivo-fnt)
 
 ---
 
@@ -503,19 +508,22 @@ desenho (ex.: o ícone de "copiar" é o mesmo para copiar um caractere, um alfab
   caractere atual (ainda precisa de "Registrar"). Com um **bloco marcado**, inverte de uma vez **todos
   os caracteres do intervalo**, direto no alfabeto em memória (não passa pela grade de edição nem
   precisa de "Registrar" por caractere — mas o alfabeto inteiro ainda precisa de "Registrar alfabeto"
-  para valer no projeto).
+  para valer no projeto). Os efeitos de glifo descritos mais abaixo seguem exatamente o mesmo padrão.
 
-### Marcar bloco (inverter um intervalo de caracteres de uma vez)
+### Marcar bloco (aplicar um efeito num intervalo de caracteres de uma vez)
 
 Abaixo da tabela: **Marcar início** / **Marcar fim** marcam o caractere atualmente selecionado na
 tabela como início/fim de um intervalo (por exemplo, clique em "A", **Marcar início**, clique em "Z",
-**Marcar fim**). O intervalo marcado aparece com um contorno azul na tabela, e o texto de status mostra
-algo como `Bloco: $41..$5A (26 caracteres)`. Com o intervalo marcado, o botão **Inverter** (na grade de
-edição, à direita) passa a inverter todos os caracteres do intervalo de uma vez, em vez de só o
-caractere atual. **Limpar bloco** desmarca o intervalo, voltando "Inverter" ao comportamento normal (só
-o caractere atual). O intervalo marcado é independente do alfabeto sendo editado no momento — navegar
-entre alfabetos não desmarca o bloco, então dá para repetir a mesma inversão de intervalo em vários
-alfabetos.
+**Marcar fim**). O botão **All** faz a mesma coisa de uma vez só, marcando o alfabeto inteiro (todos os
+256 caracteres) sem precisar clicar duas vezes. O intervalo marcado aparece com um contorno azul na
+tabela, e o texto de status mostra algo como `Bloco: $41..$5A (26 caracteres)`. Com o intervalo
+marcado, **todos os botões de efeito** (Inverter, Espelhar, Girar, Apagar, Estreitar, Itálico, Negrito,
+Largo e variantes — ver [Efeitos de glifo](#efeitos-de-glifo-espelhar-girar-estreitar-itálico-negrito-largo)
+abaixo) passam a aplicar de uma vez em todos os caracteres do intervalo, em vez de só no caractere
+atual. **Limpar bloco** desmarca o intervalo, voltando todos os efeitos ao comportamento normal (só o
+caractere atual). O intervalo marcado é independente do alfabeto sendo editado no momento — navegar
+entre alfabetos não desmarca o bloco, então dá para repetir o mesmo efeito em vários alfabetos sem
+remarcar.
 
 - **Copiar bloco** — copia todos os caracteres do intervalo marcado (não só um) para a área de
   transferência da sessão. Precisa de um intervalo marcado primeiro (Marcar início/Marcar fim).
@@ -526,6 +534,44 @@ alfabetos.
   caractere "a" na tabela, **Colar bloco** (a..z passam a ter os mesmos desenhos de A..Z, e o intervalo
   a..z já fica marcado), **Inverter** (inverte só a..z) — resultado: A..Z normais e a..z como a mesma
   fonte invertida, prontos para usar como dois conjuntos diferentes no mesmo alfabeto.
+
+### Desfazer / refazer
+
+**Desfazer** / **Refazer** trabalham sobre o **alfabeto inteiro**, não sobre pixel individual — cada
+vez que uma alteração é de fato gravada no alfabeto (Registrar um caractere, qualquer efeito de glifo
+aplicado com um bloco/All marcado, Colar bloco, Colar alfabeto), o estado anterior é guardado numa
+pilha (até 50 níveis). **Desfazer** volta pro estado anterior; **Refazer** avança de novo, se nada foi
+alterado no meio. Pixels ainda não registrados (sem clicar em "Registrar") não entram na pilha — a
+mesma regra de sempre: editar sem registrar não muda o alfabeto, então não há o que desfazer ali. Os
+botões ficam desabilitados quando não há nada pra desfazer/refazer, e a pilha é zerada ao trocar de
+alfabeto (navegar, Novo alfabeto, Carregar do Graphos III) — desfazer não atravessa alfabetos
+diferentes.
+
+### Efeitos de glifo (espelhar, girar, estreitar, itálico, negrito, largo)
+
+Uma segunda fileira de botões, ao lado de Registrar/Limpar/Inverter/Copiar/Colar, com mais efeitos que
+seguem o **mesmo padrão dual** do Inverter: sem bloco marcado, afetam só o caractere em edição (ainda
+precisa de "Registrar"); com um bloco marcado (ou **All**), aplicam de uma vez em todo o intervalo,
+direto no alfabeto.
+
+- **Espelhar horizontal** / **Espelhar vertical** — espelham o desenho do glifo na horizontal/vertical.
+- **Girar 90°** — gira o glifo 90 graus no sentido horário.
+- **Apagar** — mesmo efeito de "Limpar", só que também funciona com bloco/All marcado (apagando todos
+  os caracteres do intervalo de uma vez).
+- **Estreitar** — condensa as 5 colunas da metade esquerda do glifo em só 3 colunas (colunas 0-1 viram
+  a coluna 0, a coluna 2 vira a coluna 1, as colunas 3-4 viram a coluna 2; o resto some) — truque
+  clássico de fonte MSX pra caber **64 colunas** de texto na tela onde caberiam só 32.
+- **Itálico** — desloca as linhas do glifo pra direita em quantidades decrescentes: as 2 linhas de
+  cima deslocam 2 pixels, as 3 seguintes deslocam 1 pixel, e as 3 últimas ficam paradas — resultado é
+  um efeito de inclinação.
+- **Negrito** — engrossa cada traço vertical em 1 pixel, combinando cada linha do glifo com uma cópia
+  dela mesma deslocada 1 pixel pra direita.
+- **Largo** — estica o glifo horizontalmente em 1 pixel, combinando a metade esquerda original com uma
+  cópia deslocada 1 pixel pra direita.
+- **Bold (esquerda)** / **Bold (direita)** — parecidos com "Largo", mas engrossando um lado específico
+  do glifo em vez de só esticar (esquerda engrossa o lado esquerdo, direita o lado direito).
+- **Largo (bold)** — aplica "Largo" e, em seguida, "Negrito" em cima do resultado — glifo esticado e
+  engrossado ao mesmo tempo.
 
 ### Copiar/colar um alfabeto inteiro
 
@@ -722,3 +768,40 @@ tag, navegação **Primeiro**/**Anterior**/**Próximo**/**Último**, e os botõe
 próxima música da sequência, com os 3 canais vazios) e **Registrar** (grava a música atual — todas as
 linhas dos 3 canais — no projeto). Alterações ainda não registradas pedem confirmação antes de trocar
 de música ou fechar a janela.
+
+---
+
+## Editor de alfabetos Aquarela
+
+O menu **Criar → Alfabeto Aquarela...** abre um segundo editor de charset, para o formato `.FNT` de
+outro editor de fonte MSX chamado **Aquarela** (alternativa ao Graphos III do [editor de
+alfabetos](#editor-de-alfabetos) acima). O formato foi descoberto por engenharia reversa (documentado
+em detalhe em `docs/reference/aquarela.md`) — não há especificação oficial disponível.
+
+Ao contrário do editor de alfabetos Graphos III, este é uma ferramenta **independente do sistema de
+projeto**: não existe "Registrar alfabeto" nem número/tag — o fluxo é sempre **Novo**/**Abrir...**/
+**Salvar**/**Salvar como...** direto num arquivo `.fnt`, como um editor de imagem comum.
+
+### Tabela de 46 caracteres e grade 16x16
+
+- **Tabela** — 46 caracteres editáveis (grade de 8 colunas × 6 linhas — as 2 últimas células ficam sem
+  uso), na ordem `A-Z`, `&`, `?`, `!`, `"`, `0-9`, `.`, `:`, `-`, `(`, `)`, `,`. Essa é a única faixa da
+  tabela de caracteres do Aquarela confirmada por teste real contra o programa de verdade rodando num
+  emulador — o Aquarela suporta mais caracteres além destes (minúsculas, por exemplo), mas a posição
+  exata deles na tabela ainda não foi confirmada, então não são editáveis aqui.
+- **Grade de edição** — diferente do editor Graphos III (8×8), aqui o glifo é **16×16 de verdade**: a
+  grade de edição sempre mostra as 16 colunas inteiras, mesmo para os glifos "8×8" do Aquarela (a
+  maioria das fontes reais) que só desenham na metade esquerda.
+- **Registrar** / **Limpar** / **Inverter** / **Copiar** / **Colar** — mesmo comportamento e mesmos
+  ícones do editor de alfabetos Graphos III (ver [Tabela de caracteres e grade de
+  edição](#tabela-de-caracteres-e-grade-de-edição) acima) — sem os efeitos de bloco/All/desfazer do
+  Graphos III, que existem só naquele editor.
+
+### Arquivo .FNT
+
+- **Novo** — começa um alfabeto Aquarela em branco (os 46 caracteres editáveis).
+- **Abrir...** — carrega um `.fnt` real do Aquarela (lê só os primeiros 46 caracteres — o restante do
+  arquivo, se houver, é ignorado).
+- **Salvar** / **Salvar como...** — grava sempre no formato de 2304 bytes (72 registros), a variante
+  confirmada carregando sem erro no Aquarela de verdade contra todo o corpus de amostras testado; os
+  registros além dos 46 editáveis são preenchidos com o byte de posição-vazia padrão do formato.

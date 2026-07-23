@@ -34,6 +34,35 @@
 
 #CharEd_FilePattern = "Alfabeto Graphos III (*.alf)|*.alf|Todos os arquivos (*.*)|*.*"
 
+; Desfazer/Refazer: pilha de instantaneos do alfabeto INTEIRO (256x8 = 2048
+; bytes, barato de copiar). So acoes que gravam de fato em CharsetBytes()
+; empilham um instantaneo (Registrar, efeitos em bloco/Tudo com Inverter/
+; Espelhar/Girar/Apagar, Colar bloco, Colar alfabeto) - pixels editados mas
+; ainda nao registrados (EditGrid) nao entram na pilha, mesmo espirito de
+; "editar sem registrar nao muda o alfabeto em memoria" do resto do editor.
+; A pilha e zerada ao trocar de alfabeto (navegacao/Novo/Carregar), pois um
+; instantaneo de outro alfabeto nao faz sentido pra desfazer o atual.
+#CharEd_MaxUndo = 50
+
+Structure CharEd_AlphaSnapshot
+  Bytes.a[2048]
+EndStructure
+
+; Efeitos que respeitam o bloco marcado (ver CharEd_ApplyGridEffectToRange) -
+; sem bloco, afetam so o EditGrid do caractere atual (precisa de "Registrar").
+#CharEd_Effect_Clear    = 0
+#CharEd_Effect_Invert   = 1
+#CharEd_Effect_FlipH    = 2
+#CharEd_Effect_FlipV    = 3
+#CharEd_Effect_Rotate90 = 4
+#CharEd_Effect_Narrow   = 5
+#CharEd_Effect_Italic   = 6
+#CharEd_Effect_Bold     = 7
+#CharEd_Effect_Wide     = 8
+#CharEd_Effect_BoldLeft = 9
+#CharEd_Effect_BoldRight = 10
+#CharEd_Effect_WideBold  = 11
+
 Global CharEd_LastError.s = ""
 
 Procedure.s CharEd_GetLastError()
@@ -169,6 +198,308 @@ Procedure CharEd_InvertEditGrid(Array EditGrid.a(2))
       EditGrid(Row, Col) = 1 - EditGrid(Row, Col)
     Next
   Next
+EndProcedure
+
+; Espelha o EditGrid (8x8) na horizontal - coluna Col troca de lugar com a
+; coluna (7-Col), linha a linha.
+Procedure CharEd_FlipHEditGrid(Array EditGrid.a(2))
+  Protected Row, Col, Tmp.a
+  For Row = 0 To 7
+    For Col = 0 To 3
+      Tmp = EditGrid(Row, Col)
+      EditGrid(Row, Col) = EditGrid(Row, 7 - Col)
+      EditGrid(Row, 7 - Col) = Tmp
+    Next
+  Next
+EndProcedure
+
+; Espelha o EditGrid (8x8) na vertical - linha Row troca de lugar com a
+; linha (7-Row), coluna a coluna.
+Procedure CharEd_FlipVEditGrid(Array EditGrid.a(2))
+  Protected Row, Col, Tmp.a
+  For Row = 0 To 3
+    For Col = 0 To 7
+      Tmp = EditGrid(Row, Col)
+      EditGrid(Row, Col) = EditGrid(7 - Row, Col)
+      EditGrid(7 - Row, Col) = Tmp
+    Next
+  Next
+EndProcedure
+
+; Gira o EditGrid (8x8) 90 graus no sentido horario: novo(Row,Col) =
+; antigo(7-Col, Row) - formula padrao de rotacao horaria de matriz quadrada.
+Procedure CharEd_RotateEditGrid(Array EditGrid.a(2))
+  Protected Row, Col
+  Dim Tmp.a(7, 7)
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Tmp(Row, Col) = EditGrid(Row, Col)
+    Next
+  Next
+  For Row = 0 To 7
+    For Col = 0 To 7
+      EditGrid(Row, Col) = Tmp(7 - Col, Row)
+    Next
+  Next
+EndProcedure
+
+; Estreitar: condensa as 5 colunas da METADE ESQUERDA do glifo (0..4) em so 3
+; colunas de saida, juntando pares de colunas por OR - truque classico de
+; texto MSX pra caber 64 colunas onde so caberiam 32 (glifo "normal" ocupa
+; a celula de 8px inteira, glifo "estreito" so usa as 3 colunas mais a
+; esquerda, o resto sempre apagado). Formula pedida pelo usuario, em termos
+; de mascara de bits (bit7=col0 .. bit0=col7):
+;   byte1 = (byte & %00011000) <> 0 ? %00100000 : 0   -> colunas 3,4 -> col2
+;   byte2 = (byte & %11000000) <> 0 ? %10000000 : 0   -> colunas 0,1 -> col0
+;   byte3 = (byte & %00100000) <> 0 ? %01000000 : 0   -> coluna  2   -> col1
+;   saida = byte1 | byte2 | byte3
+; Em termos de pixel (equivalente bit a bit, mais facil de ler no EditGrid):
+Procedure CharEd_NarrowEditGrid(Array EditGrid.a(2))
+  Protected Row, Col0.a, Col1.a, Col2.a
+  For Row = 0 To 7
+    Col0 = Bool(EditGrid(Row, 0) Or EditGrid(Row, 1))
+    Col1 = EditGrid(Row, 2)
+    Col2 = Bool(EditGrid(Row, 3) Or EditGrid(Row, 4))
+    EditGrid(Row, 0) = Col0
+    EditGrid(Row, 1) = Col1
+    EditGrid(Row, 2) = Col2
+    EditGrid(Row, 3) = 0
+    EditGrid(Row, 4) = 0
+    EditGrid(Row, 5) = 0
+    EditGrid(Row, 6) = 0
+    EditGrid(Row, 7) = 0
+  Next
+EndProcedure
+
+; Italico: desloca cada linha pra direita por uma quantidade que diminui de
+; cima pra baixo - as 2 primeiras linhas (0,1) deslocam 2 bits, as 3
+; seguintes (2,3,4) deslocam 1 bit, e as 3 ultimas (5,6,7) ficam iguais (0
+; bits) - pedido exato do usuario. "Deslocar N bits a direita" equivale a
+; empurrar as colunas pra direita: NovaCol(c) = VelhaCol(c-N) se c>=N, senao
+; 0 - as N colunas mais a direita da linha original saem da celula e se
+; perdem (mesmo comportamento de um SHR de verdade, sem wrap-around).
+Procedure CharEd_ItalicEditGrid(Array EditGrid.a(2))
+  Protected Row, Col, Shift.i
+  Dim Tmp.a(7, 7)
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Tmp(Row, Col) = EditGrid(Row, Col)
+    Next
+  Next
+  For Row = 0 To 7
+    Select Row
+      Case 0, 1
+        Shift = 2
+      Case 2, 3, 4
+        Shift = 1
+      Default
+        Shift = 0
+    EndSelect
+    For Col = 0 To 7
+      If Col >= Shift
+        EditGrid(Row, Col) = Tmp(Row, Col - Shift)
+      Else
+        EditGrid(Row, Col) = 0
+      EndIf
+    Next
+  Next
+EndProcedure
+
+; Negrito: desloca cada linha 1 bit a direita (equivale a dividir o byte por
+; 2) e faz OR com a linha original - a "sombra" deslocada engrossa cada
+; traco vertical em 1px, dando aspecto de negrito. Mesma regra de
+; NovaCol(c) = VelhaCol(c-1) usada no Italico, so que aqui o resultado e
+; OR'd com a coluna original em vez de substitui-la.
+Procedure CharEd_BoldEditGrid(Array EditGrid.a(2))
+  Protected Row, Col
+  Dim Tmp.a(7, 7)
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Tmp(Row, Col) = EditGrid(Row, Col)
+    Next
+  Next
+  For Row = 0 To 7
+    For Col = 0 To 7
+      If Col >= 1
+        EditGrid(Row, Col) = Bool(Tmp(Row, Col) Or Tmp(Row, Col - 1))
+      Else
+        EditGrid(Row, Col) = Tmp(Row, Col)
+      EndIf
+    Next
+  Next
+EndProcedure
+
+; Largo: combina as colunas 0-2 do byte original com as colunas 3-7 do byte
+; deslocado 1 bit a direita - equivale a "ByteA OR ByteB" onde ByteA =
+; Original AND %11100000 (colunas 0-2) e ByteB = (Original >> 1) AND
+; %00011111 (colunas 3-7 do deslocado, ou seja colunas 2-6 do original
+; movidas 1 posicao pra direita). Na pratica repete a coluna 2 (aparece nas
+; posicoes 2 E 3 do resultado) e empurra o resto, esticando o glifo em 1px -
+; oposto do "Estreitar". Coluna 7 do original se perde (cai fora da celula
+; no deslocamento), mesmo comportamento de um SHR de verdade.
+Procedure CharEd_WideEditGrid(Array EditGrid.a(2))
+  Protected Row, Col
+  Dim Tmp.a(7, 7)
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Tmp(Row, Col) = EditGrid(Row, Col)
+    Next
+  Next
+  For Row = 0 To 7
+    For Col = 0 To 7
+      If Col <= 2
+        EditGrid(Row, Col) = Tmp(Row, Col)
+      Else
+        EditGrid(Row, Col) = Tmp(Row, Col - 1)
+      EndIf
+    Next
+  Next
+EndProcedure
+
+; Bold (esquerda): ByteA = Original AND %11100000 (colunas 0-2), depois
+; ByteA OR (Original >> 1) inteiro (sem mascara desta vez) - diferenca pro
+; "Largo" comum: aqui as colunas 1-2 tambem recebem o OR com a copia
+; deslocada (engrossando o lado esquerdo, igual o Negrito faria ali), e as
+; colunas 3-7 continuam vindo so da copia deslocada (igual o Largo comum).
+; Coluna 0 fica igual ao original (o deslocado nao contribui ali, vira 0).
+Procedure CharEd_BoldLeftEditGrid(Array EditGrid.a(2))
+  Protected Row, Col
+  Dim Tmp.a(7, 7)
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Tmp(Row, Col) = EditGrid(Row, Col)
+    Next
+  Next
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Select Col
+        Case 0
+          EditGrid(Row, Col) = Tmp(Row, Col)
+        Case 1, 2
+          EditGrid(Row, Col) = Bool(Tmp(Row, Col) Or Tmp(Row, Col - 1))
+        Default
+          EditGrid(Row, Col) = Tmp(Row, Col - 1)
+      EndSelect
+    Next
+  Next
+EndProcedure
+
+; Bold (direita): ByteB = (Original >> 1) AND %00011111 (colunas 3-7 do
+; deslocado), depois ByteB OR Original inteiro (sem mascara) - espelho do
+; "Bold (esquerda)" acima: aqui as colunas 0-2 ficam iguais ao original (o
+; deslocado nao contribui ali, mascarado fora), e as colunas 3-7 recebem o
+; OR com a copia deslocada, engrossando o lado direito do glifo.
+Procedure CharEd_BoldRightEditGrid(Array EditGrid.a(2))
+  Protected Row, Col
+  Dim Tmp.a(7, 7)
+  For Row = 0 To 7
+    For Col = 0 To 7
+      Tmp(Row, Col) = EditGrid(Row, Col)
+    Next
+  Next
+  For Row = 0 To 7
+    For Col = 0 To 7
+      If Col <= 2
+        EditGrid(Row, Col) = Tmp(Row, Col)
+      Else
+        EditGrid(Row, Col) = Bool(Tmp(Row, Col) Or Tmp(Row, Col - 1))
+      EndIf
+    Next
+  Next
+EndProcedure
+
+; Largo (bold): faz o mesmo processo do "Largo" comum, depois aplica o mesmo
+; engrossamento do "Negrito" (OR de cada linha com ela mesma deslocada 1 bit
+; a direita) em cima do resultado ja alargado - ou seja, e literalmente
+; Bold(Largo(x)), reaproveitando as duas transformacoes ja existentes em vez
+; de reimplementar a formula de bits nova.
+Procedure CharEd_WideBoldEditGrid(Array EditGrid.a(2))
+  CharEd_WideEditGrid(EditGrid())
+  CharEd_BoldEditGrid(EditGrid())
+EndProcedure
+
+; Aplica um dos efeitos acima (Clear/Invert/FlipH/FlipV/Rotate90/Narrow/
+; Italico/Negrito/Largo/Bold esquerda/Bold direita/Largo bold) direto em
+; CharsetBytes(), num intervalo [StartIdx..EndIdx] de caracteres - usado
+; pelo modo "bloco marcado" (ou "All") dos botoes de efeito, que mexem no
+; alfabeto de uma vez em vez de exigir "Registrar" caractere por caractere.
+; Reaproveita Unpack/transforma/Pack pra nao duplicar a logica de bits.
+Procedure CharEd_ApplyGridEffectToRange(Array CharsetBytes.a(2), StartIdx.i, EndIdx.i, EffectId.i)
+  Protected Idx
+  Dim TempGrid.a(7, 7)
+  For Idx = StartIdx To EndIdx
+    CharEd_UnpackChar(CharsetBytes(), Idx, TempGrid())
+    Select EffectId
+      Case #CharEd_Effect_Clear
+        CharEd_ClearEditGrid(TempGrid())
+      Case #CharEd_Effect_Invert
+        CharEd_InvertEditGrid(TempGrid())
+      Case #CharEd_Effect_FlipH
+        CharEd_FlipHEditGrid(TempGrid())
+      Case #CharEd_Effect_FlipV
+        CharEd_FlipVEditGrid(TempGrid())
+      Case #CharEd_Effect_Rotate90
+        CharEd_RotateEditGrid(TempGrid())
+      Case #CharEd_Effect_Narrow
+        CharEd_NarrowEditGrid(TempGrid())
+      Case #CharEd_Effect_Italic
+        CharEd_ItalicEditGrid(TempGrid())
+      Case #CharEd_Effect_Bold
+        CharEd_BoldEditGrid(TempGrid())
+      Case #CharEd_Effect_Wide
+        CharEd_WideEditGrid(TempGrid())
+      Case #CharEd_Effect_BoldLeft
+        CharEd_BoldLeftEditGrid(TempGrid())
+      Case #CharEd_Effect_BoldRight
+        CharEd_BoldRightEditGrid(TempGrid())
+      Case #CharEd_Effect_WideBold
+        CharEd_WideBoldEditGrid(TempGrid())
+    EndSelect
+    CharEd_PackChar(TempGrid(), CharsetBytes(), Idx)
+  Next
+EndProcedure
+
+; Copia CharsetBytes() (256x8) de/para um instantaneo achatado de 2048 bytes
+; (ver CharEd_AlphaSnapshot) - usado pela pilha de Desfazer/Refazer abaixo.
+Procedure CharEd_SnapshotFromArray(Array CharsetBytes.a(2), *Snap.CharEd_AlphaSnapshot)
+  Protected Row, Col
+  For Row = 0 To 255
+    For Col = 0 To 7
+      *Snap\Bytes[Row * 8 + Col] = CharsetBytes(Row, Col)
+    Next
+  Next
+EndProcedure
+
+Procedure CharEd_ArrayFromSnapshot(*Snap.CharEd_AlphaSnapshot, Array CharsetBytes.a(2))
+  Protected Row, Col
+  For Row = 0 To 255
+    For Col = 0 To 7
+      CharsetBytes(Row, Col) = *Snap\Bytes[Row * 8 + Col]
+    Next
+  Next
+EndProcedure
+
+; Empilha o estado ATUAL de CharsetBytes() (antes da mudanca que esta prestes
+; a acontecer) na pilha de Desfazer, e descarta a pilha de Refazer (uma nova
+; acao invalida qualquer "refazer" pendente - mesma convencao de qualquer
+; editor com undo/redo). Limita a profundidade da pilha (#CharEd_MaxUndo)
+; descartando o instantaneo mais antigo quando excede.
+Procedure CharEd_PushUndo(List UndoStack.CharEd_AlphaSnapshot(), List RedoStack.CharEd_AlphaSnapshot(), Array CharsetBytes.a(2))
+  ClearList(RedoStack())
+  AddElement(UndoStack())
+  CharEd_SnapshotFromArray(CharsetBytes(), @UndoStack())
+  If ListSize(UndoStack()) > #CharEd_MaxUndo
+    FirstElement(UndoStack())
+    DeleteElement(UndoStack())
+  EndIf
+EndProcedure
+
+; Habilita/desabilita os botoes Desfazer/Refazer conforme o que ha nas pilhas
+; - chamado depois de toda operacao que empilha/desempilha um instantaneo, e
+; ao trocar de alfabeto (pilhas zeradas, ver comentario no topo do arquivo).
+Procedure CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, List UndoStack.CharEd_AlphaSnapshot(), List RedoStack.CharEd_AlphaSnapshot())
+  DisableGadget(G_Undo, Bool(ListSize(UndoStack()) = 0))
+  DisableGadget(G_Redo, Bool(ListSize(RedoStack()) = 0))
 EndProcedure
 
 ; Empacota/desempacota EditGrid (8x8, 0/1) de/para um array simples de 8 bytes
@@ -405,6 +736,32 @@ EndProcedure
 #CharEd_IconBtnW = 34
 #CharEd_IconBtnH = 26
 
+; Triangulo preenchido apontando na horizontal, desenhado por faixas
+; horizontais (uma LineXY por linha Y, largura interpolada entre a base e o
+; apice) - sem precisar de preenchimento de poligono. Reaproveitado pela seta
+; de navegacao abaixo e pelos icones de espelhar (Flip H/V).
+Procedure CharEd_DrawFilledHTri(CenterY.i, BaseX.i, ApexX.i, Half.i, Color.l)
+  Protected y
+  Protected.f Frac, EdgeX
+  For y = -Half To Half
+    Frac = 1 - Abs(y) / Half
+    EdgeX = BaseX + (ApexX - BaseX) * Frac
+    LineXY(BaseX, CenterY + y, EdgeX, CenterY + y, Color)
+  Next
+EndProcedure
+
+; Mesma ideia, mas apontando na vertical (faixas verticais) - usado pelos
+; icones de espelhar vertical e girar.
+Procedure CharEd_DrawFilledVTri(CenterX.i, BaseY.i, ApexY.i, Half.i, Color.l)
+  Protected x
+  Protected.f Frac, EdgeY
+  For x = -Half To Half
+    Frac = 1 - Abs(x) / Half
+    EdgeY = BaseY + (ApexY - BaseY) * Frac
+    LineXY(CenterX + x, BaseY, CenterX + x, EdgeY, Color)
+  Next
+EndProcedure
+
 ; Seta/triangulo de navegacao (Primeiro/Anterior/Proximo/Ultimo) - Direction
 ; 0 = aponta pra esquerda, 1 = aponta pra direita; WithBar acrescenta uma
 ; barra vertical do lado apontado (Primeiro/Ultimo tem barra, Anterior/
@@ -415,18 +772,13 @@ Procedure CharEd_CreateNavIcon(Size.i, Direction.i, WithBar.b)
     DrawingMode(#PB_2DDrawing_Default)
     Box(0, 0, Size, Size, RGB(255, 255, 255))
     Protected Cy = Size / 2, Half = Size / 2 - 5
-    Protected BaseX, ApexX, y
-    Protected.f Frac, EdgeX
+    Protected BaseX, ApexX
     If Direction = 1
       BaseX = Size / 2 - Half : ApexX = Size / 2 + Half
     Else
       BaseX = Size / 2 + Half : ApexX = Size / 2 - Half
     EndIf
-    For y = -Half To Half
-      Frac = 1 - Abs(y) / Half
-      EdgeX = BaseX + (ApexX - BaseX) * Frac
-      LineXY(BaseX, Cy + y, EdgeX, Cy + y, #CharEd_IconInk)
-    Next
+    CharEd_DrawFilledHTri(Cy, BaseX, ApexX, Half, #CharEd_IconInk)
     If WithBar
       If Direction = 1
         Box(Size / 2 + Half + 1, 3, 2, Size - 6, #CharEd_IconInk)
@@ -644,6 +996,238 @@ Procedure CharEd_CreateInvertIcon(Size.i)
   ProcedureReturn Img
 EndProcedure
 
+; "Desfazer"/"Refazer": arco de ~270 graus com uma seta curta na ponta -
+; Mirrored = #False desenha o arco "abrindo" pro lado direito (Refazer,
+; sentido horario); Mirrored = #True espelha cada ponto na horizontal,
+; produzindo o mesmo desenho abrindo pro lado esquerdo (Desfazer) sem
+; precisar recalcular a trigonometria duas vezes.
+Procedure CharEd_CreateCircularArrowIcon(Size.i, Mirrored.b)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+
+    Protected.f Cx = Size / 2, Cy = Size / 2, R = Size / 2 - 6
+    Protected.f MirrorAxis = Size - 1
+    Protected.f StartDeg = 30, EndDeg = 300, Ang, X, Y, PrevX, PrevY
+    Protected Steps = 16, i
+
+    PrevX = Cx + R * Cos(Radian(StartDeg)) : PrevY = Cy - R * Sin(Radian(StartDeg))
+    If Mirrored : PrevX = MirrorAxis - PrevX : EndIf
+    For i = 1 To Steps
+      Ang = StartDeg + (EndDeg - StartDeg) * i / Steps
+      X = Cx + R * Cos(Radian(Ang)) : Y = Cy - R * Sin(Radian(Ang))
+      If Mirrored : X = MirrorAxis - X : EndIf
+      LineXY(PrevX, PrevY, X, Y, #CharEd_IconInk)
+      PrevX = X : PrevY = Y
+    Next
+
+    ; seta curta na ponta final do arco (fica embaixo, do lado da abertura)
+    If Mirrored
+      CharEd_DrawFilledHTri(Int(Y), Int(X) + 5, Int(X) - 3, 4, #CharEd_IconInk)
+    Else
+      CharEd_DrawFilledHTri(Int(Y), Int(X) - 5, Int(X) + 3, 4, #CharEd_IconInk)
+    EndIf
+
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Espelhar horizontal/vertical": linha pontilhada no eixo de espelhamento
+; (vertical p/ Flip H, horizontal p/ Flip V) com duas setas apontando pra
+; dentro, uma de cada lado - IsFlipVertical escolhe qual orientacao.
+Procedure CharEd_CreateFlipIcon(Size.i, IsFlipVertical.b)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cx = Size / 2, Cy = Size / 2, Half = Size / 2 - 6, d
+    If IsFlipVertical
+      For d = 2 To Size - 3 Step 3
+        Box(d, Cy - 1, 2, 2, #CharEd_IconInkLt)
+      Next
+      CharEd_DrawFilledVTri(Cx, 2, Cy - 2, Half, #CharEd_IconInk)
+      CharEd_DrawFilledVTri(Cx, Size - 3, Cy + 2, Half, #CharEd_IconInk)
+    Else
+      For d = 2 To Size - 3 Step 3
+        Box(Cx - 1, d, 2, 2, #CharEd_IconInkLt)
+      Next
+      CharEd_DrawFilledHTri(Cy, 2, Cx - 2, Half, #CharEd_IconInk)
+      CharEd_DrawFilledHTri(Cy, Size - 3, Cx + 2, Half, #CharEd_IconInk)
+    EndIf
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Girar 90 graus": quadrado central (o glifo) com um arco horario ao redor
+; e uma seta na ponta, sugerindo o giro.
+Procedure CharEd_CreateRotateIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+
+    Box(Size / 2 - 4, Size / 2 - 4, 8, 8, #CharEd_IconInkLt)
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(Size / 2 - 4, Size / 2 - 4, 8, 8, #CharEd_IconInk)
+    DrawingMode(#PB_2DDrawing_Default)
+
+    Protected.f Cx = Size / 2, Cy = Size / 2, R = Size / 2 - 3
+    Protected.f StartDeg = 100, EndDeg = -160, Ang, X, Y, PrevX, PrevY
+    Protected Steps = 14, i
+    PrevX = Cx + R * Cos(Radian(StartDeg)) : PrevY = Cy - R * Sin(Radian(StartDeg))
+    For i = 1 To Steps
+      Ang = StartDeg + (EndDeg - StartDeg) * i / Steps
+      X = Cx + R * Cos(Radian(Ang)) : Y = Cy - R * Sin(Radian(Ang))
+      LineXY(PrevX, PrevY, X, Y, #CharEd_IconInk)
+      PrevX = X : PrevY = Y
+    Next
+    CharEd_DrawFilledHTri(Int(Y), Int(X) - 4, Int(X) + 4, 4, #CharEd_IconInk)
+
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "All" (marcar o alfabeto inteiro como bloco): retangulo pontilhado, simbolo
+; classico de selecionar tudo (marquee).
+Procedure CharEd_CreateSelectAllIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected d
+    For d = 2 To Size - 4 Step 4
+      Box(d, 2, 2, 2, #CharEd_IconInk)
+      Box(d, Size - 4, 2, 2, #CharEd_IconInk)
+    Next
+    For d = 2 To Size - 4 Step 4
+      Box(2, d, 2, 2, #CharEd_IconInk)
+      Box(Size - 4, d, 2, 2, #CharEd_IconInk)
+    Next
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Estreitar": barra escura estreita no centro (o resultado condensado) com
+; duas setas claras comprimindo dos dois lados - mesmas setas triangulares
+; do icone de espelhar, aqui apontando pra dentro sem linha de eixo.
+Procedure CharEd_CreateNarrowIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cx = Size / 2, Cy = Size / 2, Half = Size / 2 - 5
+    CharEd_DrawFilledHTri(Cy, 2, Cx - 5, Half, #CharEd_IconInkLt)
+    CharEd_DrawFilledHTri(Cy, Size - 3, Cx + 5, Half, #CharEd_IconInkLt)
+    Box(Cx - 2, 3, 4, Size - 6, #CharEd_IconInk)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Italico": 3 barrinhas empilhadas, deslocando pra direita conforme sobem -
+; ilustra literalmente o efeito (linhas de cima deslocam mais que as de
+; baixo, as ultimas ficam paradas).
+Procedure CharEd_CreateItalicIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cx = Size / 2, BarW = 10, BarH = 4
+    Box(Cx - BarW / 2 + 5, 2, BarW, BarH, #CharEd_IconInk)
+    Box(Cx - BarW / 2 + 2, 9, BarW, BarH, #CharEd_IconInk)
+    Box(Cx - BarW / 2 - 3, 16, BarW, BarH, #CharEd_IconInk)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Negrito": barra clara (traco original) com uma barra escura mais larga
+; sobreposta 1px a direita - ilustra o OR do traco original com a copia
+; deslocada, que e exatamente o que o efeito faz.
+Procedure CharEd_CreateBoldIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cx = Size / 2
+    Box(Cx - 5, 3, 4, Size - 6, #CharEd_IconInkLt)
+    Box(Cx - 4, 3, 6, Size - 6, #CharEd_IconInk)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Largo": barra curta no centro com duas setas claras apontando pra FORA
+; (esticando) - espelho do icone de "Estreitar", que aponta pra dentro.
+Procedure CharEd_CreateWideIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cx = Size / 2, Cy = Size / 2, Half = Size / 2 - 6, BarHalfW = 3
+    Box(Cx - BarHalfW, Cy - 2, BarHalfW * 2, 4, #CharEd_IconInk)
+    CharEd_DrawFilledHTri(Cy, Cx - BarHalfW - 1, 0, Half, #CharEd_IconInkLt)
+    CharEd_DrawFilledHTri(Cy, Cx + BarHalfW, Size - 1, Half, #CharEd_IconInkLt)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Bold esquerda": barra encostada na borda direita (lado que fica fixo)
+; com uma unica seta clara apontando pra fora, so do lado esquerdo -
+; assimetrico, ao contrario do "Largo" (que estica dos dois lados); espelho
+; horizontal do icone de "Bold direita" logo abaixo.
+Procedure CharEd_CreateBoldLeftIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cy = Size / 2, Half = Size / 2 - 6
+    Box(Size - 10, Cy - 2, 8, 4, #CharEd_IconInk)
+    CharEd_DrawFilledHTri(Cy, Size - 11, 0, Half, #CharEd_IconInkLt)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Bold direita": barra encostada na borda esquerda (lado que fica fixo)
+; com uma unica seta clara apontando pra fora, so do lado direito - espelho
+; horizontal do icone de "Bold esquerda" acima.
+Procedure CharEd_CreateBoldRightIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cy = Size / 2, Half = Size / 2 - 6
+    Box(2, Cy - 2, 8, 4, #CharEd_IconInk)
+    CharEd_DrawFilledHTri(Cy, 11, Size - 1, Half, #CharEd_IconInkLt)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Largo bold": mesmo desenho do "Largo" (barra central com setas claras
+; apontando pra fora dos dois lados), so que com a barra mais grossa -
+; combina os dois sinais visuais (esticar + engrossar).
+Procedure CharEd_CreateWideBoldIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected Cx = Size / 2, Cy = Size / 2, Half = Size / 2 - 6, BarHalfW = 4
+    Box(Cx - BarHalfW, Cy - 3, BarHalfW * 2, 6, #CharEd_IconInk)
+    CharEd_DrawFilledHTri(Cy, Cx - BarHalfW - 1, 0, Half, #CharEd_IconInkLt)
+    CharEd_DrawFilledHTri(Cy, Cx + BarHalfW, Size - 1, Half, #CharEd_IconInkLt)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
 Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected LeftX = 15
   Protected ProjBarY = 15
@@ -664,7 +1248,10 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected HexBytesY = EditY + #CharEd_EditCanvasSize + 6
   Protected BtnY = HexBytesY + 26
   Protected BtnY2 = BtnY + 32
-  Protected RightBottom = BtnY2 + 28
+  Protected BtnY3 = BtnY2 + 32
+  Protected BtnY4 = BtnY3 + 32
+  Protected BtnY5 = BtnY4 + 32
+  Protected RightBottom = BtnY5 + 28
 
   Protected WinW = RightX + RightW + 15
   Protected WinH
@@ -764,6 +1351,9 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected MarkEndIcon = CharEd_CreateMarkEndIcon(#CharEd_IconSize)
   Protected G_MarkEnd    = ButtonImageGadget(#PB_Any, LeftX + #CharEd_IconBtnW + 6, BlockBarY, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(MarkEndIcon))
   GadgetToolTip(G_MarkEnd, "Marcar fim: marca o caractere selecionado como fim do intervalo (ex.: Z)")
+  Protected SelectAllIcon = CharEd_CreateSelectAllIcon(#CharEd_IconSize)
+  Protected G_All = ButtonImageGadget(#PB_Any, LeftX + (#CharEd_IconBtnW + 6) * 2, BlockBarY, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(SelectAllIcon))
+  GadgetToolTip(G_All, "All: marca o alfabeto inteiro (256 caracteres) como bloco, pra aplicar Inverter/Espelhar/Girar/Apagar em todos de uma vez")
 
   ; Copiar bloco/Colar bloco: guardam/restauram o INTERVALO marcado (nao so um
   ; caractere) - Colar cola a partir do caractere selecionado na tabela (ex.:
@@ -810,6 +1400,54 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected G_PasteChar = ButtonImageGadget(#PB_Any, RightX + #CharEd_IconBtnW + 6, BtnY2, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(PasteCharIcon))
   GadgetToolTip(G_PasteChar, "Colar: cola o caractere copiado neste caractere - use 'Registrar' pra valer no alfabeto")
 
+  ; Desfazer/Refazer: agem sobre o alfabeto inteiro (256 caracteres), nao so
+  ; o caractere em edicao - ver comentario de CharEd_PushUndo/#CharEd_MaxUndo
+  ; no topo do arquivo pra saber exatamente quais acoes entram na pilha.
+  Protected UndoIcon = CharEd_CreateCircularArrowIcon(#CharEd_IconSize, #True)
+  Protected G_Undo = ButtonImageGadget(#PB_Any, RightX, BtnY3, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(UndoIcon))
+  GadgetToolTip(G_Undo, "Desfazer: desfaz a ultima alteracao gravada no alfabeto (Registrar, efeitos em bloco/All, colar bloco/alfabeto)")
+  Protected RedoIcon = CharEd_CreateCircularArrowIcon(#CharEd_IconSize, #False)
+  Protected G_Redo = ButtonImageGadget(#PB_Any, RightX + #CharEd_IconBtnW + 6, BtnY3, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(RedoIcon))
+  GadgetToolTip(G_Redo, "Refazer: refaz a alteracao desfeita mais recentemente")
+
+  ; Efeitos de bloco: mesmo padrao dual do Inverter acima (sem bloco marcado,
+  ; afeta so o caractere em edicao via EditGrid, precisa de "Registrar"; com
+  ; bloco marcado - ou via "All" - aplica direto em CharsetBytes, em todo o
+  ; intervalo de uma vez, e empilha undo).
+  Protected FlipHIcon = CharEd_CreateFlipIcon(#CharEd_IconSize, #False)
+  Protected G_FlipH = ButtonImageGadget(#PB_Any, RightX, BtnY4, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(FlipHIcon))
+  GadgetToolTip(G_FlipH, "Espelhar horizontal: sem bloco, so o caractere atual. Com bloco/All, espelha cada caractere do intervalo direto no alfabeto")
+  Protected FlipVIcon = CharEd_CreateFlipIcon(#CharEd_IconSize, #True)
+  Protected G_FlipV = ButtonImageGadget(#PB_Any, RightX + #CharEd_IconBtnW + 6, BtnY4, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(FlipVIcon))
+  GadgetToolTip(G_FlipV, "Espelhar vertical: sem bloco, so o caractere atual. Com bloco/All, espelha cada caractere do intervalo direto no alfabeto")
+  Protected RotateIcon = CharEd_CreateRotateIcon(#CharEd_IconSize)
+  Protected G_Rotate90 = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 2, BtnY4, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(RotateIcon))
+  GadgetToolTip(G_Rotate90, "Girar 90 graus (sentido horario): sem bloco, so o caractere atual. Com bloco/All, gira cada caractere do intervalo direto no alfabeto")
+  Protected EraseAllIcon = CharEd_CreateClearIcon(#CharEd_IconSize)
+  Protected G_EraseBlock = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 3, BtnY4, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(EraseAllIcon))
+  GadgetToolTip(G_EraseBlock, "Apagar: sem bloco, so o caractere atual (igual 'Limpar'). Com bloco/All, apaga cada caractere do intervalo direto no alfabeto")
+  Protected NarrowIcon = CharEd_CreateNarrowIcon(#CharEd_IconSize)
+  Protected G_Narrow = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 4, BtnY4, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(NarrowIcon))
+  GadgetToolTip(G_Narrow, "Estreitar: condensa as 5 colunas da metade esquerda do glifo em 3 (uteis pra caber 64 colunas de texto). Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+  Protected ItalicIcon = CharEd_CreateItalicIcon(#CharEd_IconSize)
+  Protected G_Italic = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 5, BtnY4, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(ItalicIcon))
+  GadgetToolTip(G_Italic, "Italico: linhas 0-1 deslocam 2 bits a direita, linhas 2-4 deslocam 1 bit, linhas 5-7 ficam iguais. Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+  Protected BoldIcon = CharEd_CreateBoldIcon(#CharEd_IconSize)
+  Protected G_Bold = ButtonImageGadget(#PB_Any, RightX, BtnY5, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(BoldIcon))
+  GadgetToolTip(G_Bold, "Negrito: cada linha vira OR entre ela mesma e ela deslocada 1 bit a direita, engrossando os tracos. Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+  Protected WideIcon = CharEd_CreateWideIcon(#CharEd_IconSize)
+  Protected G_Wide = ButtonImageGadget(#PB_Any, RightX + #CharEd_IconBtnW + 6, BtnY5, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(WideIcon))
+  GadgetToolTip(G_Wide, "Largo: junta as colunas 0-2 do original com as colunas 3-7 do original deslocado 1 bit a direita, esticando o glifo. Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+  Protected BoldLeftIcon = CharEd_CreateBoldLeftIcon(#CharEd_IconSize)
+  Protected G_BoldLeft = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 2, BtnY5, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(BoldLeftIcon))
+  GadgetToolTip(G_BoldLeft, "Bold (esquerda): colunas 0-2 do original com OR do deslocado 1 bit a direita, engrossando o lado esquerdo do glifo. Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+  Protected BoldRightIcon = CharEd_CreateBoldRightIcon(#CharEd_IconSize)
+  Protected G_BoldRight = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 3, BtnY5, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(BoldRightIcon))
+  GadgetToolTip(G_BoldRight, "Bold (direita): OR entre o original e ele deslocado 1 bit a direita (so colunas 3-7), engrossando o lado direito do glifo. Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+  Protected WideBoldIcon = CharEd_CreateWideBoldIcon(#CharEd_IconSize)
+  Protected G_WideBold = ButtonImageGadget(#PB_Any, RightX + (#CharEd_IconBtnW + 6) * 4, BtnY5, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(WideBoldIcon))
+  GadgetToolTip(G_WideBold, "Largo (bold): aplica o Largo comum e depois o Negrito em cima do resultado. Sem bloco, so o caractere atual. Com bloco/All, aplica direto no alfabeto")
+
   Dim CharsetBytes.a(255, 7)
   Dim EditGrid.a(7, 7)
   Protected Selected.i = 0
@@ -832,6 +1470,12 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected ClipBlockValid.b = #False
   Protected BlockStart.i = -1
   Protected BlockEnd.i = -1
+
+  ; Pilhas de Desfazer/Refazer - ver comentario de #CharEd_MaxUndo/
+  ; CharEd_PushUndo no topo do arquivo. Zeradas sempre que o alfabeto em
+  ; edicao troca (navegacao/Novo/Carregar).
+  NewList UndoStack.CharEd_AlphaSnapshot()
+  NewList RedoStack.CharEd_AlphaSnapshot()
 
   ; Abre (ou reaproveita) o projeto atual e carrega o primeiro alfabeto ja
   ; registrado nele, se houver; senao comeca com o alfabeto #1 (ainda nao
@@ -858,6 +1502,7 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
   SetGadgetText(G_CharStatus, CharEd_CharStatusText(Selected))
   SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
 
   Protected Event, Quit = #False
   Protected MouseX, MouseY, TableRow, TableCol, NewSelected, PxRow, PxCol
@@ -905,6 +1550,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
                   SetGadgetText(G_CharStatus, CharEd_CharStatusText(Selected))
                   SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+                  ClearList(UndoStack()) : ClearList(RedoStack())
+                  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
                 Else
                   MessageRequester("Erro ao carregar alfabeto",
                                     "Nao foi possivel carregar:" + Chr(10) + OpenPath + Chr(10) + CharEd_GetLastError(),
@@ -928,10 +1575,12 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
             EndIf
 
           Case G_Register
+            CharEd_PushUndo(UndoStack(), RedoStack(), CharsetBytes())
             CharEd_PackChar(EditGrid(), CharsetBytes(), Selected)
             EditDirty = #False
             AlphaDirty = #True
             CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
+            CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
 
           Case G_First
             If Not (EditDirty Or AlphaDirty) Or CharEd_ConfirmDiscardAlphabet()
@@ -944,6 +1593,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   Selected = 0
                   EditDirty = #False
                   AlphaDirty = #False
+                  ClearList(UndoStack()) : ClearList(RedoStack())
+                  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
                 EndIf
               EndIf
             EndIf
@@ -959,6 +1610,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   Selected = 0
                   EditDirty = #False
                   AlphaDirty = #False
+                  ClearList(UndoStack()) : ClearList(RedoStack())
+                  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
                 EndIf
               EndIf
             EndIf
@@ -974,6 +1627,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   Selected = 0
                   EditDirty = #False
                   AlphaDirty = #False
+                  ClearList(UndoStack()) : ClearList(RedoStack())
+                  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
                 EndIf
               EndIf
             EndIf
@@ -989,6 +1644,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   Selected = 0
                   EditDirty = #False
                   AlphaDirty = #False
+                  ClearList(UndoStack()) : ClearList(RedoStack())
+                  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
                 EndIf
               EndIf
             EndIf
@@ -1017,6 +1674,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
               CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
               SetGadgetText(G_CharStatus, CharEd_CharStatusText(Selected))
               SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+              ClearList(UndoStack()) : ClearList(RedoStack())
+              CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
             EndIf
 
           Case G_AlphaRegister
@@ -1054,6 +1713,7 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
           Case G_PasteAlpha
             If ClipAlphaValid
               If Not (EditDirty Or AlphaDirty) Or CharEd_ConfirmDiscardAlphabet()
+                CharEd_PushUndo(UndoStack(), RedoStack(), CharsetBytes())
                 CopyArray(ClipAlpha(), CharsetBytes())
                 EditDirty = #False
                 AlphaDirty = #True
@@ -1061,6 +1721,7 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                 CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
                 CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
                 SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+                CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
               EndIf
             Else
               MessageRequester("Colar alfabeto", "Nenhum alfabeto foi copiado ainda nesta sessao.",
@@ -1083,9 +1744,10 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
           Case G_Invert
             ; Sem bloco marcado: comportamento de sempre, so o caractere em
             ; edicao (via EditGrid, precisa de "Registrar" pra valer). Com
-            ; bloco marcado (Marcar inicio/fim de bloco abaixo): inverte
-            ; todos os caracteres do intervalo direto em CharsetBytes,
-            ; ignorando o EditGrid - operacao de alfabeto, nao de pixel.
+            ; bloco marcado (Marcar inicio/fim de bloco, ou via "All"):
+            ; inverte todos os caracteres do intervalo direto em
+            ; CharsetBytes, ignorando o EditGrid - operacao de alfabeto, nao
+            ; de pixel (mesmo padrao dual dos efeitos abaixo).
             If BlockStart >= 0 And BlockEnd >= 0
               Protected InvStart = BlockStart, InvEnd = BlockEnd
               If InvStart > InvEnd
@@ -1100,24 +1762,116 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                 DoBlockInvert = CharEd_ConfirmDiscardChar()
               EndIf
               If DoBlockInvert
-                Protected InvIdx, InvRow
-                For InvIdx = InvStart To InvEnd
-                  For InvRow = 0 To 7
-                    CharsetBytes(InvIdx, InvRow) = (~CharsetBytes(InvIdx, InvRow)) & $FF
-                  Next
-                Next
+                CharEd_PushUndo(UndoStack(), RedoStack(), CharsetBytes())
+                CharEd_ApplyGridEffectToRange(CharsetBytes(), InvStart, InvEnd, #CharEd_Effect_Invert)
                 EditDirty = #False
                 AlphaDirty = #True
                 CharEd_UnpackChar(CharsetBytes(), Selected, EditGrid())
                 CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
                 CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
                 SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+                CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
               EndIf
             Else
               CharEd_InvertEditGrid(EditGrid())
               EditDirty = #True
               CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
               SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+            EndIf
+
+          Case G_FlipH, G_FlipV, G_Rotate90, G_EraseBlock, G_Narrow, G_Italic, G_Bold, G_Wide, G_BoldLeft, G_BoldRight, G_WideBold
+            ; Mesmo padrao dual do Inverter acima - um unico bloco de codigo
+            ; pros 11 efeitos (o EffectId e que muda), pra nao repetir a
+            ; logica de bloco/undo 11 vezes.
+            Protected EffectId.i
+            Select EventGadget()
+              Case G_FlipH     : EffectId = #CharEd_Effect_FlipH
+              Case G_FlipV     : EffectId = #CharEd_Effect_FlipV
+              Case G_Rotate90  : EffectId = #CharEd_Effect_Rotate90
+              Case G_EraseBlock: EffectId = #CharEd_Effect_Clear
+              Case G_Narrow    : EffectId = #CharEd_Effect_Narrow
+              Case G_Italic    : EffectId = #CharEd_Effect_Italic
+              Case G_Bold      : EffectId = #CharEd_Effect_Bold
+              Case G_Wide      : EffectId = #CharEd_Effect_Wide
+              Case G_BoldLeft  : EffectId = #CharEd_Effect_BoldLeft
+              Case G_BoldRight : EffectId = #CharEd_Effect_BoldRight
+              Case G_WideBold  : EffectId = #CharEd_Effect_WideBold
+            EndSelect
+            If BlockStart >= 0 And BlockEnd >= 0
+              Protected EffStart = BlockStart, EffEnd = BlockEnd
+              If EffStart > EffEnd
+                Swap EffStart, EffEnd
+              EndIf
+              Protected DoBlockEffect.b = #True
+              If EditDirty And Selected >= EffStart And Selected <= EffEnd
+                DoBlockEffect = CharEd_ConfirmDiscardChar()
+              EndIf
+              If DoBlockEffect
+                CharEd_PushUndo(UndoStack(), RedoStack(), CharsetBytes())
+                CharEd_ApplyGridEffectToRange(CharsetBytes(), EffStart, EffEnd, EffectId)
+                EditDirty = #False
+                AlphaDirty = #True
+                CharEd_UnpackChar(CharsetBytes(), Selected, EditGrid())
+                CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
+                CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
+                SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+                CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
+              EndIf
+            Else
+              Select EffectId
+                Case #CharEd_Effect_FlipH    : CharEd_FlipHEditGrid(EditGrid())
+                Case #CharEd_Effect_FlipV    : CharEd_FlipVEditGrid(EditGrid())
+                Case #CharEd_Effect_Rotate90 : CharEd_RotateEditGrid(EditGrid())
+                Case #CharEd_Effect_Clear    : CharEd_ClearEditGrid(EditGrid())
+                Case #CharEd_Effect_Narrow   : CharEd_NarrowEditGrid(EditGrid())
+                Case #CharEd_Effect_Italic   : CharEd_ItalicEditGrid(EditGrid())
+                Case #CharEd_Effect_Bold     : CharEd_BoldEditGrid(EditGrid())
+                Case #CharEd_Effect_Wide     : CharEd_WideEditGrid(EditGrid())
+                Case #CharEd_Effect_BoldLeft : CharEd_BoldLeftEditGrid(EditGrid())
+                Case #CharEd_Effect_BoldRight: CharEd_BoldRightEditGrid(EditGrid())
+                Case #CharEd_Effect_WideBold : CharEd_WideBoldEditGrid(EditGrid())
+              EndSelect
+              EditDirty = #True
+              CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
+              SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+            EndIf
+
+          Case G_All
+            BlockStart = 0
+            BlockEnd = 255
+            SetGadgetText(G_BlockStatus, CharEd_BlockStatusText(BlockStart, BlockEnd))
+            CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
+
+          Case G_Undo
+            If ListSize(UndoStack()) > 0
+              AddElement(RedoStack())
+              CharEd_SnapshotFromArray(CharsetBytes(), @RedoStack())
+              LastElement(UndoStack())
+              CharEd_ArrayFromSnapshot(@UndoStack(), CharsetBytes())
+              DeleteElement(UndoStack())
+              EditDirty = #False
+              AlphaDirty = #True
+              CharEd_UnpackChar(CharsetBytes(), Selected, EditGrid())
+              CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
+              CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
+              SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+              CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
+            EndIf
+
+          Case G_Redo
+            If ListSize(RedoStack()) > 0
+              AddElement(UndoStack())
+              CharEd_SnapshotFromArray(CharsetBytes(), @UndoStack())
+              LastElement(RedoStack())
+              CharEd_ArrayFromSnapshot(@RedoStack(), CharsetBytes())
+              DeleteElement(RedoStack())
+              EditDirty = #False
+              AlphaDirty = #True
+              CharEd_UnpackChar(CharsetBytes(), Selected, EditGrid())
+              CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
+              CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
+              SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+              CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
             EndIf
 
           Case G_CopyChar
@@ -1198,6 +1952,7 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   DoPasteBlock = CharEd_ConfirmDiscardChar()
                 EndIf
                 If DoPasteBlock
+                  CharEd_PushUndo(UndoStack(), RedoStack(), CharsetBytes())
                   Protected PbIdx, PbRow
                   For PbIdx = 0 To ClipBlockLen - 1
                     For PbRow = 0 To 7
@@ -1218,6 +1973,7 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
                   CharEd_RedrawTable(G_Table, CharsetBytes(), Selected, BlockStart, BlockEnd)
                   CharEd_RedrawEditCanvas(G_EditCanvas, EditGrid())
                   SetGadgetText(G_HexBytes, CharEd_HexBytesText(EditGrid()))
+                  CharEd_UpdateUndoRedoButtons(G_Undo, G_Redo, UndoStack(), RedoStack())
                 EndIf
               EndIf
             Else
