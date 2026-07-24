@@ -941,9 +941,25 @@ aba.
 
 ### Montar (Ctrl+F5)
 
-Com uma aba `.asm` ativa, **Executar → Montar Assembly (.bin)...** (atalho `Ctrl+F5`) monta o código e
-pede onde salvar o binário resultante (`.bin`). Se houver um erro no código, uma mensagem mostra a
-**linha** e a **descrição do problema** em vez de travar ou dar um erro genérico.
+Com uma aba `.asm` ativa, **Executar → Montar Assembly (.bin)...** (atalho `Ctrl+F5`) monta o código.
+Se houver um erro, uma mensagem mostra a **linha** e a **descrição do problema** em vez de travar ou dar
+um erro genérico. Se der certo, uma pergunta escolhe o formato do arquivo antes do diálogo de salvar:
+
+- **Sim — com cabeçalho MSX BLOAD**: grava os 7 bytes clássicos (`0FEh` + endereço inicial + endereço
+  final + endereço de execução, este último igual ao inicial) antes do código — é o formato que
+  `BLOAD "ARQUIVO.BIN",R` do MSX-BASIC espera. Pronto pra copiar pro disco/disquete e carregar direto.
+- **Não — binário cru**: só os bytes montados, sem cabeçalho nenhum. Se o fonte usa `ORG 100h`, esse
+  arquivo já é um `.COM` válido (formato CP/M/MSX-DOS — carregado e executado em `0100h` sem cabeçalho
+  nenhum, é assim que MSX-DOS/CP-M já esperam um `.COM`).
+
+Pra código que precisa ficar guardado num endereço mas **rodar** em outro (ex.: rotina copiada da ROM
+pra RAM antes de executar, ou justamente o próprio cabeçalho BLOAD — o cabeçalho tem que vir ANTES dos
+bytes, mas o código dentro dele referencia labels como se já estivesse no endereço final de carga), use
+**`.PHASE <endereço>`** / **`.DEPHASE`**: dentro do bloco, rótulos e `$` passam a valer como se o
+código já estivesse no endereço indicado, mas os bytes continuam sendo escritos na posição real
+(sequencial, sem pular nada) — ao fechar com `.DEPHASE`, volta ao endereço real de onde parou. Exemplo
+completo em [`sample/teste3_phase.asm`](../sample/teste3_phase.asm) (o mesmo do manual original do
+MACRO-80, seção "Relocation Before Loading").
 
 ### O que já é suportado
 
@@ -951,7 +967,9 @@ pede onde salvar o binário resultante (`.bin`). Se houver um erro no código, u
   as variantes de bit/rotação indexadas, mais o subconjunto indocumentado de uso comum `IXH`/`IXL`/
   `IYH`/`IYL` (os "meios registradores" de `IX`/`IY`).
 - **Rótulos** (`nome:`/`nome::`), **`EQU`/`DEFL`/`ASET`** (constantes — `EQU` não pode ser redefinida,
-  `DEFL`/`ASET` podem), **`ORG`** (define o endereço de carga), **`END`**.
+  `DEFL`/`ASET` podem), **`ORG`** (define o endereço de carga), **`END`**, **`.PHASE`/`.DEPHASE`**
+  (código montado num endereço mas com rótulos resolvendo como se rodasse noutro — ver seção "Montar"
+  acima).
 - **Diretivas de dados**: `DB`/`DEFB`/`DEFM` (bytes ou texto), `DW`/`DEFW` (palavras de 16 bits),
   `DS`/`DEFS` (reserva um bloco, com valor de preenchimento opcional), `DC` (como `DB`, mas o último
   byte marca fim de string com o bit mais alto ligado), `DZ`/`DEFZ` (como `DB`, mas com um `0` no
@@ -977,8 +995,10 @@ pede onde salvar o binário resultante (`.bin`). Se houver um erro no código, u
 - **Integração com o sistema de projeto** — o texto-fonte `.asm` já é salvo dentro do `.msxproject`
   (igual qualquer aba de texto), mas ainda não existe uma tabela dedicada pro binário montado, tag,
   navegação, etc. (como sprites/alfabetos/sons/músicas/telas já têm).
-- **Carregar o resultado a partir do MSX-BASIC** — hoje o `.bin` gerado fica só no disco do PC; ainda
-  não existe um botão para colocar no disco `.dsk` (`BLOAD`) nem para gerar um listing `DATA`/`POKE`
-  em hexadecimal (como o botão "Gerar bytes crus" do editor de som).
+- **Colocar o `.bin`/`.com` direto num disco `.dsk`** — hoje "Montar" salva no sistema de arquivos do
+  PC; ainda não existe um atalho pra jogar o arquivo montado direto num disco (reaproveitando
+  `MSXDisk.pbi`, como `RunOnOpenMSX()` já faz pro fluxo Dignified) nem pra gerar um listing `DATA`/
+  `POKE` em hexadecimal (como o botão "Gerar bytes crus" do editor de som) — o formato de arquivo em
+  si (cabeçalho BLOAD) já existe, ver seção "Montar" acima.
 - `REPT`/`IRP`/`IRPC`/`IRPS` (macros de repetição), `MODULE`/rótulos locais, saída em Intel HEX,
   arquivo de listagem `.LST`, R800/Z280 (só Z80 puro por enquanto).

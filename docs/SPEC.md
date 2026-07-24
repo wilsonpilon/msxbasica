@@ -124,7 +124,7 @@ processo de implementação (decisões técnicas, bugs encontrados/corrigidos, g
   teste byte-a-byte** durante todo o desenvolvimento — mesma técnica já usada pro tokenizador nativo
   (módulo 11). `editor/tools/Z80AsmTestCli.pb` (59 testes unitários de vocabulário/expressão/parser de
   linha + modo `--assemble <fonte> <saida.bin>` pra comparação binária direta) e dois arquivos de
-  regressão oficiais, **`sample/teste.asm`** (206 linhas, ~190 formas de instrução distintas — papel
+  regressão oficiais, **`sample/teste_opcodes.asm`** (206 linhas, ~190 formas de instrução distintas — papel
   equivalente a `sample/teste.dmx` pro Dignified) e **`sample/teste2_macros.asm`** (condicionais +
   macro com `LOCAL`) — ambos **idênticos byte a byte** ao `N80.exe` real (394 e 21 bytes,
   respectivamente).
@@ -1260,7 +1260,7 @@ técnicas/bugs/gotchas de PureBasic encontrados). Resumo: avaliador de expressã
 tabela de opcodes Z80 completa (documentados + `IXH`/`IXL`/`IYH`/`IYL` indocumentados comuns), driver
 de 2 passes absoluto, diretivas de dados, condicionais e macros básicas — tudo validado byte-a-byte
 contra o `N80.exe` real (Nestor80 compilado localmente, usado como oráculo de teste) via dois arquivos
-de regressão novos, `sample/teste.asm` e `sample/teste2_macros.asm`. Integrado ao editor via menu
+de regressão novos, `sample/teste_opcodes.asm` e `sample/teste2_macros.asm`. Integrado ao editor via menu
 **Executar → Montar Assembly (.bin)...** (`Ctrl+F5`). Pedido do usuário durante a sessão: Linkstor80
 (linker) e Libstor80 (gerenciador de biblioteca, linkagem estática seletiva) também entram no escopo
 do módulo — ver módulo 2b e o checklist de Fase B em `docs/resumo-asm.md` (ainda não iniciada).

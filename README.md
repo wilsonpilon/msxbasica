@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.1.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 7.3.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -220,7 +220,7 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   `IYL` indocumentados comuns), driver de 2 passes, diretivas de dados (`DB`/`DW`/`DS`/`DC`/`DZ`),
   condicionais (`IF`/`IFDEF`/`IF1`/`IF2`/etc.) e macros básicas (`MACRO`/`ENDM`/`EXITM`/`LOCAL`).
   Validado **byte a byte** contra o próprio `N80.exe` (compilado localmente como oráculo de teste) —
-  `sample/teste.asm` e `sample/teste2_macros.asm` são a suíte de regressão oficial. Saída hoje é
+  `sample/teste_opcodes.asm` e `sample/teste2_macros.asm` são a suíte de regressão oficial. Saída hoje é
   binário absoluto (`.bin`); **planejado, ainda não implementado**: saída relocável `.REL` + linker
   (Linkstor80-equivalente) + gerenciador de biblioteca (Libstor80-equivalente, linkagem estática
   seletiva — só os módulos referenciados entram no `.COM` final), integração com o sistema de projeto
@@ -490,7 +490,7 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   localmente só como referência de leitura (`nestor80/`, gitignored, mesmo tratamento de `badig/`).
   Como o `dotnet` está disponível no ambiente, o próprio `N80.exe` (Nestor80 compilado localmente)
   virou **oráculo de teste byte-a-byte** durante todo o desenvolvimento — mesma técnica já usada pro
-  tokenizador nativo. Dois arquivos de regressão novos, `sample/teste.asm` (~190 formas de instrução)
+  tokenizador nativo. Dois arquivos de regressão novos, `sample/teste_opcodes.asm` (~190 formas de instrução)
   e `sample/teste2_macros.asm` (condicionais + macro com `LOCAL`), montam **idênticos byte a byte** ao
   `N80.exe` real. Integrado ao editor via **Executar → Montar Assembly (.bin)...** (`Ctrl+F5`).
   Documentação de acompanhamento dedicada em `docs/resumo-asm.md` (decisões técnicas, bugs

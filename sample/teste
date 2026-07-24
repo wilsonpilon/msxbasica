@@ -4,9 +4,6 @@
 ; Programa carregável via BLOAD do MSX-BASIC
 ; Compilar com Nestor80 (N80):
 ;   N80.exe screen2_demo.asm -o screen2_demo.bin
-; O .bin gerado ja inclui o cabecalho MSX BLOAD (marca 0xFE + enderecos
-; inicial/final/execucao), via .PHASE/.DEPHASE - nao precisa adicionar
-; cabecalho por fora.
 ;
 ; Usar no MSX-BASIC:
 ;   10 CLEAR 200,&HC000
@@ -52,20 +49,8 @@ COLOR_TBL   equ 2000h
 NAME_TBL    equ 0800h
 
 ; ============= CÓDIGO =============
-; Cabeçalho MSX BLOAD (7 bytes): marca 0xFE + endereço inicial (LE) +
-; endereço final (LE) + endereço de execução (LE). Os bytes de código
-; ficam logo em seguida no arquivo; .phase/.dephase fazem os rótulos
-; resolverem para LOAD_ADDR (&HC000) mesmo com o cabeçalho na frente
-; (ver editor/Z80Asm.pbi e docs/MANUAL.md, seção "Assembler Z80").
-LOAD_ADDR equ 0C000h
 
-    org 0
-    defb 0FEh
-    defw LOAD_ADDR
-    defw CODE_END - 1
-    defw LOAD_ADDR
-
-    .phase LOAD_ADDR
+    org 0C000h
 
 ; ==== PONTO DE ENTRADA ====
 START:
@@ -232,7 +217,7 @@ SETUP_PALETTE:
     call SET_VRAM_ADDR
     
     ; Cor padrão: azul (3) em foreground, preto (0) em background
-    ld a, (COLOR_BLUE SHL 4) OR COLOR_BLACK
+    ld a, (COLOR_BLUE << 4) | COLOR_BLACK
     
     ; Escrever cor para os 256 padrões (256 * 8 = 2048 bytes)
     ld bc, 2048
@@ -408,9 +393,6 @@ RESTORE_SCREEN0:
     pop de
     pop af
     ret
-
-CODE_END:
-    .dephase
 
 ; ==== FIM ====
     end START

@@ -79,6 +79,12 @@ DeclareModule Z80Asm
   Declare.i Assemble(SourceText.s, Array OutBytes.a(1))
   Declare.i GetAssembleErrorLine()
   Declare.s GetAssembleErrorText()
+  ; Endereco do primeiro/ultimo byte tocado na ultima chamada a Assemble() -
+  ; so tem sentido depois de uma chamada com sucesso (N > 0); usado pra
+  ; montar o cabecalho MSX BLOAD (FE + inicio + fim + execucao), ver
+  ; AssembleZ80FromActiveTab() em BadigEditor.pb.
+  Declare.u GetAssembleStartAddr()
+  Declare.u GetAssembleEndAddr()
 EndDeclareModule
 
 Module Z80Asm
@@ -211,7 +217,13 @@ Module Z80Asm
   EndStructure
 
   Global NewMap Symbols.Z80Symbol()
-  Global CurLoc.Z80Addr    ; contador de localizacao ($) - atualizado pelo driver de 2 passes
+  Global CurLoc.Z80Addr    ; contador de localizacao "reportado" ($/rotulos/JR) - atualizado pelo
+                           ; driver de 2 passes; dentro de um bloco .PHASE, difere da posicao real de
+                           ; escrita (ver RealPos/PhaseActive logo abaixo e docs/resumo-asm.md)
+  Global RealPos.u         ; posicao real de escrita em Mem() - sempre avanca em lockstep com CurLoc
+                           ; (mesma quantidade de bytes a cada instrucao/diretiva), mas so os DOIS
+                           ; sao iguais fora de um bloco .PHASE
+  Global PhaseActive.b = #False
   Global PassNumber.b = 1  ; 1 ou 2 - idem
   Global LastEvalError.s
   Global LastEvalUnknownSymbol.s
@@ -1229,8 +1241,9 @@ Module Z80Asm
     ; na posicao de condicao, ainda cai como Reg8 com RegCode=1 - tratado a
     ; parte on ambiguidade importa).
 
-    ; (IX+d)/(IX-d)/(IY+d)/(IY-d) - parenteses em volta, miolo comeca com
-    ; "IX"/"IY" seguido de "+"/"-"; senao "(expressao)" generico = IndImm
+    ; (IX+d)/(IX-d)/(IY+d)/(IY-d) - o operando INTEIRO precisa ser exatamente
+    ; essa forma (parenteses de abertura E fechamento cobrindo tudo) - e uma
+    ; forma de enderecamento de hardware distinta, nao uma expressao comum.
     If Len(T) >= 2 And Left(T, 1) = "(" And Right(T, 1) = ")"
       Protected Inner.s = Mid(T, 2, Len(T) - 2)
       Protected InnerU.s = UCase(Inner)
@@ -1242,11 +1255,22 @@ Module Z80Asm
         *Out\Kind = #Z80Opnd_IndIY
         *Out\Expr = Mid(Inner, 3)
         ProcedureReturn
-      Else
-        *Out\Kind = #Z80Opnd_IndImm
-        *Out\Expr = Inner
-        ProcedureReturn
       EndIf
+    EndIf
+
+    ; "(expressao)" generico = IndImm - QUALQUER operando que comece com "("
+    ; e tratado como forma de memoria (nn) pelo M80/Nestor80, MESMO quando
+    ; sobra texto depois do ")" que fecha esse primeiro parenteses (ex.
+    ; "(FOO SHL 4) OR BAR" - confirmado contra o oraculo N80.exe: produz
+    ; LD A,(nn) com nn = FOO SHL 4 OR BAR avaliado inteiro, nao LD A,n).
+    ; Por isso NAO tira os parenteses aqui - Expr recebe o texto ORIGINAL
+    ; inteiro (parenteses inclusos), e quem resolve o agrupamento e o
+    ; proprio avaliador de expressao (que ja trata "("/")" como parenteses
+    ; normais de precedencia).
+    If Left(T, 1) = "("
+      *Out\Kind = #Z80Opnd_IndImm
+      *Out\Expr = T
+      ProcedureReturn
     EndIf
 
     ; sobra o caso geral: expressao solta (Imm), ja preenchido no default acima
@@ -1318,7 +1342,14 @@ Module Z80Asm
       Z80Addr_Make(*OutVal, 0, #Z80Seg_Absolute)
       ProcedureReturn #True
     EndIf
-    ProcedureReturn EvalExpr(Expr, *OutVal)
+    If Not EvalExpr(Expr, *OutVal)
+      ; propaga o motivo pra LastAsmError - sem isso, todo Encode* que so faz
+      ; "If Not EvalOperandExpr(...) : ProcedureReturn -1 : EndIf" devolveria
+      ; erro sem mensagem nenhuma (achado real depurando sample/teste.asm).
+      LastAsmError = "Expressao invalida (" + Expr + "): " + LastEvalError + LastEvalUnknownSymbol
+      ProcedureReturn #False
+    EndIf
+    ProcedureReturn #True
   EndProcedure
 
   ; Idem, mas pra deslocamento de (IX+d)/(IY+d) - trata Expr="" (forma "(IX)"
@@ -2233,6 +2264,14 @@ Module Z80Asm
     ProcedureReturn AsmErrorText
   EndProcedure
 
+  Procedure.u GetAssembleStartAddr()
+    ProcedureReturn MinAddrTouched & $FFFF
+  EndProcedure
+
+  Procedure.u GetAssembleEndAddr()
+    ProcedureReturn MaxAddrTouched & $FFFF
+  EndProcedure
+
   Procedure SplitSourceLines(SourceText.s, List Lines.s())
     ClearList(Lines())
     Protected Norm.s = ReplaceString(SourceText, Chr(13) + Chr(10), Chr(10))
@@ -2684,6 +2723,8 @@ Module Z80Asm
     EmitNow = Bool(Not SizeOnly)
 
     Z80Addr_Make(@CurLoc, 0, #Z80Seg_Absolute)
+    RealPos = 0
+    PhaseActive = #False
 
     Protected NewList ExpLines.s()
     If Not ExpandLines(Lines(), ExpLines(), SizeOnly, 0)
@@ -2745,6 +2786,9 @@ Module Z80Asm
         Case "ORG"
           If EvalExpr(PL\ArgsText, @V3)
             CurLoc\Value = V3\Value
+            RealPos = V3\Value ; ORG dentro de um bloco .PHASE nao e suportado (restricao tambem
+                                ; existente no Nestor80 pra ASEG/CSEG/etc dentro de .PHASE) - fora
+                                ; de um bloco, mantem CurLoc/RealPos sincronizados como sempre
           ElseIf Not SizeOnly
             AsmErrorLine = LineNum : AsmErrorText = "ORG: " + LastEvalError + LastEvalUnknownSymbol
             ProcedureReturn #False
@@ -2753,6 +2797,31 @@ Module Z80Asm
 
         Case "END"
           Ended = #True
+          Continue
+
+        Case ".PHASE", "PHASE"
+          ; Contador de localizacao "reportado" ($/rotulos/JR) passa a mostrar
+          ; o endereco pedido, mas a escrita real continua de onde estava
+          ; (RealPos intocado) - ver docs/reference/nestor80-language.md e
+          ; MACRO-80.txt secao 2.6.29 "Relocation Before Loading". O valor
+          ; precisa ser conhecido JA (nao pode depender de rotulo definido
+          ; so depois - mesma restricao de DS, documentada no Nestor80).
+          Protected VPhase.Z80Addr
+          If EvalExpr(PL\ArgsText, @VPhase)
+            CurLoc\Value = VPhase\Value
+            PhaseActive = #True
+          ElseIf Not SizeOnly
+            AsmErrorLine = LineNum : AsmErrorText = ".PHASE: " + LastEvalError + LastEvalUnknownSymbol
+            ProcedureReturn #False
+          EndIf
+          Continue
+
+        Case ".DEPHASE", "DEPHASE"
+          ; CurLoc volta a bater com RealPos (equivalente a "nunca ter saido
+          ; do endereco real") - ver comentario da Structure no topo do
+          ; modulo pra explicacao completa do mecanismo.
+          CurLoc\Value = RealPos
+          PhaseActive = #False
           Continue
 
         Case "ASEG", "CSEG", "DSEG", "COMMON", "PUBLIC", "EXTRN", "EXT", "EXTERNAL", "ENTRY", "GLOBAL"
@@ -2768,7 +2837,7 @@ Module Z80Asm
             Protected DIdx = 0
             Protected DA.i
             ForEach DataBytes()
-              DA = (CurLoc\Value + DIdx) & $FFFF
+              DA = (RealPos + DIdx) & $FFFF
               Mem(DA) = DataBytes()
               If Not AnyByteWritten
                 MinAddrTouched = DA : MaxAddrTouched = DA : AnyByteWritten = #True
@@ -2780,6 +2849,7 @@ Module Z80Asm
             Next
           EndIf
           CurLoc\Value = (CurLoc\Value + ListSize(DataBytes())) & $FFFF
+          RealPos = (RealPos + ListSize(DataBytes())) & $FFFF
           Continue
       EndSelect
 
@@ -2797,7 +2867,7 @@ Module Z80Asm
 
       If Not SizeOnly
         For Idx = 0 To Len4 - 1
-          Protected A.i = (CurLoc\Value + Idx) & $FFFF
+          Protected A.i = (RealPos + Idx) & $FFFF
           Mem(A) = Bytes(Idx)
           If Not AnyByteWritten
             MinAddrTouched = A : MaxAddrTouched = A : AnyByteWritten = #True
@@ -2809,6 +2879,7 @@ Module Z80Asm
       EndIf
 
       CurLoc\Value = (CurLoc\Value + Len4) & $FFFF
+      RealPos = (RealPos + Len4) & $FFFF
     Next
 
     ProcedureReturn #True

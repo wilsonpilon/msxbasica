@@ -2178,6 +2178,25 @@ Procedure AssembleZ80FromActiveTab()
     ProcedureReturn
   EndIf
 
+  Protected StartAddr.u = Z80Asm::GetAssembleStartAddr()
+  Protected EndAddr.u = Z80Asm::GetAssembleEndAddr()
+
+  ; Sim = .bin com cabecalho MSX BLOAD (FE + inicio + fim + execucao, ver
+  ; docs/MANUAL.md "Assembler Z80"); Nao = binario cru (o mesmo de sempre -
+  ; ja funciona como .COM se o fonte usar "org 100h"); Cancelar = desiste.
+  Protected HexStart.s = Hex(StartAddr, #PB_Word)
+  Protected HexEnd.s = Hex(EndAddr, #PB_Word)
+  Protected Q.s = Chr(34)
+  Protected MsgTxt.s = "Montado: " + Str(N) + " bytes, endereco " + HexStart + "h-" + HexEnd + "h." + Chr(10) + Chr(10) +
+    "Adicionar cabecalho MSX BLOAD (pra carregar com BLOAD" + Q + "..." + Q + ",R do MSX-BASIC)?" + Chr(10) +
+    "Sim = .bin com cabecalho (endereco de execucao = " + HexStart + "h, igual ao de carga)" + Chr(10) +
+    "Nao = binario cru (mesmo formato de um .COM quando o fonte usa ORG 100h)"
+  Protected Choice = MessageRequester("Montar", MsgTxt, #PB_MessageRequester_YesNoCancel | #PB_MessageRequester_Info)
+  If Choice = #PB_MessageRequester_Cancel
+    ProcedureReturn
+  EndIf
+  Protected AddHeader.b = Bool(Choice = #PB_MessageRequester_Yes)
+
   Protected Suggestion.s = Docs()\Path
   If Suggestion = ""
     Suggestion = Docs()\UntitledName
@@ -2196,6 +2215,17 @@ Procedure AssembleZ80FromActiveTab()
                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
     ProcedureReturn
   EndIf
+
+  If AddHeader
+    ; Cabecalho classico MSX BLOAD: FE + inicio (LE) + fim (LE) + execucao
+    ; (LE) - escrito byte a byte (nao WriteWord()) pra nao depender da
+    ; ordem de bytes nativa da plataforma que compila o editor.
+    WriteByte(FileNum, $FE)
+    WriteByte(FileNum, StartAddr & $FF)       : WriteByte(FileNum, (StartAddr >> 8) & $FF)
+    WriteByte(FileNum, EndAddr & $FF)         : WriteByte(FileNum, (EndAddr >> 8) & $FF)
+    WriteByte(FileNum, StartAddr & $FF)       : WriteByte(FileNum, (StartAddr >> 8) & $FF)
+  EndIf
+
   Protected *Buf = AllocateMemory(N)
   Protected Idx
   For Idx = 0 To N - 1

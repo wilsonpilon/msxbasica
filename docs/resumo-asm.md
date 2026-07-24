@@ -144,7 +144,7 @@ detalhe mais importante, a visibilidade de `Structure` através de `Module`):
       opcional — tamanho precisa resolver já no pass 1, conferido), `DC` (como `DB`, mas o último byte
       recebe bit 7 setado), `DZ`/`DEFZ` (como `DB`, mas acrescenta um `0x00` no final). Reaproveitam
       `CountOperands`/`GetOperand` (mesmos helpers de split de operando das instruções de CPU).
-      **Validado contra `N80.exe`**: `sample/teste.asm` ampliado com um bloco de exemplos de cada
+      **Validado contra `N80.exe`**: `sample/teste_opcodes.asm` ampliado com um bloco de exemplos de cada
       diretiva → **441 bytes idênticos byte a byte** (era 394 antes do bloco de dados)
 - [x] **Condicionais**: `IF`/`IFT`/`IFE`/`IFF`/`IFDEF`/`IFNDEF`/`IF1`/`IF2`/`ELSE`/`ENDIF`
       (`IFB`/`IFNB`/`IFIDN`/`IFDIF`/`IFIDNI`/`IFDIFI`/`IFABS`/`IFREL`/`IFCPU`/`IFNCPU` ficaram de fora
@@ -163,16 +163,16 @@ detalhe mais importante, a visibilidade de `Structure` através de `Module`):
       condicional + uma macro chamada 2x testando `LOCAL`) → **21 bytes idênticos byte a byte**
 - [x] `editor/tools/Z80AsmTestCli.pb` — suíte unitária (59 casos: vocabulário/expressão/ParseLine) +
       **modo `--assemble <entrada.asm> <saida.bin>`** pra comparação binária direta contra `N80.exe`
-- [x] **`sample/teste.asm`** (206 linhas, ~190 formas de instrução distintas — ORG/EQU/rótulos/toda a
+- [x] **`sample/teste_opcodes.asm`** (206 linhas, ~190 formas de instrução distintas — ORG/EQU/rótulos/toda a
       família de mnemônicos incl. IX/IY/indexado/indocumentado) — **suíte de regressão oficial deste
       módulo, mesmo papel de `sample/teste.dmx` pro pré-processador Dignified**. Rodar depois de
       qualquer mudança em `Z80Asm.pbi`:
       ```
-      editor\tools\Z80AsmTestCli.exe --assemble sample\teste.asm saida_minha.bin
-      nestor80\N80\bin\Release\net6.0\N80.exe sample\teste.asm saida_oracle.bin
+      editor\tools\Z80AsmTestCli.exe --assemble sample\teste_opcodes.asm saida_minha.bin
+      nestor80\N80\bin\Release\net6.0\N80.exe sample\teste_opcodes.asm saida_oracle.bin
       fc /b saida_minha.bin saida_oracle.bin
       ```
-- [x] **Validação byte-a-byte contra `N80.exe`**: `sample/teste.asm` produz **394 bytes idênticos**
+- [x] **Validação byte-a-byte contra `N80.exe`**: `sample/teste_opcodes.asm` produz **394 bytes idênticos**
       byte a byte ao `N80.exe` real (confirmado 2026-07-24). Suíte unitária: 59/59 também passando.
 - [x] **Menu "Montar" no editor** — `Executar → Montar Assembly (.bin)...` (`Ctrl+F5`),
       `AssembleZ80FromActiveTab()` em `BadigEditor.pb`, habilitado quando `Docs()\Mode = "ASM"`,
@@ -209,11 +209,24 @@ detalhe mais importante, a visibilidade de `Structure` através de `Module`):
 
 - [ ] **Sistema de projeto**: tabela dedicada no `.msxproject` pro binário montado (número/tag/
       navegação/Registrar, mesmo padrão de sprites/alfabetos/sons/músicas/telas em `ProjectDB.pbi`)
-- [ ] **`BLOAD`**: colocar o `.bin` montado num `.dsk`, reaproveitando `MSXDisk.pbi`/mesma mecânica de
-      `RunOnOpenMSX()`
+- [x] **Cabeçalho MSX BLOAD** (2026-07-24, achado real depurando o programa do usuário) — "Montar"
+      pergunta se quer o `.bin` com o cabeçalho clássico de 7 bytes (`FE`+início+fim+execução, exec =
+      início) já embutido, pronto pro `BLOAD "ARQUIVO.BIN",R` do MSX-BASIC. Binário cru continua
+      disponível (opção "Não") e já serve como `.COM` quando o fonte usa `ORG 100h` — nenhuma mudança
+      extra precisou ser feita pro `.COM`, o binário absoluto que já existia desde a Fase A já é
+      exatamente esse formato.
+- [ ] **`BLOAD` direto num `.dsk`**: hoje o usuário ainda salva o `.bin`/`.com` no disco do PC e
+      precisa colocar no disquete manualmente (gerenciador de disco, menu **Criar → Disco...**) -
+      integrar isso automaticamente no fluxo de "Montar" (reaproveitando `MSXDisk.pbi`/mesma mecânica
+      de `RunOnOpenMSX()`) ainda não foi feito
 - [ ] **Listing hexadecimal**: gerar um bloco `DATA`/`POKE` a partir do binário montado, pro código Z80
       poder ser colado direto num programa BASIC (mesmo espírito de `PsgGen_RawBytes()` no editor de
       som PSG, `editor/PsgSynth.pbi`)
+- [x] **`.PHASE`/`.DEPHASE`** (2026-07-24) — necessário pro caso geral de "código montado num
+      endereço, mas com labels resolvendo como se rodasse noutro" (ROM→RAM, ou o próprio cabeçalho
+      BLOAD que precisa vir ANTES do código no arquivo mas sem deslocar os labels do código). Ver log
+      técnico abaixo pro mecanismo (`RealPos` vs. `CurLoc`) e `sample/teste3_phase.asm` (exemplo oficial
+      do próprio manual do Nestor80/MACRO-80, validado idêntico byte a byte, 47 bytes)
 
 ## Fora de escopo (Fase C, backlog distante)
 
@@ -322,7 +335,7 @@ plano original, etc., mesmo espírito do "Próximos passos em aberto" do `docs/S
   `ClassifyOperand()` classifica um `"C"` isolado como `#Z80Opnd_Reg8` (RegCode=1, o mais comum),
   nunca como `#Z80Opnd_Cond` — mas `JP C,nn`/`JR C,e`/`CALL C,nn`/`RET C` também usam exatamente esse
   texto, só que como condição (RegCode de condição = 3, valor diferente!). Pego pelo teste de
-  regressão contra `N80.exe` (`sample/teste.asm` tem `jp c,start`) — sem o oráculo, um teste unitário
+  regressão contra `N80.exe` (`sample/teste_opcodes.asm` tem `jp c,start`) — sem o oráculo, um teste unitário
   ingênuo que não cobrisse justo essa combinação passaria batido. Corrigido com um helper dedicado,
   `Z80Asm::CondCodeOf()`, chamado nos 4 pontos que aceitam condição na posição 1 (`JP cc,nn`/
   `JR cc,e`/`CALL cc,nn`/`RET cc`) — trata tanto `#Z80Opnd_Cond` quanto o caso especial "Reg8 com
@@ -331,12 +344,12 @@ plano original, etc., mesmo espírito do "Próximos passos em aberto" do `docs/S
   PASS 2 pra toda constante**. Como `Assemble()` roda os 2 passes sobre a MESMA tabela de símbolos
   (só um `ResetState()` no início, nunca entre os passes — de propósito, pra rótulos definidos no
   pass 1 continuarem visíveis no pass 2), toda linha `EQU` processada no pass 1 batia de novo no pass
-  2 contra o próprio guard "EQU não pode ser redefinido" — `sample/teste.asm` já tinha um `CONST equ
+  2 contra o próprio guard "EQU não pode ser redefinido" — `sample/teste_opcodes.asm` já tinha um `CONST equ
   42` que disparava isso na primeira tentativa. **Correção**: `DefineSymbol()` só rejeita quando o
   NOVO valor difere do já existente — redefinir um `EQU` com o mesmo valor (exatamente o que
   acontece relendo a mesma linha no pass 2) agora é um no-op silencioso; só um `EQU` genuinamente
   conflitante (duas definições DIFERENTES pro mesmo nome) ainda erra.
-- **2026-07-24 — validação por oráculo, resultado**: `sample/teste.asm` (206 linhas, ~190 formas de
+- **2026-07-24 — validação por oráculo, resultado**: `sample/teste_opcodes.asm` (206 linhas, ~190 formas de
   instrução distintas cobrindo praticamente toda a tabela — 8 condições de desvio, indexado IX/IY com
   deslocamento positivo/negativo, CB indexado, blocos ED, halves indocumentados IXH/IXL/IYH/IYL)
   monta pra um binário de **394 bytes idêntico byte a byte ao `N80.exe` real**. Esse nível de
@@ -387,4 +400,92 @@ plano original, etc., mesmo espírito do "Próximos passos em aberto" do `docs/S
   "Material de referência" acima, agora com N80+LK80+LB80), ler `docs/reference/nestor80-rel-format.md`
   e `nestor80-linker.md` (já escritos), e seguir o checklist "Fase B" + "Integrações planejadas" acima,
   primeiro item pendente é o escritor de bit-stream dentro de `Z80Asm.pbi`.
+- **2026-07-24 — dois bugs reais achados pelo primeiro uso de verdade do usuário** (escrevendo um
+  programa real, `sample/teste.asm`, não um fixture sintético — mesmo padrão de valor que
+  `sample/teste.dmx` já provou pro pré-processador Dignified):
+  1. **`(expr) OP expr2` classificava errado.** `ld a, (COLOR_BLUE SHL 4) OR COLOR_BLACK` (M80 não
+     tem `<<`/`|` simbólico — só `SHL`/`OR` por extenso, confirmado contra o `N80.exe`: ele também
+     rejeita `<<` com "Unexpected character found: <") — o operando começa com `(` mas o `)` que
+     fecha não é o último caractere (sobra ` OR COLOR_BLACK` depois). `ClassifyOperand()` exigia que
+     `(` e `)` cobrissem o operando inteiro pra reconhecer como `(nn)` (memória) — nesse caso caía
+     como `Imm` (imediato), gerando `LD A,n` em vez de `LD A,(nn)`. Testado contra o `N80.exe` real:
+     ele trata **qualquer** operando começando com `(` como `(nn)`, mesmo com texto sobrando depois
+     do primeiro `)` que fecha — a expressão inteira (parênteses inclusos) é avaliada como um só bloco
+     pro endereço. Corrigido: `IndImm` agora dispara só com "começa com `(`" (não precisa mais
+     terminar com `)`), e `Expr` guarda o texto ORIGINAL inteiro (parênteses inclusos) em vez de
+     tirar as bordas — o próprio avaliador de expressão já sabe tratar `(`/`)` como agrupamento
+     normal, então não precisa de nenhuma lógica extra além de não truncar a string. A forma
+     `(IX+d)`/`(IY+d)` continua exigindo bater o operando inteiro (essa é uma forma de endereçamento
+     de hardware de verdade, não uma expressão comum).
+  2. **Mensagem de erro vinha vazia.** Quando `EvalOperandExpr()` falhava dentro de qualquer
+     `EncodeXxx`, o `ProcedureReturn -1` não propagava `LastEvalError`/`LastEvalUnknownSymbol` pra
+     `LastAsmError` — o usuário via só "linha N:" sem explicação nenhuma. Corrigido num lugar só
+     (`EvalOperandExpr()` agora seta `LastAsmError` na hora que ela mesma falha), o que consertou
+     automaticamente os ~24 pontos de chamada em todos os `EncodeXxx` de uma vez, sem precisar editar
+     cada um. Mensagem agora: `Expressao invalida (...): Caractere inesperado em expressao: '<'`.
+  `sample/teste.asm` (nome do usuário) foi sobrescrito pelo programa real dele (SCREEN2 demo) — a
+  suíte de regressão original foi preservada em **`sample/teste_opcodes.asm`** (renomeada, mesmo
+  conteúdo + um novo caso de teste pro bug 1 acima, `ld a,(CONST SHL 4) OR 5` → 444 bytes, ainda
+  idêntico ao `N80.exe`). Todas as referências a `sample/teste.asm` como suíte de regressão em
+  `README.md`/`docs/SPEC.md` já foram atualizadas pra `sample/teste_opcodes.asm` (`docs/MANUAL.md` não
+  citava o arquivo pelo nome, nada a mudar lá).
+- **2026-07-24 — `.PHASE`/`.DEPHASE` implementado a pedido do usuário** (queria gerar `.bin` no
+  formato `BLOAD` do MSX — cabeçalho de 7 bytes `FE`+início+fim+execução ANTES do código, mas com os
+  rótulos do código resolvendo pro endereço de carga real, não pro endereço-mais-7-bytes onde os
+  bytes de fato caem no arquivo). Mecanismo: duas variáveis de posição em vez de uma só —
+  **`CurLoc`** (o contador "reportado", usado por rótulos/`$`/matemática de `JR` relativo — é o que o
+  CPU realmente vê rodando) e **`RealPos`** (posição real de escrita em `Mem()`). Fora de um bloco
+  `.PHASE`, as duas sempre valem o mesmo (avançam juntas a cada instrução/diretiva). `.PHASE <expr>`
+  muda só `CurLoc` pro endereço pedido, sem tocar `RealPos` — daí em diante os bytes continuam sendo
+  escritos sequencialmente de onde estavam (`RealPos`), mas rótulos/`$`/`JR` dentro do bloco
+  "acreditam" que estão no endereço do `.PHASE`. `.DEPHASE` reverte com uma única linha,
+  `CurLoc\Value = RealPos` — simples porque `RealPos` já é, por definição, exatamente o valor que
+  `CurLoc` teria se o `.PHASE` nunca tivesse acontecido (mesma prova que bate com o exemplo oficial da
+  doc, onde o rótulo `CALCULATE_CHECKSUM_END` volta a `402Dh`, batendo exato com `4013h + 1Ah` = o
+  tamanho do bloco fasado). **Validado com o exemplo exato do `nestor80/docs/LanguageReference.md`**
+  (seção `.PHASE`, código de checksum de ROM copiado por `LDIR` pra RAM) — `sample/teste3_phase.asm`,
+  **47 bytes idênticos byte a byte ao `N80.exe`**, incluindo a matemática de `JR`/tamanho de bloco
+  calculada via subtração de rótulos atravessando a fronteira do `.PHASE`. Cross-checado também contra
+  o manual original da Microsoft (`MACRO-80.txt`, seção 2.6.29 "Relocation Before Loading") — mesmo
+  mecanismo, exemplo equivalente (só com mnemônicos 8080 em vez de Z80 no manual original).
+- **2026-07-24 — geração de `.bin` com cabeçalho MSX BLOAD, direto pelo menu "Montar"**: em vez de
+  obrigar o usuário a escrever o cabeçalho na mão (`DEFB`/`DEFW` + `.PHASE`), `AssembleZ80FromActiveTab()`
+  agora pergunta (depois de montar com sucesso) se quer o cabeçalho de 7 bytes embutido automaticamente
+  — usa o endereço mínimo/máximo tocado (`Z80Asm::GetAssembleStartAddr()`/`GetAssembleEndAddr()`, novos
+  getters que só expõem `MinAddrTouched`/`MaxAddrTouched`, já existentes internamente desde a Fase A)
+  como início/fim, e o próprio início como endereço de execução (caso comum: executar onde foi
+  carregado). Escrito byte a byte (`WriteByte`, não `WriteWord`) de propósito, pra não depender da
+  ordem de bytes nativa da plataforma que compila o editor. `.COM` não precisou de nenhum código novo —
+  o binário absoluto que a Fase A já gera, quando o fonte usa `ORG 100h`, já É um `.COM` válido (formato
+  CP/M/MSX-DOS não tem cabeçalho nenhum), então a opção "binário cru" do mesmo diálogo já cobre esse
+  caso.
+- **2026-07-24 — `sample/teste.asm` e `sample/nteste.asm` (programas reais do usuário) ajustados na
+  mão pro padrão de cabeçalho BLOAD "fonte-nativo"** (a pedido do usuário, como demonstração de que o
+  cabeçalho não depende do diálogo do menu "Montar" — qualquer assembler M80/Nestor80-compatível, ex.
+  `N80.exe` puro sem a IDE, já produz o `.bin` pronto). Padrão aplicado igual nos dois arquivos:
+  operador `<<`/`|` da linha da paleta de cores (`ld a, (COLOR_BLUE << 4) | COLOR_BLACK`) trocado por
+  `SHL`/`OR` (só precisou em `teste.asm` — `nteste.asm` já estava com a sintaxe certa); e o antigo
+  `org 0C000h` isolado virou:
+  ```
+  LOAD_ADDR equ 0C000h
+      org 0
+      defb 0FEh
+      defw LOAD_ADDR
+      defw CODE_END - 1
+      defw LOAD_ADDR
+      .phase LOAD_ADDR
+  START:
+      ...código original sem nenhuma outra mudança...
+  CODE_END:
+      .dephase
+  ```
+  Detalhe importante: `CODE_END:` tem que vir **antes** do `.dephase` (não depois, ao contrário do
+  jeito que o rótulo final aparece no exemplo oficial do `LanguageReference.md`) — aqui o objetivo é
+  capturar o endereço LÓGICO/fasado (`0xC000 + tamanho do código`) pro campo "fim" do cabeçalho, não o
+  endereço real pós-`.dephase`. `CODE_END - 1` é referência-pra-frente pro `defw` do cabeçalho (linha
+  bem antes de `CODE_END` existir) — funciona sem problema porque é rótulo (dois passes resolvem),
+  diferente de `EQU`, que teria que vir antes do uso. Validado: montado com
+  `editor\tools\Z80AsmTestCli.exe --assemble` e com `N80.exe` puro, **315 bytes idênticos byte a byte**
+  nos dois arquivos (`fc /b`); cabeçalho conferido na mão: `FE 00 C0 33 C1 00 C0` = marca `FE`, início
+  `C000h`, fim `C133h` (= `C000h + 308 bytes de código - 1`), execução `C000h`.
 - 2026-07-24: início da Fase A.
