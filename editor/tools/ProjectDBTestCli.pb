@@ -212,6 +212,35 @@ CheckTrue(AlphaBytesMatch(AlphaB(), LoadedAlphaA()), "Alfabeto #1: dados atualiz
 CheckTrue(ProjectDB::HasAlphabet(2), "HasAlphabet(2) = #True")
 CheckTrue(Bool(Not ProjectDB::HasAlphabet(99)), "HasAlphabet(99) = #False")
 
+; screens (editor grafico SCREEN 2, modulo 5) - commands_data e um blob de
+; texto opaco pro ProjectDB (Screen2EditorGui.pbi que serializa/desserializa
+; a lista de comandos) - aqui so testa que o texto vai e volta intacto.
+Define ScreenCmdsA.s = "PSET|5|5|8" + Chr(10) + "LINE|0|0|20|0|3|0"
+Define ScreenCmdsB.s = "DRAW|60|60|2|U5R5"
+
+CheckTrue(ProjectDB::StoreScreen(1, "tela1", ScreenCmdsA), "StoreScreen #1 (tag 'tela1')")
+CheckTrue(ProjectDB::StoreScreen(2, "tela2", ScreenCmdsB), "StoreScreen #2 (tag 'tela2')")
+
+NewList ScreenNumbers.i()
+ProjectDB::ListScreenNumbers(ScreenNumbers())
+CheckTrue(Bool(ListSize(ScreenNumbers()) = 2), "ListScreenNumbers (esperado 2, achou " + Str(ListSize(ScreenNumbers())) + ")")
+
+CheckTrue(ProjectDB::FetchScreen(1), "FetchScreen #1")
+CheckTrue(Bool(ProjectDB::LastScreenTag() = "tela1"), "Tela #1: tag = 'tela1'")
+CheckTrue(Bool(ProjectDB::LastScreenCommandsText() = ScreenCmdsA), "Tela #1: comandos batem com o original")
+
+; Sobrescreve a tela #1 - nao pode duplicar
+CheckTrue(ProjectDB::StoreScreen(1, "tela1b", ScreenCmdsB), "StoreScreen #1 de novo (sobrescrevendo tag/comandos)")
+ClearList(ScreenNumbers())
+ProjectDB::ListScreenNumbers(ScreenNumbers())
+CheckTrue(Bool(ListSize(ScreenNumbers()) = 2), "Ainda 2 telas apos sobrescrever #1 (nao duplicou)")
+ProjectDB::FetchScreen(1)
+CheckTrue(Bool(ProjectDB::LastScreenTag() = "tela1b"), "Tela #1: tag atualizada para 'tela1b'")
+CheckTrue(Bool(ProjectDB::LastScreenCommandsText() = ScreenCmdsB), "Tela #1: comandos atualizados apos sobrescrever")
+
+CheckTrue(ProjectDB::HasScreen(2), "HasScreen(2) = #True")
+CheckTrue(Bool(Not ProjectDB::HasScreen(99)), "HasScreen(99) = #False")
+
 ; 8e) StoreSound/FetchSound - efeitos PSG (sequencia de passos com 14
 ; registradores + duracao), mesmo padrao Store/Fetch/List dos sprites/alfabetos.
 ; Regs e 1D "achatado" (Regs(i*14+r)) - ver comentario de StoreSound em

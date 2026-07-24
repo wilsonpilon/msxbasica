@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 5.9.5** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 7.1.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -184,14 +184,42 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   sprites, reaproveitados para ficar visualmente uniforme em toda a IDE.
 
   ![Editor de música MML (Criar → Música (PLAY)...) com os 3 canais em paralelo, lista de linhas por canal e código PLAY gerado](images/msxbasica-07.png)
+- **Editor de DRAW Screen 2** (`editor/Screen2Synth.pbi` + `editor/Screen2EditorGui.pbi`, menu **Criar
+  → Draw Screen 2...**) — editor gráfico WYSIWYG para o modo **SCREEN 2** (TMS9918 Graphics II,
+  256×192), com simulação **fiel ao hardware** do color clash (1 par tinta/fundo por faixa de 8×1
+  pixels — pintar 2 cores na mesma faixa faz a faixa inteira "puxar" pra última cor gravada, igual ao
+  MSX de verdade, sem lógica de detecção extra: o motor só reproduz o mesmo comportamento da ROM).
+  Sete abas de ferramenta — **PSET**/**PRESET** (clique no canvas já liga/apaga o pixel na cor
+  selecionada), **LINE** (reta/caixa/caixa cheia, dois cliques: ponto inicial e final, com **linha
+  elástica** acompanhando o mouse antes do segundo clique), **CIRCLE** (círculo ou elipse, primeiro
+  ponto centro/canto, segundo raio/canto oposto, também com previa elástica), **PAINT** (preenchimento
+  por vizinhança), **DRAW** (interpretador completo da mini-linguagem de tartaruga do MSX-BASIC —
+  `U D L R E F G H`, `B`/`N`, `M`, `C`, `S`, `A`/`TA`, com rotação exata em passos de 90° e
+  arredondamento correto pra ângulos livres) e **TEXTO** (escreve usando um alfabeto do banco do
+  projeto — ver editor de alfabetos acima — com um **quadro elástico arrastável** que mostra o texto de
+  verdade nas cores escolhidas seguindo o mouse: move de 8 em 8 pixels por padrão para encaixar no grid
+  de tiles, ou pixel a pixel segurando **Ctrl**; clique fixa o texto, botão direito cancela). Suporta os
+  parâmetros **STEP** (coordenadas relativas ao cursor gráfico, como no MSX-BASIC real) em todos os
+  comandos que aceitam, e `LINE -(x,y)` (sem ponto inicial, usa o cursor gráfico como ponto de partida).
+  Cada ferramenta com clique-para-adicionar tem seu **mini buffer** próprio (lista filtrada + botão
+  Remover, some do canvas junto). Paleta MSX1 completa (16 cores fixas) para Tinta/Fundo. **Gerar
+  código** produz `PSET`/`PRESET`/`LINE`/`CIRCLE`/`PAINT`/`DRAW` prontos (mais o carregador `DATA`+
+  `VPOKE` do alfabeto e `LOCATE`/`PRINT` para texto alinhado ao grid de 8px — texto posicionado livre
+  por pixel vira uma sequência de `PSET`/`PRESET`, já que `LOCATE` só aceita célula de caractere
+  inteira); **Injetar no cursor**/**Copiar** como nos demais editores. Integrado ao sistema de projeto
+  (tabela `screens`, mesma barra de número/tag/navegação/Registrar/Novo/Copiar/Colar dos outros
+  editores) — guarda a **lista de comandos**, não o framebuffer, para poder reordenar/editar depois de
+  recarregar.
+
+  ![Editor de DRAW Screen 2 (Criar → Draw Screen 2...) com formas desenhadas, lista de comandos e código BASIC gerado](images/msxbasica-10.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
 em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editor de tile (além do
-charset/fonte 8×8), demais editores visuais (LINE/CIRCLE/DRAW, tracker) e sua integração ao sistema de
-projeto, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em tempo real
-(input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e abrir o
-openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
+charset/fonte 8×8), tracker, outros modos de tela além do SCREEN 2 (SCREEN 1/5/7/8) reaproveitando o
+mesmo motor gráfico, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em
+tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e
+abrir o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
 
 ## Changelog resumido
 
@@ -412,6 +440,30 @@ openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
   esticar, quadrado com arco de rotação, barras de itálico/negrito, retângulo pontilhado do "All")
   reaproveitam os mesmos helpers de triângulo preenchido (`CharEd_DrawFilledHTri`/`DrawFilledVTri`)
   extraídos do desenho da seta de navegação já existente.
+- **2026-07-24** — Novo **editor de DRAW Screen 2** (menu **Criar → Draw Screen 2...**,
+  `editor/Screen2Synth.pbi` motor + `editor/Screen2EditorGui.pbi` janela): editor gráfico WYSIWYG para
+  SCREEN 2 com simulação fiel do color clash (1 par tinta/fundo por faixa de 8×1 pixels — o motor
+  reproduz o comportamento real da ROM sem lógica extra de detecção). Sete ferramentas — PSET/PRESET
+  (clique liga/apaga na hora), LINE (reta/caixa/caixa cheia), CIRCLE (círculo/elipse), PAINT
+  (preenchimento), DRAW (interpretador completo da mini-linguagem de tartaruga do MSX-BASIC — `U D L R
+  E F G H B N M C S A TA`, rotação exata em passos de 90° e arredondamento correto pra ângulos livres)
+  e TEXTO (alfabetos do banco do projeto). Motor verificado por harness `editor/tools/Screen2TestCli.pb`
+  (69 casos, incluindo o clash proposital de PAINT). Sessão evoluiu em fases dentro do mesmo dia: (1)
+  motor + harness; (2) janela completa com os 7 painéis, paleta MSX1, lista de comandos e geração de
+  código; (3) UX — clique no canvas já adiciona PSET/PRESET, gesto de 2 cliques com **linha elástica**
+  para LINE/CIRCLE, mini buffers por ferramenta; (4) suporte a **STEP** (coordenadas relativas ao cursor
+  gráfico, como no MSX-BASIC real) em todos os comandos que aceitam, e `LINE -(x,y)` (sem ponto inicial)
+  — exigiu adicionar um "cursor gráfico" simulado (`Scr2_CursorX/Y`) que o motor atualiza depois de cada
+  comando, igual ao MSX de verdade; (5) ferramenta TEXTO redesenhada de campos de coluna/linha para um
+  **quadro elástico arrastável** com o texto real renderizado, movendo de 8 em 8 pixels (grid de tiles)
+  ou pixel a pixel com Ctrl — como texto fora do grid não cabe em `LOCATE`/`PRINT` (que só endereça
+  célula de caractere inteira), a geração de código ganhou um caminho alternativo que "queima" o glifo
+  pixel a pixel via `PSET`/`PRESET` nesse caso. Bug pego e corrigido antes de qualquer build: uma
+  primeira versão do resolvedor de STEP usava `*Ponteiro.Integer` com `\i` para devolver dois valores por
+  ponteiro — sintaxe de dereferência inválida em PureBasic (`\campo` exige ponteiro tipado pra
+  `Structure`, não tipo básico); substituída por duas funções `.i` com `ProcedureReturn`, mesmo padrão
+  de out-param por `Global` já usado no resto do projeto. Versão embutida no executável atualizada para
+  `7.1.1`.
 
 ## Ferramentas e ambiente
 

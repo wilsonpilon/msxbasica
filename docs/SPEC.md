@@ -43,7 +43,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Lado editor pronto (arquivo `.asm` + syntax highlight, 2026-07-16) — motor do assembler em si ainda não iniciado |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. **Editor de alfabetos Aquarela (.FNT) implementado (2026-07-23)** — `editor/AquarelaCharsetEditorGui.pbi`, ferramenta autocontida baseada em arquivo, sem integração com o sistema de projeto, ver seção 4b. **Editor de alfabetos Graphos III ganhou 13 efeitos de edição em lote (2026-07-23)** — desfazer/refazer, marcar tudo, espelhar/girar/apagar/estreitar/itálico/negrito/largo (+ variantes bold e largo-bold), ver seção 4c. Tile (além do charset/fonte 8×8) ainda não iniciado |
-| 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | Definido (seção 5) |
+| 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | **Implementado (2026-07-24)** — `editor/Screen2Synth.pbi` (motor)/`editor/Screen2EditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 5 |
 | 6 | Editor de som SOUND (PSG) | baixo | **Implementado (2026-07-21)** — `editor/PsgSynth.pbi` (motor)/`editor/PsgEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 6 |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
 | 8 | Editor MML (comando `PLAY`) | médio | **Implementado (2026-07-21)** — `editor/MmlSynth.pbi` (motor)/`editor/MmlEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 8 |
@@ -661,10 +661,97 @@ desenho de seta de navegação já existente) desenham triângulos preenchidos p
 precisar de preenchimento de polígono — reaproveitados por vários ícones novos.
 
 ### 5. Editor gráfico LINE/CIRCLE/PSET/DRAW
-- Mais simples que DRAW puro isolado porque LINE/CIRCLE/PSET são coordenadas absolutas (sem estado de
-  posição/ângulo atual).
-- Saída: lista de comandos BASIC prontos (`LINE...`, `CIRCLE...`, `PSET...`, `DRAW...`) na ordem
-  desenhada, para injeção como bloco/include.
+
+**Status (2026-07-24): implementado.** Menu **Criar → Draw Screen 2...**, mesma arquitetura tríade dos
+módulos 6/8: motor sem GUI (`editor/Screen2Synth.pbi`, prefixo `Scr2_`), janela
+(`editor/Screen2EditorGui.pbi`, prefixo `Scr2Ed_`) e harness headless (`editor/tools/Screen2TestCli.pb`,
+69 casos). Primeiro modo de tela implementado — **SCREEN 2** (TMS9918 Graphics II, 256×192); outros
+modos (SCREEN 1/5/7/8) ficam para quando o usuário pedir, reaproveitando o mesmo motor.
+
+**Modelo de dados (color clash fiel ao hardware)**: 3 arrays fixos, nunca `ReDim` —
+`PatternBit.a(191,255)` (1 bit por pixel), `RowFG.a(191,31)`/`RowBG.a(191,31)` (cor 0-15 por *faixa de
+scanline* de 8×1 pixels — 1 par tinta/fundo por scanline de cada célula de 8px, do tamanho exato da
+Color Table real, 192×32 = 6144 bytes). `Scr2_SetPixel()` é o primitivo único de escrita: liga o bit e
+**sobrescreve** a `RowFG`/`RowBG` inteira daquela faixa — o clash aparece sozinho ao reler
+(`Scr2_GetPixelColor()`), sem nenhuma lógica extra de detecção, porque é exatamente o que a ROM real
+faz. Confirmado por harness (pintar 2 cores na mesma faixa de 8px faz a faixa inteira mostrar só a
+última cor gravada) e por um caso de PAINT que pega o clash "de brinde" (preencher o interior de uma
+caixa muda a cor da borda esquerda também, porque compartilham a faixa/scanline — documentado
+explicitamente no teste como comportamento correto, não bug).
+
+**Sete ferramentas** (uma aba por `PanelGadget`, `Scr2_Command` guarda o tipo + parâmetros de cada
+comando na lista, `Scr2_ReplayAll()`/`Scr2Ed_ReplayAllWithText()` reconstroem o framebuffer do zero a
+cada mudança — mesma filosofia "sem estado incremental frágil" das listas de passos do PSG/linhas do
+MML):
+- **PSET/PRESET** — clique no canvas já liga/apaga o pixel na cor selecionada.
+- **LINE** — reta/caixa (`B`)/caixa cheia (`BF`); dois cliques (ponto inicial, ponto final) com **linha
+  elástica** (`Scr2Ed_DrawLinePreview`) acompanhando o mouse antes do segundo clique.
+- **CIRCLE** — círculo (1º clique = centro, 2º = raio) ou elipse (os 2 cliques marcam os cantos do
+  quadro), com preview elástica equivalente (`Scr2Ed_DrawCirclePreview`), suporta ângulo inicial/final
+  (fatia de pizza) e aspecto.
+- **PAINT** — preenchimento por vizinhança 4-direções, pilha (não recursivo).
+- **DRAW** — interpretador completo da mini-linguagem de tartaruga do MSX-BASIC (`Scr2_ExecuteDraw`):
+  `U D L R E F G H` (movimento reto/diagonal), `B`/`N` (não traça / traça e volta), `M[+-]x,[+-]y`
+  (absoluto/relativo), `C` (cor), `S` (escala), `A` (ângulo 0-3 × 90°) e `TA` (ângulo livre em graus).
+  Rotação em passos de 90° usa transformação inteira exata `(Dx,Dy)→(-Dy,Dx)` em vez de
+  `Cos`/`Sin` (que não batem exato em 90°/180°/270° por imprecisão de ponto flutuante — bug pego e
+  corrigido durante o desenvolvimento, ver `Scr2_RoundF`); trigonometria só é usada mesmo para `TA`
+  (ângulo arbitrário), sempre com arredondamento half-away-from-zero na conversão pra pixel inteiro.
+  Não implementado (limitação deliberada): `X`string`;` (executar sub-string de variável) — não faz
+  sentido numa ferramenta WYSIWYG sem variáveis BASIC de verdade por trás.
+- **TEXTO** — escreve usando um alfabeto do banco do projeto (módulo 4/4b). Redesenhado
+  (2026-07-24, sessão do mesmo dia) de campos digitáveis de coluna/linha para um **quadro elástico
+  arrastável**: ao clicar em "Posicionar TEXTO...", um quadro com o texto de verdade (glifos reais do
+  alfabeto escolhido, cores Tinta/Fundo escolhidas — `Scr2Ed_DrawTextPreview`) passa a seguir o mouse,
+  começando na posição Y correspondente ao terço marcado (Cima/Meio/Baixo, só um ponto de partida —
+  depois disso o quadro é livre). Move de 8 em 8 pixels por padrão (encaixa no grid de tiles de
+  caractere) ou pixel a pixel segurando **Ctrl** (`GetKeyState_(#VK_CONTROL)`, mesma chamada já usada em
+  `WordStarKeys.pbi`); clique fixa o texto (vira um comando com `X1`/`Y1` = âncora em pixel bruto, igual
+  a qualquer outro comando do módulo); botão direito cancela.
+
+**STEP e `LINE -(x,y)`** (2026-07-24): `Scr2_Command` ganhou `StepP1`/`StepP2`/`LineNoStart`, e o motor
+passou a simular um **cursor gráfico** (`Scr2_CursorX/Y`, globals) igual ao do MSX-BASIC real — todo
+comando de desenho deixa o cursor na sua coordenada de referência ao terminar (LINE no ponto final;
+CIRCLE/PSET/PRESET/PAINT no próprio ponto; DRAW na posição final calculada), e `Scr2_ReplayAll()` reseta
+o cursor pra (0,0) no início de cada replay. `StepP1`/`StepP2` fazem `X`/`Y` serem lidos como
+deslocamento a partir do cursor (`StepP2` da LINE é relativo ao **ponto 1 da própria LINE**, não ao
+cursor pré-comando — semântica de `LINE (x,y)-STEP(dx,dy)` do MSX-BASIC real); `LineNoStart` equivale a
+`LINE -(x2,y2)` (usa o cursor como ponto 1, ignorando `X1`/`Y1`/`StepP1`). Resolução implementada como
+duas funções `Scr2_ResolveP1X`/`Scr2_ResolveP1Y` com `ProcedureReturn` — uma primeira tentativa usando
+um único procedure com parâmetros de saída por ponteiro (`*OutX.Integer`, dereferenciado via `\i`) foi
+descartada **antes de compilar**, por depender de um dereferenciamento de ponteiro pra tipo básico que o
+PureBasic não aceita (`\campo` exige ponteiro tipado pra `Structure`); o padrão do resto do projeto —
+devolver valor extra via `Global` ou, aqui, via duas funções de retorno simples — evitou o problema.
+Geração de código (`Scr2_GenBasicLines`) emite `STEP(x,y)` e `LINE -(x,y)` textualmente, espelhando
+exatamente o que `Scr2_ReplayCommand` calcula em tempo de desenho.
+
+**Texto fora do grid de 8px**: como `LOCATE`/`PRINT` só endereçam célula de caractere inteira,
+`Scr2Ed_GenBasicLinesWithText` escolhe entre dois caminhos na hora de gerar código pro comando TEXTO,
+conforme a âncora `(X1,Y1)` cair ou não em múltiplo de 8: alinhado usa o carregador `DATA`+`VPOKE` (
+`Scr2Ed_GenAlphabetLoader`, sobrescreve a Pattern/Color Table do terço correspondente) + `LOCATE`/
+`PRINT`, igual ao mecanismo real do MSX-BASIC; fora do grid (posicionado pixel a pixel com Ctrl) usa
+`Scr2Ed_GenTextPixelBurn`, que "queima" cada pixel do glifo via `PSET`/`PRESET` (mais verboso, mas
+funciona em qualquer posição sem depender de sobrescrever a ROM de caracteres).
+
+**UX de clique no canvas**: PSET/PRESET adicionam na hora do clique; LINE/CIRCLE usam gesto de 2 cliques
+(1º marca ponto pendente, 2º completa); cada ferramenta com clique-para-adicionar tem seu **mini buffer**
+(`ListIconGadget` filtrado por tipo de comando, `SetGadgetItemData` guarda a posição real na lista
+principal pra permitir apagar certo mesmo filtrado) com botão Remover que também some do canvas.
+
+**Persistência**: tabela `screens` em `ProjectDB.pbi` (mesmo padrão hex-encoded de `alphabets`, mas
+guardando a **lista de comandos serializada** — não o framebuffer — pra poder editar/reordenar depois
+de recarregar; formato texto delimitado por `|`/quebra de linha, um comando por linha), barra de
+projeto completa (número/tag/navegação/Registrar/Novo/Copiar/Colar) idêntica aos demais editores.
+
+**Geração de código**: `Scr2_GenBasicLines`/`Scr2Ed_GenBasicLinesWithText` produzem `PSET`/`PRESET`/
+`LINE`/`CIRCLE`/`PAINT`/`DRAW` prontos, um por linha, na ordem da lista — **Injetar no cursor**/
+**Copiar** como nos demais editores.
+
+**Verificação**: `editor/tools/Screen2TestCli.pb` (69 casos) cobre clash, `DrawLine`, `ExecuteDraw`
+(quadrado fechado, troca de cor, escala, ângulos 0-3, `B`/`N`), `CIRCLE` (completo e fatia de pizza),
+`LINE` em modo caixa/caixa cheia, `PAINT` (incluindo o clash proposital), replay de lista + geração de
+código, e o bloco novo de STEP/`LINE -(x,y)` (resolução pra cada tipo de comando, `LineNoStart`, avanço
+do cursor por tipo, reset do cursor a cada `Scr2_ReplayAll`, texto do código gerado).
 
 ### 6. Editor de som SOUND (PSG / AY-3-8910 / YM2149)
 
@@ -1104,6 +1191,14 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-24**: módulo 5 (editor gráfico SCREEN 2) implementado do zero nesta sessão —
+ver seção 5 acima para o detalhe completo (motor/color clash, 7 ferramentas, STEP/`LINE -(x,y)`, TEXTO
+com quadro elástico, persistência, geração de código, 69 casos de harness). Também nesta sessão:
+`editor/AquarelaCharsetEditorGui.pbi` ampliado de 32 para 46 caracteres editáveis (dígitos `2-9` e
+`. : - ( ) ,` que faltavam), e o editor de alfabetos Graphos III ganhou os 11 botões de efeito em lote
+documentados na seção 4c (a spec desse trabalho já estava registrada; só a entrada narrativa aqui
+faltava). Versão embutida no executável: `7.1.1`.
 
 **Estado ao fim de 2026-07-21 (sessão 6)**: dois ajustes pedidos depois de ver a janela do editor de
 música funcionando (sessão 5 abaixo) — nenhum deles muda escopo, só polimento de UI e um bugfix real

@@ -86,6 +86,21 @@ DeclareModule ProjectDB
   Declare.i HasSong(Number.i)
   Declare ListSongNumbers(List Numbers.i())
 
+  ; Uma "tela" (editor grafico SCREEN 2, modulo 5) guarda a LISTA DE
+  ; COMANDOS de desenho (nao o framebuffer resultante) como um unico TEXT
+  ; opaco - um comando por linha, campos separados por "|". ProjectDB.pbi
+  ; nao conhece a Structure Scr2_Command (definida em Screen2Synth.pbi,
+  ; incluido DEPOIS deste arquivo em BadigEditor.pb) - o mesmo motivo que
+  ; ja levou StoreSound/FetchSound a usar arrays primitivos em vez da
+  ; Structure PsgStepData de PsgSynth.pbi. Quem serializa/desserializa e
+  ; Screen2EditorGui.pbi; aqui e so um blob de texto guardado e devolvido.
+  Declare.i StoreScreen(Number.i, Tag.s, CommandsText.s)
+  Declare.i FetchScreen(Number.i)
+  Declare.s LastScreenCommandsText()
+  Declare.s LastScreenTag()
+  Declare.i HasScreen(Number.i)
+  Declare ListScreenNumbers(List Numbers.i())
+
   ; "Projeto 0": banco SQLite a parte, sempre em memoria (nunca em arquivo,
   ; nunca salvo), recriado do zero a cada vez que a IDE abre - fonte interna
   ; de conteudo padrao (hoje so o alfabeto 0 = msx.alf embutido no executavel
@@ -119,6 +134,8 @@ Module ProjectDB
   Global FetchedSoundTag.s = ""
   Global FetchedStepCount.i = 0
   Global FetchedSongTag.s = ""
+  Global FetchedScreenTag.s = ""
+  Global FetchedScreenCommandsText.s = ""
   Global DefaultsOpen.b = #False
 
   Procedure.s NewTempPath()
@@ -156,6 +173,11 @@ Module ProjectDB
                          "lines_a TEXT NOT NULL, " +
                          "lines_b TEXT NOT NULL, " +
                          "lines_c TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS screens (" +
+                         "screen_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "commands_data TEXT NOT NULL, " +
                          "updated_at TEXT)")
   EndProcedure
 
@@ -294,11 +316,12 @@ Module ProjectDB
   ; True quando o projeto ainda e o temporario implicito (nunca foi salvo
   ; num local permanente) E ja tem pelo menos um registro num dos tipos de
   ; conteudo que so existem dentro do banco do projeto (sprites, alfabetos,
-  ; sons PSG, musicas MML) - e o sinal usado pra avisar o usuario ao sair ou
-  ; ao criar outro projeto. Documentos (.dmx/.asm/tokenizado) ficam de fora
-  ; de proposito: sao copia de um arquivo que ja existe em disco por conta
-  ; propria, entao perder a copia do banco temporario nao perde trabalho de
-  ; verdade (diferente de sprite/alfabeto/som/musica, que so vivem aqui).
+  ; sons PSG, musicas MML, telas SCREEN 2) - e o sinal usado pra avisar o
+  ; usuario ao sair ou ao criar outro projeto. Documentos (.dmx/.asm/
+  ; tokenizado) ficam de fora de proposito: sao copia de um arquivo que ja
+  ; existe em disco por conta propria, entao perder a copia do banco
+  ; temporario nao perde trabalho de verdade (diferente de sprite/
+  ; alfabeto/som/musica/tela, que so vivem aqui).
   Procedure.i HasUnsavedContent()
     If Not IsOpen Or Not TempFlag
       ProcedureReturn #False
@@ -309,7 +332,8 @@ Module ProjectDB
                            "(SELECT COUNT(*) FROM sprites) + " +
                            "(SELECT COUNT(*) FROM alphabets) + " +
                            "(SELECT COUNT(*) FROM psg_sounds) + " +
-                           "(SELECT COUNT(*) FROM mml_songs)")
+                           "(SELECT COUNT(*) FROM mml_songs) + " +
+                           "(SELECT COUNT(*) FROM screens)")
       If NextDatabaseRow(#DB)
         Count = Val(GetDatabaseString(#DB, 0))
       EndIf
@@ -792,6 +816,80 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT song_number FROM mml_songs ORDER BY song_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; CommandsText e um blob opaco (um comando por linha, ja serializado por
+  ; Screen2EditorGui.pbi) - so escapa aspas simples pra SQL, igual
+  ; StoreDocument() faz com Content; sem hex-encoding, sem conhecer a
+  ; Structure Scr2_Command.
+  Procedure.i StoreScreen(Number.i, Tag.s, CommandsText.s)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    Protected SafeCommands.s = ReplaceString(CommandsText, "'", "''")
+
+    DatabaseUpdate(#DB, "DELETE FROM screens WHERE screen_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO screens (screen_number, tag, commands_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', '" + SafeCommands + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; Sem parametro de Array de saida (nao ha estrutura pra preencher aqui) -
+  ; tag e texto dos comandos saem via LastScreenTag()/LastScreenCommandsText(),
+  ; mesmo padrao "out-param" de FetchDocument()/FetchAlphabet().
+  Procedure.i FetchScreen(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, commands_data FROM screens WHERE screen_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedScreenTag = GetDatabaseString(#DB, 0)
+        FetchedScreenCommandsText = GetDatabaseString(#DB, 1)
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastScreenCommandsText()
+    ProcedureReturn FetchedScreenCommandsText
+  EndProcedure
+
+  Procedure.s LastScreenTag()
+    ProcedureReturn FetchedScreenTag
+  EndProcedure
+
+  Procedure.i HasScreen(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM screens WHERE screen_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListScreenNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT screen_number FROM screens ORDER BY screen_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))

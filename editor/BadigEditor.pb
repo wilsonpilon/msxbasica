@@ -49,6 +49,8 @@ XIncludeFile "PsgSynth.pbi"
 XIncludeFile "PsgEditorGui.pbi"
 XIncludeFile "MmlSynth.pbi"
 XIncludeFile "MmlEditorGui.pbi"
+XIncludeFile "Screen2Synth.pbi"
+XIncludeFile "Screen2EditorGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -340,6 +342,7 @@ Enumeration MenuItems
   #Menu_CreateAlphabetAquarela
   #Menu_CreateSound
   #Menu_CreateMml
+  #Menu_CreateScreen2
   #Menu_RunBasic
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
@@ -379,7 +382,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "5.9.5"
+  #App_Version = "7.1.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2338,6 +2341,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateAlphabetAquarela, "Alfabeto Aquarela...")
     MenuItem(#Menu_CreateSound, "Som (PSG)...")
     MenuItem(#Menu_CreateMml, "Musica (PLAY)...")
+    MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
   MenuTitle("Configurar")
@@ -2459,6 +2463,9 @@ Repeat
 
         Case #Menu_CreateMml
           MmlEditor_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateScreen2
+          Screen2Editor_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()

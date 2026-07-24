@@ -9,7 +9,7 @@
 > Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
 > etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
 > editor de sprites, o editor de alfabetos (Graphos III e Aquarela), o editor de som, o
-> editor de música, o sistema de projeto e o processo de build.
+> editor de música, o editor de DRAW Screen 2, o sistema de projeto e o processo de build.
 
 ---
 
@@ -64,6 +64,14 @@
 11. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
     - [Tabela de 46 caracteres e grade 16x16](#tabela-de-46-caracteres-e-grade-16x16)
     - [Arquivo .FNT](#arquivo-fnt)
+12. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
+    - [Canvas, paleta e cor de tinta/fundo](#canvas-paleta-e-cor-de-tintafundo)
+    - [Ferramentas de desenho](#ferramentas-de-desenho-1)
+    - [Parâmetros STEP e LINE -(x,y)](#parâmetros-step-e-line--xy)
+    - [Ferramenta TEXTO — quadro elástico arrastável](#ferramenta-texto--quadro-elástico-arrastável)
+    - [Lista de comandos e mini buffers](#lista-de-comandos-e-mini-buffers)
+    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-2)
+    - [Barra de projeto](#barra-de-projeto-2)
 
 ---
 
@@ -108,7 +116,7 @@ um traço).
 | `-C`, `--compiler <caminho>` | Caminho para o `pbcompiler.exe`. |
 | `-R`, `--run` | Executa o programa automaticamente após uma compilação sem erros. |
 | `-H`, `--help` | Mostra a lista de opções e sai. |
-| `-V`, `--version <versão>` | Versão embutida no executável (padrão `5.9.5`). |
+| `-V`, `--version <versão>` | Versão embutida no executável (padrão `7.1.1`). |
 | `-i`, `--sourcefile <arquivo>` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
 | `-o`, `--outputexe <arquivo>` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
 
@@ -128,7 +136,7 @@ um traço).
 
 A cada compilação, o script grava no executável (via `/CONSTANT` do `pbcompiler.exe`):
 
-- **Versão** — string livre (`-V`/`--version`, padrão `5.9.5`).
+- **Versão** — string livre (`-V`/`--version`, padrão `7.1.1`).
 - **Build** — data/hora **UTC** do momento da compilação, convertida para **hexadecimal**
   (segundos desde a época Unix, ex.: `6A57EA80`). Cada build tem um identificador único e
   ordenável.
@@ -805,3 +813,107 @@ projeto**: não existe "Registrar alfabeto" nem número/tag — o fluxo é sempr
 - **Salvar** / **Salvar como...** — grava sempre no formato de 2304 bytes (72 registros), a variante
   confirmada carregando sem erro no Aquarela de verdade contra todo o corpus de amostras testado; os
   registros além dos 46 editáveis são preenchidos com o byte de posição-vazia padrão do formato.
+
+## Editor de DRAW Screen 2
+
+O menu **Criar → Draw Screen 2...** abre um editor gráfico WYSIWYG para o modo **SCREEN 2** do MSX
+(256×192 pixels), com os comandos `PSET`, `PRESET`, `LINE`, `CIRCLE`, `PAINT`, `DRAW` e texto usando um
+alfabeto do banco do projeto. A tela simula o **color clash** de verdade: cada faixa de 8×1 pixels (uma
+scanline de uma célula de caractere) só pode mostrar 2 cores — se você desenhar 2 cores diferentes na
+mesma faixa, a faixa inteira passa a mostrar a última cor gravada, exatamente como no hardware real
+(TMS9918). Isso é intencional: o objetivo do editor é justamente deixar visível, enquanto você desenha,
+onde o clash vai acontecer no MSX de verdade.
+
+![Editor de DRAW Screen 2 com formas desenhadas (círculos, linhas, retângulos, pontos e um DRAW), lista de comandos à esquerda e código BASIC gerado à direita](../images/msxbasica-10.png)
+
+### Canvas, paleta e cor de tinta/fundo
+
+- O **canvas** (lado esquerdo) mostra a tela 256×192 ampliada 2× para facilitar o clique. Clicar dentro
+  dele aciona a ferramenta da aba ativa (ver abaixo).
+- As paletas **Tinta** e **Fundo** (topo direito) mostram as 16 cores fixas do MSX1 — clique numa cor
+  para selecioná-la. "Tinta" é a cor usada por PSET/LINE/CIRCLE/DRAW/PAINT e pelo texto; "Fundo" é usada
+  por PRESET e como cor de fundo do texto.
+
+### Ferramentas de desenho
+
+Sete abas, uma por ferramenta:
+
+- **PSET** / **PRESET** — digite X/Y e clique em "Adicionar", ou simplesmente **clique no canvas**: o
+  pixel liga (PSET, cor Tinta) ou apaga (PRESET, cor Fundo) na hora, já vira um comando na lista.
+- **LINE** — reta, caixa (contorno) ou caixa cheia, conforme o botão marcado. No canvas, o **primeiro
+  clique marca o ponto inicial** e o **segundo traça** a linha/caixa; antes do segundo clique, uma
+  **linha elástica** amarela acompanha o mouse (com um marcador vermelho no ponto inicial) para você ver
+  exatamente o que vai ser traçado.
+- **CIRCLE** — círculo ou elipse, conforme o botão marcado. No **Círculo**, o primeiro clique marca o
+  centro e o segundo define o raio (distância até o clique); na **Elipse**, os dois cliques marcam os
+  cantos opostos do retângulo que envolve a elipse. Também tem linha elástica antes do segundo clique.
+  Ângulo inicial/final e aspecto ficam disponíveis nos campos da aba, para arcos/fatias de pizza.
+  Ambos aceitam qualquer aspecto positivo.
+- **PAINT** — preenche a partir de um ponto (X,Y) com a cor Tinta, respeitando cor de borda opcional.
+  Clicar no canvas só preenche os campos X/Y — o preenchimento em si precisa do botão "Adicionar PAINT".
+- **DRAW** — monta uma linha da mini-linguagem `DRAW` do MSX-BASIC clicando nos botões `U D L R E F G H`
+  (movimento, usando o valor do campo "Valor"), `B`/`N` (não traça / traça e volta), `M x,y` (move
+  absoluto), `C` (cor = Tinta atual), `S` (escala) e `A`/`TA` (ângulo em passos de 90° / ângulo livre em
+  graus) — cada clique acrescenta um pedaço à "Linha atual"; "Adicionar DRAW" fecha a linha como um
+  comando e limpa o campo para a próxima.
+- **TEXTO** — ver seção própria abaixo.
+
+### Parâmetros STEP e LINE -(x,y)
+
+Como no MSX-BASIC real, o editor mantém um **cursor gráfico** interno que cada comando de desenho
+atualiza para a sua coordenada de referência ao terminar (LINE deixa no ponto final; CIRCLE/PSET/
+PRESET/PAINT deixam no próprio ponto; DRAW deixa na posição final do desenho).
+
+- Marcando a caixa **STEP** de um campo X/Y (disponível em PSET, PRESET, CIRCLE, PAINT e nos dois
+  pontos da LINE), o valor digitado — ou o ponto clicado no canvas — passa a ser um **deslocamento a
+  partir do cursor gráfico atual**, em vez de coordenada absoluta. No caso da LINE, o STEP do ponto 2 é
+  relativo ao **ponto 1 da própria linha**, não ao cursor — igual ao `LINE (x,y)-STEP(dx,dy)` do
+  MSX-BASIC de verdade.
+- Marcando **"LINE -(x,y): sem ponto inicial"**, a LINE usa o cursor gráfico como estivesse, sem pedir
+  um primeiro ponto — equivalente ao `LINE -(x2,y2)` do MSX-BASIC (um clique só já completa a linha).
+- **Gerar código** emite `STEP(x,y)` e `LINE -(x,y)` literalmente quando essas caixas estão marcadas,
+  reproduzindo a sintaxe real do MSX-BASIC.
+
+### Ferramenta TEXTO — quadro elástico arrastável
+
+Escolha o **Alfabeto** (um dos registrados em **Criar → Alfabeto Graphos III...**), o **Terço** (Cima/
+Meio/Baixo — só define onde o quadro começa) e digite o **Texto**, depois clique em **"Posicionar
+TEXTO..."**. Um quadro com o texto de verdade (os glifos reais do alfabeto escolhido, já nas cores
+Tinta/Fundo selecionadas) passa a seguir o mouse pelo canvas:
+
+- Por padrão, o quadro move **8 em 8 pixels**, encaixando sempre num tile de caractere (a única forma
+  de o texto depois virar `LOCATE`/`PRINT` de verdade).
+- Segurando **Ctrl**, o quadro move **pixel a pixel**, para alinhar fino com um desenho já existente.
+- **Clique no canvas** fixa o texto naquele ponto (vira um comando na lista); **botão direito** cancela
+  o posicionamento sem adicionar nada.
+
+Se o ponto final cair no grid de 8px, "Gerar código" produz o carregador do alfabeto (`DATA`+`VPOKE` na
+Pattern/Color Table do terço) mais `LOCATE`/`PRINT` — o mecanismo real e compacto do MSX-BASIC. Se você
+posicionou fora do grid (usando Ctrl), `LOCATE` não consegue endereçar aquele ponto — nesse caso o
+código gerado "queima" cada pixel do texto diretamente via `PSET`/`PRESET` (mais linhas de código, mas
+funciona em qualquer posição).
+
+### Lista de comandos e mini buffers
+
+A lista **Comandos** (abaixo do canvas) mostra todos os comandos da tela, na ordem em que são
+desenhados — **Remover** apaga o selecionado, **▲**/**▼** reordenam (útil quando um comando precisa ser
+desenhado antes/depois de outro, por causa do color clash). PSET, PRESET, LINE e CIRCLE também têm um
+**mini buffer** próprio na aba da ferramenta (uma lista filtrada só com aquele tipo de comando) com seu
+próprio botão de remover — mais rápido que caçar um PSET específico no meio de uma lista grande e mista.
+
+### Gerar código e injetar no editor
+
+- **Gerar código** monta o BASIC final (`PSET`/`PRESET`/`LINE`/`CIRCLE`/`PAINT`/`DRAW`, mais o
+  carregador de alfabeto e `LOCATE`/`PRINT` ou o pixel-a-pixel do texto), um comando por linha, na
+  mesma ordem da lista.
+- **Injetar no cursor** cola o código gerado na aba de texto ativa do editor, na posição do cursor.
+- **Copiar** coloca o código gerado na área de transferência.
+
+### Barra de projeto
+
+Mesma barra dos demais editores (sprites, alfabetos, som, música): número da tela, tag, navegação
+**Primeira/Anterior/Próxima/Última**, **Novo** (começa uma tela em branco, numerada automaticamente),
+**Registrar** (grava a lista de comandos no projeto), **Copiar**/**Colar** (clipboard de sessão para
+duplicar uma tela inteira). Diferente do editor de sprites/alfabetos, o que fica salvo é a **lista de
+comandos** (não uma imagem/framebuffer) — permitindo reabrir a tela depois e continuar editando,
+reordenando ou removendo comandos individuais.
