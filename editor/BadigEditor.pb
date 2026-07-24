@@ -371,6 +371,9 @@ EndEnumeration
 #Event_WS_CloseTab = #PB_Event_FirstCustomValue + 2
 
 #App_Title      = "Basic Dignified Editor"
+#App_SplashW    = 600  ; splash na abertura (msxbasica.png, 3:2) - ver App_ShowSplash/App_CloseSplash
+#App_SplashH    = 400
+#App_SplashMinMs = 2200
 #File_Pattern     = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
 #File_Pattern_ASM = "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
 #File_Pattern_Project = "Projeto MSX (*.msxproject)|*.msxproject|Todos os arquivos (*.*)|*.*"
@@ -1756,6 +1759,64 @@ Procedure.s EnsureExtension(Path.s, Ext.s)
   ProcedureReturn Path
 EndProcedure
 
+; Splashscreen na abertura do programa: mostra msxbasica.png (a arte de capa
+; do README, na raiz do repositorio - GetPathPart(ProgramFilename()) e a
+; pasta "editor\" do .exe, entao ".." sobe pra raiz) numa janela sem borda,
+; centralizada e sempre no topo, por pelo menos #App_SplashMinMs no total.
+; Dividido em duas chamadas (Show logo no inicio do "Programa principal",
+; Close so depois do init pesado) em vez de um Delay() bloqueante isolado,
+; pra nao atrasar a abertura alem do necessario: se o init (InitKeywordMaps,
+; EditorCfg_Load etc.) demorar quase #App_SplashMinMs sozinho, App_CloseSplash
+; so espera a diferenca (podendo ser quase nada); se for rapido, espera o
+; resto. Se o arquivo da imagem nao existir (build fora do repo completo),
+; App_SplashWin fica -1 e App_CloseSplash() e um no-op - nunca trava o
+; programa por causa da splash.
+Global App_SplashWin.i = -1
+Global App_SplashImg.i = -1
+Global App_SplashStartTime.i
+
+Procedure App_ShowSplash()
+  Protected SplashPath.s = GetPathPart(ProgramFilename()) + "..\msxbasica.png"
+  App_SplashImg = LoadImage(#PB_Any, SplashPath)
+  If Not App_SplashImg
+    ProcedureReturn
+  EndIf
+  ResizeImage(App_SplashImg, #App_SplashW, #App_SplashH, #PB_Image_Smooth)
+  App_SplashWin = OpenWindow(#PB_Any, 0, 0, #App_SplashW, #App_SplashH, "",
+                              #PB_Window_BorderLess | #PB_Window_ScreenCentered)
+  ; NAO usar "If Not App_SplashWin" aqui: #MainWindow (Enumeration Windows) ainda
+  ; nao foi aberto neste ponto, entao o alocador #PB_Any pode legitimamente devolver
+  ; 0 pra esta janela - "Not 0" seria tratado como falha por engano (bug pego e
+  ; corrigido antes deste comentario existir: a splash nunca aparecia, porque
+  ; App_SplashWin virava -1 mesmo com OpenWindow tendo funcionado). IsWindow() e o
+  ; jeito certo de checar sucesso quando o numero pode ser 0.
+  If Not IsWindow(App_SplashWin)
+    FreeImage(App_SplashImg)
+    App_SplashImg = -1
+    App_SplashWin = -1
+    ProcedureReturn
+  EndIf
+  ImageGadget(#PB_Any, 0, 0, #App_SplashW, #App_SplashH, ImageID(App_SplashImg))
+  StickyWindow(App_SplashWin, #True)
+  WindowEvent() ; bombeia a fila uma vez pra garantir que a janela realmente pinte antes do init continuar
+  App_SplashStartTime = ElapsedMilliseconds()
+EndProcedure
+
+Procedure App_CloseSplash()
+  If App_SplashWin = -1
+    ProcedureReturn
+  EndIf
+  Protected Remaining = #App_SplashMinMs - (ElapsedMilliseconds() - App_SplashStartTime)
+  While Remaining > 0
+    WindowEvent()
+    Delay(10)
+    Remaining - 10
+  Wend
+  CloseWindow(App_SplashWin)
+  FreeImage(App_SplashImg)
+  App_SplashWin = -1
+EndProcedure
+
 ; Icone do aplicativo (msxbasica.ico) para toda janela top-level (barra de
 ; titulo/sistema, barra de tarefas, Alt+Tab) - extraido do proprio .exe em
 ; runtime via ExtractIconEx, nao de um arquivo .ico ao lado do executavel:
@@ -2289,6 +2350,11 @@ EndIf
 ; indesejada antes de abrir a GUI.
 FreeConsole_()
 
+; PNG so decodifica com o codec registrado em runtime - sem isso, LoadImage()
+; de um .png sempre falha (retorna 0) mesmo com o arquivo certo no caminho certo.
+UsePNGImageDecoder()
+App_ShowSplash()
+
 InitKeywordMaps()
 InitZ80KeywordMaps()
 EditorCfg_Load()
@@ -2306,6 +2372,8 @@ BadigCfg_Load()
 If CountProgramParameters() = 0
   ProjectDB::EnsureOpen()
 EndIf
+
+App_CloseSplash()
 
 If Not OpenWindow(#MainWindow, 0, 0, 1000, 700, #App_Title, #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget)
   End
