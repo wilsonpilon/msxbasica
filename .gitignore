@@ -3,6 +3,11 @@
 # Baixavel via Configurar -> Basic Dignified... -> "Baixar Basic Dignified Suite..."
 /badig/
 
+# Copia local do Nestor80 (Konamiman) - referencia de comportamento (fonte C#
+# do N80/LK80, compativel M80/L80) a ser portada nativamente para o assembler
+# Z80 (modulo 2, ver docs/SPEC.md), nao dependencia de runtime.
+/nestor80/
+
 # Cache local de fontes (nao faz parte do projeto) - exceto Source Code Pro,
 # que e sincronizada com o GitHub (fonte usada/testada pelo editor).
 /fonts/*

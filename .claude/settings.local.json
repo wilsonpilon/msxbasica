@@ -58,7 +58,12 @@
       "Skill(run)",
       "PowerShell(cd C:\\\\dos\\\\msxbasica\\\\editor; & \"C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe\" BadigEditor.pb /EXE BadigEditor.exe; Write-Output \"ExitCode=$LASTEXITCODE\")",
       "Bash(git status *)",
-      "Bash(python3 -c \"print\\('no python check'\\)\")"
+      "Bash(python3 -c \"print\\('no python check'\\)\")",
+      "Bash(grep *)",
+      "Bash(dotnet *)",
+      "Bash(/e/msxbasica/nestor80/N80/bin/Release/net6.0/N80.exe *)",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)"
     ]
   }
 }

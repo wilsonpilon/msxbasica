@@ -36,6 +36,7 @@ Declare App_ApplyWindowIcon(WinNum)
 
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
+XIncludeFile "Z80Asm.pbi"
 XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
 XIncludeFile "FontDownloader.pbi"
@@ -344,6 +345,7 @@ Enumeration MenuItems
   #Menu_CreateMml
   #Menu_CreateScreen2
   #Menu_RunBasic
+  #Menu_AssembleZ80
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_HelpCommands
@@ -385,7 +387,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.1.1"
+  #App_Version = "7.3.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -521,13 +523,10 @@ Global NewMap KwOperatorWord.b()
 Global NewMap KwDignifiedStmt.b()
 Global NewMap KwBoolean.b()
 
-; Tabelas do lexer de Z80 Assembly (modo "ASM" dos documentos) - vocabulario
-; do dialeto N80/Nestor80 (Konamiman, compativel com MACRO-80), ver
-; InitZ80KeywordMaps() e docs/SPEC.md.
-Global NewMap KwZ80Mnemonic.b()
-Global NewMap KwZ80Register.b()
-Global NewMap KwZ80Directive.b()
-Global NewMap KwZ80Operator.b()
+; Vocabulario do lexer de Z80 Assembly (modo "ASM" dos documentos) mora em
+; Z80Asm.pbi (Z80Asm::IsMnemonic()/IsRegister()/IsDirective()/IsOperatorWord(),
+; Z80Asm::InitKeywordMaps()) - fonte unica compartilhada com o motor do
+; assembler, ver docs/resumo-asm.md.
 
 ;- ------------------------------------------------------------
 ;- Declaracoes
@@ -535,7 +534,6 @@ Global NewMap KwZ80Operator.b()
 
 Declare   FillKeywordMap(Map Dest.b(), Words.s)
 Declare   InitKeywordMaps()
-Declare   InitZ80KeywordMaps()
 Declare.s ReadSciText(Sci)
 Declare   WriteSciText(Sci, Text.s)
 Declare   EmitRun(Sci, Text.s, Style)
@@ -622,45 +620,6 @@ Procedure InitKeywordMaps()
 
   ; Booleanos do Basic Dignified
   FillKeywordMap(KwBoolean(), "TRUE FALSE")
-EndProcedure
-
-;- ------------------------------------------------------------
-;- Palavras-chave do Z80 Assembly (dialeto N80/Nestor80, Konamiman -
-;- https://github.com/Konamiman/Nestor80 - assembler compativel com
-;- MACRO-80). Usadas so pelo lexer de arquivos .asm (modo "ASM" dos
-;- documentos, ver HighlightZ80Text()).
-;- ------------------------------------------------------------
-
-Procedure InitZ80KeywordMaps()
-  ; Mnemonicos Z80 (documentados + indocumentados de uso comum, ex. SLL)
-  FillKeywordMap(KwZ80Mnemonic(),
-    "ADC ADD AND BIT CALL CCF CP CPD CPDR CPI CPIR CPL DAA DEC DI DJNZ EI EX " +
-    "EXX HALT IM IN INC IND INDR INI INIR JP JR LD LDD LDDR LDI LDIR NEG NOP " +
-    "OR OTDR OTIR OUT OUTD OUTI POP PUSH RES RET RETI RETN RL RLA RLC RLCA " +
-    "RLD RR RRA RRC RRCA RRD RST SBC SCF SET SLA SLL SRA SRL SUB XOR")
-
-  ; Registradores e codigos de condicao de desvio (NZ/Z/NC/C/PO/PE/P/M) -
-  ; tratados com o mesmo estilo (ambos sao "operandos de hardware")
-  FillKeywordMap(KwZ80Register(),
-    "A B C D E H L I R IX IY SP AF BC DE HL PC IXH IXL IYH IYL NZ Z NC PO PE P M")
-
-  ; Diretivas do assembler - inclui as com "." do dialeto N80 (RADIX/PHASE/
-  ; etc guardadas SEM o ponto aqui; o "." e reconhecido a parte no lexer,
-  ; ver Z80_ScanDotWord() dentro de HighlightZ80Text)
-  FillKeywordMap(KwZ80Directive(),
-    "EQU DEFL ASET ORG DEFB DB DEFM DEFW DW DEFS DS DEFZ DZ INCBIN PUBLIC " +
-    "ENTRY GLOBAL EXTRN EXT EXTERNAL ROOT IF IFT COND IFF IFE IF1 IF2 IFABS " +
-    "IFREL IFDEF IFNDEF IFB IFNB IFIDN IFIDNI IFDIF IFDIFI IFCPU IFNCPU ELSE " +
-    "ENDIF MACRO ENDM REPT IRP IRPC IRPS LOCAL EXITM CONTM MODULE ENDMOD " +
-    "ASEG CSEG DSEG COMMON AREA TITLE SUBTTL PAGE MAINPAGE END ENDOUT " +
-    "RELAB XRELAB EXTROOT XEXTROOT PHASE DEPHASE LIST XLIST LALL SALL XALL " +
-    "LFCOND SFCOND TFCOND CPU Z80 STRENC STRESC PRINT PRINT1 PRINT2 PRINTX " +
-    "WARN ERROR FATAL REQUEST RADIX ALIGN COMMENT CREF XCREF")
-
-  ; Operadores por extenso usados em expressoes (AND/OR/XOR/NOT ficam de fora
-  ; daqui de proposito - ja sao reconhecidos como mnemonicos acima, e o
-  ; destaque visual e o mesmo nos dois usos)
-  FillKeywordMap(KwZ80Operator(), "LOW HIGH MOD SHR SHL EQ NE NEQ LT LE LTE GT GE GTE NUL TYPE")
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -1206,7 +1165,7 @@ Procedure HighlightZ80Text(Sci, Text.s)
         I + 1
       Wend
       Word = UCase(Mid(Text, Start + 1, I - Start - 1))
-      If FindMapElement(KwZ80Directive(), Word)
+      If Z80Asm::IsDirective(Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_DignifiedStmt)
       Else
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Label)
@@ -1229,13 +1188,13 @@ Procedure HighlightZ80Text(Sci, Text.s)
         I + 1
       EndIf
 
-      If FindMapElement(KwZ80Directive(), Word)
+      If Z80Asm::IsDirective(Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_DignifiedStmt)
-      ElseIf FindMapElement(KwZ80Mnemonic(), Word)
+      ElseIf Z80Asm::IsMnemonic(Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Statement)
-      ElseIf FindMapElement(KwZ80Register(), Word)
+      ElseIf Z80Asm::IsRegister(Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Function)
-      ElseIf FindMapElement(KwZ80Operator(), Word)
+      ElseIf Z80Asm::IsOperatorWord(Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Operator)
       ElseIf AtLineStart
         ; primeira palavra da linha, nao e palavra reservada -> rotulo
@@ -2181,6 +2140,76 @@ Procedure RunBasicFromActiveTab()
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Montar Assembly (.asm) -> binario absoluto (.bin) - menu "Executar ->
+;- Montar Assembly...", Ctrl+F5. So absoluto por enquanto (Fase A do modulo
+;- 2 - ver docs/resumo-asm.md); saida relocavel (.REL) + linker ficam para a
+;- Fase B (Z80Link.pbi, ainda nao existe).
+;- ------------------------------------------------------------
+
+Procedure AssembleZ80FromActiveTab()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  If Docs()\Mode <> "ASM"
+    MessageRequester("Montar",
+                     "A aba ativa nao e Assembly (.asm)." + Chr(10) +
+                     "Abra ou crie uma aba .asm (Arquivo -> Novo Assembly) antes de montar.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  Protected SourceText.s = ReadSciText(Docs()\SciGadget)
+  Protected Dim AsmBytes.a(65535)
+  Protected N = Z80Asm::Assemble(SourceText, AsmBytes())
+
+  If N < 0
+    MessageRequester("Erro ao montar",
+                     "Linha " + Str(Z80Asm::GetAssembleErrorLine()) + ": " + Z80Asm::GetAssembleErrorText(),
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  If N = 0
+    MessageRequester("Montar",
+                     "Nada foi gerado (fonte vazio ou so rotulos/EQU/diretivas sem saida de bytes).",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bin"
+
+  Protected SavePath.s = SaveFileRequester("Salvar binario montado", Suggestion,
+                                           "Binario Z80 (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+  If SavePath = ""
+    ProcedureReturn
+  EndIf
+
+  Protected FileNum = CreateFile(#PB_Any, SavePath)
+  If Not FileNum
+    MessageRequester("Erro", "Nao foi possivel salvar o arquivo:" + Chr(10) + SavePath,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+  Protected *Buf = AllocateMemory(N)
+  Protected Idx
+  For Idx = 0 To N - 1
+    PokeB(*Buf + Idx, AsmBytes(Idx))
+  Next
+  WriteData(FileNum, *Buf, N)
+  CloseFile(FileNum)
+  FreeMemory(*Buf)
+
+  MessageRequester("Montado", Str(N) + " bytes salvos em:" + Chr(10) + SavePath,
+                   #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Rodar no openMSX: monta um disquete .dsk com o .dmx/.amx/.bmx
 ;- gerados e abre o openMSX ja com esse disco montado (menu "Dignified
 ;- -> tokenizado nativo...", quando "Abrir o openMSX e rodar o codigo
@@ -2356,7 +2385,7 @@ UsePNGImageDecoder()
 App_ShowSplash()
 
 InitKeywordMaps()
-InitZ80KeywordMaps()
+Z80Asm::InitKeywordMaps()
 EditorCfg_Load()
 EditorCfg_LoadCustomFonts()
 ApplyTheme()
@@ -2412,6 +2441,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
+    MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
@@ -2430,6 +2460,7 @@ AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Op
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_W, #Menu_CloseTab)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F5, #Menu_RunBasic)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_F5, #Menu_AssembleZ80)
 
 CanvasGadget(#TabBarGadget, 0, 0, WindowWidth(#MainWindow), #TabBar_Height)
 CanvasGadget(#RulerGadget, 0, #TabBar_Height, WindowWidth(#MainWindow), #Ruler_Height)
@@ -2537,6 +2568,9 @@ Repeat
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()
+
+        Case #Menu_AssembleZ80
+          AssembleZ80FromActiveTab()
 
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)

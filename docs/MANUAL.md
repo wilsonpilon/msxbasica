@@ -6,10 +6,10 @@
 > e [`BATOKEN-USER.md`](BATOKEN-USER.md). Para a especificação/arquitetura do projeto,
 > veja [`SPEC.md`](SPEC.md).
 >
-> Documento vivo — cresce conforme novas partes da IDE (assembler Z80, editores visuais,
-> etc.) forem ficando prontas. Hoje cobre o editor de texto, o gerenciador de disco, o
-> editor de sprites, o editor de alfabetos (Graphos III e Aquarela), o editor de som, o
-> editor de música, o editor de DRAW Screen 2, o sistema de projeto e o processo de build.
+> Documento vivo — cresce conforme novas partes da IDE (editores visuais, etc.) forem ficando
+> prontas. Hoje cobre o editor de texto, o gerenciador de disco, o editor de sprites, o editor
+> de alfabetos (Graphos III e Aquarela), o editor de som, o editor de música, o editor de DRAW
+> Screen 2, o assembler Z80, o sistema de projeto e o processo de build.
 
 ---
 
@@ -72,6 +72,11 @@
     - [Lista de comandos e mini buffers](#lista-de-comandos-e-mini-buffers)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-2)
     - [Barra de projeto](#barra-de-projeto-2)
+13. [Assembler Z80](#assembler-z80)
+    - [Aba Assembly (.asm)](#aba-assembly-asm)
+    - [Montar (Ctrl+F5)](#montar-ctrlf5)
+    - [O que já é suportado](#o-que-já-é-suportado)
+    - [O que ainda não é suportado](#o-que-ainda-não-é-suportado)
 
 ---
 
@@ -917,3 +922,63 @@ Mesma barra dos demais editores (sprites, alfabetos, som, música): número da t
 duplicar uma tela inteira). Diferente do editor de sprites/alfabetos, o que fica salvo é a **lista de
 comandos** (não uma imagem/framebuffer) — permitindo reabrir a tela depois e continuar editando,
 reordenando ou removendo comandos individuais.
+
+## Assembler Z80
+
+Assembler Z80 nativo, **compatível com M80/L80** (o Microsoft MACRO-80/LINK-80 clássico) — a
+especificação de comportamento é portada do [Nestor80](https://github.com/Konamiman/Nestor80)
+(Konamiman/Nestor Soriano), um assembler moderno 100% compatível com M80/L80. Detalhe técnico completo
+de como foi construído (decisões, testes, limitações) em
+[`docs/resumo-asm.md`](resumo-asm.md); este é o guia de uso.
+
+### Aba Assembly (.asm)
+
+**Arquivo → Novo Assembly** (`Ctrl+Shift+N`) abre uma aba de código Z80 assembly, com realce de
+sintaxe próprio (mnemônicos, registradores, condições de desvio, diretivas, rótulos, números em
+qualquer base, strings). Abrir um arquivo `.asm`/`.z80`/`.mac` já existente também entra automaticamente
+nesse modo. As caixas de diálogo de Abrir/Salvar já filtram/sugerem a extensão certa pra esse tipo de
+aba.
+
+### Montar (Ctrl+F5)
+
+Com uma aba `.asm` ativa, **Executar → Montar Assembly (.bin)...** (atalho `Ctrl+F5`) monta o código e
+pede onde salvar o binário resultante (`.bin`). Se houver um erro no código, uma mensagem mostra a
+**linha** e a **descrição do problema** em vez de travar ou dar um erro genérico.
+
+### O que já é suportado
+
+- **Todo o conjunto de instruções Z80 documentado**, incluindo os modos indexados `(IX+d)`/`(IY+d)` e
+  as variantes de bit/rotação indexadas, mais o subconjunto indocumentado de uso comum `IXH`/`IXL`/
+  `IYH`/`IYL` (os "meios registradores" de `IX`/`IY`).
+- **Rótulos** (`nome:`/`nome::`), **`EQU`/`DEFL`/`ASET`** (constantes — `EQU` não pode ser redefinida,
+  `DEFL`/`ASET` podem), **`ORG`** (define o endereço de carga), **`END`**.
+- **Diretivas de dados**: `DB`/`DEFB`/`DEFM` (bytes ou texto), `DW`/`DEFW` (palavras de 16 bits),
+  `DS`/`DEFS` (reserva um bloco, com valor de preenchimento opcional), `DC` (como `DB`, mas o último
+  byte marca fim de string com o bit mais alto ligado), `DZ`/`DEFZ` (como `DB`, mas com um `0` no
+  final).
+- **Condicionais**: `IF`/`IFT`/`IFE`/`IFF`/`IFDEF`/`IFNDEF`/`IF1`/`IF2`/`ELSE`/`ENDIF`.
+- **Macros com parâmetros**: `nome MACRO param1,param2` (o `:` depois do nome é opcional) ... corpo
+  ... `ENDM`, chamada como se fosse uma instrução (`nome arg1,arg2`), `EXITM` sai da expansão mais
+  cedo, `LOCAL rotulo1,rotulo2` (logo na primeira linha do corpo) garante que cada chamada da macro
+  gera rótulos internos únicos — sem isso, uma macro chamada duas vezes com um rótulo fixo dentro
+  colidiria consigo mesma.
+- **Expressões**: os operadores clássicos M80 (`+ - * / MOD SHR SHL AND OR XOR NOT HIGH LOW EQ NE LT
+  LE GT GE`, mais os sinônimos `NEQ`/`LTE`/`GTE`), parênteses, números em decimal/hexadecimal
+  (sufixo `H`, precisa começar com dígito — `0FFh`, não `FFh` — ou prefixo `0x`/`#`)/octal (`O`/`Q`)/
+  binário (`B`, ou prefixo `0b`/`%`), strings de 1-2 caracteres como valor numérico, e `$` para "o
+  endereço desta linha".
+
+### O que ainda não é suportado
+
+- **Saída relocável (`.REL`) e linker** — hoje "Montar" só gera binário absoluto de um único arquivo
+  (precisa de `ORG`). Linkar vários arquivos `.asm` montados separadamente, e gerar/consumir uma
+  biblioteca de rotinas (linkagem seletiva — só o que é usado entra no `.COM` final), é a próxima
+  etapa planejada (ver `docs/resumo-asm.md`, "Checklist Fase B").
+- **Integração com o sistema de projeto** — o texto-fonte `.asm` já é salvo dentro do `.msxproject`
+  (igual qualquer aba de texto), mas ainda não existe uma tabela dedicada pro binário montado, tag,
+  navegação, etc. (como sprites/alfabetos/sons/músicas/telas já têm).
+- **Carregar o resultado a partir do MSX-BASIC** — hoje o `.bin` gerado fica só no disco do PC; ainda
+  não existe um botão para colocar no disco `.dsk` (`BLOAD`) nem para gerar um listing `DATA`/`POKE`
+  em hexadecimal (como o botão "Gerar bytes crus" do editor de som).
+- `REPT`/`IRP`/`IRPC`/`IRPS` (macros de repetição), `MODULE`/rótulos locais, saída em Intel HEX,
+  arquivo de listagem `.LST`, R800/Z280 (só Z80 puro por enquanto).

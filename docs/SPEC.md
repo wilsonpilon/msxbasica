@@ -40,7 +40,7 @@ servir de especificação byte-a-byte ao port nativo:
 | # | Módulo | Esforço relativo | Status da spec |
 |---|--------|-------------------|-----------------|
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
-| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | Lado editor pronto (arquivo `.asm` + syntax highlight, 2026-07-16) — motor do assembler em si ainda não iniciado |
+| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | **Fase A completa (2026-07-24)** — motor `editor/Z80Asm.pbi` (opcodes/expressões/diretivas/condicionais/macros básicas), validado byte-a-byte contra o oráculo `N80.exe` (Nestor80), integrado ao menu (Executar → Montar Assembly). Detalhe em `docs/resumo-asm.md`. Fase B (REL + Linkstor80/Libstor80) ainda não iniciada, ver módulo 2b |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. **Editor de alfabetos Aquarela (.FNT) implementado (2026-07-23)** — `editor/AquarelaCharsetEditorGui.pbi`, ferramenta autocontida baseada em arquivo, sem integração com o sistema de projeto, ver seção 4b. **Editor de alfabetos Graphos III ganhou 13 efeitos de edição em lote (2026-07-23)** — desfazer/refazer, marcar tudo, espelhar/girar/apagar/estreitar/itálico/negrito/largo (+ variantes bold e largo-bold), ver seção 4c. Tile (além do charset/fonte 8×8) ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | **Implementado (2026-07-24)** — `editor/Screen2Synth.pbi` (motor)/`editor/Screen2EditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 5 |
@@ -88,19 +88,80 @@ servir de especificação byte-a-byte ao port nativo:
 
 ### 2. Assembler Z80
 - Dois passes: (1) tokeniza + resolve labels/símbolos + calcula endereços; (2) gera código de máquina.
-- Referência de arquitetura/opcodes: sjasmplus e z88dk (estudar só a arquitetura/tabela, não reaproveitar
-  código — evita problema de licença).
+- Referência de comportamento: **Nestor80** (Konamiman, github.com/Konamiman/Nestor80) — assembler C#
+  moderno, 100% compatível M80/L80, clonado como material de leitura em `nestor80/` (gitignored, mesmo
+  tratamento de `badig/` — não dependência de runtime, ver módulo 3). Decisão fechada com o usuário
+  2026-07-24: **portar 100% do comportamento do Nestor80** (não só estudar arquitetura genérica de
+  sjasmplus/z88dk como cogitado originalmente), incluindo eventualmente REL/linker/biblioteca
+  (Linkstor80/Libstor80-equivalentes, ver módulo 2b abaixo).
 - Integração com editor: bloco de assembly dentro do mesmo arquivo `.dmx`/`.bas` (marcador tipo
   `' ASM` ... `' ENDASM`) com highlighting dinâmico, ou abas separadas `.BAS`/`.ASM` referenciadas.
 - Saída: `.bin`/listagem hexa para uso com `BLOAD` ou rotina clássica de carga hexa em runtime.
 
-**Status (2026-07-16): lado editor implementado** (a decisão de arquitetura acima escolheu "abas
-separadas", não o marcador `' ASM`/`' ENDASM` embutido no mesmo arquivo). Menu **Arquivo → Novo
-Assembly** (`Ctrl+Shift+N`, ao lado de "Novo") cria uma aba `.asm` em vez de `.dmx`; o tipo de cada
-aba é rastreado em `Document\Mode` (`"DMX"` ou `"ASM"`, `editor/BadigEditor.pb`), detectado
-automaticamente pela extensão ao abrir um arquivo existente (`.asm`/`.z80`/`.mac` → `ASM`). Diálogos
-de Abrir/Salvar já filtram e sugerem a extensão certa por modo (`#File_Pattern_ASM`/
-`#File_Pattern_Open`).
+**Status (2026-07-24): motor implementado (Fase A) e integrado ao editor.** Detalhe completo do
+processo de implementação (decisões técnicas, bugs encontrados/corrigidos, gotchas de PureBasic) em
+**`docs/resumo-asm.md`** — este é só o resumo funcional. Spec de linguagem portada documentada em
+`docs/reference/nestor80-language.md`.
+
+- **Lado editor** (2026-07-16, sem mudança desde então): a decisão de arquitetura acima escolheu "abas
+  separadas", não o marcador `' ASM`/`' ENDASM` embutido no mesmo arquivo. Menu **Arquivo → Novo
+  Assembly** (`Ctrl+Shift+N`, ao lado de "Novo") cria uma aba `.asm` em vez de `.dmx`; o tipo de cada
+  aba é rastreado em `Document\Mode` (`"DMX"` ou `"ASM"`, `editor/BadigEditor.pb`), detectado
+  automaticamente pela extensão ao abrir um arquivo existente (`.asm`/`.z80`/`.mac` → `ASM`). Diálogos
+  de Abrir/Salvar já filtram e sugerem a extensão certa por modo (`#File_Pattern_ASM`/
+  `#File_Pattern_Open`).
+- **Motor** (`editor/Z80Asm.pbi`, `DeclareModule Z80Asm` — mesmo padrão de `ProjectDB.pbi`/
+  `MSXDisk.pbi`): avaliador de expressão completo (precedência idêntica ao Nestor80, conferida direto
+  no C# fonte), parser de linha (`nome:`/`nome::`/forma `EQU`/`DEFL`/`ASET`/`MACRO` sem `:`), tabela de
+  opcodes Z80 completa (documentados + subconjunto indocumentado comum `IXH`/`IXL`/`IYH`/`IYL`),
+  driver de 2 passes absoluto (`ORG`/rótulo/`EQU`/`DEFL`/`ASET`/`END`), diretivas de dados
+  (`DB`/`DW`/`DS`/`DC`/`DZ`), condicionais (`IF`/`IFT`/`IFE`/`IFF`/`IFDEF`/`IFNDEF`/`IF1`/`IF2`/`ELSE`/
+  `ENDIF`) e macros básicas (`MACRO`/`ENDM`/`EXITM`/`LOCAL`). `ASEG`/`CSEG`/`DSEG`/`COMMON`/`PUBLIC`/
+  `EXTRN`/etc. reconhecidas sintaticamente, sem efeito pleno ainda (só fazem sentido pra saída
+  relocável, módulo 2b). Fora de escopo desta fase: `REPT`/`IRP`/`IRPC`/`IRPS`, `MODULE`/labels
+  locais, saída Intel HEX, listagem `.LST`, R800/Z280.
+- **Validação**: `dotnet`/`N80.exe` (o próprio Nestor80 compilado localmente) serve de **oráculo de
+  teste byte-a-byte** durante todo o desenvolvimento — mesma técnica já usada pro tokenizador nativo
+  (módulo 11). `editor/tools/Z80AsmTestCli.pb` (59 testes unitários de vocabulário/expressão/parser de
+  linha + modo `--assemble <fonte> <saida.bin>` pra comparação binária direta) e dois arquivos de
+  regressão oficiais, **`sample/teste.asm`** (206 linhas, ~190 formas de instrução distintas — papel
+  equivalente a `sample/teste.dmx` pro Dignified) e **`sample/teste2_macros.asm`** (condicionais +
+  macro com `LOCAL`) — ambos **idênticos byte a byte** ao `N80.exe` real (394 e 21 bytes,
+  respectivamente).
+- **Integração**: menu **Executar → Montar Assembly (.bin)...** (`Ctrl+F5`), habilitado quando a aba
+  ativa está em modo `ASM` — monta e salva via `SaveFileRequester` (sugestão de nome = mesmo nome da
+  aba, extensão `.bin`), erro mostra linha + mensagem (`Z80Asm::GetAssembleErrorLine()`/
+  `GetAssembleErrorText()`).
+
+**Módulo 2b — Linkstor80/Libstor80 (linker + gerenciador de biblioteca), Fase B, ainda não iniciado**:
+pedido explícito do usuário 2026-07-24 — gerar uma biblioteca de rotinas montadas separadamente e, ao
+linkar contra ela, só os módulos realmente referenciados entram no `.COM` final (linkagem estática
+seletiva). Arquitetura planejada: `editor/Z80Link.pbi` (`DeclareModule Z80Link`, formato `.REL` +
+algoritmo de linkagem incl. busca `.REQUEST`/biblioteca) + `editor/Z80Lib.pbi` (`DeclareModule
+Z80Lib`, equivalente LB80/Libstor80 — criar/listar/adicionar/remover módulos `.REL` de um `.LIB`).
+`LK80.exe`/`LB80.exe` já compilados localmente como oráculo (mesma receita do `N80.exe`, ver
+`docs/resumo-asm.md`). Especificação de formato/algoritmo já documentada em
+`docs/reference/nestor80-rel-format.md` e `docs/reference/nestor80-linker.md`. Detalhe do checklist em
+`docs/resumo-asm.md`, seção "Checklist Fase B" — implementação em si ainda não começou.
+
+**Módulo 2c — integrações planejadas, nenhuma iniciada ainda**:
+- **Sistema de projeto** (módulo 13): hoje o assembler não grava nada no `.msxproject` — o texto-fonte
+  `.asm` já é salvo como `documents` (igual qualquer aba de texto, mecanismo genérico que já existe),
+  mas não há tabela dedicada pro binário montado nem metadado de "último `.bin` gerado", diferente de
+  sprites/alfabetos/sons/músicas/telas que têm sua própria tabela com número/tag/navegação. Fica pra
+  quando fizer sentido (provavelmente junto com a Fase B, quando existir a noção de "projeto montado" =
+  vários `.asm` linkados).
+- **Saída consumível por MSX-BASIC**: hoje "Montar" só produz um `.bin` solto no disco do PC. Dois
+  caminhos clássicos planejados pro MSX de verdade rodar esse código a partir de um programa BASIC:
+  (1) **`BLOAD`** do `.bin` direto (mais simples, já é o formato binário absoluto que o motor gera hoje
+    — só falta o fluxo de colocar o arquivo num `.dsk`/disco, reaproveitando `MSXDisk.pbi`, mesmo
+    mecanismo já usado por `RunOnOpenMSX()` pro fluxo Dignified);
+  (2) **listing `DATA`/`POKE` em hexadecimal** gerado automaticamente a partir do binário montado —
+    mesmo espírito do botão "Gerar bytes crus" que já existe no editor de som PSG (módulo 6,
+    `PsgGen_RawBytes`), mas para o binário do assembler inteiro, pensado pro caso de querer colar o
+    código Z80 dentro de um programa BASIC sem depender de carregar um arquivo à parte.
+  Nenhum dos dois caminhos está implementado ainda — "Montar" hoje só salva o `.bin` no sistema de
+  arquivos do PC via `SaveFileRequester`.
 
 Realce de sintaxe do modo `.asm` (`HighlightZ80Text()`) segue estritamente o vocabulário do
 **N80/Nestor80** (Konamiman, github.com/Konamiman/Nestor80 — assembler Z80/R800/Z280 compatível com
@@ -1192,7 +1253,20 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
 
 ## Próximos passos em aberto
 
-**Estado ao fim de 2026-07-24**: módulo 5 (editor gráfico SCREEN 2) implementado do zero nesta sessão —
+**Estado ao fim de 2026-07-24 (sessão do assembler Z80)**: módulo 2 (assembler Z80) saiu de "zero
+código de motor" pra **Fase A completa** — ver módulo 2 acima e `docs/resumo-asm.md` (documento de
+acompanhamento dedicado desta frente, criado nesta sessão, com o detalhe completo de decisões
+técnicas/bugs/gotchas de PureBasic encontrados). Resumo: avaliador de expressão, parser de linha,
+tabela de opcodes Z80 completa (documentados + `IXH`/`IXL`/`IYH`/`IYL` indocumentados comuns), driver
+de 2 passes absoluto, diretivas de dados, condicionais e macros básicas — tudo validado byte-a-byte
+contra o `N80.exe` real (Nestor80 compilado localmente, usado como oráculo de teste) via dois arquivos
+de regressão novos, `sample/teste.asm` e `sample/teste2_macros.asm`. Integrado ao editor via menu
+**Executar → Montar Assembly (.bin)...** (`Ctrl+F5`). Pedido do usuário durante a sessão: Linkstor80
+(linker) e Libstor80 (gerenciador de biblioteca, linkagem estática seletiva) também entram no escopo
+do módulo — ver módulo 2b e o checklist de Fase B em `docs/resumo-asm.md` (ainda não iniciada).
+Versão embutida no executável atualizada para **7.3.1**.
+
+**Estado ao fim de 2026-07-24 (sessão do editor gráfico)**: módulo 5 (editor gráfico SCREEN 2) implementado do zero nesta sessão —
 ver seção 5 acima para o detalhe completo (motor/color clash, 7 ferramentas, STEP/`LINE -(x,y)`, TEXTO
 com quadro elástico, persistência, geração de código, 69 casos de harness). Também nesta sessão:
 `editor/AquarelaCharsetEditorGui.pbi` ampliado de 32 para 46 caracteres editáveis (dígitos `2-9` e
@@ -1434,10 +1508,10 @@ claro/escuro, estilo de abas, fontes customizadas, caminho de instalação — m
 de instalação configurável e um botão de download para o Basic Dignified Suite (git clone ou zip,
 módulo 3f).
 
-**Próximo passo sugerido (ainda não decidido com o usuário)**: candidatos sem nenhum código de motor
-ainda: o assembler Z80 em si (módulo 2, o editor já aceita `.asm` mas não monta nada), editor char/tile
-(módulo 4 — a parte de sprite já está pronta, char continua com a lacuna de conteúdo original não
-recuperada), estender o sistema de projeto (módulo 13) para Basic/Assembly/demais tipos de conteúdo,
-ou aprofundar o módulo 12 (input simulado em runtime, detecção de erro com retorno à linha no editor —
-o cuidado já registrado sobre suporte a Windows incerto para a parte de detecção de erro continua
-valendo).
+**Próximo passo sugerido (ainda não decidido com o usuário)**: com o módulo 2 (assembler Z80) tendo
+saído da estaca zero, os candidatos que restam sem nenhum código de motor são: **Fase B do assembler**
+(módulo 2b — `.REL`/Linkstor80/Libstor80, ver `docs/resumo-asm.md`), editor char/tile (módulo 4 — a
+parte de sprite já está pronta, char continua com a lacuna de conteúdo original não recuperada),
+estender o sistema de projeto (módulo 13) para Basic/Assembly/demais tipos de conteúdo, ou aprofundar
+o módulo 12 (input simulado em runtime, detecção de erro com retorno à linha no editor — o cuidado já
+registrado sobre suporte a Windows incerto para a parte de detecção de erro continua valendo).

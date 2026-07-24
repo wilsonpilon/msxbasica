@@ -212,10 +212,26 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   recarregar.
 
   ![Editor de DRAW Screen 2 (Criar → Draw Screen 2...) com formas desenhadas, lista de comandos e código BASIC gerado](images/msxbasica-10.png)
+- **Assembler Z80 nativo** (`editor/Z80Asm.pbi`, menu **Executar → Montar Assembly (.bin)...**,
+  `Ctrl+F5`) — compatível com **M80/L80** (Microsoft MACRO-80/LINK-80), especificação de comportamento
+  portada do [**Nestor80**](https://github.com/Konamiman/Nestor80) (assembler C# moderno 100%
+  compatível M80/L80). Avaliador de expressão (RPN, precedência idêntica ao Nestor80/M80 —
+  `HIGH`/`LOW`/`NOT`/relacionais), tabela de opcodes Z80 completa (documentados + `IXH`/`IXL`/`IYH`/
+  `IYL` indocumentados comuns), driver de 2 passes, diretivas de dados (`DB`/`DW`/`DS`/`DC`/`DZ`),
+  condicionais (`IF`/`IFDEF`/`IF1`/`IF2`/etc.) e macros básicas (`MACRO`/`ENDM`/`EXITM`/`LOCAL`).
+  Validado **byte a byte** contra o próprio `N80.exe` (compilado localmente como oráculo de teste) —
+  `sample/teste.asm` e `sample/teste2_macros.asm` são a suíte de regressão oficial. Saída hoje é
+  binário absoluto (`.bin`); **planejado, ainda não implementado**: saída relocável `.REL` + linker
+  (Linkstor80-equivalente) + gerenciador de biblioteca (Libstor80-equivalente, linkagem estática
+  seletiva — só os módulos referenciados entram no `.COM` final), integração com o sistema de projeto
+  (`.msxproject`, mesmo padrão dos demais editores) e um caminho de saída para **MSX-BASIC** consumir o
+  código montado — via `BLOAD` do `.bin` ou via um listing de `DATA`/`POKE` em hexadecimal gerado
+  automaticamente (mesmo espírito do "Gerar bytes crus" já existente no editor de som PSG). Detalhe
+  completo do processo de implementação em [`docs/resumo-asm.md`](docs/resumo-asm.md).
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
-e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): motor do assembler Z80
-em si (o editor já edita `.asm` com syntax highlight, mas não monta nada ainda), editor de tile (além do
+e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): saída `.REL`/linker/
+biblioteca e integração de projeto/BASIC do assembler Z80 (ver bullet acima), editor de tile (além do
 charset/fonte 8×8), tracker, outros modos de tela além do SCREEN 2 (SCREEN 1/5/7/8) reaproveitando o
 mesmo motor gráfico, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em
 tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e
@@ -464,6 +480,25 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   `Structure`, não tipo básico); substituída por duas funções `.i` com `ProcedureReturn`, mesmo padrão
   de out-param por `Global` já usado no resto do projeto. Versão embutida no executável atualizada para
   `7.1.1`.
+- **2026-07-24 (mesmo dia, sessão seguinte)** — **Assembler Z80 nativo** (módulo 2) saiu do zero pra
+  um motor completo: `editor/Z80Asm.pbi` (`DeclareModule Z80Asm`) com avaliador de expressão (RPN,
+  precedência idêntica ao Nestor80/M80 — `HIGH`/`LOW`/`NOT`/operadores relacionais), parser de linha,
+  tabela de opcodes Z80 inteira (documentados + `IXH`/`IXL`/`IYH`/`IYL` indocumentados comuns), driver
+  de 2 passes (saída absoluta), diretivas de dados (`DB`/`DW`/`DS`/`DC`/`DZ`), condicionais
+  (`IF`/`IFDEF`/`IF1`/`IF2`/etc.) e macros básicas (`MACRO`/`ENDM`/`EXITM`/`LOCAL`). Especificação de
+  comportamento portada do **Nestor80** (Konamiman, assembler C# 100% compatível M80/L80) — clonado
+  localmente só como referência de leitura (`nestor80/`, gitignored, mesmo tratamento de `badig/`).
+  Como o `dotnet` está disponível no ambiente, o próprio `N80.exe` (Nestor80 compilado localmente)
+  virou **oráculo de teste byte-a-byte** durante todo o desenvolvimento — mesma técnica já usada pro
+  tokenizador nativo. Dois arquivos de regressão novos, `sample/teste.asm` (~190 formas de instrução)
+  e `sample/teste2_macros.asm` (condicionais + macro com `LOCAL`), montam **idênticos byte a byte** ao
+  `N80.exe` real. Integrado ao editor via **Executar → Montar Assembly (.bin)...** (`Ctrl+F5`).
+  Documentação de acompanhamento dedicada em `docs/resumo-asm.md` (decisões técnicas, bugs
+  encontrados, gotchas de PureBasic — inclusive um achado real: `Structure` só atravessa fronteira de
+  `Module` se declarada dentro do próprio `DeclareModule`, e não pode ser passada por valor como
+  parâmetro de `Procedure`, só por ponteiro). Pedido do usuário durante a sessão: Linkstor80 (linker)
+  e Libstor80 (biblioteca com linkagem estática seletiva) também entram no escopo do módulo — Fase B,
+  ainda não iniciada. Versão embutida no executável atualizada para `7.3.1`.
 
 ## Ferramentas e ambiente
 
@@ -490,6 +525,12 @@ Este projeto não existiria sem o trabalho de:
 - **[Amaury Carvalho](https://github.com/amaurycarvalho)**, autor do
   [**msxbas2rom**](https://github.com/amaurycarvalho/msxbas2rom) — compilador MSX BASIC → ROM que
   inspira o back-end de geração de ROM planejado para esta IDE.
+- **Nestor Soriano ([Konamiman](https://github.com/Konamiman))**, autor do
+  [**Nestor80**](https://github.com/Konamiman/Nestor80) (assembler/linker/gerenciador de biblioteca
+  Z80 100% compatível com o M80/L80 da Microsoft) — especificação de comportamento e oráculo de teste
+  (`N80.exe`/`LK80.exe`/`LB80.exe`, compilados localmente a partir do código-fonte C# aberto) para o
+  assembler Z80 nativo desta IDE, tanto o vocabulário de syntax highlight quanto o motor de montagem em
+  si (tabela de opcodes, avaliador de expressão, formato `.REL`).
 
 ## Licença
 
