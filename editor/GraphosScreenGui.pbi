@@ -14,40 +14,165 @@
 ;  mesmo espirito do editor de sprites (SpriteEditorGui.pbi), em vez de
 ;  teclas de funcao.
 ;
-;  ESTE PRIMEIRO CORTE cobre so "a tela que representa a SCREEN 2" pedida
-;  explicitamente pelo usuario como ponto de partida - a limitacao de
-;  hardware de 2 cores por faixa de 8 pixels (color clash) precisa ficar
-;  IDENTICA ao MSX de verdade. Em vez de reescrever esse modelo, reaproveita
-;  na integra o motor ja existente e validado por 69 casos de teste
-;  (editor/Screen2Synth.pbi: Scr2_SetPixel/GetPixelColor/ClearFramebuffer -
-;  mesmo PatternBit/RowFG/RowBG do editor "Criar -> Draw Screen 2...") e os
-;  helpers de desenho de canvas/paleta ja escritos em
-;  editor/Screen2EditorGui.pbi (Scr2Ed_RedrawCanvas/RedrawMiniPalette) -
-;  nenhum dos dois precisou de nenhuma mudanca. Ferramentas cobertas nesta
-;  fase: TRACO (Lapis = liga com INK, Borracha = apaga com PAPER, ambas com
-;  arrastar continuo - mesmo padrao de SpriteEd_ApplyTool) e LIMPA TELA (menu
-;  TELA do original). O restante do menu DESENHO (BLOCO/LINHA/RETANGULO/
-;  RAIO/CIRCULO/PINTURA/SPRAY/FILL), TEXTO, AJUSTE, MISCELANEA (ZOOM/SHAPE/
-;  CORTE/GRID), persistencia no projeto e os formatos de arquivo SCR/LAY/
-;  VTC+ATC do Graphos III ficam para os proximos cortes.
+;  FASE 1 cobriu so "a tela que representa a SCREEN 2": canvas com color
+;  clash identico ao MSX (motor editor/Screen2Synth.pbi, 69 casos de teste),
+;  paleta INK/PAPER, TRACO (Lapis/Borracha) e LIMPA TELA.
+;
+;  FASE 2 (esta sessao) completa o resto do menu DESENHO (F1) do Graphos III
+;  original: BLOCO, LINHA, RETANGULO, RAIO, CIRCULO, PINTURA, SPRAY e FILL.
+;  Nenhuma dessas operacoes precisou de motor novo - Scr2_DrawLine (reta),
+;  Scr2_LineStatement (BoxMode=1, contorno de retangulo) e Scr2_DrawCircle ja
+;  existiam prontos em Screen2Synth.pbi (usados pelo editor "Draw Screen
+;  2..."), assim como Scr2_FloodFill (FILL). So PINTURA (altera so a cor de
+;  FUNDO da faixa, sem tocar no bit do pixel nem na cor de FRENTE) e SPRAY
+;  (borrifo aleatorio) sao logica nova, pequena, escrita abaixo.
+;
+;  Igual ao Graphos III original ("os atributos de todas as posicoes
+;  alteradas recebem a cor de FRENTE selecionada, com excecao de PINTURA,
+;  que so mexe no FUNDO"): TRACO/BLOCO/LINHA/RETANGULO/RAIO/CIRCULO/SPRAY/
+;  FILL desenham com INK; so PINTURA usa PAPER. E, tambem fiel ao original
+;  ("INSERT/DELETE funciona com TRACO, BLOCO, SPRAY e todo o menu de
+;  TEXTO"), so essas tres ferramentas (mais o TEXTO, ainda nao implementado)
+;  respeitam o alternador Lapis(INS)/Borracha(DEL) - LINHA/RETANGULO/RAIO/
+;  CIRCULO/FILL sempre desenham (nunca apagam) e PINTURA sempre pinta com
+;  PAPER, entao o alternador fica desabilitado quando uma dessas esta ativa.
+;
+;  LINHA/RETANGULO/RAIO/CIRCULO seguem o mesmo padrao de "ancora + previa
+;  elastica + segundo clique confirma" do editor "Draw Screen 2..."
+;  (reaproveita Scr2Ed_DrawLinePreview/DrawCirclePreview de
+;  Screen2EditorGui.pbi, sem duplicar o desenho da previa), mas com uma
+;  diferenca de semantica ditada pelo manual original: em LINHA o ponto
+;  final vira automaticamente o ponto inicial do proximo segmento (encadeia,
+;  poligono aberto); em RETANGULO/RAIO/CIRCULO a ancora (vertice fixo/origem
+;  do raio/centro) permanece FIXA entre desenhos - o usuario clica varias
+;  vezes e cada clique produz uma nova forma a partir da MESMA ancora, ate
+;  cancelar com o botao direito (equivalente ao ESC do original) ou trocar
+;  de ferramenta.
+;
+;  Deliberadamente FORA desta fase (proximos cortes): menu TEXTO (F2 -
+;  NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO usando um alfabeto do banco);
+;  menu TELA (F3 - INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE, IMPRIME TELA); menu
+;  AJUSTE (F4 - SCROLL/ROTACAO inteiro e 8x8); menu MISCELANEA (F5 - ZOOM,
+;  SHAPE, CORTE, GRID) e CRIA/ARQUIVA/RECUPERA SHAPES; os formatos nativos
+;  DISPLAY (.SCR), LAYOUT (.LAY) e COMPAC (.VTC+.ATC); integracao com o
+;  sistema de projeto (ProjectDB.pbi).
 ; ------------------------------------------------------------
 ;
 
 Enumeration GraphosScrTool
-  #GraphosScrTool_Pencil
-  #GraphosScrTool_Eraser
+  #GraphosScrTool_Traco
+  #GraphosScrTool_Bloco
+  #GraphosScrTool_Linha
+  #GraphosScrTool_Retangulo
+  #GraphosScrTool_Raio
+  #GraphosScrTool_Circulo
+  #GraphosScrTool_Pintura
+  #GraphosScrTool_Spray
+  #GraphosScrTool_Fill
 EndEnumeration
 
-; TRACO do Graphos III: Lapis = INS (seta o pixel com a cor de INK, ver
-; Scr2_SetPixel TurnOn=#True); Borracha = DEL (reseta o pixel, gravando a
-; cor de PAPER na faixa, ver Scr2_SetPixel TurnOn=#False) - mesma semantica
-; do PSET/PRESET ja usados por Scr2EditorGui.pbi.
-Procedure GraphosScr_ApplyTool(Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2), X.i, Y.i, ToolMode.i, InkColor.i, PaperColor.i)
+; Alternador INS/DEL do Graphos III original (teclas INSERT/DELETE) -
+; controla se TRACO/BLOCO/SPRAY setam (Lapis, com INK) ou resetam
+; (Borracha, com PAPER) os pixels alterados.
+Enumeration GraphosPenMode
+  #GraphosPenMode_Insert
+  #GraphosPenMode_Delete
+EndEnumeration
+
+; Tamanho valido do cursor da ferramenta BLOCO (campos de texto livre, sem
+; SpinGadget nesta base de codigo - validado na hora do uso).
+Procedure.i GraphosScr_ClampBlockSize(V.i)
+  If V < 1
+    ProcedureReturn 1
+  ElseIf V > 64
+    ProcedureReturn 64
+  Else
+    ProcedureReturn V
+  EndIf
+EndProcedure
+
+; Ferramentas que respeitam o alternador Lapis/Borracha - as demais
+; (LINHA/RETANGULO/RAIO/CIRCULO/FILL sempre com INK, PINTURA sempre com
+; PAPER) ignoram PenMode.
+Procedure.b GraphosScr_ToolUsesPenMode(ToolMode.i)
+  ProcedureReturn Bool(ToolMode = #GraphosScrTool_Traco Or ToolMode = #GraphosScrTool_Bloco Or ToolMode = #GraphosScrTool_Spray)
+EndProcedure
+
+; BLOCO do Graphos III original: TRACO com "altura e largura de cursor"
+; ajustaveis - aqui um retangulo BlockW x BlockH de pixels centrado no ponto
+; do cursor, cada pixel setado/resetado exatamente como TRACO (mesmo
+; PenMode). Scr2_SetPixel ja faz o clip silencioso fora da tela.
+Procedure GraphosScr_ApplyBlock(Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2), CenterX.i, CenterY.i, BlockW.i, BlockH.i, PenMode.i, InkColor.i, PaperColor.i)
+  Protected StartX = CenterX - (BlockW / 2)
+  Protected StartY = CenterY - (BlockH / 2)
+  Protected X, Y
+  For Y = StartY To StartY + BlockH - 1
+    For X = StartX To StartX + BlockW - 1
+      If PenMode = #GraphosPenMode_Insert
+        Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), X, Y, InkColor, #True)
+      Else
+        Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), X, Y, PaperColor, #False)
+      EndIf
+    Next
+  Next
+EndProcedure
+
+; PINTURA do Graphos III original: "altera a cor de fundo dos pontos
+; indicados pelo cursor... sem alterar a cor de frente do desenho" - so
+; grava RowBG da faixa de 8 pixels sob o cursor, nunca mexe em PatternBit
+; nem em RowFG (diferente de Scr2_SetPixel, que sempre acende/apaga o bit).
+Procedure GraphosScr_PaintBackground(Array RowBG.a(2), X.i, Y.i, PaperColor.i)
+  If X < 0 Or X >= #Scr2_Width Or Y < 0 Or Y >= #Scr2_Height
+    ProcedureReturn
+  EndIf
+  RowBG(Y, X / 8) = PaperColor & $F
+EndProcedure
+
+; SPRAY do Graphos III original: "imita o resultado de uma pintura com
+; spray, padrao aleatorio, tende a formar um borrao compacto caso nao haja
+; deslocamento do cursor" - a cada chamada (clique ou passo de arraste),
+; borrifa alguns pixels em posicoes aleatorias dentro de um raio quadrado
+; ao redor do cursor, respeitando o mesmo PenMode de TRACO/BLOCO.
+#GraphosScr_SprayRadius = 5
+#GraphosScr_SprayDabs   = 6
+
+Procedure GraphosScr_ApplySpray(Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2), CenterX.i, CenterY.i, PenMode.i, InkColor.i, PaperColor.i)
+  Protected i, PX, PY
+  For i = 1 To #GraphosScr_SprayDabs
+    PX = CenterX + Random(#GraphosScr_SprayRadius * 2) - #GraphosScr_SprayRadius
+    PY = CenterY + Random(#GraphosScr_SprayRadius * 2) - #GraphosScr_SprayRadius
+    If PenMode = #GraphosPenMode_Insert
+      Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), PX, PY, InkColor, #True)
+    Else
+      Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), PX, PY, PaperColor, #False)
+    EndIf
+  Next
+EndProcedure
+
+; TRACO/BLOCO/PINTURA/SPRAY sao "ferramentas de arraste" - aplicadas tanto
+; no clique quanto, continuamente, em cada novo pixel visitado durante o
+; arraste (mesmo padrao de SpriteEd_ApplyTool do editor de sprites).
+; LINHA/RETANGULO/RAIO/CIRCULO/FILL sao "de clique unico" e ficam fora
+; daqui, tratadas direto no laco de eventos (precisam de ancora/previa ou
+; disparam uma unica vez).
+Procedure GraphosScr_ApplyDragTool(Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2), X.i, Y.i, ToolMode.i, PenMode.i, InkColor.i, PaperColor.i, BlockW.i, BlockH.i)
   Select ToolMode
-    Case #GraphosScrTool_Pencil
-      Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), X, Y, InkColor, #True)
-    Case #GraphosScrTool_Eraser
-      Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), X, Y, PaperColor, #False)
+    Case #GraphosScrTool_Traco
+      If PenMode = #GraphosPenMode_Insert
+        Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), X, Y, InkColor, #True)
+      Else
+        Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), X, Y, PaperColor, #False)
+      EndIf
+
+    Case #GraphosScrTool_Bloco
+      GraphosScr_ApplyBlock(PatternBit(), RowFG(), RowBG(), X, Y, BlockW, BlockH, PenMode, InkColor, PaperColor)
+
+    Case #GraphosScrTool_Pintura
+      GraphosScr_PaintBackground(RowBG(), X, Y, PaperColor)
+
+    Case #GraphosScrTool_Spray
+      GraphosScr_ApplySpray(PatternBit(), RowFG(), RowBG(), X, Y, PenMode, InkColor, PaperColor)
+
   EndSelect
 EndProcedure
 
@@ -68,14 +193,129 @@ Procedure GraphosScr_ClearWithColors(Array PatternBit.a(2), Array RowFG.a(2), Ar
   Next
 EndProcedure
 
+; --- Icones novos (fase 2) - mesmo estilo monocromatico/24bpp dos icones ja
+; usados pelo editor de sprites (SpriteEditorGui.pbi), so que especificos
+; de operacoes que nao existem em nenhum outro editor desta IDE. BLOCO,
+; LINHA, RETANGULO, CIRCULO e FILL reaproveitam icones ja existentes do
+; editor de sprites (Brush/LineTool/RectOutline/EllipseOutline/Fill) -
+; encaixam conceitualmente sem precisar de desenho novo.
+
+; Icone do botao "Traco": um unico pixel ampliado dentro de uma moldura -
+; simboliza a edicao pixel a pixel (em oposicao ao BLOCO, que mexe em varios
+; de uma vez).
+Procedure GraphosScr_CreatePixelIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(2, 2, Size - 4, Size - 4, RGB(170, 170, 170))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(Size / 2 - 3, Size / 2 - 3, 6, 6, RGB(20, 20, 20))
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; Icone do botao "Raio": varios segmentos de reta partindo de uma unica
+; origem fixa (bolinha azul), lembrando o leque de linhas que a operacao RAIO
+; traca a partir do ponto marcado como referencia.
+Procedure GraphosScr_CreateRayIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Protected OX = 3, OY = Size - 4
+    LineXY(OX, OY, Size - 4, 3, RGB(20, 20, 20))
+    LineXY(OX, OY, Size - 3, Size / 2, RGB(20, 20, 20))
+    LineXY(OX, OY, Size / 2, 3, RGB(20, 20, 20))
+    Circle(OX, OY, 3, RGB(30, 110, 220))
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; Icone do botao "Pintura": quadrado dividido - metade de cima (o "desenho"/
+; tinta) fica intocada, metade de baixo (o "fundo") aparece recolorida de
+; laranja, comunicando que so o FUNDO muda.
+Procedure GraphosScr_CreatePaintIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    LineXY(3, 4, Size - 4, 4, RGB(20, 20, 20))
+    LineXY(3, 8, Size - 7, 8, RGB(20, 20, 20))
+    Box(2, Size / 2, Size - 4, Size / 2 - 2, RGB(235, 150, 40))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(2, Size / 2, Size - 4, Size / 2 - 2, RGB(150, 90, 20))
+    DrawingMode(#PB_2DDrawing_Default)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; Icone do botao "Spray": nuvem de pontinhos, lembrando o borrifo aleatorio
+; que a operacao produz (posicoes fixas no icone - so o desenho de dentro da
+; ferramenta e' aleatorio de verdade).
+Procedure GraphosScr_CreateSprayIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Circle(4, Size - 4, 1, RGB(30, 130, 200))
+    Circle(8, Size - 7, 1, RGB(30, 130, 200))
+    Circle(6, Size - 11, 1, RGB(30, 130, 200))
+    Circle(11, Size - 3, 1, RGB(30, 130, 200))
+    Circle(13, Size - 9, 1, RGB(30, 130, 200))
+    Circle(16, Size - 5, 1, RGB(30, 130, 200))
+    Circle(9, Size - 14, 1, RGB(30, 130, 200))
+    Circle(17, Size - 12, 1, RGB(30, 130, 200))
+    Circle(2, Size - 9, 1, RGB(30, 130, 200))
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
 Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   Protected Zoom = 2
   Protected CanvasW = #Scr2_Width * Zoom, CanvasH = #Scr2_Height * Zoom
   Protected CanvasX = 15, CanvasY = 50
   Protected RightX = CanvasX + CanvasW + 20
   Protected RightW = 160
+
+  ; --- Layout da coluna direita pre-calculado (precisa existir antes do
+  ; OpenWindow pra dimensionar a janela) - paleta INK/PAPER (fase 1),
+  ; ferramentas de DESENHO em 3 linhas de 3 botoes (fase 2), alternador
+  ; Lapis/Borracha, campos de tamanho do BLOCO, Limpar tela e status.
+  Protected PaletteSize = #Scr2Ed_PaletteSize
+  Protected PaperY = CanvasY + 18 + PaletteSize + 14
+
+  Protected ToolsLabelY = PaperY + 18 + PaletteSize + 16
+  Protected ToolsRow1Y = ToolsLabelY + 18
+  Protected ToolsRow2Y = ToolsRow1Y + 36
+  Protected ToolsRow3Y = ToolsRow2Y + 36
+  Protected ToolsBottom = ToolsRow3Y + 30
+
+  Protected PenLabelY = ToolsBottom + 16
+  Protected PenY = PenLabelY + 18
+  Protected PenBottom = PenY + 30
+
+  Protected BlockLabelY = PenBottom + 16
+  Protected BlockFieldY = BlockLabelY + 18
+  Protected BlockBottom = BlockFieldY + 22
+
+  Protected ClearY = BlockBottom + 16
+  Protected ClearBottom = ClearY + 28
+
+  Protected StatusY = ClearBottom + 14
+  Protected StatusH = 100
+  Protected StatusBottom = StatusY + StatusH
+
   Protected WinW = RightX + RightW + 15
   Protected WinH = CanvasY + CanvasH + 55
+  If StatusBottom + 20 > WinH
+    WinH = StatusBottom + 20
+  EndIf
 
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Graphos III - Tela (SCREEN 2)",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
@@ -91,32 +331,87 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
 
   ; --- Paleta INK/PAPER (mesma paleta MSX1 e mesmo desenho de swatch ja
   ; usados por "Criar -> Draw Screen 2...", reaproveitados sem mudanca) ---
-  Protected PaletteSize = #Scr2Ed_PaletteSize
   TextGadget(#PB_Any, RightX, CanvasY, RightW, 18, "Tinta (INK):")
   Protected G_PaletteInk = CanvasGadget(#PB_Any, RightX, CanvasY + 18, PaletteSize, PaletteSize)
-  Protected PaperY = CanvasY + 18 + PaletteSize + 14
   TextGadget(#PB_Any, RightX, PaperY, RightW, 18, "Fundo (PAPER):")
   Protected G_PalettePaper = CanvasGadget(#PB_Any, RightX, PaperY + 18, PaletteSize, PaletteSize)
 
-  ; --- Ferramentas (TRACO do menu DESENHO/F1 - Lapis/Borracha, mesmos
-  ; icones/toggle do editor de sprites) ---
-  Protected ToolsY = PaperY + 18 + PaletteSize + 16
-  Protected PencilIcon = SpriteEd_CreatePencilIcon(22)
-  Protected G_Pencil = ButtonImageGadget(#PB_Any, RightX, ToolsY, 34, 30, ImageID(PencilIcon), #PB_Button_Toggle)
-  GadgetToolTip(G_Pencil, "Lapis (TRACO/INS): liga o pixel com a cor de Tinta - arraste pra riscar")
-  Protected EraserIcon = SpriteEd_CreateEraserIcon(22)
-  Protected G_Eraser = ButtonImageGadget(#PB_Any, RightX + 34 + 6, ToolsY, 34, 30, ImageID(EraserIcon), #PB_Button_Toggle)
-  GadgetToolTip(G_Eraser, "Borracha (TRACO/DEL): apaga o pixel usando a cor de Fundo - arraste pra apagar")
-  Dim ToolGadgets.i(1)
-  ToolGadgets(0) = G_Pencil
-  ToolGadgets(1) = G_Eraser
+  ; --- Ferramentas do menu DESENHO (F1): TRACO (fase 1) + BLOCO/LINHA/
+  ; RETANGULO/RAIO/CIRCULO/PINTURA/SPRAY/FILL (fase 2), 3 por linha ---
+  TextGadget(#PB_Any, RightX, ToolsLabelY, RightW, 16, "Ferramenta (DESENHO):")
 
-  Protected ClearY = ToolsY + 30 + 16
+  Protected TracoIcon = GraphosScr_CreatePixelIcon(22)
+  Protected G_ToolTraco = ButtonImageGadget(#PB_Any, RightX, ToolsRow1Y, 34, 30, ImageID(TracoIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolTraco, "TRACO: liga/apaga um pixel por vez - arraste pra riscar")
+
+  Protected BlocoIcon = SpriteEd_CreateBrushIcon(22)
+  Protected G_ToolBloco = ButtonImageGadget(#PB_Any, RightX + 40, ToolsRow1Y, 34, 30, ImageID(BlocoIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolBloco, "BLOCO: como o TRACO, mas altera um bloco Largura x Altura de pixels de uma vez")
+
+  Protected LinhaIcon = SpriteEd_CreateLineToolIcon(22)
+  Protected G_ToolLinha = ButtonImageGadget(#PB_Any, RightX + 80, ToolsRow1Y, 34, 30, ImageID(LinhaIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolLinha, "LINHA: marque o ponto inicial e o final - o final vira o inicio do proximo segmento")
+
+  Protected RetanguloIcon = SpriteEd_CreateRectOutlineIcon(22)
+  Protected G_ToolRetangulo = ButtonImageGadget(#PB_Any, RightX, ToolsRow2Y, 34, 30, ImageID(RetanguloIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolRetangulo, "RETANGULO: marque um vertice fixo e depois o vertice oposto - clique direito cancela")
+
+  Protected RaioIcon = GraphosScr_CreateRayIcon(22)
+  Protected G_ToolRaio = ButtonImageGadget(#PB_Any, RightX + 40, ToolsRow2Y, 34, 30, ImageID(RaioIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolRaio, "RAIO: marque a origem fixa e depois cada ponto final - clique direito cancela")
+
+  Protected CirculoIcon = SpriteEd_CreateEllipseOutlineIcon(22)
+  Protected G_ToolCirculo = ButtonImageGadget(#PB_Any, RightX + 80, ToolsRow2Y, 34, 30, ImageID(CirculoIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolCirculo, "CIRCULO: marque o centro fixo e depois um ponto por onde o circulo deve passar")
+
+  Protected PinturaIcon = GraphosScr_CreatePaintIcon(22)
+  Protected G_ToolPintura = ButtonImageGadget(#PB_Any, RightX, ToolsRow3Y, 34, 30, ImageID(PinturaIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolPintura, "PINTURA: muda so a cor de Fundo sob o cursor, sem alterar o desenho (Tinta)")
+
+  Protected SprayIcon = GraphosScr_CreateSprayIcon(22)
+  Protected G_ToolSpray = ButtonImageGadget(#PB_Any, RightX + 40, ToolsRow3Y, 34, 30, ImageID(SprayIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolSpray, "SPRAY: borrifo aleatorio de pixels ao redor do cursor")
+
+  Protected FillIcon = SpriteEd_CreateFillIcon(22)
+  Protected G_ToolFill = ButtonImageGadget(#PB_Any, RightX + 80, ToolsRow3Y, 34, 30, ImageID(FillIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_ToolFill, "FILL: preenche com Tinta a area conectada ao ponto clicado")
+
+  Dim ToolGadgets.i(8)
+  ToolGadgets(0) = G_ToolTraco
+  ToolGadgets(1) = G_ToolBloco
+  ToolGadgets(2) = G_ToolLinha
+  ToolGadgets(3) = G_ToolRetangulo
+  ToolGadgets(4) = G_ToolRaio
+  ToolGadgets(5) = G_ToolCirculo
+  ToolGadgets(6) = G_ToolPintura
+  ToolGadgets(7) = G_ToolSpray
+  ToolGadgets(8) = G_ToolFill
+
+  ; --- Alternador Lapis(INS)/Borracha(DEL) - so importa pra TRACO/BLOCO/
+  ; SPRAY (ver GraphosScr_ToolUsesPenMode); fica desabilitado nas demais ---
+  TextGadget(#PB_Any, RightX, PenLabelY, RightW, 16, "Modo (INS/DEL):")
+  Protected PencilIcon = SpriteEd_CreatePencilIcon(22)
+  Protected G_Pencil = ButtonImageGadget(#PB_Any, RightX, PenY, 34, 30, ImageID(PencilIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_Pencil, "Lapis (INSERT): TRACO/BLOCO/SPRAY setam pixels com a cor de Tinta")
+  Protected EraserIcon = SpriteEd_CreateEraserIcon(22)
+  Protected G_Eraser = ButtonImageGadget(#PB_Any, RightX + 40, PenY, 34, 30, ImageID(EraserIcon), #PB_Button_Toggle)
+  GadgetToolTip(G_Eraser, "Borracha (DELETE): TRACO/BLOCO/SPRAY apagam pixels usando a cor de Fundo")
+  Dim PenGadgets.i(1)
+  PenGadgets(0) = G_Pencil
+  PenGadgets(1) = G_Eraser
+
+  ; --- Tamanho do cursor da ferramenta BLOCO ---
+  TextGadget(#PB_Any, RightX, BlockLabelY, RightW, 16, "Bloco - Largura x Altura:")
+  Protected G_BlockW = StringGadget(#PB_Any, RightX, BlockFieldY, 45, 22, "2")
+  TextGadget(#PB_Any, RightX + 48, BlockFieldY + 3, 12, 16, "x")
+  Protected G_BlockH = StringGadget(#PB_Any, RightX + 62, BlockFieldY, 45, 22, "2")
+  GadgetToolTip(G_BlockW, "Largura do bloco em pixels (1-64)")
+  GadgetToolTip(G_BlockH, "Altura do bloco em pixels (1-64)")
+
   Protected G_ClearScreen = ButtonGadget(#PB_Any, RightX, ClearY, RightW, 28, "Limpar tela")
   GadgetToolTip(G_ClearScreen, "LIMPA TELA (menu TELA): apaga tudo com as cores Tinta/Fundo atuais")
 
-  Protected StatusY = ClearY + 28 + 14
-  Protected G_Status = TextGadget(#PB_Any, RightX, StatusY, RightW, 90, "")
+  Protected G_Status = TextGadget(#PB_Any, RightX, StatusY, RightW, StatusH, "")
 
   Protected G_Close = ButtonGadget(#PB_Any, CanvasX, CanvasY + CanvasH + 12, 100, 30, "Fechar")
 
@@ -132,16 +427,26 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
 
   Protected InkColor.i = #Scr2_DefaultFG
   Protected PaperColor.i = #Scr2_DefaultBG
-  Protected ToolMode.i = #GraphosScrTool_Pencil
+  Protected ToolMode.i = #GraphosScrTool_Traco
+  Protected PenMode.i = #GraphosPenMode_Insert
   Protected LastPaintX.i = -1, LastPaintY.i = -1
+
+  ; Ancora das ferramentas de 2 cliques (LINHA/RETANGULO/RAIO/CIRCULO) -
+  ; PendingActive marca que o 1o ponto ja foi marcado e a previa elastica
+  ; deve seguir o mouse ate o 2o clique (ou o cancelamento via botao direito).
+  Protected PendingActive.b = #False
+  Protected AnchorX.i, AnchorY.i
 
   Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
   Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkColor, Palette())
   Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperColor, Palette())
+  SetGadgetState(G_ToolTraco, #True)
   SetGadgetState(G_Pencil, #True)
 
   Protected Event, Quit = #False
   Protected MouseX, MouseY, PX, PY, Idx
+  Protected DX.f, DY.f, Radius.i
+  Protected BW.i, BH.i
   Repeat
     Event = WaitWindowEvent()
     Select Event
@@ -174,18 +479,40 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
               EndIf
             EndIf
 
+          Case G_ToolTraco, G_ToolBloco, G_ToolLinha, G_ToolRetangulo, G_ToolRaio, G_ToolCirculo, G_ToolPintura, G_ToolSpray, G_ToolFill
+            Select EventGadget()
+              Case G_ToolTraco     : ToolMode = #GraphosScrTool_Traco
+              Case G_ToolBloco     : ToolMode = #GraphosScrTool_Bloco
+              Case G_ToolLinha     : ToolMode = #GraphosScrTool_Linha
+              Case G_ToolRetangulo : ToolMode = #GraphosScrTool_Retangulo
+              Case G_ToolRaio      : ToolMode = #GraphosScrTool_Raio
+              Case G_ToolCirculo   : ToolMode = #GraphosScrTool_Circulo
+              Case G_ToolPintura   : ToolMode = #GraphosScrTool_Pintura
+              Case G_ToolSpray     : ToolMode = #GraphosScrTool_Spray
+              Case G_ToolFill      : ToolMode = #GraphosScrTool_Fill
+            EndSelect
+            SpriteEd_UnpressOtherTools(ToolGadgets(), EventGadget())
+            SetGadgetState(EventGadget(), #True)
+            DisableGadget(G_Pencil, Bool(Not GraphosScr_ToolUsesPenMode(ToolMode)))
+            DisableGadget(G_Eraser, Bool(Not GraphosScr_ToolUsesPenMode(ToolMode)))
+            If PendingActive
+              PendingActive = #False
+              Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+            EndIf
+
           Case G_Pencil
-            ToolMode = #GraphosScrTool_Pencil
-            SpriteEd_UnpressOtherTools(ToolGadgets(), G_Pencil)
+            PenMode = #GraphosPenMode_Insert
+            SpriteEd_UnpressOtherTools(PenGadgets(), G_Pencil)
             SetGadgetState(G_Pencil, #True)
 
           Case G_Eraser
-            ToolMode = #GraphosScrTool_Eraser
-            SpriteEd_UnpressOtherTools(ToolGadgets(), G_Eraser)
+            PenMode = #GraphosPenMode_Delete
+            SpriteEd_UnpressOtherTools(PenGadgets(), G_Eraser)
             SetGadgetState(G_Eraser, #True)
 
           Case G_ClearScreen
             GraphosScr_ClearWithColors(PatternBit(), RowFG(), RowBG(), InkColor, PaperColor)
+            PendingActive = #False
             Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
             SetGadgetText(G_Status, "Tela limpa (Tinta " + Str(InkColor) + ", Fundo " + Str(PaperColor) + ").")
 
@@ -197,24 +524,121 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
                 PX = MouseX / Zoom
                 PY = MouseY / Zoom
                 If PX >= 0 And PX < #Scr2_Width And PY >= 0 And PY < #Scr2_Height
-                  GraphosScr_ApplyTool(PatternBit(), RowFG(), RowBG(), PX, PY, ToolMode, InkColor, PaperColor)
+                  Select ToolMode
+
+                    Case #GraphosScrTool_Traco, #GraphosScrTool_Pintura, #GraphosScrTool_Spray
+                      GraphosScr_ApplyDragTool(PatternBit(), RowFG(), RowBG(), PX, PY, ToolMode, PenMode, InkColor, PaperColor, 1, 1)
+                      Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                      LastPaintX = PX : LastPaintY = PY
+                      SetGadgetText(G_Status, "Pixel (" + Str(PX) + "," + Str(PY) + ")")
+
+                    Case #GraphosScrTool_Bloco
+                      BW = GraphosScr_ClampBlockSize(Val(GetGadgetText(G_BlockW)))
+                      BH = GraphosScr_ClampBlockSize(Val(GetGadgetText(G_BlockH)))
+                      GraphosScr_ApplyDragTool(PatternBit(), RowFG(), RowBG(), PX, PY, ToolMode, PenMode, InkColor, PaperColor, BW, BH)
+                      Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                      LastPaintX = PX : LastPaintY = PY
+                      SetGadgetText(G_Status, "Bloco " + Str(BW) + "x" + Str(BH) + " em (" + Str(PX) + "," + Str(PY) + ")")
+
+                    Case #GraphosScrTool_Fill
+                      Scr2_FloodFill(PatternBit(), RowFG(), RowBG(), PX, PY, InkColor, -1)
+                      Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                      SetGadgetText(G_Status, "FILL a partir de (" + Str(PX) + "," + Str(PY) + ")")
+
+                    Case #GraphosScrTool_Linha
+                      If Not PendingActive
+                        AnchorX = PX : AnchorY = PY : PendingActive = #True
+                        SetGadgetText(G_Status, "LINHA: ponto inicial marcado - clique no ponto final (direito cancela)")
+                      Else
+                        Scr2_DrawLine(PatternBit(), RowFG(), RowBG(), AnchorX, AnchorY, PX, PY, InkColor)
+                        Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                        AnchorX = PX : AnchorY = PY
+                        SetGadgetText(G_Status, "LINHA tracada - proximo segmento comeca em (" + Str(PX) + "," + Str(PY) + ")")
+                      EndIf
+
+                    Case #GraphosScrTool_Retangulo
+                      If Not PendingActive
+                        AnchorX = PX : AnchorY = PY : PendingActive = #True
+                        SetGadgetText(G_Status, "RETANGULO: vertice fixo marcado - clique no vertice oposto (direito cancela)")
+                      Else
+                        Scr2_LineStatement(PatternBit(), RowFG(), RowBG(), AnchorX, AnchorY, PX, PY, InkColor, 1)
+                        Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                        SetGadgetText(G_Status, "RETANGULO tracado - vertice fixo continua em (" + Str(AnchorX) + "," + Str(AnchorY) + ")")
+                      EndIf
+
+                    Case #GraphosScrTool_Raio
+                      If Not PendingActive
+                        AnchorX = PX : AnchorY = PY : PendingActive = #True
+                        SetGadgetText(G_Status, "RAIO: origem fixa marcada - clique no ponto final (direito cancela)")
+                      Else
+                        Scr2_DrawLine(PatternBit(), RowFG(), RowBG(), AnchorX, AnchorY, PX, PY, InkColor)
+                        Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                        SetGadgetText(G_Status, "RAIO tracado - origem continua em (" + Str(AnchorX) + "," + Str(AnchorY) + ")")
+                      EndIf
+
+                    Case #GraphosScrTool_Circulo
+                      If Not PendingActive
+                        AnchorX = PX : AnchorY = PY : PendingActive = #True
+                        SetGadgetText(G_Status, "CIRCULO: centro marcado - clique no ponto de passagem (direito cancela)")
+                      Else
+                        DX = PX - AnchorX : DY = PY - AnchorY
+                        Radius = Scr2_RoundF(Sqr(DX * DX + DY * DY))
+                        If Radius < 1 : Radius = 1 : EndIf
+                        Scr2_DrawCircle(PatternBit(), RowFG(), RowBG(), AnchorX, AnchorY, Radius, InkColor, 0, 0, 0)
+                        Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                        SetGadgetText(G_Status, "CIRCULO tracado (raio " + Str(Radius) + ") - centro continua em (" + Str(AnchorX) + "," + Str(AnchorY) + ")")
+                      EndIf
+
+                  EndSelect
+                EndIf
+
+              Case #PB_EventType_RightButtonDown
+                If PendingActive
+                  PendingActive = #False
                   Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
-                  LastPaintX = PX : LastPaintY = PY
-                  SetGadgetText(G_Status, "Pixel (" + Str(PX) + "," + Str(PY) + ")")
+                  SetGadgetText(G_Status, "Operacao cancelada.")
                 EndIf
 
               Case #PB_EventType_MouseMove
-                If GetGadgetAttribute(G_Canvas, #PB_Canvas_Buttons) & #PB_Canvas_LeftButton
-                  MouseX = GetGadgetAttribute(G_Canvas, #PB_Canvas_MouseX)
-                  MouseY = GetGadgetAttribute(G_Canvas, #PB_Canvas_MouseY)
-                  PX = MouseX / Zoom
-                  PY = MouseY / Zoom
-                  If PX >= 0 And PX < #Scr2_Width And PY >= 0 And PY < #Scr2_Height And (PX <> LastPaintX Or PY <> LastPaintY)
-                    GraphosScr_ApplyTool(PatternBit(), RowFG(), RowBG(), PX, PY, ToolMode, InkColor, PaperColor)
-                    Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
-                    LastPaintX = PX : LastPaintY = PY
-                  EndIf
-                EndIf
+                MouseX = GetGadgetAttribute(G_Canvas, #PB_Canvas_MouseX)
+                MouseY = GetGadgetAttribute(G_Canvas, #PB_Canvas_MouseY)
+                PX = MouseX / Zoom
+                PY = MouseY / Zoom
+                Select ToolMode
+                  Case #GraphosScrTool_Traco, #GraphosScrTool_Bloco, #GraphosScrTool_Pintura, #GraphosScrTool_Spray
+                    If GetGadgetAttribute(G_Canvas, #PB_Canvas_Buttons) & #PB_Canvas_LeftButton
+                      If PX >= 0 And PX < #Scr2_Width And PY >= 0 And PY < #Scr2_Height And (PX <> LastPaintX Or PY <> LastPaintY)
+                        If ToolMode = #GraphosScrTool_Bloco
+                          BW = GraphosScr_ClampBlockSize(Val(GetGadgetText(G_BlockW)))
+                          BH = GraphosScr_ClampBlockSize(Val(GetGadgetText(G_BlockH)))
+                        Else
+                          BW = 1 : BH = 1
+                        EndIf
+                        GraphosScr_ApplyDragTool(PatternBit(), RowFG(), RowBG(), PX, PY, ToolMode, PenMode, InkColor, PaperColor, BW, BH)
+                        Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                        LastPaintX = PX : LastPaintY = PY
+                      EndIf
+                    EndIf
+
+                  Case #GraphosScrTool_Linha, #GraphosScrTool_Raio
+                    If PendingActive
+                      Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                      Scr2Ed_DrawLinePreview(G_Canvas, AnchorX, AnchorY, PX, PY, 0)
+                    EndIf
+
+                  Case #GraphosScrTool_Retangulo
+                    If PendingActive
+                      Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                      Scr2Ed_DrawLinePreview(G_Canvas, AnchorX, AnchorY, PX, PY, 1)
+                    EndIf
+
+                  Case #GraphosScrTool_Circulo
+                    If PendingActive
+                      Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                      Scr2Ed_DrawCirclePreview(G_Canvas, AnchorX, AnchorY, PX, PY, #False)
+                    EndIf
+
+                EndSelect
             EndSelect
 
           Case G_Close

@@ -52,7 +52,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 | 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
-| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). Ver seção 14 |
+| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). Ver seções 14/14b |
 
 ## Decisões fechadas
 
@@ -1339,6 +1339,61 @@ integralmente testada pelo módulo 5 (`editor/tools/Screen2TestCli.pb`, 69 casos
 clash nova foi escrita aqui. Automação de clique ao vivo não foi possível neste ambiente (mesma
 limitação de isolamento de sessão do Windows já registrada em `docs/resumo-asm.md`), então a UI em si
 foi verificada por revisão de código cuidadosa em vez de clique real.
+
+### 14b. Graphos III — Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)
+
+Completa o menu **DESENHO (F1)** do Graphos III original: **BLOCO**, **LINHA**, **RETÂNGULO**, **RAIO**,
+**CÍRCULO**, **PINTURA**, **SPRAY** e **FILL**, todos em `editor/GraphosScreenGui.pbi`. Nenhuma delas
+precisou de motor gráfico novo — `Scr2_DrawLine`/`Scr2_LineStatement` (`BoxMode=1`, contorno de
+retângulo)/`Scr2_DrawCircle`/`Scr2_FloodFill` (todos de `editor/Screen2Synth.pbi`, já usados pelo editor
+"Draw Screen 2...") cobrem LINHA/RETÂNGULO/RAIO/CÍRCULO/FILL sem nenhuma mudança; as prévias elásticas
+de LINHA/CÍRCULO reaproveitam `Scr2Ed_DrawLinePreview`/`Scr2Ed_DrawCirclePreview`
+(`editor/Screen2EditorGui.pbi`) também sem mudança. Só **PINTURA** e **SPRAY** precisaram de lógica
+nova, pequena:
+
+- **BLOCO** (`GraphosScr_ApplyBlock`) — mesma semântica de TRAÇO (seta com INK/Lápis ou reseta com
+  PAPER/Borracha, `Scr2_SetPixel`), mas sobre um retângulo `BlockW × BlockH` de pixels centrado no
+  cursor em vez de um pixel só. Tamanho ajustável por dois `StringGadget` (sem `SpinGadget` nesta base
+  de código), validado na hora do uso por `GraphosScr_ClampBlockSize` (`1..64`, `Val()` de texto vazio
+  vira `0` → clampado pra `1`).
+- **PINTURA** (`GraphosScr_PaintBackground`) — fiel ao manual ("altera a cor de fundo dos pontos
+  indicados pelo cursor... sem alterar a cor de frente do desenho"): grava só `RowBG(Y, X/8)`, nunca
+  `PatternBit`/`RowFG` — diferente de `Scr2_SetPixel`, que sempre acende/apaga o bit junto. Sempre usa
+  PAPER, nunca respeita o alternador Lápis/Borracha (não faz sentido "apagar o fundo").
+- **SPRAY** (`GraphosScr_ApplySpray`) — "imita o resultado de uma pintura com spray... padrão aleatório,
+  tende a formar um borrão compacto caso não haja deslocamento do cursor": a cada clique/passo de
+  arraste, borrifa `#GraphosScr_SprayDabs = 6` pixels em posições aleatórias dentro de um raio quadrado
+  `#GraphosScr_SprayRadius = 5` ao redor do cursor, respeitando PenMode como TRAÇO/BLOCO.
+- **LINHA/RETÂNGULO/RAIO/CÍRCULO** — todas seguem o padrão "âncora + prévia elástica + segundo clique
+  confirma", com uma diferença de semântica ditada pelo manual original que separa LINHA das outras
+  três: em **LINHA** o ponto final vira automaticamente o ponto inicial do próximo segmento (poligonal
+  aberta, `AnchorX/Y` avança a cada clique); em **RETÂNGULO/RAIO/CÍRCULO** a âncora (vértice fixo/origem
+  do raio/centro) permanece **fixa** entre desenhos — o usuário clica várias vezes e cada clique produz
+  uma nova forma a partir da mesma âncora. Botão direito do mouse sobre o canvas cancela a âncora
+  pendente das quatro (equivalente ao ESC do original); trocar de ferramenta também cancela.
+
+**Alternador Lápis(INS)/Borracha(DEL)**: fiel ao manual ("INSERT/DELETE funciona com TRACO, BLOCO,
+SPRAY e todo o menu de TEXTO"), só essas ferramentas respeitam `PenMode`
+(`GraphosScr_ToolUsesPenMode`) — os dois botões (reaproveitando `SpriteEd_CreatePencilIcon`/
+`CreateEraserIcon` da fase 1, agora com o papel de alternador de modo em vez de seletor de ferramenta)
+ficam desabilitados (`DisableGadget`) quando LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/FILL está ativa —
+essas sempre desenham com INK (exceto PINTURA, sempre PAPER), nunca apagam.
+
+**Ícones novos** (`GraphosScr_Create*Icon`, mesmo estilo monocromático 24bpp dos ícones do editor de
+sprites): `CreatePixelIcon` (TRAÇO — um pixel isolado ampliado), `CreateRayIcon` (RAIO — leque de linhas
+partindo de uma origem fixa), `CreatePaintIcon` (PINTURA — quadrado dividido, metade "tinta" intocada e
+metade "fundo" recolorida), `CreateSprayIcon` (SPRAY — nuvem de pontos). BLOCO/LINHA/RETÂNGULO/CÍRCULO/
+FILL reaproveitam ícones já existentes do editor de sprites (`CreateBrushIcon`/`CreateLineToolIcon`/
+`CreateRectOutlineIcon`/`CreateEllipseOutlineIcon`/`CreateFillIcon`) sem nenhuma mudança.
+
+**Verificação**: compilação limpa (`.\build.ps1`). Mesma limitação já registrada acima (fase 1) e em
+`docs/resumo-asm.md` impede automação de clique ao vivo neste ambiente — verificado por revisão de
+código cuidadosa da lógica de âncora/prévia/PenMode/clamp, mais execução do `.exe` compilado
+(`.\build.ps1 -R`) para o usuário testar interativamente.
+
+**Continua de fora** (próximos cortes, sem mudança de escopo): menu TEXTO (F2), menu TELA (F3), menu
+AJUSTE (F4), menu MISCELÂNEA (F5) e CRIA/ARQUIVA/RECUPERA SHAPES, os formatos nativos `.SCR`/`.LAY`/
+`.VTC`+`.ATC`, e integração com o sistema de projeto (`ProjectDB.pbi`).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

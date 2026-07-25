@@ -650,6 +650,27 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   próximos cortes — ainda sem persistência no `.msxproject`. Versão embutida no executável atualizada
   para `7.5.1`.
 
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 2**: completa o resto do menu **DESENHO (F1)** do
+  Graphos III original em `editor/GraphosScreenGui.pbi` — **BLOCO** (TRAÇO com cursor Largura×Altura
+  ajustável, campos de texto validados na hora do uso), **LINHA** (âncora + prévia elástica + clique
+  final, ponto final vira início do próximo segmento — poligonal aberta, igual ao manual original),
+  **RETÂNGULO** (vértice fixo + vértice oposto, âncora permanece fixa entre desenhos), **RAIO** (origem
+  fixa + ponto final, mesma âncora fixa do RETÂNGULO), **CÍRCULO** (centro fixo + ponto de passagem,
+  raio = distância entre os dois), **PINTURA** (só recolore o FUNDO sob o cursor, sem tocar no bit do
+  pixel nem na cor de FRENTE — `GraphosScr_PaintBackground`, único ajuste fino que o motor ainda não
+  tinha) e **SPRAY** (borrifo aleatório de pixels, `GraphosScr_ApplySpray`). Nenhuma dessas precisou de
+  motor novo além de PINTURA/SPRAY — `Scr2_DrawLine`/`Scr2_LineStatement` (modo caixa)/`Scr2_DrawCircle`/
+  `Scr2_FloodFill` (todos de `Screen2Synth.pbi`) e as prévias elásticas de LINHA/CÍRCULO
+  (`Scr2Ed_DrawLinePreview`/`DrawCirclePreview` de `Screen2EditorGui.pbi`) já existiam prontos, usados
+  sem nenhuma mudança. Fiel ao manual original: todas as ferramentas desenham com **INK**, exceto
+  PINTURA (sempre **PAPER**); só **TRAÇO/BLOCO/SPRAY** respeitam o alternador **Lápis(INS)/Borracha
+  (DEL)** (LINHA/RETÂNGULO/RAIO/CÍRCULO/FILL sempre desenham, nunca apagam) — o alternador fica
+  desabilitado (`DisableGadget`) quando a ferramenta ativa não o usa. Botão direito do mouse cancela a
+  âncora pendente de LINHA/RETÂNGULO/RAIO/CÍRCULO (equivalente ao ESC do original); trocar de ferramenta
+  também cancela. Continuam de fora (próximos cortes): menu TEXTO, TELA, AJUSTE, MISCELÂNEA, shapes,
+  formatos nativos `.SCR`/`.LAY`/`.VTC`+`.ATC` e persistência no `.msxproject`. Versão embutida no
+  executável atualizada para `7.5.2`.
+
 ## Ferramentas e ambiente
 
 Projeto desenvolvido com:
