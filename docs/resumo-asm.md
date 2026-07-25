@@ -87,11 +87,11 @@ do repo — o resumo abaixo é a versão persistida/git-tracked do que importa d
 | Arquivo | Papel | Status |
 |---|---|---|
 | `editor/Z80RelFormat.pbi` | só tipos: `Enumeration Z80SegType` + `Structure Z80Addr` (valor+segmento) — nenhuma `Procedure` (ver "Módulo não enxerga Structure externa" no log técnico) | **Fase A pronto**; Fase B só reaproveita, sem mudar |
-| `editor/Z80Asm.pbi` | `DeclareModule Z80Asm` — vocabulário, avaliador de expressão, parser de linha, tabela de opcodes Z80 completa, driver de 2 passes, diretivas de dados, condicionais, macros básicas | **Fase A completa** (~2300 linhas). Fase B adiciona: serialização `.REL` real quando o build for relocável |
-| `editor/tools/Z80AsmTestCli.pb` | harness `/CONSOLE`, PASS/FAIL (59 testes unitários) + modo `--assemble <fonte> <saida.bin>` pra comparar contra `N80.exe` | **Fase A completo** |
-| `editor/Z80Link.pbi` | `DeclareModule Z80Link` — leitor `.REL`, algoritmo de linkagem completo (segmentos, `PUBLIC`/`EXTRN`, `.REQUEST`/biblioteca, saída binária) | **Não iniciado** — ver `docs/reference/nestor80-linker.md` |
-| `editor/Z80Lib.pbi` | `DeclareModule Z80Lib` — gerenciador de biblioteca `.LIB` (criar/listar/adicionar/remover módulos `.REL`), equivalente Libstor80/LB80 | **Não iniciado** |
-| `editor/tools/Z80LinkTestCli.pb` | harness pro linker + biblioteca, mesmo padrão do `Z80AsmTestCli.pb` | **Não iniciado** |
+| `editor/Z80Asm.pbi` | `DeclareModule Z80Asm` — vocabulário, avaliador de expressão, parser de linha, tabela de opcodes Z80 completa, driver de 2 passes ABSOLUTO (`RunOnePass`/`Assemble`), diretivas de dados, condicionais, macros básicas, escritor de bit-stream `.REL` (`RelW_*`), driver de 2 passes RELOCÁVEL (`RunOnePassRel`/`AssembleRelocatable`/`NeedsRelocatable`) | **Fase A completa**. Fase B: geração de `.REL` real funcionando ponta a ponta (CSEG/DSEG/COMMON/PUBLIC/EXTRN bare), validada por oráculo (~3300 linhas) — falta o linker (`Z80Link.pbi`) e a integração de menu/projeto |
+| `editor/tools/Z80AsmTestCli.pb` | harness `/CONSOLE`, PASS/FAIL (67 testes unitários) + modo `--assemble <fonte> <saida.bin>` (absoluto) / `--assemble-rel <fonte> <nome> <saida.rel>` (relocável) pra comparar contra `N80.exe` | **Fase A + B (parte assembler) completo** |
+| `editor/Z80Link.pbi` | `DeclareModule Z80Link` — leitor `.REL` (`RR_*`) + algoritmo de linkagem (segmentos, `PUBLIC`/`EXTRN`, `.REQUEST`/biblioteca com ponto fixo transitivo, saída binária) | **Cortes 1 e 2 completos e validados por oráculo** |
+| `editor/Z80Lib.pbi` | `DeclareModule Z80Lib` — gerenciador de biblioteca `.LIB` (`CreateOrAddLibrary`/`ListLibrary`/`RemoveProgram`), equivalente Libstor80/LB80 | **Completo e validado byte a byte contra `LB80.exe`** |
+| `editor/tools/Z80LinkTestCli.pb` | harness pro linker (`--link`/`--libcreate`/`--liblist`/`--libremove` + suíte PASS/FAIL, 7 testes), mesmo padrão do `Z80AsmTestCli.pb` | **Completo** |
 | (a definir) integração com `ProjectDB.pbi` | tabela pro binário montado no `.msxproject` | **Não iniciado**, ver decisão de escopo 5 |
 | (a definir) geração de listing hex / `BLOAD` | consumir o `.bin` a partir de MSX-BASIC | **Não iniciado**, ver decisão de escopo 5 |
 
@@ -188,21 +188,132 @@ detalhe mais importante, a visibilidade de `Structure` através de `Module`):
       (`Linker/RelocatableFilesProcessor.cs`)
 - [x] **`LK80.exe`/`LB80.exe` compilados localmente** (mesma receita do `N80.exe`) — oráculo de teste
       também pro linker e pro gerenciador de biblioteca, não só pro assembler
-- [ ] Serialização `.REL` real (detecção de build type absoluto vs. relocável)
-- [ ] `editor/Z80Link.pbi` (`DeclareModule Z80Link`) — algoritmo de linkagem completo: concatenação
-      de segmentos (`ASEG`/`CSEG`/`DSEG`/`COMMON`), resolução `PUBLIC`/`EXTRN`, geração do binário
-      final
-- [ ] **`.REQUEST`/pesquisa de biblioteca no linker** — resolver externos pendentes procurando em
-      arquivo(s) de biblioteca informados, puxando só o(s) "programa" `.REL` que resolve cada
-      símbolo (sem dead-stripping dentro de um programa, mas também sem puxar programas não
-      referenciados — mesmo comportamento do LINK-80/Linkstor80 real, ver
-      `nestor80-linker.md` quando escrito)
-- [ ] **`editor/Z80Lib.pbi`** (`DeclareModule Z80Lib`, equivalente Libstor80/LB80) — criar/listar/
-      adicionar/remover módulos `.REL` de um arquivo `.LIB`, reaproveitando o parser/escritor `.REL`
-      de `Z80Link.pbi` (pedido explícito do usuário, 2026-07-24 — ver "Decisões de escopo" item 4)
-- [ ] `editor/tools/Z80LinkTestCli.pb` (cobre linker + biblioteca)
+- [x] **Escritor de bit-stream genérico** (`RelW_*` em `Z80Asm.pbi`, seção logo depois de
+      `EncodeInstruction`) — primitivas de baixo nível que espelham `Assembler/Relocatable/
+      BitStreamWriter.cs` + a camada `WriteByte`/`WriteAddress`/`WriteLinkItem`/`WriteSymbolField`
+      de `Assembler/OutputGenerator.cs` do Nestor80: `RelW_WriteBits()` (empacotador MSB-first cru,
+      buffer próprio `RelBuf()` que cresce por dobra via `ReDim` 1D), `RelW_WriteExtendedHeader()`
+      (cabeçalho fixo de 16 bytes), `RelW_WriteByteItem()` (byte absoluto, prefixo `0`),
+      `RelW_WriteValueItem()` (valor relocável, prefixo `1`+2 bits segmento+16 bits LE),
+      `RelW_WriteLinkItem()` (item de link, prefixo `100`+4 bits tipo+campos opcionais de
+      endereço/símbolo), `RelW_WriteSymbolField()` (campo de símbolo formato estendido, com a
+      lógica de escape `FFh`+tamanho pra símbolos >7 bytes). Só o formato ESTENDIDO do Nestor80 é
+      suportado (recomendação da própria doc de referência). **Validado byte a byte reproduzindo um
+      `.REL` real do `N80.exe`** (programa mínimo `cseg`/`public start`/`ld a,1`/`ret`/`end`, 55
+      bytes) — ver log de decisões técnicas abaixo pro método de validação (decodificador Python
+      bit a bit escrito pra confirmar o entendimento do formato antes de portar). Suíte unitária:
+      64/64 (5 novos casos).
+- [x] **Serialização `.REL` real, integrada ao driver de 2 passes** (`RunOnePassRel()`/
+      `AssembleRelocatable()`/`NeedsRelocatable()` em `Z80Asm.pbi`, logo depois do escritor de
+      bit-stream) — driver de 2 passes DEDICADO ao modo relocável, separado de `RunOnePass()`/
+      `Assemble()` (Fase A, absoluto — **intocados**, zero mudança de comportamento, convivem lado a
+      lado). `ASEG`/`CSEG`/`DSEG`/`COMMON`/`PUBLIC`/`ENTRY`/`GLOBAL`/`EXTRN`/`EXT`/`EXTERNAL` passam a
+      ter efeito de verdade (só no driver relocável — no absoluto continuam reconhecidas-sem-efeito,
+      de propósito, Fase A nunca foi validada com segmentos reais):
+      - **Contador de localização por área** (`RelLocASEG`/`CSEG`/`DSEG`/`COMMON`, `COMMON` reseta pra
+        0 a cada entrada, `ORG` funciona dentro de qualquer área) — `SetLocationCounter`/
+        `SelectCommonBlock` emitidos nas trocas de área.
+      - **`PUBLIC`/`ENTRY`/`GLOBAL`** (e rótulo com `::`) — `EntrySymbol` no início do arquivo,
+        `DefineEntryPoint` no final (valor+segmento resolvidos depois do pass 1).
+      - **`EXTRN`/`EXT`/`EXTERNAL` como referência BARE** (operando de `CALL`/`JP`/`LD nn` ou de `DW`
+        = só o nome do externo, nada mais) — mecanismo de "corrente" (`ChainExternal`,
+        `RelWriteExternalChainRef()`): a 1ª referência grava `00 00`, referências seguintes ao mesmo
+        nome apontam pra posição da anterior, formando lista encadeada que o linker percorre.
+      - **Aritmética de expressão ficou segment-aware de verdade** (`EvalPostfixExpr`, que desde a
+        Fase A só sabia lidar com `#Z80Seg_Absolute` — groundwork deliberadamente deixado pronto):
+        `reloc±abs`/`abs+reloc` = reloc; `reloc-reloc` mesmo segmento = abs; qualquer outra combinação
+        com operando relocável (`reloc+reloc`, `reloc-reloc` de segmentos diferentes, `*`/`/`/`MOD`/
+        shift/bitwise/relacional com operando relocável) = **erro explícito** (precisaria do item de
+        extensão RPN, fora de escopo). Risco zero pro Fase A: todo teste existente já tinha
+        `SegType` sempre `Absolute`, então o comportamento não muda em nenhum caso já validado.
+      - **`DS`/`DEFS` sem valor de preenchimento explícito não materializa bytes** — replica o
+        comportamento padrão do `N80.exe` (só avança o contador via `SetLocationCounter`, igual
+        `ORG $+tamanho`), achado durante a validação por oráculo (ver log técnico).
+      - **Fora de escopo nesta etapa, erro explícito em vez de resultado silenciosamente errado**:
+        expressão externa composta (ex. `(FOO+1)*2`, precisaria do item de extensão RPN — só a forma
+        bare `FOO`/`CALL FOO` é suportada), valor relocável truncado pra 1 byte (`DB`/`DC`/`DZ`/`HIGH`/
+        `LOW` de símbolo relocável — `ExpandDataOperand` agora rejeita explicitamente), `.PHASE`/
+        `.DEPHASE` dentro do modo relocável, biblioteca/`.REQUEST` (trabalho do futuro
+        `Z80Link.pbi`/`Z80Lib.pbi`, não do assembler).
+      **Validado byte a byte contra o `N80.exe` real** em 3 programas (`sample/teste4_rel_public.asm`
+      — `cseg`+`public` simples; `sample/teste5_rel_dseg.asm` — `cseg`+`dseg`+`public`+`DW` relocável+
+      `DS` sem preenchimento; `sample/teste6_rel_extrn.asm` — `EXTRN` bare com `CALL`/`LD`, corrente de
+      externo), suíte de regressão oficial do driver relocável (mesmo papel de
+      `sample/teste_opcodes.asm` pro driver absoluto), fixados como testes self-contained (bytes
+      esperados embutidos no harness, não precisam do `N80.exe` presente pra rodar). Suíte unitária:
+      **67/67** (3 novos casos). Regressão absoluta (`teste_opcodes`/`teste2_macros`/`teste3_phase`)
+      continua 100% idêntica ao oráculo — nenhuma mudança de comportamento no driver Fase A.
+- [x] **`editor/Z80Link.pbi` (`DeclareModule Z80Link`) — linker, corte 1: múltiplos `.REL` SEM
+      biblioteca ainda** (`RR_*` leitor de bit-stream, espelha `Z80Asm::RelW_*` ao contrário +
+      `ProcessProgram()`/`LinkFiles()`, algoritmo extraído direto de
+      `Linker/RelocatableFilesProcessor.cs` — ver `docs/reference/nestor80-linker.md`). Concatena
+      `CSEG`/`DSEG`/`COMMON` de todos os módulos (endereço-base = fim do programa anterior + 1,
+      começando em `0103h` — convenção CP/M/LINK-80), `ASEG`, resolve `PUBLIC`↔`EXTRN` (corrente
+      `ChainExternal` — mesmo mecanismo do lado escritor, agora percorrido ao contrário — +
+      `ExternalPlusOffset`/`MinusOffset`), detecta símbolo público duplicado entre programas. Só o
+      modo de sequenciamento **padrão** do LK80 ("dados antes de código", igual ao LK80 sem nenhum
+      argumento) — `--code`/`--data`/`--align-code`/`--align-data`/`--code-before-data` **fora de
+      escopo nesta etapa**. **Validado byte a byte contra o `LK80.exe` real** em 3 cenários
+      (`sample/teste4_rel_public.rel` sozinho; `sample/teste7_link_main.rel`+`teste7_link_lib.rel` —
+      `PUBLIC`/`EXTRN` cruzado nos dois sentidos, incl. `LD A,(externo)` via corrente; `sample/
+      teste8_link_common_a.rel`+`teste8_link_common_b.rel` — bloco `COMMON` compartilhado entre
+      módulos com rótulos diferentes resolvendo pro mesmo endereço) — **os 3 bateram byte a byte já
+      na primeira tentativa completa** (ver log de decisões técnicas). Suíte própria
+      `editor/tools/Z80LinkTestCli.pb` (3/3, self-contained, bytes fixados).
+      **Achado durante a validação end-to-end**: `LD A,(externo)`/`LD HL,(externo)` (referência
+      externa via endereçamento indireto, não só `CALL externo`) não era reconhecida como referência
+      *bare* — o texto do operando ainda tinha os parênteses (`"(shareddata)"`) quando comparado
+      contra o nome puro do símbolo desconhecido; corrigido com um helper (`BareExternKeyOf()` em
+      `Z80Asm.pbi`) que tira uma camada de parênteses antes de comparar, usado tanto no `DW` quanto
+      nas instruções de CPU.
+      **Fora de escopo nesta etapa** (erro explícito): item de extensão RPN (tipo 4), `.REQUEST`/
+      biblioteca (tipo 3 — fica pro corte 2, junto de `Z80Lib.pbi`), `--code`/`--data`/`--align-*`/
+      `--code-before-data`, detecção de sobreposição de segmento entre programas (feature de
+      diagnóstico, não bloqueia linkagem correta de fonte bem-formado), saída Intel HEX.
+- [x] **`.REQUEST`/pesquisa de biblioteca no linker — corte 2** (`LLoadRequestedLibraryFile()`/
+      ponto fixo em `LinkFiles()`, `Z80Link.pbi`) — resolve externos pendentes procurando em
+      arquivo(s) de biblioteca pedidos via `.REQUEST` (agora suportado como diretiva de verdade no
+      assembler também, `RunOnePassRel`), indexando o(s) símbolo(s) público(s) de **cada programa
+      individualmente** (não do arquivo inteiro) e só carregando (`ProcessProgram`) o(s) programa(s)
+      que resolvem algo pendente — linkagem estática seletiva de verdade, pedido original do
+      usuário. Loop de ponto fixo (repete até uma rodada não carregar nada novo) cobre resolução
+      **transitiva** (um programa de biblioteca carregado que ele mesmo precise de outro símbolo,
+      da mesma ou de outra biblioteca pedida).
+      **Achado importante da validação**: o `LK80.exe` local desta máquina tem uma limitação/bug
+      confirmado empiricamente (repro isolado, ver log de decisões técnicas) — só enxerga o símbolo
+      público do **primeiro** programa de uma biblioteca `.REQUEST` com mais de um programa; pedir
+      um símbolo do segundo (ou posterior) programa sempre falha com "can't resolve external symbol
+      reference", mesmo com o arquivo de biblioteca perfeitamente válido (conferido decodificando
+      byte a byte). Por isso a validação usou duas estratégias complementares: **oráculo direto**
+      pros casos que o `LK80.exe` local resolve corretamente (biblioteca de 1 programa; biblioteca de
+      2+ programas pedindo o primeiro) — bateram byte a byte; **auto-consistência** pro caso que o
+      oráculo não consegue validar (pedir o segundo/terceiro programa) — comparado contra o binário
+      de uma biblioteca EQUIVALENTE onde o símbolo pedido é reordenado pra ser o primeiro (deveria
+      dar exatamente os mesmos bytes de saída, já que só o programa referenciado deveria entrar
+      de qualquer forma) — bateu. Cadeia transitiva de 3 níveis (`funcx→funcy→funcz`, cada um num
+      programa diferente da mesma biblioteca) também validada dessa forma. Suíte própria: 2 novos
+      casos em `Z80LinkTestCli.pb`.
+- [x] **`editor/Z80Lib.pbi`** (`DeclareModule Z80Lib`, equivalente Libstor80/LB80) — `create`/`add`
+      (`CreateOrAddLibrary()`), `list` (`ListLibrary()`), `remove` (`RemoveProgram()`). **Achado que
+      simplificou muito `create`/`add`**: como `Z80Asm::RelW_ForceByteBoundary()` sempre roda
+      imediatamente antes do item "Fim de arquivo" (7 bits `100`+`1111`, nunca byte-alinhado por si
+      só), esse item **sempre** ocupa exatamente o ÚLTIMO BYTE de qualquer `.REL` de programa único,
+      sempre valendo `9Eh` (7 bits do item + 1 bit de padding) — confirmado em todo `.REL` gerado
+      nesta sessão. Ou seja, "criar uma biblioteca" não precisa entender bit-stream nenhum: é só
+      concatenar os bytes de cada `.REL` de entrada, cortando o ÚLTIMO BYTE de todos menos o último
+      pedaço escrito (que mantém seu próprio "Fim de arquivo", virando o terminador único da
+      biblioteca inteira). `list`/`remove` aí sim precisam de leitura de verdade (achar nome de
+      programa/símbolos públicos/fronteiras entre programas) — cópia trivial do mesmo leitor de
+      `Z80Link.pbi` (mesmo espírito de não compartilhar lógica pequena entre módulos já documentado).
+      **Validado byte a byte contra o `LB80.exe` real**: `create`(moda)+`add`(modb) produz arquivo
+      **idêntico** ao `LB80.exe create`+`LB80.exe add` na mesma sequência; `remove` conferido
+      comparando contra o `.REL` de programa único equivalente (biblioteca de 1 programa só = o
+      próprio `.REL` daquele programa, byte a byte idêntico). Suíte própria: 2 novos casos.
 - [ ] Segunda opção de menu / fluxo multi-arquivo (Montar → gerar `.REL`; Linkar/Montar biblioteca →
-      UI própria ou reaproveitando o padrão de diálogo do gerenciador de disco)
+      UI própria ou reaproveitando o padrão de diálogo do gerenciador de disco) — hoje só via
+      engine/CLI de teste, sem UI
+- [ ] `--code`/`--data`/`--align-code`/`--align-data`/`--code-before-data` do linker, detecção de
+      sobreposição de segmento entre programas, saída Intel HEX — fora de escopo dos cortes 1/2
 
 ## Integrações planejadas (não fazem parte da Fase B em si, mas foram confirmadas como objetivo do
 ## módulo em 2026-07-24 — ver decisão de escopo 5 acima)
@@ -488,4 +599,244 @@ plano original, etc., mesmo espírito do "Próximos passos em aberto" do `docs/S
   `editor\tools\Z80AsmTestCli.exe --assemble` e com `N80.exe` puro, **315 bytes idênticos byte a byte**
   nos dois arquivos (`fc /b`); cabeçalho conferido na mão: `FE 00 C0 33 C1 00 C0` = marca `FE`, início
   `C000h`, fim `C133h` (= `C000h + 308 bytes de código - 1`), execução `C000h`.
+- **2026-07-24 — escritor de bit-stream `.REL` (`RelW_*`), primeiro item de verdade da Fase B**.
+  Antes de portar, li o C# fonte real do Nestor80 (`nestor80/Assembler/Relocatable/
+  BitStreamWriter.cs` + `Assembler/OutputGenerator.cs`, não só a doc) pra tirar uma ambiguidade que
+  a doc (`nestor80-rel-format.md`) não deixa clara sozinha: o prefixo `1` (valor relocável) e o
+  prefixo `100` (item de link) colidem em cima do padrão de bits `1`+`00` — parecia que um valor
+  relocável de segmento ASEG (`00`) seria indistinguível de um item de link. **Resolvido lendo
+  `Linker/Parsing/RelocatableFileParser.cs` (o leitor, não o escritor)**: o parser real primeiro lê
+  1 bit (`0`=byte absoluto, `1`=continua), depois 2 bits — só entra no ramo "valor relocável" se
+  esses 2 bits forem **diferentes de zero** (`01`=CSEG/`10`=DSEG/`11`=COMMON); `00` sempre quer
+  dizer "isso é um item de link, os próximos 4 bits são o tipo". Ou seja **ASEG nunca aparece como
+  segmento de um "valor relocável"** (faz sentido: endereço absoluto não precisa de relocação, por
+  isso nunca gera esse item) — a ambiguidade não existe de verdade, só parecia existir lendo só a
+  tabela da doc sem ver o algoritmo de decisão bit a bit. Dentro de um item de link já identificado
+  (depois do `100`+tipo), o campo de endereço opcional aceita ASEG(`00`) normalmente, sem restrição
+  nenhuma (não há mais ambiguidade nesse ponto, o parser já sabe que é um item de link).
+  **Método de validação**: gerei um `.REL` real mínimo com o `N80.exe` (`cseg`/`public start`/
+  `ld a,1`/`ret`/`end`, 55 bytes) e escrevi um decodificador Python bit a bit **do zero**, direto a
+  partir do meu próprio entendimento do formato (script descartável, não faz parte do repo) — rodei
+  contra os 55 bytes reais e o decode bateu item por item com o que o código-fonte esperava
+  (`ProgramName RELMIN`, `EntrySymbol start`, `DataAreaSize ASEG 0`, `ProgramAreaSize CSEG 3`,
+  `SetLocationCounter CSEG 0`, bytes crus `3E 01 C9`, `DefineEntryPoint CSEG 0 start`,
+  `EndProgram ASEG 0`, `EndFile`) **antes** de escrever uma linha de PureBasic. Só depois portei
+  pra `Z80Asm.pbi` e escrevi um teste (`Z80AsmTestCli.pb`) que reproduz a MESMA sequência de
+  chamadas `RelW_*` e compara os 55 bytes resultantes contra o `.REL` real, byte a byte — passou de
+  primeira, confirmando os dois lados (entendimento do formato E port) de uma vez só. **Lição**: pra
+  formatos bit-a-bit não byte-alinhados, vale a pena escrever um decodificador jogável (não
+  produção) só pra provar o entendimento antes de portar a lógica de escrita — muito mais barato
+  de debugar um script Python solto do que um bug de "off-by-alguns-bits" dentro do PureBasic.
+  **Escolhas de escopo**: só o formato ESTENDIDO Nestor80 foi implementado (recomendação da própria
+  doc de referência — o legado `--link-80-compatibility` fica de fora, não é necessário pro
+  par assembler/linker nativo se entenderem); campo de símbolo estendido suporta o caso comum
+  (< 256 bytes, imensamente mais que qualquer identificador Z80 real) com o escape `FFh`+tamanho,
+  mas não replica a otimização `WriteDirect` (escrita byte-alinhada direta) que o Nestor80 usa só
+  pra símbolos > 255 bytes — já que símbolos desse tamanho não existem na prática, a versão simples
+  (via `RelW_WriteBits`, sempre) já basta e é mais fácil de manter correta. Buffer de saída
+  (`RelBuf()`) é 1D com `ReDim` por dobra (nunca multi-dim — ver
+  `purebasic_redim_last_dim_only.md`), separado do `Mem()` de 64KB fixo do driver absoluto (podem
+  coexistir sem conflito, cada um serve um formato de saída diferente). **Ainda não integrado ao
+  driver de 2 passes** — `RelW_*` é só a camada de baixo nível (equivalente a `BitStreamWriter.cs`
+  puro); consumir isso pra emitir um `.REL` de verdade a partir de `Assemble()` (detectar ASEG-puro
+  vs. relocável, percorrer segmentos/símbolos/EXTRN durante os passes) é a próxima tarefa da Fase B,
+  já anotada no checklist acima.
+- **2026-07-24 — integração do escritor de bit-stream ao driver de 2 passes (`RunOnePassRel`/
+  `AssembleRelocatable`), geração de `.REL` real funcionando ponta a ponta**. Decisão de arquitetura
+  central: em vez de modificar `RunOnePass()`/`Assemble()` (Fase A, já validado byte a byte contra o
+  oráculo, ~190 formas de instrução) pra ficarem "segment-aware", criei um driver **paralelo e
+  totalmente separado** (`RunOnePassRel`/`AssembleRelocatable`) que reaproveita as peças que já eram
+  segment-agnostic por natureza (`ParseLine`, `EncodeInstruction`, `EncodeDataDirective`,
+  `ExpandLines`, `CountOperands`/`GetOperand`, `EvalExpr`) sem tocar nelas, e só reimplementa a parte
+  que muda de verdade (o laço principal do driver: como interpretar `ASEG`/`CSEG`/`DSEG`/`COMMON`/
+  `PUBLIC`/`EXTRN` e como despejar bytes — `Mem()` linear pro absoluto, `RelW_*` bit-stream pro
+  relocável). Isso manteve o risco de regressão em ZERO pro driver absoluto (nem uma linha de
+  `RunOnePass()` foi tocada) às custas de duplicar ~150 linhas de estrutura de laço — troca deliberada
+  (mesmo espírito já registrado no resumo de "Z80Link.pbi terá sua própria cópia trivial" dos helpers
+  de `Z80Addr`, preferir duplicação pequena a acoplamento frágil entre os dois drivers).
+  - **Aritmética de expressão precisou ficar segment-aware de verdade** (`EvalPostfixExpr`) — a Fase A
+    já tinha deixado um comentário avisando que isso ficaria pendente ("por enquanto os dois operandos
+    são sempre absolutos... fica pronta pra quando CSEG/DSEG passarem a valer alguma coisa"). Implementei
+    a regra do Nestor80 (`WritingRelocatableCode.md`): `reloc±abs`/`abs+reloc` = reloc (mesmo segmento
+    do operando relocável); `reloc-reloc` do MESMO segmento = absoluto (distância entre dois endereços
+    do mesmo segmento já é conhecida sem precisar do endereço-base final); qualquer outra combinação
+    com pelo menos um operando relocável (`reloc+reloc`, `reloc-reloc` de segmentos diferentes, e todo
+    operador que não seja `+`/`-` — `*`/`/`/`MOD`/shift/bitwise/relacional) agora **erra explicitamente**
+    em vez de silenciosamente virar um valor absoluto errado (precisaria do item de extensão RPN do
+    Nestor80, fora de escopo). Risco de regressão zero: como TODO `SegType` na Fase A é sempre
+    `#Z80Seg_Absolute` (só `ASEG` existia), o novo código sempre cai no ramo "os dois são absolutos" pra
+    qualquer teste já existente — confirmado rodando a suíte de 444 bytes idênticos de novo depois da
+    mudança.
+  - **Bug real pego pelo oráculo, não pelo raciocínio: nomes de símbolo em MAIÚSCULO indevido no
+    `.REL`**. Primeira tentativa gerou um `.REL` de 59 bytes pro programa `cseg/public start/ld a,1/
+    ret/end`, mas divergindo do oráculo bem no meio do arquivo — decodificando manualmente, a diferença
+    era `53544152` (ASCII "STAR", meu output) vs `73746172` (ASCII "star", oráculo) dentro do campo de
+    símbolo do `DefineEntryPoint`. Causa: eu uppercase-ava o nome ANTES de guardar em `RelPublicOrder()`/
+    passar pro `RelW_WriteLinkItem()`, misturando "chave de tabela" (tem que ser maiúscula, comparação
+    case-insensitive, como o resto do assembler já faz) com "conteúdo de verdade gravado no arquivo"
+    (precisa preservar a grafia ORIGINAL do fonte — doc de referência já avisava: "símbolos UTF-8...
+    comparados sem diferenciar maiúsculo/minúsculo", ou seja, comparação case-insensitive mas
+    ARMAZENAMENTO com case preservado). Corrigido separando os dois em todo lugar que lida com nome de
+    símbolo relocável: `RelPublicOrder()`/`RelChainOrder()`/`RelExternDeclared()` agora guardam a chave
+    maiúscula (dedup/lookup) E o valor com a grafia original (`Z80RelChainState\DisplayName`,
+    `RelExternDeclared()` virou `Map.s()` em vez de `Map.b()` — guarda a grafia declarada no `EXTRN`,
+    não só um flag booleano). Mesma classe de bug (case perdido em bookkeeping) que quase passou batido
+    porque o assembler inteiro já uppercasa tudo internamente por convenção (Fase A) — só o oráculo
+    binário pegou, um teste que só checasse "montou sem erro" não pegaria.
+  - **Segundo achado do oráculo: `DS`/`DEFS` sem valor de preenchimento explícito NÃO materializa bytes
+    reais no `.REL`** — o `N80.exe` só avança o contador de localização via um item `SetLocationCounter`
+    (equivalente a `ORG $+tamanho`), sem escrever nenhum byte. Minha primeira versão reaproveitava
+    `EncodeDataDirective` cegamente (que sempre materializa `tamanho` bytes de `0x00`, comportamento
+    CORRETO pro driver absoluto — um binário plano não tem como "pular" bytes) — resultado: 15 bytes
+    extra de zeros no meio do arquivo (99 vs 84 bytes esperados). Corrigido dando um `Case` próprio pra
+    `DS`/`DEFS` dentro do driver relocável: só materializa bytes de verdade quando o SEGUNDO operando
+    (valor de preenchimento) foi dado explicitamente; sem ele, só emite `SetLocationCounter` pulando
+    pra frente. `EncodeDataDirective` em si (compartilhado com o driver absoluto) não mudou.
+  - **Terceiro achado, não do oráculo mas de compilação: `EncodeInstruction()` (compartilhado com o
+    driver absoluto) sempre foi projetado pra ERRAR quando uma expressão de operando não resolve** — o
+    comportamento certo pro driver absoluto (símbolo desconhecido é sempre erro fatal), mas quebra na
+    hora de codificar `CALL algumexterno` no driver relocável (a expressão "algumexterno" nunca vai
+    resolver por definição, é externo). Em vez de modificar `EncodeInstruction()`/`EvalOperandExpr()`
+    pra saber sobre `EXTRN` (contaminaria o driver absoluto com um conceito que não existe lá), a
+    solução foi: ANTES de chamar `EncodeInstruction()`, classificar o operando-cauda (mesmo mecanismo
+    de forma/heurística usado depois pra decidir emitir `RelW_WriteValueItem`); se for uma referência
+    bare a um externo declarado, definir um símbolo TEMPORÁRIO (`DefineSymbolSeg(nome, 0, Absoluto,
+    ...)`) só pra `EncodeInstruction()` conseguir avaliar a expressão sem erro (os bytes que ele produz
+    pra essa posição são descartados de qualquer forma — a emissão de verdade usa o mecanismo de
+    corrente `RelWriteExternalChainRef`, não `Bytes()`), removendo o símbolo temporário logo depois
+    (`DeleteMapElement`) pra não contaminar a tabela de símbolos pro resto do arquivo (uma expressão
+    composta envolvendo o mesmo externo, ainda fora de escopo, continua errando corretamente depois
+    disso).
+  - **Gotcha de PureBasic (ordem de declaração, não de linguagem em si): `Global`/`Procedure`
+    declarados mais abaixo no MESMO `Module` não são visíveis de código mais acima**, mesmo dentro do
+    mesmo arquivo/módulo — confirmado 3 vezes nesta sessão (`ExpandLines()`, `EncodeDataDirective()`,
+    `SplitSourceLines()`, todas definidas na seção do driver ABSOLUTO, mais abaixo no arquivo do que o
+    novo driver relocável que citei ANTES delas) — cada uma exigiu um `Declare` avulso antes do ponto de
+    uso (mesmo padrão que `ExpandLines()` já usava pra si mesma, chamada recursiva). Os `Global
+    AsmErrorLine.i`/`AsmErrorText.s` (compartilhados pelos dois drivers) tiveram que ser
+    FISICAMENTE MOVIDOS pra mais cedo no arquivo (perto de `LastEvalError`), porque `Global` (ao
+    contrário de `Procedure`) não aceita um `Declare` avulso — só resolve movendo a declaração de
+    verdade. Lição prática: ao inserir uma nova seção de código ANTES de onde suas dependências já
+    existem no mesmo arquivo, ou mover a seção nova pra depois delas, ou (mais rápido pra evitar
+    reescrever um bloco grande) usar `Declare` avulso pra cada `Procedure`/mover só os `Global`
+    realmente necessários.
+- **2026-07-24 — `editor/Z80Link.pbi`, corte 1 do linker (múltiplos `.REL` sem biblioteca)**.
+  Diferente do escritor de bit-stream (onde precisei decodificar manualmente um `.REL` real pra
+  confirmar o entendimento do formato antes de portar), desta vez o algoritmo inteiro já estava
+  documentado em `docs/reference/nestor80-linker.md` (escrito numa sessão de planejamento anterior,
+  direto do C# de `Linker/RelocatableFilesProcessor.cs`) — então portei direto do C# lido em paralelo
+  (`ProcessProgram`/`EffectiveAddressOf`/`ResolveExternalChain`/`DoLinking`), sem precisar de nenhuma
+  decodificação manual extra. Escopo fechado ANTES de escrever código: só o modo de sequenciamento
+  **padrão** do LK80 ("dados antes de código", que é o que acontece quando você roda `LK80 a.rel
+  b.rel` sem nenhum argumento extra) — `--code`/`--data`/`--align-code`/`--align-data`/
+  `--code-before-data` ficam de fora, junto de `.REQUEST`/biblioteca (isso é o corte 2, junto de
+  `Z80Lib.pbi`) e do item de extensão RPN (tipo 4 — nosso `AssembleRelocatable` nunca gera isso,
+  só suporta externo *bare*, então nem tinha como testar essa parte mesmo se implementasse).
+  - **Leitor de bit-stream (`RR_*`) é literalmente o escritor (`RelW_*`) ao contrário** — mesmo
+    empacotamento MSB-first, mesma disputa de prefixo `1`+`00`=item-de-link vs. `1`+seg=valor
+    relocável, mesmo campo de símbolo com escape `FFh`+tamanho. Como o formato já tinha sido
+    validado bit a bit na sessão do escritor, o leitor saiu correto de primeira — nenhum bug de
+    parsing apareceu durante os testes.
+  - **Achado notável da validação: os 3 cenários de teste bateram byte a byte contra o `LK80.exe`
+    JÁ NA PRIMEIRA TENTATIVA COMPLETA** (módulo único; 2 módulos com `PUBLIC`/`EXTRN` cruzado nos
+    dois sentidos incl. leitura de dado externo; 2 módulos compartilhando um bloco `COMMON`) — o
+    único ajuste necessário no meio do caminho foi no lado do ASSEMBLER (ver próximo item), não no
+    linker em si. Isso confirma que ler o C# com atenção (em vez de tentar adivinhar o algoritmo a
+    partir só da descrição em prosa) compensa: o algoritmo de `ProcessProgram` tem detalhes não
+    óbvios (ex. `ProgramInfo.MaxSegmentEnd` **exclui** o segmento `COMMON` do cálculo de "onde o
+    próximo programa começa" — um bloco `COMMON` é posição fixa compartilhada, não K deveria
+    empurrar o próximo módulo pra frente; replicar isso sem ler o C# diretamente teria sido fácil de
+    errar por raciocínio "razoável" mas incorreto).
+  - **Bug real pego pela validação, do lado do ASSEMBLER**: `LD A,(externo)`/`LD HL,(externo)`
+    (referência externa via endereçamento indireto — padrão tão comum quanto `CALL externo`) não
+    era reconhecida como referência *bare* dentro de `RunOnePassRel` — o texto do operando ainda
+    carregava os parênteses (`"(shareddata)"`) na hora de comparar contra `LastEvalUnknownSymbol`
+    (que nunca tem parênteses, é só o nome do símbolo). Resultado: `Expressao externa composta nao
+    suportada` num caso que na verdade é bare simples. Corrigido com um helper novo,
+    `Z80Asm::BareExternKeyOf()`, que tira uma camada de parênteses (se houver) antes de comparar —
+    usado tanto na classificação de operando de `DW` quanto na de instrução de CPU. Lição: a
+    suíte de testes do assembler sozinha (67/67) não pegou isso porque nenhum teste anterior tinha
+    `EXTRN` referenciado via `(nome)` — só apareceu testando um cenário de linkagem de verdade com
+    dado compartilhado entre módulos, um lembrete de que "testado" é sempre relativo à cobertura
+    real dos casos exercitados, não uma garantia absoluta.
+  - **Simplificações deliberadas registradas pra não esquecer**: detecção de sobreposição de
+    segmento entre programas (`AddressRange.Intersection` no C#) não foi implementada — é uma
+    feature de diagnóstico (pega erro do usuário), não bloqueia linkagem correta de fonte
+    bem-formado, então ficou pra depois. Duplicata de símbolo público é detectada mas com relato
+    mais simples que o original (erra na primeira duplicata encontrada, em vez de coletar todas as
+    ocorrências pra reportar de uma vez no fim) — funcionalmente equivalente pra fins de correção,
+    só menos "amigável" na mensagem.
+- **2026-07-24 — `.REQUEST`/biblioteca (corte 2 do linker) + `editor/Z80Lib.pbi`, achado real de
+  limitação do `LK80.exe` local**. Antes de escrever qualquer código, tentei validar o entendimento
+  do mecanismo de `.REQUEST` criando um cenário real (`N80.exe` monta 2 módulos separados, cada um
+  com um `PUBLIC`, `LB80.exe create` concatena os dois numa "biblioteca", um terceiro módulo faz
+  `.REQUEST` da biblioteca e usa `EXTRN` só de um dos dois símbolos) e rodando com `LK80.exe` puro,
+  do jeito que o usuário final faria — **antes** de portar a lógica. Resultado inesperado: pedir o
+  símbolo do **primeiro** programa da biblioteca funciona perfeitamente (`Program: MODA ... funca =
+  0107h`), mas pedir o símbolo do **segundo** programa sempre falha com `can't resolve external
+  symbol reference`, mesmo trocando a ORDEM dos programas na biblioteca (o que falha é sempre "o que
+  não é o primeiro", nunca um nome específico) — decodifiquei o `.LIB` gerado pelo `LB80.exe` byte a
+  byte (usando o mesmo decodificador Python já validado nesta sessão pro escritor) e confirmei que o
+  arquivo está perfeitamente formado (dois programas completos, cabeçalho de 16 bytes cada, um só
+  `EndFile` no final) — ou seja, o arquivo está certo, é o `LK80.exe` local que não processa
+  corretamente `EntrySymbol` de programas além do primeiro dentro de uma biblioteca pedida via
+  `.REQUEST` (provável limitação/bug real desta build específica do Nestor80, não do formato em si
+  nem do meu entendimento dele). **Decisão**: implementar o algoritmo CORRETO (por programa, não por
+  arquivo inteiro — cada programa da biblioteca tem seu próprio conjunto de símbolos públicos
+  indexado separadamente em `LLibProgIndex()`), já que "linkagem estática seletiva" só faz sentido
+  granular por programa, e validar via DUAS estratégias: oráculo direto onde o `LK80.exe` local
+  funciona (biblioteca de 1 programa; biblioteca de 2+ pedindo o primeiro — bateram byte a byte) e
+  auto-consistência pro resto (pedir o "não-primeiro" produz binário byte-idêntico ao cenário
+  equivalente onde esse mesmo programa É o primeiro — prova que só ELE entra, nenhum outro). Cadeia
+  transitiva de 3 níveis (biblioteca com `funcx`→`funcy`→`funcz` em 3 programas diferentes, `main` só
+  referencia `funcx`) resolvida corretamente pelo loop de ponto fixo em `LinkFiles()` (repete a busca
+  até uma rodada inteira não carregar programa nenhum novo) — todos os 3 programas entram no binário
+  final mesmo sem NENHUM deles ser referenciado diretamente por `main` (só `funcx` é, os outros dois
+  entram por resolver a cadeia). **Lição reforçada**: rodar o cenário real primeiro com as ferramentas
+  originais (antes de portar) continua sendo o jeito mais confiável de achar essas pegadinhas — dessa
+  vez a "pegadinha" nem era no meu entendimento, era uma limitação de verdade do software de
+  referência, que só apareceu testando um caso (segundo programa de biblioteca multi-programa) que a
+  documentação oficial não deixava claro que seria um problema.
+  - **`.REQUEST`/`REQUEST` virou diretiva de verdade no assembler** (`RunOnePassRel` em
+    `Z80Asm.pbi`) — antes só reconhecida no vocabulário (destaque de sintaxe), sem efeito nenhum;
+    agora emite o item de link tipo 3 de verdade (`RelW_WriteLinkItem(#Z80Rel_RequestLibrarySearch,
+    ...)`), um por nome de arquivo pedido (aceita lista separada por vírgula, mesma sintaxe do
+    `EXTRN`/`PUBLIC`).
+  - **Achado que simplificou MUITO `Z80Lib::CreateOrAddLibrary()`**: como
+    `Z80Asm::RelW_ForceByteBoundary()` sempre roda logo antes do item "Fim de arquivo" (7 bits fixos
+    `100`+`1111`, nunca alinhado por conta própria), esse item **sempre** ocupa exatamente o ÚLTIMO
+    byte de qualquer `.REL` de programa único, sempre valendo `9Eh` — confirmado em todo `.REL`
+    gerado nesta sessão (Fase A e B). "Criar uma biblioteca" (concatenar N `.REL`) não precisa
+    entender bit-stream nenhum por causa disso: só cortar o último byte de cada pedaço (exceto o
+    último escrito, que fica intacto) e concatenar — validado byte a byte idêntico ao `LB80.exe`
+    real (`create`+`add` em sequência).
+  - **Dois gotchas de PureBasic pegos na implementação de `Z80Lib.pbi`**: (1) `*Ptr.Integer`
+    (tentando declarar "ponteiro pro tipo Integer" com o NOME do tipo) compila sem erro mas não
+    funciona como esperado (o dereference `*Ptr\i` mais tarde falhava de um jeito que só apareceu em
+    runtime, como erro de parse de `.REL` válido) — o sufixo certo pra tipo nativo é a LETRA (`.i`),
+    não a palavra ("Integer"); e mesmo `.i` sozinho não resolve, porque (2) **PureBasic não deixa
+    dereferenciar ponteiro de tipo NATIVO nenhum** (`*Ptr.i\i` dá erro de compilação "Native types
+    can't be used with pointers") — só de `Structure`. Corrigido com uma "caixinha" de 1 campo só
+    (`Structure Z80LibPtrBox : P.i : EndStructure`) só pra poder devolver um ponteiro por
+    out-parameter (`*OutBuf.Z80LibPtrBox`), mesmo truque que a Fase A já usa pra qualquer valor
+    passado por referência.
+  - **Bug real de lógica (pego pelo mesmo teste real, não adivinhado)**: minha primeira versão de
+    `IndexLibraryBuffer()` tratava falha de `RB_CheckAndSkipHeader()` como erro FATAL (`If Not
+    RB_CheckAndSkipHeader(...) : ProcedureReturn #False`), quebrando com "erro fazendo parse" em todo
+    `.REL` de programa único — a causa: depois do último `EndProgram` de um arquivo, só sobra o item
+    "Fim de arquivo" (sem cabeçalho de 16 bytes nenhum antes dele, óbvio em retrospecto), e o loop
+    externo tenta checar cabeçalho ali de novo. A versão em `Z80Link::RR_ParseBuffer()` (escrita
+    antes, já funcionando) tinha esse mesmo padrão mas **não tratava a falha como fatal** — só
+    ignorava o retorno e deixava o item ser lido normalmente a seguir (que aí sim reconhece "Fim de
+    Arquivo" corretamente). Corrigido replicando o MESMO padrão (chamar sem checar o retorno) em vez
+    de reinventar a lógica de controle - lição prática de manter as duas cópias "trivialmente
+    idênticas" na estrutura de controle, não só nos nomes de campo.
+- **2026-07-24 — fechamento da sessão (Fase B: motor completo)**: com `Z80Link.pbi`/`Z80Lib.pbi`
+  prontos e o checklist Fase B todo marcado (menos UI de menu e os itens já documentados como fora de
+  escopo — `--code`/`--data`/`--align-*`, overlap de segmento, Intel HEX), documentação atualizada em
+  todos os `*.md` do projeto: `README.md` (changelog + versão no topo), `docs/SPEC.md` (módulo 2b +
+  nova entrada em "Próximos passos em aberto"), `docs/MANUAL.md` (seção "Assembler Z80" deixou de dizer
+  que `.REL`/linker "ainda não é suportado" — o motor existe e está validado, só falta menu). Versão do
+  executável atualizada de `7.3.1` pra **`7.3.3`** (convenção do projeto, `version_numbering_convention`
+  na memória: minor ímpar = build interno/dev, segue ímpar até o primeiro release de verdade).
 - 2026-07-24: início da Fase A.

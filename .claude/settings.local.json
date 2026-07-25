@@ -63,7 +63,11 @@
       "Bash(dotnet *)",
       "Bash(/e/msxbasica/nestor80/N80/bin/Release/net6.0/N80.exe *)",
       "Bash(echo \"exit=$?\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(mkdir -p /tmp/reltest)",
+      "Bash(nestor80/N80/bin/Release/net6.0/N80.exe \"c:/temp/user/claude/E--msxbasica/f7ee86a4-b264-4b2d-9047-f013e425fcb2/scratchpad/relmin.asm\" \"c:/temp/user/claude/E--msxbasica/f7ee86a4-b264-4b2d-9047-f013e425fcb2/scratchpad/relmin.rel\")",
+      "Bash(xxd \"c:/temp/user/claude/E--msxbasica/f7ee86a4-b264-4b2d-9047-f013e425fcb2/scratchpad/relmin.rel\")",
+      "Bash(C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe *)"
     ]
   }
 }

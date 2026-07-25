@@ -986,12 +986,25 @@ MACRO-80, seção "Relocation Before Loading").
   binário (`B`, ou prefixo `0b`/`%`), strings de 1-2 caracteres como valor numérico, e `$` para "o
   endereço desta linha".
 
+### Saída relocável (`.REL`), linker e biblioteca (motor pronto, ainda sem menu)
+
+O assembler também sabe gerar código **relocável** (`.REL`, formato Nestor80/LK80, `ASEG`/`CSEG`/
+`DSEG`/`COMMON`/`PUBLIC`/`ENTRY`/`GLOBAL`/`EXTRN`/`EXT`/`EXTERNAL`/`.REQUEST` todos com efeito real),
+existe um **linker** nativo que junta múltiplos `.REL` (incl. `.REQUEST`/biblioteca, com linkagem
+estática seletiva — só os módulos realmente referenciados entram no binário final, com resolução
+transitiva) e um **gerenciador de biblioteca `.LIB`** (`create`/`add`/`list`/`remove`). As três peças
+(`Z80Asm::AssembleRelocatable`, `editor/Z80Link.pbi`, `editor/Z80Lib.pbi`) já estão validadas byte a
+byte contra os originais reais (`N80.exe`/`LK80.exe`/`LB80.exe`) — mas **hoje só são acessíveis via os
+harnesses de teste em `editor/tools/Z80AsmTestCli.exe`/`Z80LinkTestCli.exe`, sem nenhuma opção no menu
+do editor**. Integrar isso a **Executar →** (gerar `.REL` de uma aba, linkar vários arquivos, montar
+biblioteca) é a próxima etapa planejada. Detalhe técnico completo (algoritmo, formato de bit-stream,
+testes) em [`docs/resumo-asm.md`](resumo-asm.md), seção "Checklist Fase B".
+
 ### O que ainda não é suportado
 
-- **Saída relocável (`.REL`) e linker** — hoje "Montar" só gera binário absoluto de um único arquivo
-  (precisa de `ORG`). Linkar vários arquivos `.asm` montados separadamente, e gerar/consumir uma
-  biblioteca de rotinas (linkagem seletiva — só o que é usado entra no `.COM` final), é a próxima
-  etapa planejada (ver `docs/resumo-asm.md`, "Checklist Fase B").
+- **Menu no editor pra `.REL`/linker/biblioteca** — ver seção acima; o motor já existe, falta só a UI.
+- **`--code`/`--data`/`--align-code`/`--align-data`/`--code-before-data` do linker**, detecção de
+  sobreposição de segmento entre programas e saída Intel HEX — fora do escopo dos cortes já feitos.
 - **Integração com o sistema de projeto** — o texto-fonte `.asm` já é salvo dentro do `.msxproject`
   (igual qualquer aba de texto), mas ainda não existe uma tabela dedicada pro binário montado, tag,
   navegação, etc. (como sprites/alfabetos/sons/músicas/telas já têm).

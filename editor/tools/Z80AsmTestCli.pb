@@ -67,6 +67,49 @@ If CountProgramParameters() >= 3 And ProgramParameter(0) = "--assemble"
   End 0
 EndIf
 
+; Modo "--assemble-rel <entrada.asm> <nome_programa> <saida.rel>": monta em
+; modo relocavel (Z80Asm::AssembleRelocatable) e grava o .REL cru - usado pra
+; comparar byte a byte com o oraculo (N80.exe puro, sem --output-file-extension
+; nem flags especiais) via ferramenta externa (fc/cmp).
+If CountProgramParameters() >= 4 And ProgramParameter(0) = "--assemble-rel"
+  OpenConsole()
+  Define InPathR.s = ProgramParameter(1)
+  Define ProgNameR.s = ProgramParameter(2)
+  Define OutPathR.s = ProgramParameter(3)
+  Define Dim RelBytes.a(131071)
+
+  If Not ReadFile(0, InPathR)
+    PrintN("ERRO: nao abriu " + InPathR)
+    End 1
+  EndIf
+  Define SrcLenR = Lof(0)
+  Define *BufR = AllocateMemory(SrcLenR + 1)
+  ReadData(0, *BufR, SrcLenR)
+  CloseFile(0)
+  Define SourceR.s = PeekS(*BufR, SrcLenR, #PB_Ascii)
+  FreeMemory(*BufR)
+
+  Define NR = Z80Asm::AssembleRelocatable(SourceR, ProgNameR, RelBytes())
+  If NR < 0
+    PrintN("ASMERROR linha " + Str(Z80Asm::GetAssembleErrorLine()) + ": " + Z80Asm::GetAssembleErrorText())
+    End 1
+  EndIf
+
+  If CreateFile(0, OutPathR)
+    If NR > 0
+      Define Dim WriteBufR.a(NR - 1)
+      Define Idx0R
+      For Idx0R = 0 To NR - 1
+        WriteBufR(Idx0R) = RelBytes(Idx0R)
+      Next
+      WriteData(0, @WriteBufR(), NR)
+    EndIf
+    CloseFile(0)
+  EndIf
+  PrintN(Str(NR) + " bytes")
+  End 0
+EndIf
+
 Global TestCount = 0
 Global FailCount = 0
 
@@ -109,6 +152,90 @@ Procedure CheckKw(Word.s, ExpectMnemonic.b, ExpectRegister.b, ExpectDirective.b,
   Else
     FailCount + 1
     PrintN("FAIL  vocabulario(" + Word + ")  mnem=" + Str(Z80Asm::IsMnemonic(Word)) + " reg=" + Str(Z80Asm::IsRegister(Word)) + " dir=" + Str(Z80Asm::IsDirective(Word)) + " op=" + Str(Z80Asm::IsOperatorWord(Word)))
+  EndIf
+EndProcedure
+
+; Compara RelW_GetBytes() atual contra uma string hex "85D3139..." (2 digitos
+; por byte, sem separador) - usado pros testes do escritor de bit-stream .REL.
+Procedure CheckRelBytes(Desc.s, ExpectedHex.s)
+  TestCount + 1
+  Protected ExpN = Len(ExpectedHex) / 2
+  Protected N = Z80Asm::RelW_GetByteCount()
+  Protected Dim Got.a(N)
+  If N > 0
+    Z80Asm::RelW_GetBytes(Got())
+  EndIf
+  Protected Ok.b = Bool(N = ExpN)
+  Protected Idx, ExpB.a
+  If Ok
+    For Idx = 0 To N - 1
+      ExpB = Val("$" + Mid(ExpectedHex, Idx * 2 + 1, 2))
+      If Got(Idx) <> ExpB
+        Ok = #False
+        Break
+      EndIf
+    Next
+  EndIf
+  If Ok
+    PrintN("PASS  RelW: " + Desc + "  (" + Str(N) + " bytes)")
+  Else
+    FailCount + 1
+    Protected GotHex.s = ""
+    For Idx = 0 To N - 1
+      GotHex + RSet(Hex(Got(Idx)), 2, "0")
+    Next
+    PrintN("FAIL  RelW: " + Desc + "  esperado [" + ExpectedHex + "] obtido [" + GotHex + "]")
+  EndIf
+EndProcedure
+
+; Le um .asm do disco (relativo ao diretorio de trabalho, mesma convencao do
+; modo --assemble-rel), monta em modo relocavel e compara contra uma string
+; hex esperada - usado pra fixar (como regressao self-contained, sem precisar
+; do N80.exe presente) o resultado ja validado byte a byte contra o oraculo
+; numa sessao anterior (ver docs/resumo-asm.md).
+Procedure CheckAssembleRelFile(Path.s, ProgName.s, Desc.s, ExpectedHex.s)
+  TestCount + 1
+  If Not ReadFile(1, Path)
+    FailCount + 1
+    PrintN("FAIL  AssembleRelocatable(" + Path + ")  nao abriu o arquivo  " + Desc)
+    ProcedureReturn
+  EndIf
+  Protected SrcLen = Lof(1)
+  Protected *Buf = AllocateMemory(SrcLen + 1)
+  ReadData(1, *Buf, SrcLen)
+  CloseFile(1)
+  Protected Source.s = PeekS(*Buf, SrcLen, #PB_Ascii)
+  FreeMemory(*Buf)
+
+  Protected Dim RelOut.a(131071)
+  Protected N = Z80Asm::AssembleRelocatable(Source, ProgName, RelOut())
+  If N < 0
+    FailCount + 1
+    PrintN("FAIL  AssembleRelocatable(" + Path + ")  erro linha " + Str(Z80Asm::GetAssembleErrorLine()) + ": " + Z80Asm::GetAssembleErrorText() + "  " + Desc)
+    ProcedureReturn
+  EndIf
+
+  Protected ExpN = Len(ExpectedHex) / 2
+  Protected Ok.b = Bool(N = ExpN)
+  Protected Idx, ExpB.a
+  If Ok
+    For Idx = 0 To N - 1
+      ExpB = Val("$" + Mid(ExpectedHex, Idx * 2 + 1, 2))
+      If RelOut(Idx) <> ExpB
+        Ok = #False
+        Break
+      EndIf
+    Next
+  EndIf
+  If Ok
+    PrintN("PASS  AssembleRelocatable(" + Path + ")  " + Desc + "  (" + Str(N) + " bytes)")
+  Else
+    FailCount + 1
+    Protected GotHex.s = ""
+    For Idx = 0 To N - 1
+      GotHex + RSet(Hex(RelOut(Idx)), 2, "0")
+    Next
+    PrintN("FAIL  AssembleRelocatable(" + Path + ")  " + Desc + "  esperado " + Str(ExpN) + " bytes, obtido " + Str(N) + " [" + GotHex + "]")
   EndIf
 EndProcedure
 
@@ -215,6 +342,68 @@ CheckParse("	ORG 100h", "", #False, #False, "ORG", "100h", "", #False, "diretiva
 CheckParse("MSG: DB "+Chr(34)+"A;B"+Chr(34)+" ; comentario de verdade", "MSG", #True, #False, "DB", Chr(34)+"A;B"+Chr(34), "comentario de verdade", #False, "';' dentro de string nao conta como comentario")
 CheckParse(".RADIX 16", "", #False, #False, ".RADIX", "16", "", #False, "diretiva com ponto vira 1 so operador")
 CheckParse("NOP", "", #False, #False, "NOP", "", "", #False, "mnemonico sem argumento")
+
+PrintN("")
+PrintN("=== Z80Asm - escritor de bit-stream .REL (Fase B) ===")
+; Empacotamento MSB-first cru - valores conferidos a mao (bit a bit) contra a
+; semantica documentada de BitStreamWriter.Write() do Nestor80.
+Z80Asm::RelW_Reset()
+Z80Asm::RelW_WriteBits(%101, 3)
+Z80Asm::RelW_WriteBits($FF, 8)
+Z80Asm::RelW_WriteBits(%11, 2)
+CheckRelBytes("WriteBits 3+8+2 bits cruzando fronteira de byte", "BFF8")
+
+Z80Asm::RelW_Reset()
+Z80Asm::RelW_WriteByteItem($AB)
+CheckRelBytes("WriteByteItem($AB) = prefixo 0 + 8 bits", "5580")
+
+Z80Asm::RelW_Reset()
+Z80Asm::RelW_WriteValueItem(Z80Asm::#Z80Seg_Code, $1234)
+CheckRelBytes("WriteValueItem(CSEG,1234h) = prefixo 1 + seg 01 + LE(34,12)", "A68240")
+
+Z80Asm::RelW_Reset()
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_ProgramName, #False, 0, 0, #True, "AB")
+CheckRelBytes("WriteLinkItem(ProgramName,sym=" + Chr(34) + "AB" + Chr(34) + ") = 100+0010+len3(2)+'A'+'B'", "84905080")
+
+; Reproducao byte a byte de um .REL minimo real, gerado pelo N80.exe a
+; partir de:
+;   cseg / public start / start: ld a,1 / ret / end
+; (docs/resumo-asm.md registra a sessao de decodificacao manual que validou
+; esta sequencia de chamadas contra o oraculo - 55 bytes identicos).
+Z80Asm::RelW_Reset()
+Z80Asm::RelW_WriteExtendedHeader()
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_ProgramName, #False, 0, 0, #True, "RELMIN")
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_EntrySymbol, #False, 0, 0, #True, "start")
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_DataAreaSize, #True, Z80Asm::#Z80Seg_Absolute, 0)
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_ProgramAreaSize, #True, Z80Asm::#Z80Seg_Code, 3)
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_SetLocationCounter, #True, Z80Asm::#Z80Seg_Code, 0)
+Z80Asm::RelW_WriteByteItem($3E)
+Z80Asm::RelW_WriteByteItem($01)
+Z80Asm::RelW_WriteByteItem($C9)
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_DefineEntryPoint, #True, Z80Asm::#Z80Seg_Code, 0, #True, "start")
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_EndProgram, #True, Z80Asm::#Z80Seg_Absolute, 0)
+Z80Asm::RelW_ForceByteBoundary()
+Z80Asm::RelW_WriteLinkItem(Z80Asm::#Z80Rel_EndFile)
+CheckRelBytes("reproducao completa de relmin.rel (oraculo N80.exe, 55 bytes)",
+  "85D31392D4D513D4A50000138FFFF09E85949153135253A0573746172749400004D40C025A00003E00B263A00015CDD185C9D27000009E")
+
+PrintN("")
+PrintN("=== Z80Asm - driver relocavel (AssembleRelocatable, Fase B) ===")
+; sample/teste4-6_rel_*.asm - suite de regressao oficial do driver relocavel
+; (mesmo papel de teste_opcodes.asm/teste2_macros.asm/teste3_phase.asm pro
+; driver absoluto) - bytes esperados confirmados byte a byte contra o
+; N80.exe real (ver docs/resumo-asm.md, log de decisoes tecnicas).
+CheckAssembleRelFile("sample/teste4_rel_public.asm", "RELTEST1",
+  "CSEG + PUBLIC simples (cseg/public start/ld a,1/ret/end)",
+  "85D31392D4D513D4A50000138FFFF09E84BFC2149153151154D50C60573746172749400004D40C025A00003E00B263A00015CDD185C9D27000009E")
+
+CheckAssembleRelFile("sample/teste5_rel_dseg.asm", "RELTEST2",
+  "CSEG+DSEG+PUBLIC+DW relocavel (label em CSEG e DSEG, DS sem preenchimento)",
+  "85D31392D4D513D4A50000138FFFF09E84BFC2149153151154D50CA0573746172749408004D44C025A000021C000011A1A00CDA1400C91B00193800030080500009700004B840023A00015CDD185C9D27000009E")
+
+CheckAssembleRelFile("sample/teste6_rel_extrn.asm", "RELTEST3",
+  "EXTRN bare (CALL/LD com externo, mecanismo de corrente ChainExternal)",
+  "85D31392D4D513D4A50000138FFFF09E84BFC2149153151154D50CE0573746172749400004D428025A0000CD0000042000033680803263A00015CDD185C9D2320E00BFC21C1C9A5B9D1B5CD9E320800BFC21D18589B19595E1D27000009E")
 
 PrintN("")
 PrintN("=== Resultado ===")

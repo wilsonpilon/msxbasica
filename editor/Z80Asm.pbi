@@ -70,6 +70,57 @@ DeclareModule Z80Asm
   Declare.i EncodeInstruction(Mnemonic.s, ArgsText.s, EmitMode.b, Array Out.a(1))
   Declare.s GetLastAsmError()
 
+  ; Escritor de bit-stream do formato .REL (Fase B - ver docs/reference/nestor80-rel-format.md
+  ; e docs/resumo-asm.md). Espelha, em baixo nivel, Assembler/Relocatable/BitStreamWriter.cs +
+  ; a camada WriteByte/WriteAddress/WriteLinkItem/WriteSymbolField de Assembler/OutputGenerator.cs
+  ; do Nestor80 - so o formato ESTENDIDO e suportado (recomendacao da propria doc de referencia;
+  ; o legado --link-80-compatibility fica de fora). Um .REL e um bit-stream (nao byte-alinhado):
+  ; prefixo "0"+8 bits = byte absoluto; prefixo "1"+2 bits de segmento (so CSEG/DSEG/COMMON -
+  ; "1"+"00" e reservado pro item de link)+16 bits (LE) = valor relocavel; prefixo "100"+4 bits
+  ; de tipo (+ campos opcionais de endereco/simbolo) = item de link. Validado byte a byte contra
+  ; um .REL minimo real do N80.exe, ver log de decisoes tecnicas em docs/resumo-asm.md.
+  ; Ainda NAO integrado ao driver de 2 passes (Assemble()) - essa e a proxima tarefa da Fase B
+  ; (deteccao build absoluto vs. relocavel + serializacao real linha a linha).
+  Enumeration Z80RelItemType
+    #Z80Rel_EntrySymbol          ; 0  - simbolo PUBLIC (declarado no topo do arquivo)
+    #Z80Rel_SelectCommonBlock    ; 1  - troca o bloco COMMON ativo
+    #Z80Rel_ProgramName          ; 2  - NAME/TITLE
+    #Z80Rel_RequestLibrarySearch ; 3  - .REQUEST
+    #Z80Rel_ExtensionLinkItem    ; 4  - item de extensao (expressao com externo, RPN)
+    #Z80Rel_DefineCommonSize     ; 5  - tamanho de um bloco COMMON
+    #Z80Rel_ChainExternal        ; 6  - cadeia de posicoes a corrigir pra um externo
+    #Z80Rel_DefineEntryPoint     ; 7  - define valor de um simbolo PUBLIC
+    #Z80Rel_ExternalMinusOffset  ; 8  - nunca gerado pelo MACRO-80/Nestor80
+    #Z80Rel_ExternalPlusOffset   ; 9  - simbolo+valor / simbolo-valor
+    #Z80Rel_DataAreaSize         ; 10 - tamanho total do DSEG
+    #Z80Rel_SetLocationCounter   ; 11 - ASEG/CSEG/DSEG/COMMON trocam o contador de localizacao
+    #Z80Rel_ChainAddress         ; 12 - nunca gerado de verdade
+    #Z80Rel_ProgramAreaSize      ; 13 - tamanho total do CSEG
+    #Z80Rel_EndProgram           ; 14 - fim do programa (forca alinhamento de byte)
+    #Z80Rel_EndFile              ; 15 - fim do arquivo, sem campos
+  EndEnumeration
+
+  Declare   RelW_Reset()
+  Declare   RelW_WriteBits(Value.l, NBits.b)
+  Declare   RelW_WriteExtendedHeader()
+  Declare   RelW_WriteByteItem(B.a)
+  Declare   RelW_WriteValueItem(SegType.b, Value.u)
+  Declare   RelW_WriteLinkItem(ItemType.b, HasAddr.b = #False, AddrSeg.b = 0, AddrValue.u = 0, HasSymbol.b = #False, Symbol.s = "")
+  Declare   RelW_ForceByteBoundary()
+  Declare.i RelW_GetByteCount()
+  Declare.i RelW_GetBytes(Array Out.a(1))
+
+  ; Driver relocavel (Fase B, integrado ao driver de 2 passes) - detecta e
+  ; monta builds que usam CSEG/DSEG/COMMON/PUBLIC/EXTRN de verdade, gerando
+  ; um .REL via RelW_* acima. Convive com o driver absoluto (Assemble()) sem
+  ; alterar seu comportamento - cada um serve um formato de saida diferente,
+  ; ver comentario da secao RunOnePassRel em Z80Asm.pbi pro escopo suportado/
+  ; nao suportado (expressao externa composta, valor relocavel de 1 byte,
+  ; .PHASE no modo relocavel, biblioteca ficam pra depois). Erros usam os
+  ; MESMOS GetAssembleErrorLine()/GetAssembleErrorText() de Assemble().
+  Declare.i NeedsRelocatable(SourceText.s)
+  Declare.i AssembleRelocatable(SourceText.s, ProgramName.s, Array OutBytes.a(1))
+
   ; Driver de 2 passes - so absoluto por enquanto (ORG/label/EQU/DEFL/ASET/
   ; instrucoes de CPU; ASEG/CSEG/DSEG/COMMON/PUBLIC/EXTRN reconhecidas sem
   ; efeito pleno - Fase B). OutBytes precisa vir dimensionado pelo chamador
@@ -216,6 +267,19 @@ Module Z80Asm
     IsConstant.b  ; EQU - nao pode ser redefinido (DEFL e rotulo podem)
   EndStructure
 
+  ; Estado auxiliar do driver relocavel (RunOnePassRel/AssembleRelocatable,
+  ; Fase B - ver secao propria mais abaixo, depois de RelW_*).
+  Structure Z80RelChainState
+    LastPos.Z80Addr  ; posicao (area+valor) do ultimo slot escrito pra esse externo ate agora
+    DisplayName.s    ; grafia com maiusc/minusc ORIGINAL (da 1a ocorrencia) - usada no ChainExternal
+                      ; final; a CHAVE do Map (sempre maiuscula) e so pra casar case-insensitive
+  EndStructure
+
+  Structure Z80RelCommonSizeEntry
+    Name.s
+    Size.u
+  EndStructure
+
   Global NewMap Symbols.Z80Symbol()
   Global CurLoc.Z80Addr    ; contador de localizacao "reportado" ($/rotulos/JR) - atualizado pelo
                            ; driver de 2 passes; dentro de um bloco .PHASE, difere da posicao real de
@@ -227,6 +291,8 @@ Module Z80Asm
   Global PassNumber.b = 1  ; 1 ou 2 - idem
   Global LastEvalError.s
   Global LastEvalUnknownSymbol.s
+  Global AsmErrorLine.i    ; erro do driver de 2 passes (absoluto OU relocavel - GetAssembleErrorLine/Text
+  Global AsmErrorText.s    ; ja precisam disso aqui em cima porque RunOnePassRel usa antes de RunOnePass no arquivo)
 
   ; Macros basicas (MACRO/ENDM/EXITM/LOCAL) - ver ExpandLines() mais abaixo.
   ; BodyText guarda o corpo cru com as linhas unidas por Chr(10) (mesmo
@@ -1010,39 +1076,96 @@ Module Z80Asm
             LastElement(Stack()) : *B = @Stack() : DeleteElement(Stack())
             LastElement(Stack()) : *A = @Stack() : DeleteElement(Stack())
 
-            ; Soma/subtracao entre valores relocaveis: por enquanto (Fase A,
-            ; so ASEG existe de verdade) os dois operandos sao sempre
-            ; absolutos - a regra de "mesmo segmento subtrai pra absoluto"
-            ; (Z80Addr_SameSegment) fica pronta pra quando CSEG/DSEG
-            ; passarem a valer alguma coisa na Fase B.
+            ; Soma/subtracao entre valores relocaveis (Fase B, ver
+            ; docs/resumo-asm.md/nestor80-rel-format.md "modelo do programador"):
+            ; reloc+abs/abs+reloc = reloc (mesmo segmento do operando relocavel);
+            ; reloc-abs = reloc (segmento de A); reloc-reloc NO MESMO segmento =
+            ; absoluto (a distancia entre dois enderecos do mesmo segmento ja e
+            ; conhecida sem precisar do endereco base final, que so o linker
+            ; decide); qualquer outra combinacao com pelo menos um operando
+            ; relocavel (reloc+reloc, reloc-reloc de segmentos diferentes) exigiria
+            ; o mecanismo de item de extensao RPN do Nestor80 - fora de escopo
+            ; nesta fase (expressao relocavel composta rara), erro explicito em vez
+            ; de silenciosamente virar absoluto errado. Os demais operadores
+            ; (mul/div/mod/shift/bitwise/relacionais) so fazem sentido pra valores
+            ; ja conhecidos em tempo de montagem - continuam exigindo os dois
+            ; operandos absolutos, agora com erro explicito em vez de assumir.
+            Protected AAbs.b = Bool(*A\SegType = #Z80Seg_Absolute)
+            Protected BAbs.b = Bool(*B\SegType = #Z80Seg_Absolute)
             Select Toks()\OpCode
-              Case #Z80Op_Plus  : Z80Addr_Make(@R, (*A\Value + *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Minus : Z80Addr_Make(@R, (*A\Value - *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Mul   : Z80Addr_Make(@R, (*A\Value * *B\Value) & $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Plus
+                If AAbs And BAbs
+                  Z80Addr_Make(@R, (*A\Value + *B\Value) & $FFFF, #Z80Seg_Absolute)
+                ElseIf AAbs And Not BAbs
+                  Z80Addr_Make(@R, (*A\Value + *B\Value) & $FFFF, *B\SegType, *B\CommonName)
+                ElseIf Not AAbs And BAbs
+                  Z80Addr_Make(@R, (*A\Value + *B\Value) & $FFFF, *A\SegType, *A\CommonName)
+                Else
+                  LastEvalError = "Soma entre dois valores relocaveis nao suportada nesta fase (Fase B parcial - precisaria de item de extensao RPN)"
+                  ProcedureReturn #False
+                EndIf
+              Case #Z80Op_Minus
+                If AAbs And BAbs
+                  Z80Addr_Make(@R, (*A\Value - *B\Value) & $FFFF, #Z80Seg_Absolute)
+                ElseIf Not AAbs And BAbs
+                  Z80Addr_Make(@R, (*A\Value - *B\Value) & $FFFF, *A\SegType, *A\CommonName)
+                ElseIf Not AAbs And Not BAbs And Z80Addr_SameSegment(*A, *B)
+                  Z80Addr_Make(@R, (*A\Value - *B\Value) & $FFFF, #Z80Seg_Absolute)
+                Else
+                  LastEvalError = "Subtracao envolvendo valor relocavel nao suportada nesta fase (absoluto-relocavel, ou relocaveis de segmentos diferentes - precisaria de item de extensao RPN)"
+                  ProcedureReturn #False
+                EndIf
+              Case #Z80Op_Mul
+                If Not (AAbs And BAbs) : LastEvalError = "*: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, (*A\Value * *B\Value) & $FFFF, #Z80Seg_Absolute)
               Case #Z80Op_Div
+                If Not (AAbs And BAbs) : LastEvalError = "/: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
                 If *B\Value = 0
                   LastEvalError = "Divisao por zero"
                   ProcedureReturn #False
                 EndIf
                 Z80Addr_Make(@R, (*A\Value / *B\Value) & $FFFF, #Z80Seg_Absolute)
               Case #Z80Op_Mod
+                If Not (AAbs And BAbs) : LastEvalError = "MOD: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
                 If *B\Value = 0
                   LastEvalError = "Divisao por zero (MOD)"
                   ProcedureReturn #False
                 EndIf
                 Z80Addr_Make(@R, (*A\Value % *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Shl   : Z80Addr_Make(@R, (*A\Value << *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Shr   : Z80Addr_Make(@R, (*A\Value >> *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_And   : Z80Addr_Make(@R, (*A\Value & *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Or    : Z80Addr_Make(@R, (*A\Value | *B\Value) & $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Xor   : Z80Addr_Make(@R, (*A\Value ! *B\Value) & $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Shl
+                If Not (AAbs And BAbs) : LastEvalError = "SHL: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, (*A\Value << *B\Value) & $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Shr
+                If Not (AAbs And BAbs) : LastEvalError = "SHR: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, (*A\Value >> *B\Value) & $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_And
+                If Not (AAbs And BAbs) : LastEvalError = "AND: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, (*A\Value & *B\Value) & $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Or
+                If Not (AAbs And BAbs) : LastEvalError = "OR: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, (*A\Value | *B\Value) & $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Xor
+                If Not (AAbs And BAbs) : LastEvalError = "XOR: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, (*A\Value ! *B\Value) & $FFFF, #Z80Seg_Absolute)
               ; Relacionais: convencao M80/Nestor80 - verdadeiro = FFFFh, falso = 0000h
-              Case #Z80Op_Eq    : Z80Addr_Make(@R, Bool(*A\Value = *B\Value) * $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Ne    : Z80Addr_Make(@R, Bool(*A\Value <> *B\Value) * $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Lt    : Z80Addr_Make(@R, Bool(*A\Value < *B\Value) * $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Le    : Z80Addr_Make(@R, Bool(*A\Value <= *B\Value) * $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Gt    : Z80Addr_Make(@R, Bool(*A\Value > *B\Value) * $FFFF, #Z80Seg_Absolute)
-              Case #Z80Op_Ge    : Z80Addr_Make(@R, Bool(*A\Value >= *B\Value) * $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Eq
+                If Not (AAbs And BAbs) : LastEvalError = "EQ: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, Bool(*A\Value = *B\Value) * $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Ne
+                If Not (AAbs And BAbs) : LastEvalError = "NE: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, Bool(*A\Value <> *B\Value) * $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Lt
+                If Not (AAbs And BAbs) : LastEvalError = "LT: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, Bool(*A\Value < *B\Value) * $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Le
+                If Not (AAbs And BAbs) : LastEvalError = "LE: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, Bool(*A\Value <= *B\Value) * $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Gt
+                If Not (AAbs And BAbs) : LastEvalError = "GT: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, Bool(*A\Value > *B\Value) * $FFFF, #Z80Seg_Absolute)
+              Case #Z80Op_Ge
+                If Not (AAbs And BAbs) : LastEvalError = "GE: operandos precisam ser absolutos" : ProcedureReturn #False : EndIf
+                Z80Addr_Make(@R, Bool(*A\Value >= *B\Value) * $FFFF, #Z80Seg_Absolute)
             EndSelect
             AddElement(Stack())
             CopyStructure(@R, @Stack(), Z80Addr)
@@ -1076,10 +1199,14 @@ Module Z80Asm
     CurLoc\Value = Value
   EndProcedure
 
-  Procedure.i DefineSymbol(Name.s, Value.u, IsConstant.b = #False)
+  ; Versao geral (segmento arbitrario) - DefineSymbol() abaixo e so um atalho
+  ; pra #Z80Seg_Absolute (mantido intacto pra nao mudar o contrato da API
+  ; publica de Fase A). Usada pelo driver relocavel (RunOnePassRel, Fase B)
+  ; pra rotulos definidos dentro de CSEG/DSEG/COMMON.
+  Procedure.i DefineSymbolSeg(Name.s, Value.u, SegType.b, CommonName.s, IsConstant.b = #False)
     Protected Key.s = UCase(Name)
     If FindMapElement(Symbols(), Key) And Symbols()\IsKnown And Symbols()\IsConstant
-      If Symbols()\Addr\Value = Value
+      If Symbols()\Addr\Value = Value And Symbols()\Addr\SegType = SegType And Symbols()\Addr\CommonName = CommonName
         ProcedureReturn #True ; redefinicao idempotente (mesma linha EQU vista de novo no pass 2) - ok
       EndIf
       LastEvalError = "Simbolo ja definido (EQU nao pode ser redefinido): " + Key
@@ -1088,10 +1215,14 @@ Module Z80Asm
     If Not FindMapElement(Symbols(), Key)
       AddMapElement(Symbols(), Key)
     EndIf
-    Z80Addr_Make(@Symbols()\Addr, Value, #Z80Seg_Absolute)
+    Z80Addr_Make(@Symbols()\Addr, Value, SegType, CommonName)
     Symbols()\IsKnown = #True
     Symbols()\IsConstant = IsConstant
     ProcedureReturn #True
+  EndProcedure
+
+  Procedure.i DefineSymbol(Name.s, Value.u, IsConstant.b = #False)
+    ProcedureReturn DefineSymbolSeg(Name, Value, #Z80Seg_Absolute, "", IsConstant)
   EndProcedure
 
   Procedure.i IsSymbolKnown(Name.s)
@@ -2242,6 +2373,847 @@ Module Z80Asm
   EndProcedure
 
   ;- ------------------------------------------------------------
+  ;- Escritor de bit-stream do formato .REL (Fase B) - ver comentario no
+  ;- DeclareModule acima e docs/reference/nestor80-rel-format.md. Buffer
+  ;- proprio (RelBuf), separado do Mem() de 64KB do driver absoluto - cresce
+  ;- por dobra (ReDim 1D, seguro - so ReDim de dimensao >1 corrompe heap, ver
+  ;- memoria purebasic_redim_last_dim_only).
+  ;- ------------------------------------------------------------
+
+  Global Dim RelBuf.a(4095)
+  Global RelBufCap.i = 4096
+  Global RelByteCount.i = 0
+  Global RelBitPos.b = 0    ; 0-7: bits ja usados no byte parcial RelBuf(RelByteCount-1); 0 = nenhum byte parcial pendente
+
+  Procedure RelW_Reset()
+    RelByteCount = 0
+    RelBitPos = 0
+  EndProcedure
+
+  Procedure RelW_EnsureCap(NeedBytes.i)
+    If NeedBytes <= RelBufCap
+      ProcedureReturn
+    EndIf
+    Protected NewCap = RelBufCap
+    While NewCap < NeedBytes
+      NewCap = NewCap * 2
+    Wend
+    ReDim RelBuf.a(NewCap - 1)
+    RelBufCap = NewCap
+  EndProcedure
+
+  ; Grava um byte JA COMPLETO diretamente no buffer, fora do mecanismo de item
+  ; bit a bit - usado so pro cabecalho de 16 bytes do formato estendido (que e
+  ; literalmente colado no arquivo, ANTES de qualquer item de bit-stream
+  ; comecar, nao um "byte absoluto" dentro da gramatica de itens). Exige
+  ; alinhamento de byte (RelBitPos = 0) - responsabilidade do chamador.
+  Procedure RelW_AppendRawByte(B.a)
+    RelW_EnsureCap(RelByteCount + 1)
+    RelBuf(RelByteCount) = B
+    RelByteCount + 1
+  EndProcedure
+
+  ; Empacota os NBits bits menos significativos de Value no bit-stream,
+  ; bit a bit, do mais significativo pro menos significativo, sempre
+  ; preenchendo cada byte do buffer a partir do bit mais significativo (MSB)
+  ; primeiro - mesma semantica de BitStreamWriter.Write() do Nestor80
+  ; (Assembler/Relocatable/BitStreamWriter.cs), confirmada empiricamente
+  ; decodificando um .REL real do N80.exe bit a bit (ver docs/resumo-asm.md).
+  Procedure RelW_WriteBits(Value.l, NBits.b)
+    Protected Idx.b, BitVal.b
+    For Idx = NBits - 1 To 0 Step -1
+      If RelBitPos = 0
+        RelW_EnsureCap(RelByteCount + 1)
+        RelBuf(RelByteCount) = 0
+        RelByteCount + 1
+      EndIf
+      BitVal = (Value >> Idx) & 1
+      If BitVal
+        RelBuf(RelByteCount - 1) = RelBuf(RelByteCount - 1) | (BitVal << (7 - RelBitPos))
+      EndIf
+      RelBitPos + 1
+      If RelBitPos = 8 : RelBitPos = 0 : EndIf
+    Next
+  EndProcedure
+
+  Procedure RelW_ForceByteBoundary()
+    RelBitPos = 0   ; o byte parcial ja existe em RelBuf() (criado zerado, so bits 1 sao ORados) - so precisa
+                     ; parar de completa-lo; proximo Write comeca um byte novo
+  EndProcedure
+
+  ; Cabecalho fixo de 16 bytes do formato estendido Nestor80 - por si so uma
+  ; codificacao valida de ProgramName "LNKSTOR" + DataSegSize 0 + EndOfProgram
+  ; FFFFh + EndOfFile (ver docs/reference/nestor80-rel-format.md), colada
+  ; direto no arquivo ANTES do primeiro item de bit-stream de cada programa -
+  ; identica byte a byte ao inicio de um .REL real gerado pelo N80.exe.
+  Procedure RelW_WriteExtendedHeader()
+    RelW_ForceByteBoundary()
+    RelW_AppendRawByte($85) : RelW_AppendRawByte($D3) : RelW_AppendRawByte($13) : RelW_AppendRawByte($92)
+    RelW_AppendRawByte($D4) : RelW_AppendRawByte($D5) : RelW_AppendRawByte($13) : RelW_AppendRawByte($D4)
+    RelW_AppendRawByte($A5) : RelW_AppendRawByte($00) : RelW_AppendRawByte($00) : RelW_AppendRawByte($13)
+    RelW_AppendRawByte($8F) : RelW_AppendRawByte($FF) : RelW_AppendRawByte($F0) : RelW_AppendRawByte($9E)
+  EndProcedure
+
+  ; "Byte absoluto": prefixo "0" + 8 bits do valor (WriteByte() no Nestor80)
+  Procedure RelW_WriteByteItem(B.a)
+    RelW_WriteBits(0, 1)
+    RelW_WriteBits(B, 8)
+  EndProcedure
+
+  ; "Valor relocavel": prefixo "1" + 2 bits de segmento + 16 bits do valor,
+  ; byte baixo primeiro depois byte alto (little-endian, cada um escrito como
+  ; 8 bits MSB-first normais - WriteAddress() no Nestor80). SegType SO pode
+  ; ser Code/Data/Common (#Z80Seg_Absolute=0 e reservado: "1"+"00" e o prefixo
+  ; do item de link, nunca um valor relocavel de verdade - ASEG nunca precisa
+  ; de relocacao, entao nunca gera este item).
+  Procedure RelW_WriteValueItem(SegType.b, Value.u)
+    RelW_WriteBits(1, 1)
+    RelW_WriteBits(SegType, 2)
+    RelW_WriteBits(Value & $FF, 8)
+    RelW_WriteBits((Value >> 8) & $FF, 8)
+  EndProcedure
+
+  ; Campo de simbolo do formato ESTENDIDO (WriteSymbolField()/logica de escape
+  ; de WriteLinkItem() no Nestor80): campo normal = 3 bits de tamanho (0-7) +
+  ; N bytes UTF-8; quando o simbolo tem mais de 7 bytes (ou 2-7 bytes cujo
+  ; primeiro byte de conteudo e FFh, caso ambiguo) vira um "escape": 3 bits de
+  ; tamanho =2 (ou 3/4) + FFh + tamanho real em 1-3 bytes little-endian,
+  ; seguido dos bytes de verdade do simbolo (sem outro prefixo de tamanho).
+  Procedure RelW_WriteSymbolField(Sym.s)
+    Protected NBytes = StringByteLength(Sym, #PB_UTF8)
+    Protected Dim B.a(0)
+    If NBytes > 0
+      ReDim B.a(NBytes - 1)
+      Protected *SymMem = AllocateMemory(NBytes + 1)
+      PokeS(*SymMem, Sym, -1, #PB_UTF8)
+      Protected Idx
+      For Idx = 0 To NBytes - 1
+        B(Idx) = PeekA(*SymMem + Idx)
+      Next
+      FreeMemory(*SymMem)
+    EndIf
+
+    If NBytes > 7 Or (NBytes > 1 And B(0) = $FF)
+      Protected LegacyLen
+      If NBytes < 256
+        LegacyLen = 2
+      ElseIf NBytes < 65536
+        LegacyLen = 3
+      Else
+        LegacyLen = 4
+      EndIf
+      RelW_WriteBits(LegacyLen, 3)
+      RelW_WriteBits($FF, 8)
+      RelW_WriteBits(NBytes & $FF, 8)
+      If LegacyLen >= 3 : RelW_WriteBits((NBytes >> 8) & $FF, 8) : EndIf
+      If LegacyLen >= 4 : RelW_WriteBits((NBytes >> 16) & $FF, 8) : EndIf
+    Else
+      RelW_WriteBits(NBytes, 3)
+    EndIf
+
+    For Idx = 0 To NBytes - 1
+      RelW_WriteBits(B(Idx), 8)
+    Next
+  EndProcedure
+
+  ; Item de link generico: prefixo "100" + 4 bits de tipo + campo opcional de
+  ; endereco (2 bits segmento + 16 bits valor) + campo opcional de simbolo
+  ; (ver RelW_WriteSymbolField) - espelha as sobrecargas de WriteLinkItem() no
+  ; Nestor80. Ao contrario de RelW_WriteValueItem, o campo de endereco aqui
+  ; DENTRO de um item de link aceita qualquer segmento (incl. ASEG=0) sem
+  ; ambiguidade nenhuma, porque o "100" ja identificou que e um item de link -
+  ; so o nivel mais externo do bit-stream reserva "1"+"00" pro item de link.
+  Procedure RelW_WriteLinkItem(ItemType.b, HasAddr.b = #False, AddrSeg.b = 0, AddrValue.u = 0, HasSymbol.b = #False, Symbol.s = "")
+    RelW_WriteBits(%100, 3)
+    RelW_WriteBits(ItemType, 4)
+    If HasAddr
+      RelW_WriteBits(AddrSeg, 2)
+      RelW_WriteBits(AddrValue & $FF, 8)
+      RelW_WriteBits((AddrValue >> 8) & $FF, 8)
+    EndIf
+    If HasSymbol
+      RelW_WriteSymbolField(Symbol)
+    EndIf
+  EndProcedure
+
+  Procedure.i RelW_GetByteCount()
+    ProcedureReturn RelByteCount
+  EndProcedure
+
+  ; Out() precisa vir dimensionado pelo chamador com pelo menos
+  ; RelW_GetByteCount() posicoes (mesma convencao de Assemble()/OutBytes).
+  Procedure.i RelW_GetBytes(Array Out.a(1))
+    Protected Idx
+    For Idx = 0 To RelByteCount - 1
+      Out(Idx) = RelBuf(Idx)
+    Next
+    ProcedureReturn RelByteCount
+  EndProcedure
+
+  ;- ------------------------------------------------------------
+  ; Forward declares - ExpandLines()/EncodeDataDirective() so sao definidas
+  ; mais abaixo (secoes de condicionais/macros e diretivas de dados), mas
+  ; RunOnePassRel (logo a seguir) precisa chamar as duas - mesma assinatura
+  ; dos Declares que ja existem la embaixo, junto de cada definicao.
+  Declare.b ExpandLines(List InLines.s(), List OutLines.s(), SizeOnly.b, Depth.i)
+  Declare.b EncodeDataDirective(Op.s, ArgsText.s, EmitMode.b, List OutBytes.a())
+  Declare   SplitSourceLines(SourceText.s, List Lines.s())
+
+  ;- ------------------------------------------------------------
+  ;- Driver de 2 passes RELOCAVEL (RunOnePassRel/AssembleRelocatable) - Fase B,
+  ;- consome o escritor de bit-stream RelW_* acima. NAO mexe em RunOnePass()/
+  ;- Assemble() (driver absoluto original, Fase A) - convivem lado a lado,
+  ;- cada um serve um formato de saida diferente; o chamador decide qual usar
+  ;- (ver NeedsRelocatable() abaixo). ASEG/CSEG/DSEG/COMMON/PUBLIC/EXTRN
+  ;- passam a ter efeito de verdade AQUI (contador de localizacao por area,
+  ;- exportacao de simbolos, referencia a externo via corrente) - continuam
+  ;- sendo reconhecidos-sem-efeito no driver absoluto, de proposito (Fase A
+  ;- so entende ASEG puro, nunca foi validada com segmentos de verdade).
+  ;-
+  ;- Escopo suportado: ASEG/CSEG/DSEG/COMMON (contador por area, COMMON reseta
+  ;- pra 0 a cada entrada - ver docs/reference/nestor80-rel-format.md), ORG
+  ;- dentro de qualquer area, PUBLIC/ENTRY/GLOBAL (e rotulo com "::"), EXTRN/
+  ;- EXT/EXTERNAL como referencia BARE simples (operando de CALL/JP/LD nn ou
+  ;- de DW = so o nome do externo, nada mais - vira item de corrente
+  ;- ChainExternal). Fora de escopo nesta etapa (erro explicito - ver cada
+  ;- ponto abaixo -, nunca silenciosamente errado): expressao composta
+  ;- envolvendo externo (precisaria do item de extensao RPN, ex. "(FOO+1)*2"),
+  ;- soma entre dois valores relocaveis ou subtracao entre relocaveis de
+  ;- segmentos diferentes (EvalPostfixExpr acima), valor relocavel truncado
+  ;- pra 1 byte (ExpandDataOperand acima), .PHASE/.DEPHASE, biblioteca/
+  ;- .REQUEST (essa ultima e trabalho do futuro Z80Link.pbi/Z80Lib.pbi, nao
+  ;- do assembler).
+  ;- ------------------------------------------------------------
+
+  Global RelCurArea.b
+  Global RelCurCommonName.s
+  Global RelLocASEG.u, RelLocCSEG.u, RelLocDSEG.u, RelLocCOMMON.u
+  Global NewMap RelCommonMaxSize.u()        ; maior offset ja alcancado por nome de bloco COMMON (todas as visitas)
+  Global NewList RelCommonMaxSizeFrozen.Z80RelCommonSizeEntry()  ; "foto" tirada no fim do pass 1, usada pro cabecalho do pass 2
+  Global RelLastSelectedCommon.s            ; ultimo SelectCommonBlock realmente emitido (evita repetir)
+  ; chave = nome em MAIUSCULO (casar case-insensitive, mesma convencao dos
+  ; simbolos locais); valor = grafia ORIGINAL declarada no EXTRN/EXT/EXTERNAL
+  ; ("" = nao declarado) - usada como o nome de verdade gravado no .REL.
+  Global NewMap RelExternDeclared.s()
+  Global NewMap RelChainState.Z80RelChainState()
+  Global NewList RelChainOrder.s()          ; nomes externos REFERENCIADOS de verdade, na ordem da 1a referencia
+  Global NewList RelPublicOrder.s()         ; nomes PUBLIC/ENTRY/GLOBAL/"::" , na ordem declarada
+  Global NewMap RelPublicSeen.b()           ; dedup de RelPublicOrder
+  Global RelEndAddrSeg.b, RelEndAddrVal.u   ; operando do END (0 absoluto se nao tiver)
+
+  ; Normaliza um texto de operando pra comparar contra um nome de externo
+  ; declarado: maiusculo, aparado, e SEM os parenteses de endereçamento
+  ; indireto se houver (a forma "(EXTERNO)" - ex. "ld a,(shareddata)" - e tao
+  ; comum quanto a forma sem parenteses "call externo"; sem isso, so a
+  ; segunda forma seria reconhecida como referencia bare).
+  Procedure.s BareExternKeyOf(Text.s)
+    Protected T.s = UCase(Trim(Text))
+    If Len(T) >= 2 And Left(T, 1) = "(" And Right(T, 1) = ")"
+      T = Trim(Mid(T, 2, Len(T) - 2))
+    EndIf
+    ProcedureReturn T
+  EndProcedure
+
+  Procedure.b Is16BitRegName(S.s)
+    Select UCase(S)
+      Case "BC", "DE", "HL", "SP", "IX", "IY"
+        ProcedureReturn #True
+    EndSelect
+    ProcedureReturn #False
+  EndProcedure
+
+  Procedure.u RelAreaCounter(Area.b, CommonName.s)
+    Select Area
+      Case #Z80Seg_Absolute : ProcedureReturn RelLocASEG
+      Case #Z80Seg_Code     : ProcedureReturn RelLocCSEG
+      Case #Z80Seg_Data     : ProcedureReturn RelLocDSEG
+      Case #Z80Seg_Common   : ProcedureReturn RelLocCOMMON
+    EndSelect
+    ProcedureReturn 0
+  EndProcedure
+
+  Procedure RelSetAreaCounter(Area.b, CommonName.s, NewVal.u)
+    Select Area
+      Case #Z80Seg_Absolute : RelLocASEG = NewVal
+      Case #Z80Seg_Code     : RelLocCSEG = NewVal
+      Case #Z80Seg_Data     : RelLocDSEG = NewVal
+      Case #Z80Seg_Common
+        RelLocCOMMON = NewVal
+        If NewVal > RelCommonMaxSize(CommonName)
+          RelCommonMaxSize(CommonName) = NewVal
+        EndIf
+    EndSelect
+  EndProcedure
+
+  Procedure RelAdvanceArea(Area.b, CommonName.s, Delta.i)
+    RelSetAreaCounter(Area, CommonName, (RelAreaCounter(Area, CommonName) + Delta) & $FFFF)
+  EndProcedure
+
+  ; Emite "SetLocationCounter" (+ "SelectCommonBlock" antes, se o bloco COMMON
+  ; mudou) - usado tanto ao trocar de area (ASEG/CSEG/DSEG/COMMON) quanto num
+  ; ORG dentro da area atual. So escreve de verdade em EmitMode (pass 2) - o
+  ; pass 1 so precisa dos contadores em si (RelSetAreaCounter/RelAdvanceArea),
+  ; nunca do bit-stream.
+  Procedure RelEmitAreaSwitch(Area.b, CommonName.s, NewValue.u, EmitMode.b)
+    If Not EmitMode
+      ProcedureReturn
+    EndIf
+    If Area = #Z80Seg_Common And CommonName <> RelLastSelectedCommon
+      RelW_WriteLinkItem(#Z80Rel_SelectCommonBlock, #False, 0, 0, #True, CommonName)
+      RelLastSelectedCommon = CommonName
+    EndIf
+    RelW_WriteLinkItem(#Z80Rel_SetLocationCounter, #True, Area, NewValue)
+  EndProcedure
+
+  ; Referencia a um simbolo externo via o mecanismo de "corrente" (link item
+  ; tipo 6 ChainExternal, ver docs/reference/nestor80-rel-format.md) - a
+  ; PRIMEIRA referencia a um nome grava 2 bytes absolutos 00 00 (fim da
+  ; corrente); cada referencia SEGUINTE ao MESMO nome grava, no lugar dos 2
+  ; bytes, um item de VALOR RELOCAVEL apontando pra posicao da referencia
+  ; anterior (area+contador de entao) - formando uma lista encadeada pra
+  ; tras que o linker percorre, corrigindo cada posicao com o valor final do
+  ; externo. NowArea/NowValue/NowCommon = posicao (area ativa + contador ANTES
+  ; de avancar por estes 2 bytes) de onde estes 2 bytes estao sendo escritos
+  ; agora - vira o novo "ultimo elo" pra uma eventual proxima referencia.
+  ; Key = maiusculo (identidade/dedup do externo, case-insensitive); DisplayName
+  ; = grafia original (da 1a ocorrencia) - so usada se esta for a primeira vez
+  ; que este Key aparece (ocorrencias seguintes reusam o DisplayName ja
+  ; gravado, mesmo que a grafia mude entre chamadas - grafia da 1a vitoria).
+  Procedure RelWriteExternalChainRef(Key.s, DisplayName.s, NowArea.b, NowValue.u, NowCommon.s)
+    If FindMapElement(RelChainState(), Key)
+      RelW_WriteValueItem(RelChainState()\LastPos\SegType, RelChainState()\LastPos\Value)
+    Else
+      AddMapElement(RelChainState(), Key)
+      RelChainState()\DisplayName = DisplayName
+      AddElement(RelChainOrder())
+      RelChainOrder() = Key
+      RelW_WriteByteItem(0)
+      RelW_WriteByteItem(0)
+    EndIf
+    Z80Addr_Make(@RelChainState()\LastPos, NowValue, NowArea, NowCommon)
+  EndProcedure
+
+  ; Descobre, pra uma linha de instrucao de CPU ja classificada como LD/JP/
+  ; CALL, qual texto de operando (se algum) carrega o imediato de 16 bits que
+  ; termina como os 2 ULTIMOS bytes da instrucao ja codificada - unico ponto
+  ; do ISA Z80 onde um valor relocavel de 16 bits pode aparecer embutido
+  ; numa instrucao (JR/DJNZ usam deslocamento relativo, sempre absoluto por
+  ; construcao - ver EvalPostfixExpr/Z80Addr_SameSegment; nenhuma outra forma
+  ; de instrucao carrega imediato de 16 bits). So um heuristico de FORMA (usa
+  ; IsRegister/parenteses pra achar o operando candidato) - a classificacao
+  ; de verdade (e absoluta seguranca contra falso positivo, ex. "(IX+d)")
+  ; acontece depois, tentando avaliar esse texto e checando o SegType/erro
+  ; devolvido, ver uso em RunOnePassRel.
+  Procedure.s RelFindTailOperandText(Mnemonic.s, ArgsText.s)
+    Protected NOps = CountOperands(ArgsText)
+    Select Mnemonic
+      Case "JP", "CALL"
+        If NOps = 1
+          Protected T1.s = Trim(GetOperand(ArgsText, 1))
+          Protected T1U.s = UCase(T1)
+          Protected T1Inner.s = T1U
+          If Len(T1U) >= 2 And Left(T1U, 1) = "(" And Right(T1U, 1) = ")"
+            T1Inner = Trim(Mid(T1U, 2, Len(T1U) - 2))
+          EndIf
+          If Not IsRegister(T1Inner)
+            ProcedureReturn T1
+          EndIf
+        ElseIf NOps = 2
+          ProcedureReturn Trim(GetOperand(ArgsText, 2))
+        EndIf
+      Case "LD"
+        If NOps = 2
+          Protected LT1.s = Trim(GetOperand(ArgsText, 1))
+          Protected LT2.s = Trim(GetOperand(ArgsText, 2))
+          Protected LT1U.s = UCase(LT1)
+          Protected LT2U.s = UCase(LT2)
+          Protected LT1IsMem.b = Bool(Len(LT1U) >= 2 And Left(LT1U, 1) = "(" And Right(LT1U, 1) = ")")
+          Protected LT2IsMem.b = Bool(Len(LT2U) >= 2 And Left(LT2U, 1) = "(" And Right(LT2U, 1) = ")")
+          Protected LT1Inner.s = LT1U : If LT1IsMem : LT1Inner = Trim(Mid(LT1U, 2, Len(LT1U) - 2)) : EndIf
+          Protected LT2Inner.s = LT2U : If LT2IsMem : LT2Inner = Trim(Mid(LT2U, 2, Len(LT2U) - 2)) : EndIf
+          If LT1IsMem And Not IsRegister(LT1Inner)
+            ProcedureReturn LT1
+          ElseIf LT2IsMem And Not IsRegister(LT2Inner)
+            ProcedureReturn LT2
+          ElseIf Not LT1IsMem And Not LT2IsMem And Is16BitRegName(LT1U)
+            ProcedureReturn LT2
+          EndIf
+        EndIf
+    EndSelect
+    ProcedureReturn ""
+  EndProcedure
+
+  ; Roda um pass sobre Lines() em modo relocavel. SizeOnly=#True (pass 1) so
+  ; mede (contadores por area + tabela de simbolos completa - nenhum RelW_*
+  ; chamado); SizeOnly=#False (pass 2) escreve o .REL de verdade em RelBuf via
+  ; RelW_* - comeca escrevendo o cabecalho (ProgramName/EntrySymbol/tamanhos),
+  ; usando FinalCSEGSize/FinalDSEGSize (medidos no pass 1 - ver
+  ; AssembleRelocatable) e RelCommonMaxSizeFrozen (idem). RelPublicOrder()/
+  ; RelExternDeclared() NAO sao resetados aqui (de proposito - precisam
+  ; sobreviver do pass 1 pro pass 2 poder escrever EntrySymbol/reconhecer
+  ; externo ja no INICIO do pass 2, antes do conteudo em si ser reprocessado -
+  ; ver reset em AssembleRelocatable). O resto (contadores de posicao, corrente
+  ; de externo) reseta em toda chamada, cada pass refaz a caminhada do zero.
+  Procedure.b RunOnePassRel(List Lines.s(), SizeOnly.b, ProgramName.s, FinalCSEGSize.u = 0, FinalDSEGSize.u = 0)
+    Protected LineNum = 0
+    Protected PL.Z80ParsedLine
+    Protected Dim Bytes.a(3)
+    Protected Len4.i, Idx
+    Protected Ended.b = #False
+    Protected V1.Z80Addr, V2.Z80Addr
+    Protected EmitMode.b = Bool(Not SizeOnly)
+
+    RelCurArea = #Z80Seg_Code : RelCurCommonName = ""  ; CSEG e a area padrao (Nestor80, WritingRelocatableCode.md)
+    RelLocASEG = 0 : RelLocCSEG = 0 : RelLocDSEG = 0 : RelLocCOMMON = 0
+    RelLastSelectedCommon = ""
+    ClearMap(RelChainState())
+    ClearList(RelChainOrder())
+    RelEndAddrSeg = #Z80Seg_Absolute : RelEndAddrVal = 0
+
+    Z80Addr_Make(@CurLoc, 0, RelCurArea, RelCurCommonName)
+
+    If EmitMode
+      RelW_Reset()
+      RelW_WriteExtendedHeader()
+      RelW_WriteLinkItem(#Z80Rel_ProgramName, #False, 0, 0, #True, ProgramName)
+      ForEach RelPublicOrder()
+        RelW_WriteLinkItem(#Z80Rel_EntrySymbol, #False, 0, 0, #True, RelPublicOrder())
+      Next
+      ForEach RelCommonMaxSizeFrozen()
+        RelW_WriteLinkItem(#Z80Rel_DefineCommonSize, #True, #Z80Seg_Absolute, RelCommonMaxSizeFrozen()\Size, #True, RelCommonMaxSizeFrozen()\Name)
+      Next
+      RelW_WriteLinkItem(#Z80Rel_DataAreaSize, #True, #Z80Seg_Absolute, FinalDSEGSize)
+      If FinalCSEGSize > 0
+        RelW_WriteLinkItem(#Z80Rel_ProgramAreaSize, #True, #Z80Seg_Code, FinalCSEGSize)
+      EndIf
+    EndIf
+
+    Protected NewList ExpLines.s()
+    If Not ExpandLines(Lines(), ExpLines(), SizeOnly, 0)
+      AsmErrorLine = LineNum : AsmErrorText = LastAsmError
+      ProcedureReturn #False
+    EndIf
+
+    ForEach ExpLines()
+      If Ended
+        Break
+      EndIf
+      LineNum + 1
+
+      ParseLine(ExpLines(), @PL)
+
+      If PL\IsBlank
+        Continue
+      EndIf
+
+      If PL\HasLabel And PL\LabelHasColon
+        If Not DefineSymbolSeg(PL\Label, CurLoc\Value, RelCurArea, RelCurCommonName, #False)
+          AsmErrorLine = LineNum : AsmErrorText = LastEvalError
+          ProcedureReturn #False
+        EndIf
+        If PL\LabelIsPublic And Not RelPublicSeen(UCase(PL\Label))
+          RelPublicSeen(UCase(PL\Label)) = #True
+          AddElement(RelPublicOrder()) : RelPublicOrder() = PL\Label
+        EndIf
+      EndIf
+
+      If Not PL\HasOperator
+        Continue
+      EndIf
+
+      Select PL\Operator
+        Case "EQU"
+          If EvalExpr(PL\ArgsText, @V1)
+            If Not DefineSymbolSeg(PL\Label, V1\Value, V1\SegType, V1\CommonName, #True)
+              AsmErrorLine = LineNum : AsmErrorText = LastEvalError
+              ProcedureReturn #False
+            EndIf
+          ElseIf EmitMode
+            AsmErrorLine = LineNum : AsmErrorText = "EQU: " + LastEvalError + LastEvalUnknownSymbol
+            ProcedureReturn #False
+          EndIf
+          Continue
+
+        Case "DEFL", "ASET"
+          If EvalExpr(PL\ArgsText, @V2)
+            If Not DefineSymbolSeg(PL\Label, V2\Value, V2\SegType, V2\CommonName, #False)
+              AsmErrorLine = LineNum : AsmErrorText = LastEvalError
+              ProcedureReturn #False
+            EndIf
+          ElseIf EmitMode
+            AsmErrorLine = LineNum : AsmErrorText = "DEFL/ASET: " + LastEvalError + LastEvalUnknownSymbol
+            ProcedureReturn #False
+          EndIf
+          Continue
+
+        Case "ORG"
+          Protected VOrg.Z80Addr
+          If EvalExpr(PL\ArgsText, @VOrg)
+            RelSetAreaCounter(RelCurArea, RelCurCommonName, VOrg\Value)
+            Z80Addr_Make(@CurLoc, VOrg\Value, RelCurArea, RelCurCommonName)
+            RelEmitAreaSwitch(RelCurArea, RelCurCommonName, VOrg\Value, EmitMode)
+          ElseIf EmitMode
+            AsmErrorLine = LineNum : AsmErrorText = "ORG: " + LastEvalError + LastEvalUnknownSymbol
+            ProcedureReturn #False
+          EndIf
+          Continue
+
+        Case "END"
+          Protected VEnd.Z80Addr
+          If RTrimWs(Mid(PL\ArgsText, SkipWs(PL\ArgsText, 1))) <> ""
+            If EvalExpr(PL\ArgsText, @VEnd)
+              RelEndAddrSeg = VEnd\SegType : RelEndAddrVal = VEnd\Value
+            ElseIf EmitMode
+              AsmErrorLine = LineNum : AsmErrorText = "END: " + LastEvalError + LastEvalUnknownSymbol
+              ProcedureReturn #False
+            EndIf
+          EndIf
+          Ended = #True
+          Continue
+
+        Case ".PHASE", "PHASE", ".DEPHASE", "DEPHASE"
+          AsmErrorLine = LineNum
+          AsmErrorText = PL\Operator + ": nao suportado no modo relocavel ainda (Fase B parcial)"
+          ProcedureReturn #False
+
+        Case "ASEG"
+          RelCurArea = #Z80Seg_Absolute : RelCurCommonName = ""
+          RelEmitAreaSwitch(RelCurArea, RelCurCommonName, RelAreaCounter(RelCurArea, RelCurCommonName), EmitMode)
+          Z80Addr_Make(@CurLoc, RelAreaCounter(RelCurArea, RelCurCommonName), RelCurArea)
+          Continue
+
+        Case "CSEG"
+          RelCurArea = #Z80Seg_Code : RelCurCommonName = ""
+          RelEmitAreaSwitch(RelCurArea, RelCurCommonName, RelAreaCounter(RelCurArea, RelCurCommonName), EmitMode)
+          Z80Addr_Make(@CurLoc, RelAreaCounter(RelCurArea, RelCurCommonName), RelCurArea)
+          Continue
+
+        Case "DSEG"
+          RelCurArea = #Z80Seg_Data : RelCurCommonName = ""
+          RelEmitAreaSwitch(RelCurArea, RelCurCommonName, RelAreaCounter(RelCurArea, RelCurCommonName), EmitMode)
+          Z80Addr_Make(@CurLoc, RelAreaCounter(RelCurArea, RelCurCommonName), RelCurArea)
+          Continue
+
+        Case "COMMON"
+          Protected CommonRaw.s = Trim(RTrimWs(Mid(PL\ArgsText, SkipWs(PL\ArgsText, 1))))
+          Protected CommonNameArg.s
+          If Len(CommonRaw) >= 2 And Left(CommonRaw, 1) = "/" And Right(CommonRaw, 1) = "/"
+            CommonNameArg = UCase(Trim(Mid(CommonRaw, 2, Len(CommonRaw) - 2)))
+          Else
+            AsmErrorLine = LineNum : AsmErrorText = "COMMON: forma esperada e COMMON /nome/ (nome pode ser vazio)"
+            ProcedureReturn #False
+          EndIf
+          RelCurArea = #Z80Seg_Common : RelCurCommonName = CommonNameArg
+          RelLocCOMMON = 0 ; entrar num bloco COMMON sempre reseta o contador pra 0 (ver doc de referencia)
+          RelEmitAreaSwitch(RelCurArea, RelCurCommonName, 0, EmitMode)
+          Z80Addr_Make(@CurLoc, 0, RelCurArea, RelCurCommonName)
+          Continue
+
+        Case "PUBLIC", "ENTRY", "GLOBAL"
+          Protected PubN = CountOperands(PL\ArgsText)
+          Protected PubI
+          For PubI = 1 To PubN
+            Protected PubNameOrig.s = Trim(GetOperand(PL\ArgsText, PubI))
+            Protected PubNameKey.s = UCase(PubNameOrig)
+            If PubNameKey <> "" And Not RelPublicSeen(PubNameKey)
+              RelPublicSeen(PubNameKey) = #True
+              AddElement(RelPublicOrder()) : RelPublicOrder() = PubNameOrig
+            EndIf
+          Next
+          Continue
+
+        Case "EXTRN", "EXT", "EXTERNAL"
+          Protected ExtN = CountOperands(PL\ArgsText)
+          Protected ExtI
+          For ExtI = 1 To ExtN
+            Protected ExtNameOrig.s = Trim(GetOperand(PL\ArgsText, ExtI))
+            Protected ExtKey.s = UCase(ExtNameOrig)
+            If ExtKey <> ""
+              RelExternDeclared(ExtKey) = ExtNameOrig
+            EndIf
+          Next
+          Continue
+
+        Case ".REQUEST", "REQUEST"
+          ; ".REQUEST nome[,nome...]" (LR:1627-1635) - so grava o pedido no
+          ; .REL (item de link tipo 3); a busca/resolucao de verdade e
+          ; trabalho do LINKER (Z80Link.pbi), nao do assembler.
+          Protected ReqN = CountOperands(PL\ArgsText)
+          Protected ReqI
+          For ReqI = 1 To ReqN
+            Protected ReqName.s = Trim(GetOperand(PL\ArgsText, ReqI))
+            If ReqName <> "" And EmitMode
+              RelW_WriteLinkItem(#Z80Rel_RequestLibrarySearch, #False, 0, 0, #True, ReqName)
+            EndIf
+          Next
+          Continue
+
+        Case "AREA", "TITLE", "SUBTTL", "PAGE", "MAINPAGE", "ENDOUT", "ROOT", "RELAB", "XRELAB", "EXTROOT", "XEXTROOT"
+          Continue
+
+        Case "DB", "DEFB", "DEFM", "DC", "DZ", "DEFZ"
+          NewList DataBytes.a()
+          If Not EncodeDataDirective(PL\Operator, PL\ArgsText, EmitMode, DataBytes())
+            AsmErrorLine = LineNum : AsmErrorText = LastAsmError
+            ProcedureReturn #False
+          EndIf
+          If EmitMode
+            ForEach DataBytes()
+              RelW_WriteByteItem(DataBytes())
+            Next
+          EndIf
+          RelAdvanceArea(RelCurArea, RelCurCommonName, ListSize(DataBytes()))
+          CurLoc\Value = (CurLoc\Value + ListSize(DataBytes())) & $FFFF
+          Continue
+
+        Case "DS", "DEFS"
+          ; Sem valor de preenchimento explicito, o Nestor80 NAO materializa
+          ; bytes reais no .REL - so avanca o contador de localizacao (item
+          ; SetLocationCounter), equivalente a "ORG $+tamanho" (ver
+          ; OutputGenerator.cs/GenerateRelocatable, ramo "initDefs=false" -
+          ; comportamento padrao do N80.exe, confirmado por oraculo). So
+          ; escreve bytes de verdade quando um segundo operando (valor) foi
+          ; dado explicitamente.
+          NewList DataBytes.a()
+          If Not EncodeDataDirective(PL\Operator, PL\ArgsText, EmitMode, DataBytes())
+            AsmErrorLine = LineNum : AsmErrorText = LastAsmError
+            ProcedureReturn #False
+          EndIf
+          Protected DsHasFill.b = Bool(CountOperands(PL\ArgsText) = 2)
+          If EmitMode
+            If DsHasFill
+              ForEach DataBytes()
+                RelW_WriteByteItem(DataBytes())
+              Next
+            Else
+              RelEmitAreaSwitch(RelCurArea, RelCurCommonName, (RelAreaCounter(RelCurArea, RelCurCommonName) + ListSize(DataBytes())) & $FFFF, EmitMode)
+            EndIf
+          EndIf
+          RelAdvanceArea(RelCurArea, RelCurCommonName, ListSize(DataBytes()))
+          CurLoc\Value = (CurLoc\Value + ListSize(DataBytes())) & $FFFF
+          Continue
+
+        Case "DW", "DEFW"
+          Protected NOpsDw = CountOperands(PL\ArgsText)
+          If NOpsDw = 0
+            AsmErrorLine = LineNum : AsmErrorText = PL\Operator + ": precisa de pelo menos um operando"
+            ProcedureReturn #False
+          EndIf
+          If EmitMode
+            Protected DwLineStart.u = RelAreaCounter(RelCurArea, RelCurCommonName)
+            Protected DwI
+            For DwI = 1 To NOpsDw
+              Protected DwText.s = Trim(GetOperand(PL\ArgsText, DwI))
+              Protected VDw.Z80Addr
+              If EvalExpr(DwText, @VDw)
+                If VDw\SegType = #Z80Seg_Absolute
+                  RelW_WriteByteItem(VDw\Value & $FF)
+                  RelW_WriteByteItem((VDw\Value >> 8) & $FF)
+                Else
+                  RelW_WriteValueItem(VDw\SegType, VDw\Value)
+                EndIf
+              Else
+                Protected DwUnk.s = UCase(LastEvalUnknownSymbol)
+                If DwUnk <> "" And BareExternKeyOf(DwText) = DwUnk And RelExternDeclared(DwUnk) <> ""
+                  RelWriteExternalChainRef(DwUnk, RelExternDeclared(DwUnk), RelCurArea, DwLineStart + (DwI - 1) * 2, RelCurCommonName)
+                ElseIf DwUnk <> "" And RelExternDeclared(DwUnk) <> ""
+                  AsmErrorLine = LineNum : AsmErrorText = "Expressao externa composta nao suportada nesta fase (Fase B parcial): " + DwText
+                  ProcedureReturn #False
+                Else
+                  AsmErrorLine = LineNum : AsmErrorText = PL\Operator + ": " + LastEvalError + LastEvalUnknownSymbol
+                  ProcedureReturn #False
+                EndIf
+              EndIf
+            Next
+          EndIf
+          RelAdvanceArea(RelCurArea, RelCurCommonName, NOpsDw * 2)
+          CurLoc\Value = (CurLoc\Value + NOpsDw * 2) & $FFFF
+          Continue
+      EndSelect
+
+      If Not IsMnemonic(PL\Operator)
+        AsmErrorLine = LineNum
+        AsmErrorText = "Diretiva/mnemonico nao suportado ainda nesta fase: " + PL\Operator
+        ProcedureReturn #False
+      EndIf
+
+      ; Classifica o operando-cauda ANTES de chamar EncodeInstruction() -
+      ; precisa saber JA se e uma referencia bare a externo pra poder definir
+      ; um simbolo temporario (valor 0) e o encoder (compartilhado com o
+      ; driver absoluto, nunca soube de EXTRN) conseguir avaliar a expressao
+      ; sem erro - os bytes que ele produzir pra essa posicao sao descartados
+      ; de qualquer forma (a emissao de verdade usa RelWriteExternalChainRef,
+      ; nao Bytes()). Removido logo depois de EncodeInstruction pra nao
+      ; contaminar a tabela de simbolos (ver comentario da secao acima).
+      Protected TailText.s = RelFindTailOperandText(PL\Operator, PL\ArgsText)
+      Protected TailIsReloc.b = #False
+      Protected TailSeg2.b = #Z80Seg_Absolute, TailCommon2.s = ""
+      Protected TailIsExtern2.b = #False, TailExternKey2.s = "", TailExternName2.s = ""
+      If EmitMode And TailText <> ""
+        Protected VTail.Z80Addr
+        If EvalExpr(TailText, @VTail)
+          If VTail\SegType <> #Z80Seg_Absolute
+            TailIsReloc = #True : TailSeg2 = VTail\SegType : TailCommon2 = VTail\CommonName
+          EndIf
+        Else
+          Protected TUnk.s = UCase(LastEvalUnknownSymbol)
+          If TUnk <> "" And BareExternKeyOf(TailText) = TUnk And RelExternDeclared(TUnk) <> ""
+            TailIsReloc = #True : TailIsExtern2 = #True
+            TailExternKey2 = TUnk : TailExternName2 = RelExternDeclared(TUnk)
+            DefineSymbolSeg(TUnk, 0, #Z80Seg_Absolute, "", #False)
+          ElseIf TUnk <> "" And RelExternDeclared(TUnk) <> ""
+            AsmErrorLine = LineNum : AsmErrorText = "Expressao externa composta nao suportada nesta fase (Fase B parcial): " + PL\ArgsText
+            ProcedureReturn #False
+          EndIf
+        EndIf
+      EndIf
+
+      Protected InstrLineStart.u = RelAreaCounter(RelCurArea, RelCurCommonName)
+      Len4 = EncodeInstruction(PL\Operator, PL\ArgsText, EmitMode, Bytes())
+
+      If TailIsExtern2
+        If FindMapElement(Symbols(), TailExternKey2)
+          DeleteMapElement(Symbols())
+        EndIf
+      EndIf
+
+      If Len4 < 0
+        AsmErrorLine = LineNum : AsmErrorText = LastAsmError
+        ProcedureReturn #False
+      EndIf
+
+      If EmitMode
+        If TailIsReloc And Len4 >= 2
+          For Idx = 0 To Len4 - 3
+            RelW_WriteByteItem(Bytes(Idx))
+          Next
+          If TailIsExtern2
+            RelWriteExternalChainRef(TailExternKey2, TailExternName2, RelCurArea, InstrLineStart + Len4 - 2, RelCurCommonName)
+          Else
+            RelW_WriteValueItem(TailSeg2, Bytes(Len4 - 2) | (Bytes(Len4 - 1) << 8))
+          EndIf
+        Else
+          For Idx = 0 To Len4 - 1
+            RelW_WriteByteItem(Bytes(Idx))
+          Next
+        EndIf
+      EndIf
+
+      RelAdvanceArea(RelCurArea, RelCurCommonName, Len4)
+      CurLoc\Value = (CurLoc\Value + Len4) & $FFFF
+    Next
+
+    If EmitMode
+      ForEach RelPublicOrder()
+        Protected PubDisplay.s = RelPublicOrder()
+        Protected PubKey.s = UCase(PubDisplay)
+        If Not FindMapElement(Symbols(), PubKey) Or Not Symbols(PubKey)\IsKnown
+          AsmErrorLine = LineNum
+          AsmErrorText = "PUBLIC " + PubDisplay + ": simbolo nunca definido"
+          ProcedureReturn #False
+        EndIf
+        Protected PubSeg.b = Symbols(PubKey)\Addr\SegType
+        Protected PubVal.u = Symbols(PubKey)\Addr\Value
+        Protected PubCommon.s = Symbols(PubKey)\Addr\CommonName
+        If PubSeg = #Z80Seg_Common And PubCommon <> RelLastSelectedCommon
+          RelW_WriteLinkItem(#Z80Rel_SelectCommonBlock, #False, 0, 0, #True, PubCommon)
+          RelLastSelectedCommon = PubCommon
+        EndIf
+        RelW_WriteLinkItem(#Z80Rel_DefineEntryPoint, #True, PubSeg, PubVal, #True, PubDisplay)
+      Next
+
+      ForEach RelChainOrder()
+        Protected ChKey.s = RelChainOrder()
+        RelW_WriteLinkItem(#Z80Rel_ChainExternal, #True, RelChainState(ChKey)\LastPos\SegType, RelChainState(ChKey)\LastPos\Value, #True, RelChainState(ChKey)\DisplayName)
+      Next
+
+      RelW_WriteLinkItem(#Z80Rel_EndProgram, #True, RelEndAddrSeg, RelEndAddrVal)
+      RelW_ForceByteBoundary()
+      RelW_WriteLinkItem(#Z80Rel_EndFile)
+    EndIf
+
+    ProcedureReturn #True
+  EndProcedure
+
+  ; Pre-varredura barata (so ParseLine linha a linha, sem macro/condicional)
+  ; pra decidir se um fonte precisa do driver relocavel (CSEG/DSEG/COMMON/
+  ; PUBLIC/EXTRN/rotulo "::" de verdade em algum lugar) ou se o driver
+  ; absoluto de Fase A (Assemble()) basta. Usada pelo chamador (editor/CLI)
+  ; ANTES de decidir qual dos dois chamar - AssembleRelocatable() nao chama
+  ; isso sozinho.
+  Procedure.i NeedsRelocatable(SourceText.s)
+    Protected NewList SLines.s()
+    SplitSourceLines(SourceText, SLines())
+    Protected PL2.Z80ParsedLine
+    ForEach SLines()
+      ParseLine(SLines(), @PL2)
+      If PL2\LabelIsPublic
+        ProcedureReturn #True
+      EndIf
+      If PL2\HasOperator
+        Select UCase(PL2\Operator)
+          Case "CSEG", "DSEG", "COMMON", "PUBLIC", "ENTRY", "GLOBAL", "EXTRN", "EXT", "EXTERNAL"
+            ProcedureReturn #True
+        EndSelect
+      EndIf
+      If FindString(PL2\ArgsText, "##")
+        ProcedureReturn #True
+      EndIf
+    Next
+    ProcedureReturn #False
+  EndProcedure
+
+  ; Monta em modo relocavel, gerando um .REL de verdade em OutBytes (formato
+  ; estendido Nestor80, ver RelW_*/docs/reference/nestor80-rel-format.md).
+  ; ProgramName vazio vira "NONAME" (o formato exige um nome - Nestor80 usa o
+  ; nome do arquivo fonte; quem chama a partir do editor deve passar o nome
+  ; da aba/arquivo quando existir). OutBytes precisa vir dimensionado bem
+  ; grande pelo chamador (um .REL pode ser maior que o binario absoluto
+  ; equivalente, por causa do overhead de item/cabecalho por instrucao
+  ; relocavel - 65536*2 e uma margem confortavel pra qualquer fonte real).
+  ; Devolve o numero de bytes ou -1 em erro (GetAssembleErrorLine()/
+  ; GetAssembleErrorText(), MESMOS acessores de Assemble()).
+  Procedure.i AssembleRelocatable(SourceText.s, ProgramName.s, Array OutBytes.a(1))
+    Protected NewList Lines.s()
+    Protected PName.s = ProgramName
+    If PName = ""
+      PName = "NONAME"
+    EndIf
+
+    ResetState()
+    AsmErrorLine = 0 : AsmErrorText = ""
+    ClearList(RelPublicOrder())
+    ClearMap(RelPublicSeen())
+    ClearMap(RelExternDeclared())
+    ClearMap(RelCommonMaxSize())
+
+    SplitSourceLines(SourceText, Lines())
+
+    If Not RunOnePassRel(Lines(), #True, PName)
+      ProcedureReturn -1
+    EndIf
+
+    Protected FinalCSEG.u = RelLocCSEG
+    Protected FinalDSEG.u = RelLocDSEG
+    ClearList(RelCommonMaxSizeFrozen())
+    ForEach RelCommonMaxSize()
+      AddElement(RelCommonMaxSizeFrozen())
+      RelCommonMaxSizeFrozen()\Name = MapKey(RelCommonMaxSize())
+      RelCommonMaxSizeFrozen()\Size = RelCommonMaxSize()
+    Next
+
+    If Not RunOnePassRel(Lines(), #False, PName, FinalCSEG, FinalDSEG)
+      ProcedureReturn -1
+    EndIf
+
+    Protected N = RelW_GetByteCount()
+    If N > 0
+      RelW_GetBytes(OutBytes())
+    EndIf
+    ProcedureReturn N
+  EndProcedure
+
+  ;- ------------------------------------------------------------
   ;- Driver de 2 passes - so absoluto por enquanto (ORG define o contador de
   ;- localizacao; rotulo/EQU/DEFL/ASET; instrucoes de CPU via
   ;- EncodeInstruction; ASEG/CSEG/DSEG/COMMON/PUBLIC/EXTRN reconhecidas sem
@@ -2252,8 +3224,6 @@ Module Z80Asm
   ;- QUALQUER lugar do arquivo ja esta na tabela de simbolos.
   ;- ------------------------------------------------------------
 
-  Global AsmErrorLine.i
-  Global AsmErrorText.s
   Global MinAddrTouched.i, MaxAddrTouched.i, AnyByteWritten.b
 
   Procedure.i GetAssembleErrorLine()
@@ -2313,6 +3283,18 @@ Module Z80Asm
     EndIf
 
     If Not EvalOperandExpr(T, EmitMode, @V)
+      ProcedureReturn #False
+    EndIf
+    ; Um operando de 1 byte (DB/DC/DZ/preenchimento de DS) precisa resolver
+    ; absoluto - truncar um endereco relocavel pra 1 byte exigiria o item de
+    ; extensao RPN "StoreAsByte" do Nestor80 (ex. HIGH/LOW de um simbolo
+    ; CSEG/DSEG), fora de escopo nesta fase (ver docs/resumo-asm.md) - erro
+    ; explicito em vez de truncar silenciosamente um valor que so o linker
+    ; conhece de verdade. So dispara com EmitMode (pass 2 - so quando o
+    ; SegType real ja esta disponivel; no pass 1 EvalOperandExpr sempre
+    ; devolve absoluto por construcao, ver comentario acima).
+    If EmitMode And V\SegType <> #Z80Seg_Absolute
+      LastAsmError = "Valor relocavel truncado pra 1 byte nao suportado nesta fase (Fase B parcial): " + T
       ProcedureReturn #False
     EndIf
     AddElement(OutBytes())

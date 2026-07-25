@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.3.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 7.3.3** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -220,13 +220,16 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   `IYL` indocumentados comuns), driver de 2 passes, diretivas de dados (`DB`/`DW`/`DS`/`DC`/`DZ`),
   condicionais (`IF`/`IFDEF`/`IF1`/`IF2`/etc.) e macros básicas (`MACRO`/`ENDM`/`EXITM`/`LOCAL`).
   Validado **byte a byte** contra o próprio `N80.exe` (compilado localmente como oráculo de teste) —
-  `sample/teste_opcodes.asm` e `sample/teste2_macros.asm` são a suíte de regressão oficial. Saída hoje é
-  binário absoluto (`.bin`); **planejado, ainda não implementado**: saída relocável `.REL` + linker
-  (Linkstor80-equivalente) + gerenciador de biblioteca (Libstor80-equivalente, linkagem estática
-  seletiva — só os módulos referenciados entram no `.COM` final), integração com o sistema de projeto
-  (`.msxproject`, mesmo padrão dos demais editores) e um caminho de saída para **MSX-BASIC** consumir o
-  código montado — via `BLOAD` do `.bin` ou via um listing de `DATA`/`POKE` em hexadecimal gerado
-  automaticamente (mesmo espírito do "Gerar bytes crus" já existente no editor de som PSG). Detalhe
+  `sample/teste_opcodes.asm` e `sample/teste2_macros.asm` são a suíte de regressão oficial. Além da
+  saída absoluta (`.bin`), o motor já gera saída **relocável `.REL`** de verdade (`ASEG`/`CSEG`/`DSEG`/
+  `COMMON`/`PUBLIC`/`EXTRN`, formato estendido Nestor80, validado byte a byte contra o `N80.exe`) — só
+  ainda não exposta no menu do editor (hoje só via engine/CLI de teste). **Planejado, ainda não
+  implementado**: linker (Linkstor80-equivalente) + gerenciador de biblioteca (Libstor80-equivalente,
+  linkagem estática seletiva — só os módulos referenciados entram no `.COM` final), integração com o
+  sistema de projeto (`.msxproject`, mesmo padrão dos demais editores) e um caminho de saída para
+  **MSX-BASIC** consumir o código montado — via `BLOAD` do `.bin` ou via um listing de `DATA`/`POKE` em
+  hexadecimal gerado automaticamente (mesmo espírito do "Gerar bytes crus" já existente no editor de
+  som PSG). Detalhe
   completo do processo de implementação em [`docs/resumo-asm.md`](docs/resumo-asm.md).
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
@@ -499,6 +502,54 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   parâmetro de `Procedure`, só por ponteiro). Pedido do usuário durante a sessão: Linkstor80 (linker)
   e Libstor80 (biblioteca com linkagem estática seletiva) também entram no escopo do módulo — Fase B,
   ainda não iniciada. Versão embutida no executável atualizada para `7.3.1`.
+- **2026-07-24 (mesma sessão, Fase B) — geração de `.REL` real, ponta a ponta**. Escritor de bit-stream
+  genérico (`RelW_*`, formato estendido Nestor80, validado byte a byte contra um `.REL` mínimo real do
+  `N80.exe`) **integrado a um driver de 2 passes relocável dedicado** (`RunOnePassRel`/
+  `AssembleRelocatable`/`NeedsRelocatable`, separado do driver absoluto original — zero mudança de
+  comportamento na Fase A). `ASEG`/`CSEG`/`DSEG`/`COMMON`/`PUBLIC`/`ENTRY`/`GLOBAL`/`EXTRN`/`EXT`/
+  `EXTERNAL` passam a ter efeito de verdade: contador de localização por área, `PUBLIC` gera
+  `EntrySymbol`/`DefineEntryPoint`, `EXTRN` referenciado de forma simples (`CALL externo`, `DW externo`)
+  gera o mecanismo de "corrente" `ChainExternal` que o linker usa pra corrigir todas as referências de
+  uma vez. A aritmética de expressão (`EvalPostfixExpr`) ganhou as regras reais de soma/subtração entre
+  valores relocáveis do Nestor80 — groundwork que a própria Fase A já tinha deixado pronto/documentado
+  pra este momento. Validado **byte a byte contra o `N80.exe` real** em 3 programas novos
+  (`sample/teste4_rel_public.asm`/`teste5_rel_dseg.asm`/`teste6_rel_extrn.asm`), fixados como suíte de
+  regressão self-contained (67/67 testes, sem precisar do `N80.exe` presente pra rodar). Escopo
+  deliberadamente fora desta etapa (erro explícito, documentado em `docs/resumo-asm.md`): expressão
+  externa composta, valor relocável truncado pra 1 byte, `.PHASE` em modo relocável, biblioteca/
+  `.REQUEST` — ficam pro linker (`Z80Link.pbi`) ou pra uma próxima iteração.
+- **2026-07-24 (mesma sessão, Fase B) — `editor/Z80Link.pbi`, primeiro corte do linker**: linka
+  múltiplos `.REL` (sem biblioteca/`.REQUEST` ainda — isso é o próximo corte, junto de `Z80Lib.pbi`).
+  Leitor de bit-stream que é literalmente o escritor `RelW_*` ao contrário, algoritmo de linkagem
+  portado direto de `Linker/RelocatableFilesProcessor.cs` do Nestor80 (concatenação de `CSEG`/`DSEG`/
+  `COMMON` entre módulos a partir de `0103h`, resolução `PUBLIC`↔`EXTRN` via a mesma corrente
+  `ChainExternal`, agora percorrida ao contrário). Só o modo de sequenciamento padrão do LK80 ("dados
+  antes de código", sem `--code`/`--data`/`--align-*`). Validado **byte a byte contra o `LK80.exe`
+  real** em 3 cenários (módulo único; 2 módulos com `PUBLIC`/`EXTRN` cruzado incl. leitura de dado
+  externo via `LD A,(externo)`; 2 módulos compartilhando um bloco `COMMON`) — **os 3 bateram já na
+  primeira tentativa completa**, único ajuste necessário foi um bug real pego na validação do lado do
+  assembler (`LD A,(externo)` não era reconhecido como referência externa *bare* por causa dos
+  parênteses no texto do operando — corrigido). Suíte própria `editor/tools/Z80LinkTestCli.pb` (3/3).
+- **2026-07-24 (mesma sessão, Fase B) — `.REQUEST`/biblioteca (corte 2) + `editor/Z80Lib.pbi`**:
+  linkagem estática seletiva de verdade — o linker agora resolve `.REQUEST` procurando, **por
+  programa** (não por arquivo de biblioteca inteiro), qual programa resolve cada símbolo externo
+  pendente, com resolução transitiva (ponto fixo). `editor/Z80Lib.pbi` (novo) gerencia bibliotecas
+  `.LIB`: `create`/`add`/`list`/`remove`, validado **byte a byte contra o `LB80.exe` real**. Achado
+  notável durante a validação: o `LK80.exe` local tem uma limitação/bug real (só reconhece o símbolo
+  público do primeiro programa de uma biblioteca multi-programa pedida via `.REQUEST` — confirmado
+  com repro isolado e arquivo `.LIB` decodificado byte a byte, perfeitamente válido) — validado então
+  com uma combinação de oráculo direto (onde o `LK80.exe` local funciona) e auto-consistência (onde
+  não funciona: comparando contra o binário equivalente com o símbolo pedido reordenado pra ser o
+  primeiro). Cadeia transitiva de 3 níveis entre programas de biblioteca também validada. Suíte
+  própria: 7/7 (`editor/tools/Z80LinkTestCli.pb`, cobre linker e biblioteca).
+- **2026-07-24 (mesma sessão, fechamento) — Fase B do assembler dá por encerrado o motor**: com
+  `Z80Link.pbi` e `Z80Lib.pbi` prontos e validados (item anterior), a Fase B fica **motor completo** —
+  geração de `.REL`, linkagem multi-módulo com `.REQUEST`/biblioteca e gerenciador de `.LIB`, tudo
+  testado byte a byte contra `N80.exe`/`LK80.exe`/`LB80.exe` reais. Falta só a integração de menu no
+  editor (hoje é engine + CLI de teste, `editor/tools/Z80LinkTestCli.exe`, sem opção em
+  **Executar →**) — próxima etapa, ver checklist Fase B em `docs/resumo-asm.md`. Documentação
+  atualizada em todos os `*.md` do projeto (`README.md`, `docs/SPEC.md` módulo 2b, `docs/MANUAL.md`
+  seção "Assembler Z80"). Versão embutida no executável atualizada para `7.3.3`.
 
 ## Ferramentas e ambiente
 

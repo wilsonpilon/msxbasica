@@ -40,7 +40,7 @@ servir de especificação byte-a-byte ao port nativo:
 | # | Módulo | Esforço relativo | Status da spec |
 |---|--------|-------------------|-----------------|
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
-| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | **Fase A completa (2026-07-24)** — motor `editor/Z80Asm.pbi` (opcodes/expressões/diretivas/condicionais/macros básicas), validado byte-a-byte contra o oráculo `N80.exe` (Nestor80), integrado ao menu (Executar → Montar Assembly). Detalhe em `docs/resumo-asm.md`. Fase B (REL + Linkstor80/Libstor80) ainda não iniciada, ver módulo 2b |
+| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | **Fase A completa (2026-07-24)** — motor `editor/Z80Asm.pbi` (opcodes/expressões/diretivas/condicionais/macros básicas), validado byte-a-byte contra o oráculo `N80.exe` (Nestor80), integrado ao menu (Executar → Montar Assembly). Detalhe em `docs/resumo-asm.md`. **Fase B: motor completo** — geração de `.REL` real, linker multi-módulo com `.REQUEST`/biblioteca (`Z80Link.pbi`) e gerenciador de biblioteca (`Z80Lib.pbi`) todos validados por oráculo (`N80.exe`/`LK80.exe`/`LB80.exe`); falta só UI de menu, ver módulo 2b |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. **Editor de alfabetos Aquarela (.FNT) implementado (2026-07-23)** — `editor/AquarelaCharsetEditorGui.pbi`, ferramenta autocontida baseada em arquivo, sem integração com o sistema de projeto, ver seção 4b. **Editor de alfabetos Graphos III ganhou 13 efeitos de edição em lote (2026-07-23)** — desfazer/refazer, marcar tudo, espelhar/girar/apagar/estreitar/itálico/negrito/largo (+ variantes bold e largo-bold), ver seção 4c. Tile (além do charset/fonte 8×8) ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | **Implementado (2026-07-24)** — `editor/Screen2Synth.pbi` (motor)/`editor/Screen2EditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 5 |
@@ -133,16 +133,25 @@ processo de implementação (decisões técnicas, bugs encontrados/corrigidos, g
   aba, extensão `.bin`), erro mostra linha + mensagem (`Z80Asm::GetAssembleErrorLine()`/
   `GetAssembleErrorText()`).
 
-**Módulo 2b — Linkstor80/Libstor80 (linker + gerenciador de biblioteca), Fase B, ainda não iniciado**:
+**Módulo 2b — Linkstor80/Libstor80 (linker + gerenciador de biblioteca), Fase B: motor completo**:
 pedido explícito do usuário 2026-07-24 — gerar uma biblioteca de rotinas montadas separadamente e, ao
 linkar contra ela, só os módulos realmente referenciados entram no `.COM` final (linkagem estática
-seletiva). Arquitetura planejada: `editor/Z80Link.pbi` (`DeclareModule Z80Link`, formato `.REL` +
-algoritmo de linkagem incl. busca `.REQUEST`/biblioteca) + `editor/Z80Lib.pbi` (`DeclareModule
-Z80Lib`, equivalente LB80/Libstor80 — criar/listar/adicionar/remover módulos `.REL` de um `.LIB`).
-`LK80.exe`/`LB80.exe` já compilados localmente como oráculo (mesma receita do `N80.exe`, ver
-`docs/resumo-asm.md`). Especificação de formato/algoritmo já documentada em
+seletiva). **Geração do `.REL` funciona ponta a ponta** (`Z80Asm::AssembleRelocatable()`): escritor de
+bit-stream (`RelW_*`) + driver de 2 passes relocável dedicado (`RunOnePassRel`), `ASEG`/`CSEG`/`DSEG`/
+`COMMON`/`PUBLIC`/`EXTRN`/`.REQUEST` com efeito real. **O linker (`editor/Z80Link.pbi`) linka múltiplos
+`.REL` E resolve `.REQUEST`/biblioteca** (leitor de bit-stream + `ProcessProgram()`/`LinkFiles()`,
+indexação por-programa dos símbolos públicos de cada biblioteca pedida + ponto fixo pra resolução
+transitiva — linkagem estática seletiva de verdade). **`editor/Z80Lib.pbi` gerencia bibliotecas `.LIB`**
+(`CreateOrAddLibrary`/`ListLibrary`/`RemoveProgram`). Tudo validado byte a byte contra `N80.exe`/
+`LK80.exe`/`LB80.exe` reais (um bug/limitação real encontrado no `LK80.exe` local — só reconhece o
+símbolo público do primeiro programa de uma biblioteca multi-programa pedida via `.REQUEST` — está
+documentado em `docs/resumo-asm.md`, contornado com validação por auto-consistência nesse caso
+específico). Ainda faltam: `--code`/`--data`/`--align-*`/`--code-before-data` do linker, detecção de
+sobreposição de segmento, saída Intel HEX, e integração de menu (hoje só via engine/CLI de teste, sem
+UI no editor). `LK80.exe`/`LB80.exe` compilados localmente como oráculo (mesma receita do `N80.exe`,
+ver `docs/resumo-asm.md`). Especificação de formato/algoritmo documentada em
 `docs/reference/nestor80-rel-format.md` e `docs/reference/nestor80-linker.md`. Detalhe do checklist em
-`docs/resumo-asm.md`, seção "Checklist Fase B" — implementação em si ainda não começou.
+`docs/resumo-asm.md`, seção "Checklist Fase B".
 
 **Módulo 2c — integrações planejadas, nenhuma iniciada ainda**:
 - **Sistema de projeto** (módulo 13): hoje o assembler não grava nada no `.msxproject` — o texto-fonte
@@ -1252,6 +1261,20 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-24 (sessão de fechamento — Fase B do assembler, motor completo)**: módulo
+2b (Linkstor80/Libstor80) saiu de "não iniciado" pra **motor completo** nesta mesma sessão —
+`editor/Z80Link.pbi` (linker multi-`.REL`, incl. `.REQUEST`/biblioteca com linkagem estática seletiva e
+resolução transitiva) e `editor/Z80Lib.pbi` (gerenciador `.LIB`: `create`/`add`/`list`/`remove`), ambos
+validados byte a byte contra `LK80.exe`/`LB80.exe` reais (mesma técnica de oráculo já usada no
+assembler). Suíte própria `editor/tools/Z80LinkTestCli.pb` (7/7). Um bug real de assembler pego pela
+validação end-to-end (`LD A,(externo)` não reconhecido como referência bare por causa dos parênteses no
+operando) e uma limitação real confirmada no `LK80.exe` local (só enxerga o símbolo público do primeiro
+programa de uma biblioteca `.REQUEST` multi-programa) — detalhe completo em `docs/resumo-asm.md`.
+Documentação atualizada em todos os `*.md` do projeto (este arquivo, módulo 2b acima; `README.md`;
+`docs/MANUAL.md` seção "Assembler Z80"). Falta só a integração de menu no editor (hoje é engine/CLI de
+teste, sem UI) — ver checklist Fase B em `docs/resumo-asm.md`. Versão embutida no executável atualizada
+para **7.3.3**.
 
 **Estado ao fim de 2026-07-24 (sessão do assembler Z80)**: módulo 2 (assembler Z80) saiu de "zero
 código de motor" pra **Fase A completa** — ver módulo 2 acima e `docs/resumo-asm.md` (documento de
