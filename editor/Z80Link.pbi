@@ -23,16 +23,18 @@
 ;  saida Intel HEX.
 ;
 ;  DeclareModule real (nao so prefixo) - mesmo padrao de Z80Asm/MSXDisk/
-;  ProjectDB. Reaproveita Z80RelFormat.pbi (Z80SegType/Z80Addr, mesmos
-;  valores numericos 0-3 = ASEG/CSEG/DSEG/COMMON que Z80Asm::
-;  AssembleRelocatable ja usa pra escrever o .REL) - precisa vir incluido
-;  AQUI DENTRO do DeclareModule pelo mesmo motivo ja documentado no topo de
-;  Z80RelFormat.pbi (Module nao enxerga Structure/Enumeration de fora).
+;  ProjectDB. Reaproveita Z80RelFormatLink.pbi (copia de Z80RelFormat.pbi
+;  dedicada a este Module - ver comentario no topo daquele arquivo pro
+;  motivo de ser uma copia separada) - mesmos valores numericos 0-3 =
+;  ASEG/CSEG/DSEG/COMMON que Z80Asm::AssembleRelocatable ja usa pra
+;  escrever o .REL - precisa vir incluido AQUI DENTRO do DeclareModule pelo
+;  mesmo motivo ja documentado no topo de Z80RelFormat.pbi (Module nao
+;  enxerga Structure/Enumeration de fora).
 ; ------------------------------------------------------------
 ;
 
 DeclareModule Z80Link
-  XIncludeFile "Z80RelFormat.pbi"
+  XIncludeFile "Z80RelFormatLink.pbi"
 
   ; Linka os .REL de RelPaths() na ordem dada e devolve o binario final em
   ; OutBytes() (precisa vir dimensionado com pelo menos 65536 posicoes pelo

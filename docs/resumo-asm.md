@@ -309,30 +309,47 @@ detalhe mais importante, a visibilidade de `Structure` através de `Module`):
       **idêntico** ao `LB80.exe create`+`LB80.exe add` na mesma sequência; `remove` conferido
       comparando contra o `.REL` de programa único equivalente (biblioteca de 1 programa só = o
       próprio `.REL` daquele programa, byte a byte idêntico). Suíte própria: 2 novos casos.
-- [ ] Segunda opção de menu / fluxo multi-arquivo (Montar → gerar `.REL`; Linkar/Montar biblioteca →
-      UI própria ou reaproveitando o padrão de diálogo do gerenciador de disco) — hoje só via
-      engine/CLI de teste, sem UI
+- [x] **Menu/UI do linker e da biblioteca — implementado (2026-07-25)**: `editor/Z80LinkGui.pbi`
+      (**Executar → Linkar (.REL) → binário...**, lista ordenável de `.REL` + pasta de biblioteca
+      opcional + botão Linkar) e `editor/Z80LibGui.pbi` (**Criar → Biblioteca Z80 (.LIB)...**,
+      Nova/Abrir + lista de programas + Adicionar .REL/Remover selecionado — sem cópia de rascunho
+      temporária, `Z80Lib.pbi` já grava atômico no arquivo escolhido). Novo item **Executar → Montar
+      Assembly relocável (.REL)...** (`AssembleZ80RelFromActiveTab()` em `BadigEditor.pb`) fecha o
+      "fluxo multi-arquivo": monta uma aba `.asm` em `.REL`, que aí sim vira insumo do linker/
+      biblioteca a partir do editor, sem precisar do CLI de teste. Ver "Log de decisões técnicas"
+      abaixo pro bug de `XIncludeFile` pego durante essa integração.
 - [ ] `--code`/`--data`/`--align-code`/`--align-data`/`--code-before-data` do linker, detecção de
       sobreposição de segmento entre programas, saída Intel HEX — fora de escopo dos cortes 1/2
 
 ## Integrações planejadas (não fazem parte da Fase B em si, mas foram confirmadas como objetivo do
 ## módulo em 2026-07-24 — ver decisão de escopo 5 acima)
 
-- [ ] **Sistema de projeto**: tabela dedicada no `.msxproject` pro binário montado (número/tag/
-      navegação/Registrar, mesmo padrão de sprites/alfabetos/sons/músicas/telas em `ProjectDB.pbi`)
+- [x] **Sistema de projeto — implementado (2026-07-25)**: tabela `asm_builds` em `ProjectDB.pbi`
+      (`StoreAsmBuild`/`FetchAsmBuild`/`HasAsmBuild`/`ListAsmBuildKeys`, mesmo padrão DELETE+INSERT dos
+      demais tipos de conteúdo), chave = caminho do `.asm` (montagem simples) ou `"LINK|" + .rel's` na
+      ordem escolhida (sessão de link, sem uma única aba de origem) — guarda build_kind/output_kind/
+      output_path/endereços/flag de cabeçalho da **última** exportação que virou arquivo de verdade.
+      Gravada automaticamente por `Z80Out_ExportBin`/`Z80Out_ExportDisk` (`Z80OutputGui.pbi`). Fora da
+      soma de `HasUnsavedContent()` de propósito, mesmo motivo de `documents` (metadado de algo já
+      exportado pra um arquivo independente em disco). Coberto por round-trip em
+      `editor/tools/ProjectDBTestCli.pb`.
 - [x] **Cabeçalho MSX BLOAD** (2026-07-24, achado real depurando o programa do usuário) — "Montar"
       pergunta se quer o `.bin` com o cabeçalho clássico de 7 bytes (`FE`+início+fim+execução, exec =
       início) já embutido, pronto pro `BLOAD "ARQUIVO.BIN",R` do MSX-BASIC. Binário cru continua
       disponível (opção "Não") e já serve como `.COM` quando o fonte usa `ORG 100h` — nenhuma mudança
       extra precisou ser feita pro `.COM`, o binário absoluto que já existia desde a Fase A já é
       exatamente esse formato.
-- [ ] **`BLOAD` direto num `.dsk`**: hoje o usuário ainda salva o `.bin`/`.com` no disco do PC e
-      precisa colocar no disquete manualmente (gerenciador de disco, menu **Criar → Disco...**) -
-      integrar isso automaticamente no fluxo de "Montar" (reaproveitando `MSXDisk.pbi`/mesma mecânica
-      de `RunOnOpenMSX()`) ainda não foi feito
-- [ ] **Listing hexadecimal**: gerar um bloco `DATA`/`POKE` a partir do binário montado, pro código Z80
-      poder ser colado direto num programa BASIC (mesmo espírito de `PsgGen_RawBytes()` no editor de
-      som PSG, `editor/PsgSynth.pbi`)
+- [x] **`BLOAD` direto num `.dsk` — implementado (2026-07-25)**: `Z80Out_ExportDisk()` em
+      `editor/Z80OutputGui.pbi` monta um `.dsk` (reaproveitando `MSXDisk.pbi`, mesma mecânica de
+      `RunOnOpenMSX()`) com o binário sempre-com-cabeçalho mais um `AUTOEXEC.BAS` de autorun
+      (`10 BLOAD"NOME.BIN",R`) — abrir esse disco no openMSX já carrega e roda sozinho. Uma das três
+      opções da janela "Saída da montagem" (`Z80Out_ChooseAndExport`), ao lado de `.bin` solto e do
+      listing hexadecimal abaixo.
+- [x] **Listing hexadecimal — implementado (2026-07-25)**: `Z80Gen_BasicLoader()` em
+      `editor/Z80OutputGui.pbi` gera um loop `FOR/READ/POKE` + blocos `DATA` em hexa (16 bytes por
+      linha, mesmo espírito de `PsgGen_RawBytes()` do editor de som PSG, mas com o loop de `POKE` que
+      o PSG não precisa) numa janela com **Copiar**/**Injetar no cursor**. Validado por um script
+      isolado conferindo a formatação exata (quebra de linha a cada 16 bytes, caso de 1 byte só).
 - [x] **`.PHASE`/`.DEPHASE`** (2026-07-24) — necessário pro caso geral de "código montado num
       endereço, mas com labels resolvendo como se rodasse noutro" (ROM→RAM, ou o próprio cabeçalho
       BLOAD que precisa vir ANTES do código no arquivo mas sem deslocar os labels do código). Ver log
@@ -350,6 +367,39 @@ pedido explícito do usuário 2026-07-24.)
 _(preenchido conforme a implementação avança — bugs encontrados, ajustes de design em relação ao
 plano original, etc., mesmo espírito do "Próximos passos em aberto" do `docs/SPEC.md`)_
 
+- **2026-07-25 — integração de menu/saída/projeto (checklist Fase B fechado), pedido explícito do
+  usuário: "1-Menu de UI para o Linker/Lib, 2-Saida consumivel do assembler para o MSX BASIC, 3
+  integracao do assembler com o sistema de projeto"**. Resumo do que foi construído nas checklists
+  acima; aqui só os dois achados técnicos reais da sessão:
+  - **Bug real de `XIncludeFile`**: `Z80Asm.pbi` e `Z80Link.pbi` cada um fazia seu próprio
+    `XIncludeFile "Z80RelFormat.pbi"` de dentro do respectivo `DeclareModule` — o padrão já
+    documentado no topo de `Z80RelFormat.pbi` ("cada Module inclui a própria cópia porque um Module
+    não enxerga tipos de fora"). O que não estava documentado (porque nunca tinha acontecido): o
+    PureBasic `XIncludeFile` deduplica por **caminho de arquivo em TODO o programa**, não por
+    `Module` — então quando os dois módulos passaram a coexistir na mesma unidade de compilação
+    (`BadigEditor.pb`, ao ligar `Z80LinkGui.pbi`/`Z80LibGui.pbi` no editor), a segunda tentativa de
+    incluir `Z80RelFormat.pbi` (de dentro de `DeclareModule Z80Link`) virou no-op silencioso, deixando
+    `#Z80Seg_Code`/`#Z80Seg_Data`/etc. inexistentes dentro do namespace de `Z80Link` — erro só
+    aparecia em `LEffectiveAddr()` ("Constant not found: #Z80Seg_Code"). Nunca tinha sido pego porque
+    `editor/tools/Z80LinkTestCli.pb` (o único lugar que compilava `Z80Link.pbi` até então) nunca
+    incluía `Z80Asm.pbi` na mesma unidade. **Correção**: `editor/Z80RelFormatLink.pbi`, uma cópia
+    dedicada (mesmo conteúdo, arquivo com nome diferente) só pro `Module Z80Link` — resolve porque
+    `XIncludeFile` dedupe por CAMINHO, então um caminho diferente sempre inclui de verdade. Lição:
+    "cada Module tem sua cópia" de um arquivo de tipos compartilhado só funciona de verdade se cada
+    cópia estiver num ARQUIVO distinto, não apenas numa seção de código reincluída do mesmo arquivo.
+  - **Limitação de ambiente, não do código**: tentativa de smoke test ao vivo via `WM_COMMAND`/
+    `PostMessage` (mesma técnica de automação já usada em sessões anteriores pra Psg/Mml/Screen2)
+    não funcionou neste ambiente — o processo do `BadigEditor.exe` lançado pelas ferramentas de
+    shell (Bash/PowerShell) abre sua janela numa sessão do Windows diferente da sessão onde essas
+    mesmas ferramentas rodam (`Get-Process` enxerga o `MainWindowTitle` cross-session, mas
+    `FindWindow`/`PostMessage`, que dependem do window station/desktop do processo CHAMADOR, retornam
+    handle 0). Não é uma regressão nem um bug do editor — é isolamento de sessão do ambiente de
+    execução das ferramentas automatizadas. Verificação da UI nova (`Z80LinkGui.pbi`/`Z80LibGui.pbi`/
+    `Z80OutputGui.pbi`) ficou por revisão de código cuidadosa + validação das APIs de motor via CLI
+    (`Z80AsmTestCli.exe`/`Z80LinkTestCli.exe`/`ProjectDBTestCli.exe`, todos passando sem regressão) em
+    vez de clique real — mesma limitação, reforçada, das notas de sessões anteriores sobre automação
+    de canvas não ser confiável neste tipo de ambiente. Versão embutida no executável atualizada de
+    `7.3.3` pra **`7.3.5`**.
 - **2026-07-24 — gotcha real de PureBasic descoberto e confirmado empiricamente: um `Module` não
   enxerga NENHUMA `Structure`/`Enumeration` definida fora dele**, nem para uso como campo aninhado
   (`Field.OutraStructure`) nem como tipo de parâmetro de ponteiro (`*P.OutraStructure`) — mesmo que a

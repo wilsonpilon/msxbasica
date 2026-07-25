@@ -147,30 +147,51 @@ transitiva — linkagem estática seletiva de verdade). **`editor/Z80Lib.pbi` ge
 símbolo público do primeiro programa de uma biblioteca multi-programa pedida via `.REQUEST` — está
 documentado em `docs/resumo-asm.md`, contornado com validação por auto-consistência nesse caso
 específico). Ainda faltam: `--code`/`--data`/`--align-*`/`--code-before-data` do linker, detecção de
-sobreposição de segmento, saída Intel HEX, e integração de menu (hoje só via engine/CLI de teste, sem
-UI no editor). `LK80.exe`/`LB80.exe` compilados localmente como oráculo (mesma receita do `N80.exe`,
-ver `docs/resumo-asm.md`). Especificação de formato/algoritmo documentada em
-`docs/reference/nestor80-rel-format.md` e `docs/reference/nestor80-linker.md`. Detalhe do checklist em
-`docs/resumo-asm.md`, seção "Checklist Fase B".
+sobreposição de segmento, saída Intel HEX. `LK80.exe`/`LB80.exe` compilados localmente como oráculo
+(mesma receita do `N80.exe`, ver `docs/resumo-asm.md`). Especificação de formato/algoritmo documentada
+em `docs/reference/nestor80-rel-format.md` e `docs/reference/nestor80-linker.md`. Detalhe do checklist
+em `docs/resumo-asm.md`, seção "Checklist Fase B".
 
-**Módulo 2c — integrações planejadas, nenhuma iniciada ainda**:
-- **Sistema de projeto** (módulo 13): hoje o assembler não grava nada no `.msxproject` — o texto-fonte
-  `.asm` já é salvo como `documents` (igual qualquer aba de texto, mecanismo genérico que já existe),
-  mas não há tabela dedicada pro binário montado nem metadado de "último `.bin` gerado", diferente de
-  sprites/alfabetos/sons/músicas/telas que têm sua própria tabela com número/tag/navegação. Fica pra
-  quando fizer sentido (provavelmente junto com a Fase B, quando existir a noção de "projeto montado" =
-  vários `.asm` linkados).
-- **Saída consumível por MSX-BASIC**: hoje "Montar" só produz um `.bin` solto no disco do PC. Dois
-  caminhos clássicos planejados pro MSX de verdade rodar esse código a partir de um programa BASIC:
-  (1) **`BLOAD`** do `.bin` direto (mais simples, já é o formato binário absoluto que o motor gera hoje
-    — só falta o fluxo de colocar o arquivo num `.dsk`/disco, reaproveitando `MSXDisk.pbi`, mesmo
-    mecanismo já usado por `RunOnOpenMSX()` pro fluxo Dignified);
-  (2) **listing `DATA`/`POKE` em hexadecimal** gerado automaticamente a partir do binário montado —
-    mesmo espírito do botão "Gerar bytes crus" que já existe no editor de som PSG (módulo 6,
-    `PsgGen_RawBytes`), mas para o binário do assembler inteiro, pensado pro caso de querer colar o
-    código Z80 dentro de um programa BASIC sem depender de carregar um arquivo à parte.
-  Nenhum dos dois caminhos está implementado ainda — "Montar" hoje só salva o `.bin` no sistema de
-  arquivos do PC via `SaveFileRequester`.
+**Integração de menu do linker/biblioteca — implementada (2026-07-25)**: `editor/Z80LinkGui.pbi`
+(**Executar → Linkar (.REL) → binário...**) lista .REL numa ordem editável (Adicionar/Remover/Subir/
+Descer), aceita uma pasta de biblioteca opcional (`.REQUEST`) e chama `Z80Link::LinkFiles()`;
+`editor/Z80LibGui.pbi` (**Criar → Biblioteca Z80 (.LIB)...**) cria/abre uma `.LIB`, lista programas
+(`Z80Lib::ListLibrary`) com nome/tamanho/símbolos públicos, adiciona `.REL` (`CreateOrAddLibrary`) e
+remove programa (`RemoveProgram`) — sem cópia de rascunho temporária (diferente do gerenciador de
+disco): as chamadas de `Z80Lib.pbi` já gravam direto e de forma atômica no arquivo escolhido. Novo item
+**Executar → Montar Assembly relocável (.REL)...** (`AssembleZ80RelFromActiveTab()`, `BadigEditor.pb`)
+monta a aba `.asm` ativa via `Z80Asm::AssembleRelocatable()` e salva o `.REL` — o insumo que faltava
+pra alimentar o linker/biblioteca a partir do editor, sem precisar do CLI de teste.
+
+**Bug real encontrado durante esta integração**: `Z80Link.pbi` e `Z80Asm.pbi` faziam cada um seu próprio
+`XIncludeFile "Z80RelFormat.pbi"` de dentro do respectivo `DeclareModule`, mas `XIncludeFile` deduplica
+por **caminho de arquivo em todo o programa**, não por `Module` — funcionava no CLI de teste
+(`Z80LinkTestCli.pb`, que nunca inclui `Z80Asm.pbi`), mas quebrava assim que os dois módulos passaram a
+coexistir na mesma unidade de compilação (`BadigEditor.pb`): a segunda inclusão virava no-op, deixando
+`#Z80Seg_Code`/etc. inexistentes dentro do namespace de `Z80Link` (erro "Constant not found" em
+`LEffectiveAddr`). Corrigido criando `editor/Z80RelFormatLink.pbi`, uma cópia dedicada pro `Module
+Z80Link` — mesmo espírito de "cada Module tem sua cópia" já usado pra `Z80LinkItemType`.
+
+**Módulo 2c — integrações com o resto da IDE — implementado (2026-07-25)**:
+- **Saída consumível por MSX-BASIC**: `editor/Z80OutputGui.pbi` centraliza o que fazer com um binário já
+  montado (absoluto) ou já linkado — janela de escolha com três caminhos: (1) `.bin` solto no PC (com ou
+  sem cabeçalho MSX BLOAD, comportamento que já existia, só extraído pra cá); (2) **disco MSX (`.dsk`)**
+  pronto pra rodar via `AUTOEXEC.BAS` (`"10 BLOAD"NOME.BIN",R"`, sempre com cabeçalho — reaproveita
+  `MSXDisk.pbi`, mesmo mecanismo já usado por `RunOnOpenMSX()` no fluxo Dignified); (3) **listing BASIC**
+  (`Z80Gen_BasicLoader()` — loop `FOR/READ/POKE` + blocos `DATA` em hexa, 16 bytes por linha, mais um
+  comentário `DEFUSR=.../A=USR(0)` pronto pra chamar — mesmo espírito do "Gerar bytes crus" do editor de
+  som PSG, mas com o loop de `POKE` que o PSG não precisa) numa janela com **Copiar**/**Injetar no
+  cursor** (reaproveita `InjectTextAtCursor()`). Usado tanto por "Montar Assembly (.bin)..." quanto por
+  "Linkar (.REL) → binário...".
+- **Sistema de projeto** (módulo 13): nova tabela `asm_builds` em `ProjectDB.pbi` — metadado da
+  **última** exportação de binário/disco por `SourceKey` (caminho do `.asm`, pra montagem absoluta; ou
+  `"LINK|" + .rel's` na ordem escolhida, pra uma sessão de link — não há uma única aba de origem nesse
+  caso), gravado automaticamente por `Z80Out_ExportBin`/`Z80Out_ExportDisk` sempre que a exportação
+  produz um arquivo de verdade (não o listing, que só vai pra área de transferência/cursor). Mesmo
+  padrão `Store*/Fetch*/Has*/List*` dos demais tipos de conteúdo (DELETE+INSERT); fora da soma de
+  `HasUnsavedContent()` de propósito, mesmo motivo de `documents` — é metadado de algo que já foi
+  exportado pra um arquivo independente em disco. Coberto por round-trip em
+  `editor/tools/ProjectDBTestCli.pb` (store/fetch/overwrite/list/has + through `SaveAs`/`OpenExisting`).
 
 Realce de sintaxe do modo `.asm` (`HighlightZ80Text()`) segue estritamente o vocabulário do
 **N80/Nestor80** (Konamiman, github.com/Konamiman/Nestor80 — assembler Z80/R800/Z280 compatível com
@@ -1261,6 +1282,27 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-25**: as três lacunas restantes do módulo 2/2b/2c foram fechadas nesta
+sessão (pedido explícito do usuário: "1-Menu de UI para o Linker/Lib, 2-Saida consumivel do assembler
+para o MSX BASIC, 3 integracao do assembler com o sistema de projeto") — ver módulo 2b/2c acima pro
+detalhe técnico completo. Resumo: `editor/Z80LinkGui.pbi` (**Executar → Linkar (.REL) → binário...**) e
+`editor/Z80LibGui.pbi` (**Criar → Biblioteca Z80 (.LIB)...**) dão UI ao linker/biblioteca que já
+existiam como motor desde a sessão de fechamento anterior; `editor/Z80OutputGui.pbi` centraliza a saída
+consumível por MSX-BASIC (`.bin`/disco `.dsk` via `BLOAD`/listing `DATA`+`POKE`), reaproveitada tanto
+pela montagem absoluta quanto pelo link; `ProjectDB.pbi` ganhou a tabela `asm_builds`. Único bug real
+encontrado: conflito de deduplicação de `XIncludeFile "Z80RelFormat.pbi"` entre `Z80Asm.pbi` e
+`Z80Link.pbi` quando os dois coexistem na mesma unidade de compilação (só aparecia agora, o CLI de
+teste do linker nunca incluía `Z80Asm.pbi`) — corrigido com uma cópia dedicada,
+`editor/Z80RelFormatLink.pbi`. Verificação: harnesses de console (`Z80AsmTestCli.exe` 67/67,
+`Z80LinkTestCli.exe` sem regressão, `ProjectDBTestCli.exe` com a nova cobertura de `asm_builds`, todos
+passando) e um script isolado confirmando a formatação exata do listing BASIC gerado; automação de GUI
+ao vivo (`WM_COMMAND`/`PostMessage`) **não foi possível neste ambiente** — o processo do editor lançado
+pelas ferramentas de shell abre numa sessão do Windows diferente da sessão onde o shell roda
+(`FindWindow`/`PostMessage` não enxergam janelas de outra sessão), então a verificação da UI em si
+ficou por revisão de código cuidadosa em vez de clique real, sem mudar a conclusão de que a lógica seja
+direta e reaproveite padrões já validados nos demais editores. Versão embutida no executável atualizada
+para **7.3.5**.
 
 **Estado ao fim de 2026-07-24 (sessão de fechamento — Fase B do assembler, motor completo)**: módulo
 2b (Linkstor80/Libstor80) saiu de "não iniciado" pra **motor completo** nesta mesma sessão —

@@ -356,6 +356,38 @@ CheckTrue(Bool(LoadedSongCountA(0) = 1), "Musica #1: contagem de linhas do canal
 CheckTrue(ProjectDB::HasSong(2), "HasSong(2) = #True")
 CheckTrue(Bool(Not ProjectDB::HasSong(99)), "HasSong(99) = #False")
 
+; 8g) StoreAsmBuild/FetchAsmBuild - metadado da ultima exportacao de binario
+; do assembler Z80 (modulo 2b), mesmo padrao Store/Fetch/Has dos demais tipos
+; de conteudo - so que SourceKey e TEXT (caminho do .asm ou, pra uma sessao
+; de link, "LINK|" + os .rel na ordem escolhida), nao numero sequencial - ver
+; comentario da declaracao em ProjectDB.pbi.
+CheckTrue(ProjectDB::StoreAsmBuild("C:\proj\game.asm", "ABS", "BIN", "C:\proj\game.bin", 32768, 32800, #True),
+         "StoreAsmBuild (montagem absoluta, com cabecalho)")
+CheckTrue(ProjectDB::StoreAsmBuild("LINK|C:\proj\a.rel|C:\proj\b.rel", "LINK", "DSK", "C:\proj\game.dsk", 256, 4095, #True),
+         "StoreAsmBuild (link, saida em disco)")
+
+CheckTrue(ProjectDB::FetchAsmBuild("C:\proj\game.asm"), "FetchAsmBuild(game.asm)")
+CheckTrue(Bool(ProjectDB::LastAsmBuildKind() = "ABS"), "AsmBuild(game.asm): build_kind = 'ABS'")
+CheckTrue(Bool(ProjectDB::LastAsmBuildOutputKind() = "BIN"), "AsmBuild(game.asm): output_kind = 'BIN'")
+CheckTrue(Bool(ProjectDB::LastAsmBuildOutputPath() = "C:\proj\game.bin"), "AsmBuild(game.asm): output_path bate")
+CheckTrue(Bool(ProjectDB::LastAsmBuildStartAddr() = 32768), "AsmBuild(game.asm): start_addr = 32768")
+CheckTrue(Bool(ProjectDB::LastAsmBuildEndAddr() = 32800), "AsmBuild(game.asm): end_addr = 32800")
+CheckTrue(Bool(ProjectDB::LastAsmBuildBLoadHeader() = 1), "AsmBuild(game.asm): bload_header = 1")
+
+; Sobrescreve (mesma SourceKey) - nao pode duplicar, tem que atualizar
+CheckTrue(ProjectDB::StoreAsmBuild("C:\proj\game.asm", "ABS", "BIN", "C:\proj\game_v2.bin", 32768, 32900, #False),
+         "StoreAsmBuild (mesma SourceKey de novo, sobrescrevendo)")
+ProjectDB::FetchAsmBuild("C:\proj\game.asm")
+CheckTrue(Bool(ProjectDB::LastAsmBuildOutputPath() = "C:\proj\game_v2.bin"), "AsmBuild(game.asm): output_path atualizado apos sobrescrever")
+CheckTrue(Bool(ProjectDB::LastAsmBuildBLoadHeader() = 0), "AsmBuild(game.asm): bload_header atualizado para 0")
+
+NewList AsmBuildKeys.s()
+ProjectDB::ListAsmBuildKeys(AsmBuildKeys())
+CheckTrue(Bool(ListSize(AsmBuildKeys()) = 2), "ListAsmBuildKeys (esperado 2, achou " + Str(ListSize(AsmBuildKeys())) + ")")
+
+CheckTrue(ProjectDB::HasAsmBuild("LINK|C:\proj\a.rel|C:\proj\b.rel"), "HasAsmBuild(link) = #True")
+CheckTrue(Bool(Not ProjectDB::HasAsmBuild("nao existe")), "HasAsmBuild(chave inexistente) = #False")
+
 ; "Projeto 0" (defaults, sempre em memoria): alfabeto 0 = msx.alf embutido
 ; no executavel - confere que bate byte a byte com o .alf real do
 ; repositorio (alfabetos\msx.alf, dois niveis acima de editor\tools\), pra
@@ -413,6 +445,11 @@ ProjectDB::ListSongNumbers(SongNumbers())
 CheckTrue(Bool(ListSize(SongNumbers()) = 2), "ListSongNumbers ainda mostra 2 musicas apos SaveAs")
 ProjectDB::FetchSong(2, LoadedSongA(), LoadedSongCountA())
 CheckTrue(Bool(ProjectDB::LastSongTag() = "cancao2"), "Musica #2 ainda bate (tag 'cancao2') apos SaveAs")
+ClearList(AsmBuildKeys())
+ProjectDB::ListAsmBuildKeys(AsmBuildKeys())
+CheckTrue(Bool(ListSize(AsmBuildKeys()) = 2), "ListAsmBuildKeys ainda mostra 2 builds apos SaveAs")
+ProjectDB::FetchAsmBuild("C:\proj\game.asm")
+CheckTrue(Bool(ProjectDB::LastAsmBuildOutputPath() = "C:\proj\game_v2.bin"), "AsmBuild(game.asm) ainda bate apos SaveAs")
 
 ; 11) OpenExisting - simula "Arquivo -> Abrir projeto...": fecha tudo e
 ; reabre do zero so a partir do caminho salvo, sem passar por EnsureOpen.
@@ -444,6 +481,11 @@ ProjectDB::ListSongNumbers(SongNumbers())
 CheckTrue(Bool(ListSize(SongNumbers()) = 2), "ListSongNumbers ainda mostra 2 musicas apos OpenExisting")
 ProjectDB::FetchSong(1, LoadedSongA(), LoadedSongCountA())
 CheckTrue(Bool(ProjectDB::LastSongTag() = "cancao1b" And LoadedSongCountA(0) = 1), "Musica #1 ainda bate (tag 'cancao1b', 1 linha) apos OpenExisting")
+ClearList(AsmBuildKeys())
+ProjectDB::ListAsmBuildKeys(AsmBuildKeys())
+CheckTrue(Bool(ListSize(AsmBuildKeys()) = 2), "ListAsmBuildKeys ainda mostra 2 builds apos OpenExisting")
+ProjectDB::FetchAsmBuild("LINK|C:\proj\a.rel|C:\proj\b.rel")
+CheckTrue(Bool(ProjectDB::LastAsmBuildOutputPath() = "C:\proj\game.dsk"), "AsmBuild(link) ainda bate apos OpenExisting")
 CheckTrue(Bool(Not ProjectDB::OpenExisting(WorkDir + "nao_existe.msxproject")), "OpenExisting falha graciosamente com arquivo inexistente")
 
 ; 12) Close nao deve travar (limpeza final)

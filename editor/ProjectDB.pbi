@@ -101,6 +101,30 @@ DeclareModule ProjectDB
   Declare.i HasScreen(Number.i)
   Declare ListScreenNumbers(List Numbers.i())
 
+  ; Metadado da ULTIMA exportacao de binario feita a partir do assembler Z80
+  ; (modulo 2/2b, ver editor/Z80Asm.pbi/Z80Link.pbi) - montagem absoluta de
+  ; uma aba .asm (BuildKind="ABS") ou binario final de uma sessao de link
+  ; (BuildKind="LINK"), sempre que o resultado vira de fato um arquivo
+  ; consumivel no PC/disco MSX (OutputKind "BIN"/"DSK" - nao ha registro pra
+  ; "so gerei o listing DATA/POKE e copiei", que nao produz nenhum arquivo em
+  ; disco, ver editor/Z80OutputGui.pbi). SourceKey e o caminho do .asm de
+  ; origem (montagem simples) ou do binario final ja salvo (sessao de link,
+  ; que nao tem uma unica aba de origem) - so serve de chave de "ultima
+  ; build", sem outro uso. Fora da soma de HasUnsavedContent() de proposito,
+  ; mesmo motivo de "documents": e metadado de algo que ja foi exportado pra
+  ; um arquivo independente em disco, perder o registro no banco temporario
+  ; nao perde trabalho de verdade.
+  Declare.i StoreAsmBuild(SourceKey.s, BuildKind.s, OutputKind.s, OutputPath.s, StartAddr.u, EndAddr.u, BLoadHeader.i)
+  Declare.i FetchAsmBuild(SourceKey.s)
+  Declare.s LastAsmBuildKind()
+  Declare.s LastAsmBuildOutputKind()
+  Declare.s LastAsmBuildOutputPath()
+  Declare.u LastAsmBuildStartAddr()
+  Declare.u LastAsmBuildEndAddr()
+  Declare.i LastAsmBuildBLoadHeader()
+  Declare.i HasAsmBuild(SourceKey.s)
+  Declare ListAsmBuildKeys(List Keys.s())
+
   ; "Projeto 0": banco SQLite a parte, sempre em memoria (nunca em arquivo,
   ; nunca salvo), recriado do zero a cada vez que a IDE abre - fonte interna
   ; de conteudo padrao (hoje so o alfabeto 0 = msx.alf embutido no executavel
@@ -136,6 +160,12 @@ Module ProjectDB
   Global FetchedSongTag.s = ""
   Global FetchedScreenTag.s = ""
   Global FetchedScreenCommandsText.s = ""
+  Global FetchedAsmBuildKind.s = ""
+  Global FetchedAsmBuildOutputKind.s = ""
+  Global FetchedAsmBuildOutputPath.s = ""
+  Global FetchedAsmBuildStartAddr.u = 0
+  Global FetchedAsmBuildEndAddr.u = 0
+  Global FetchedAsmBuildBLoadHeader.i = 0
   Global DefaultsOpen.b = #False
 
   Procedure.s NewTempPath()
@@ -178,6 +208,15 @@ Module ProjectDB
                          "screen_number INTEGER PRIMARY KEY, " +
                          "tag TEXT, " +
                          "commands_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS asm_builds (" +
+                         "source_key TEXT PRIMARY KEY, " +
+                         "build_kind TEXT NOT NULL, " +
+                         "output_kind TEXT NOT NULL, " +
+                         "output_path TEXT NOT NULL, " +
+                         "start_addr INTEGER NOT NULL, " +
+                         "end_addr INTEGER NOT NULL, " +
+                         "bload_header INTEGER NOT NULL, " +
                          "updated_at TEXT)")
   EndProcedure
 
@@ -893,6 +932,106 @@ Module ProjectDB
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; Grava (DELETE+INSERT, mesmo padrao dos demais Store*) o metadado da
+  ; ultima exportacao de binario do assembler pra SourceKey - ver comentario
+  ; da declaracao acima pro que cada campo significa.
+  Procedure.i StoreAsmBuild(SourceKey.s, BuildKind.s, OutputKind.s, OutputPath.s, StartAddr.u, EndAddr.u, BLoadHeader.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeKey.s = ReplaceString(SourceKey, "'", "''")
+    Protected SafeKind.s = ReplaceString(BuildKind, "'", "''")
+    Protected SafeOutKind.s = ReplaceString(OutputKind, "'", "''")
+    Protected SafeOutPath.s = ReplaceString(OutputPath, "'", "''")
+
+    DatabaseUpdate(#DB, "DELETE FROM asm_builds WHERE source_key='" + SafeKey + "'")
+    Protected SQL.s = "INSERT INTO asm_builds (source_key, build_kind, output_kind, output_path, start_addr, end_addr, bload_header, updated_at) VALUES (" +
+                       "'" + SafeKey + "', '" + SafeKind + "', '" + SafeOutKind + "', '" + SafeOutPath + "', " +
+                       Str(StartAddr) + ", " + Str(EndAddr) + ", " + Str(Bool(BLoadHeader)) + ", datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; Le de volta o metadado de build pra SourceKey; campos extras via
+  ; LastAsmBuildKind()/LastAsmBuildOutputKind()/LastAsmBuildOutputPath()/
+  ; LastAsmBuildStartAddr()/LastAsmBuildEndAddr()/LastAsmBuildBLoadHeader()
+  ; (mesmo padrao de FetchSound/LastSoundTag()).
+  Procedure.i FetchAsmBuild(SourceKey.s)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeKey.s = ReplaceString(SourceKey, "'", "''")
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT build_kind, output_kind, output_path, start_addr, end_addr, bload_header " +
+                          "FROM asm_builds WHERE source_key='" + SafeKey + "'")
+      If NextDatabaseRow(#DB)
+        FetchedAsmBuildKind = GetDatabaseString(#DB, 0)
+        FetchedAsmBuildOutputKind = GetDatabaseString(#DB, 1)
+        FetchedAsmBuildOutputPath = GetDatabaseString(#DB, 2)
+        FetchedAsmBuildStartAddr = Val(GetDatabaseString(#DB, 3))
+        FetchedAsmBuildEndAddr = Val(GetDatabaseString(#DB, 4))
+        FetchedAsmBuildBLoadHeader = Val(GetDatabaseString(#DB, 5))
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastAsmBuildKind()
+    ProcedureReturn FetchedAsmBuildKind
+  EndProcedure
+
+  Procedure.s LastAsmBuildOutputKind()
+    ProcedureReturn FetchedAsmBuildOutputKind
+  EndProcedure
+
+  Procedure.s LastAsmBuildOutputPath()
+    ProcedureReturn FetchedAsmBuildOutputPath
+  EndProcedure
+
+  Procedure.u LastAsmBuildStartAddr()
+    ProcedureReturn FetchedAsmBuildStartAddr
+  EndProcedure
+
+  Procedure.u LastAsmBuildEndAddr()
+    ProcedureReturn FetchedAsmBuildEndAddr
+  EndProcedure
+
+  Procedure.i LastAsmBuildBLoadHeader()
+    ProcedureReturn FetchedAsmBuildBLoadHeader
+  EndProcedure
+
+  Procedure.i HasAsmBuild(SourceKey.s)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeKey.s = ReplaceString(SourceKey, "'", "''")
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM asm_builds WHERE source_key='" + SafeKey + "'")
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListAsmBuildKeys(List Keys.s())
+    ClearList(Keys())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT source_key FROM asm_builds ORDER BY updated_at DESC")
+      While NextDatabaseRow(#DB)
+        AddElement(Keys())
+        Keys() = GetDatabaseString(#DB, 0)
       Wend
       FinishDatabaseQuery(#DB)
     EndIf

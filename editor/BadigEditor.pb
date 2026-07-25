@@ -52,6 +52,11 @@ XIncludeFile "MmlSynth.pbi"
 XIncludeFile "MmlEditorGui.pbi"
 XIncludeFile "Screen2Synth.pbi"
 XIncludeFile "Screen2EditorGui.pbi"
+XIncludeFile "Z80Link.pbi"
+XIncludeFile "Z80Lib.pbi"
+XIncludeFile "Z80OutputGui.pbi"
+XIncludeFile "Z80LinkGui.pbi"
+XIncludeFile "Z80LibGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -344,8 +349,11 @@ Enumeration MenuItems
   #Menu_CreateSound
   #Menu_CreateMml
   #Menu_CreateScreen2
+  #Menu_CreateZ80Lib
   #Menu_RunBasic
   #Menu_AssembleZ80
+  #Menu_AssembleZ80Rel
+  #Menu_LinkZ80
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_HelpCommands
@@ -387,7 +395,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.3.3"
+  #App_Version = "7.3.5"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2140,10 +2148,11 @@ Procedure RunBasicFromActiveTab()
 EndProcedure
 
 ;- ------------------------------------------------------------
-;- Montar Assembly (.asm) -> binario absoluto (.bin) - menu "Executar ->
-;- Montar Assembly...", Ctrl+F5. So absoluto por enquanto (Fase A do modulo
-;- 2 - ver docs/resumo-asm.md); saida relocavel (.REL) + linker ficam para a
-;- Fase B (Z80Link.pbi, ainda nao existe).
+;- Montar Assembly (.asm) -> binario (menu "Executar") - modo absoluto
+;- (.bin, Ctrl+F5) e relocavel (.REL, insumo do linker/biblioteca - modulo
+;- 2b, ver docs/resumo-asm.md). Saida do modo absoluto passa por
+;- Z80Out_ChooseAndExport (Z80OutputGui.pbi) - .bin no PC, disco MSX (.dsk)
+;- ou listing BASIC; o linker propriamente dito mora em Z80LinkGui.pbi.
 ;- ------------------------------------------------------------
 
 Procedure AssembleZ80FromActiveTab()
@@ -2181,33 +2190,80 @@ Procedure AssembleZ80FromActiveTab()
   Protected StartAddr.u = Z80Asm::GetAssembleStartAddr()
   Protected EndAddr.u = Z80Asm::GetAssembleEndAddr()
 
-  ; Sim = .bin com cabecalho MSX BLOAD (FE + inicio + fim + execucao, ver
-  ; docs/MANUAL.md "Assembler Z80"); Nao = binario cru (o mesmo de sempre -
-  ; ja funciona como .COM se o fonte usar "org 100h"); Cancelar = desiste.
-  Protected HexStart.s = Hex(StartAddr, #PB_Word)
-  Protected HexEnd.s = Hex(EndAddr, #PB_Word)
-  Protected Q.s = Chr(34)
-  Protected MsgTxt.s = "Montado: " + Str(N) + " bytes, endereco " + HexStart + "h-" + HexEnd + "h." + Chr(10) + Chr(10) +
-    "Adicionar cabecalho MSX BLOAD (pra carregar com BLOAD" + Q + "..." + Q + ",R do MSX-BASIC)?" + Chr(10) +
-    "Sim = .bin com cabecalho (endereco de execucao = " + HexStart + "h, igual ao de carga)" + Chr(10) +
-    "Nao = binario cru (mesmo formato de um .COM quando o fonte usa ORG 100h)"
-  Protected Choice = MessageRequester("Montar", MsgTxt, #PB_MessageRequester_YesNoCancel | #PB_MessageRequester_Info)
-  If Choice = #PB_MessageRequester_Cancel
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Protected BaseName.s = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension)
+
+  ; SourceKey pra ProjectDB::StoreAsmBuild() e o caminho do .asm em disco -
+  ; uma aba ainda sem salvar (Docs()\Path = "") nao tem chave estavel, entao
+  ; fica de fora do registro do projeto (mesmo espirito de "documents": so
+  ; faz sentido registrar algo com um caminho de verdade em disco).
+  Protected SourceKey.s = Docs()\Path
+
+  Z80Out_ChooseAndExport(BaseName, AsmBytes(), N, StartAddr, EndAddr, SourceKey, "ABS", #MainWindow)
+EndProcedure
+
+; Monta a aba ASM ativa em modo RELOCAVEL (.REL, formato estendido Nestor80 -
+; ver Z80Asm::AssembleRelocatable/modulo 2b) em vez de absoluto - o .REL
+; resultante e o insumo do linker (Executar -> Linkar (.REL) -> binario...,
+; Z80LinkGui.pbi) ou de uma biblioteca .LIB (Criar -> Biblioteca Z80...,
+; Z80LibGui.pbi). Diferente de AssembleZ80FromActiveTab, nao passa por
+; Z80Out_ChooseAndExport nem grava em ProjectDB: um .REL nao roda sozinho no
+; MSX (e um artefato intermediario), entao nao faz sentido pra "ultimo .bin
+; gerado" nem pra BLOAD/disco/listing - so precisa virar arquivo pro linker
+; ler depois.
+Procedure AssembleZ80RelFromActiveTab()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
     ProcedureReturn
   EndIf
-  Protected AddHeader.b = Bool(Choice = #PB_MessageRequester_Yes)
+
+  If Docs()\Mode <> "ASM"
+    MessageRequester("Montar relocavel",
+                     "A aba ativa nao e Assembly (.asm)." + Chr(10) +
+                     "Abra ou crie uma aba .asm (Arquivo -> Novo Assembly) antes de montar.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  Protected SourceText.s = ReadSciText(Docs()\SciGadget)
 
   Protected Suggestion.s = Docs()\Path
   If Suggestion = ""
     Suggestion = Docs()\UntitledName
   EndIf
-  Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bin"
+  ; Nome de programa no formato .REL (M80/Nestor80 tradicionalmente usa ate
+  ; 6 caracteres, mas Z80Asm::AssembleRelocatable nao trunca - so o nome do
+  ; arquivo, maiusculo, sem extensao, pra ficar previsivel pra quem for
+  ; escolher esse .REL depois num link/biblioteca).
+  Protected ProgramName.s = UCase(GetFilePart(Suggestion, #PB_FileSystem_NoExtension))
 
-  Protected SavePath.s = SaveFileRequester("Salvar binario montado", Suggestion,
-                                           "Binario Z80 (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+  Protected Dim RelBytes.a(65535)
+  Protected N = Z80Asm::AssembleRelocatable(SourceText, ProgramName, RelBytes())
+
+  If N < 0
+    MessageRequester("Erro ao montar",
+                     "Linha " + Str(Z80Asm::GetAssembleErrorLine()) + ": " + Z80Asm::GetAssembleErrorText(),
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  If N = 0
+    MessageRequester("Montar relocavel",
+                     "Nada foi gerado (fonte vazio ou so rotulos/EQU/diretivas sem saida de bytes).",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  Protected BaseSuggestion.s = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".rel"
+  Protected SavePath.s = SaveFileRequester("Salvar objeto relocavel", BaseSuggestion,
+                                           "Objeto Z80 relocavel (*.rel)|*.rel|Todos os arquivos (*.*)|*.*", 0)
   If SavePath = ""
     ProcedureReturn
   EndIf
+  SavePath = EnsureExtension(SavePath, "rel")
 
   Protected FileNum = CreateFile(#PB_Any, SavePath)
   If Not FileNum
@@ -2215,27 +2271,16 @@ Procedure AssembleZ80FromActiveTab()
                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
     ProcedureReturn
   EndIf
-
-  If AddHeader
-    ; Cabecalho classico MSX BLOAD: FE + inicio (LE) + fim (LE) + execucao
-    ; (LE) - escrito byte a byte (nao WriteWord()) pra nao depender da
-    ; ordem de bytes nativa da plataforma que compila o editor.
-    WriteByte(FileNum, $FE)
-    WriteByte(FileNum, StartAddr & $FF)       : WriteByte(FileNum, (StartAddr >> 8) & $FF)
-    WriteByte(FileNum, EndAddr & $FF)         : WriteByte(FileNum, (EndAddr >> 8) & $FF)
-    WriteByte(FileNum, StartAddr & $FF)       : WriteByte(FileNum, (StartAddr >> 8) & $FF)
-  EndIf
-
   Protected *Buf = AllocateMemory(N)
   Protected Idx
   For Idx = 0 To N - 1
-    PokeB(*Buf + Idx, AsmBytes(Idx))
+    PokeB(*Buf + Idx, RelBytes(Idx))
   Next
   WriteData(FileNum, *Buf, N)
   CloseFile(FileNum)
   FreeMemory(*Buf)
 
-  MessageRequester("Montado", Str(N) + " bytes salvos em:" + Chr(10) + SavePath,
+  MessageRequester("Montado", Str(N) + " bytes (" + ProgramName + ") salvos em:" + Chr(10) + SavePath,
                    #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
 EndProcedure
 
@@ -2469,9 +2514,12 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateSound, "Som (PSG)...")
     MenuItem(#Menu_CreateMml, "Musica (PLAY)...")
     MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
+    MenuItem(#Menu_CreateZ80Lib, "Biblioteca Z80 (.LIB)...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
+    MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)...")
+    MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario...")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
@@ -2596,11 +2644,20 @@ Repeat
         Case #Menu_CreateScreen2
           Screen2Editor_OpenWindow(#MainWindow)
 
+        Case #Menu_CreateZ80Lib
+          Z80LibGui_OpenWindow(#MainWindow)
+
         Case #Menu_RunBasic
           RunBasicFromActiveTab()
 
         Case #Menu_AssembleZ80
           AssembleZ80FromActiveTab()
+
+        Case #Menu_AssembleZ80Rel
+          AssembleZ80RelFromActiveTab()
+
+        Case #Menu_LinkZ80
+          Z80LinkGui_OpenWindow(#MainWindow)
 
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)

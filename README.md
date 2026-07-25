@@ -221,20 +221,25 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   condicionais (`IF`/`IFDEF`/`IF1`/`IF2`/etc.) e macros básicas (`MACRO`/`ENDM`/`EXITM`/`LOCAL`).
   Validado **byte a byte** contra o próprio `N80.exe` (compilado localmente como oráculo de teste) —
   `sample/teste_opcodes.asm` e `sample/teste2_macros.asm` são a suíte de regressão oficial. Além da
-  saída absoluta (`.bin`), o motor já gera saída **relocável `.REL`** de verdade (`ASEG`/`CSEG`/`DSEG`/
-  `COMMON`/`PUBLIC`/`EXTRN`, formato estendido Nestor80, validado byte a byte contra o `N80.exe`) — só
-  ainda não exposta no menu do editor (hoje só via engine/CLI de teste). **Planejado, ainda não
-  implementado**: linker (Linkstor80-equivalente) + gerenciador de biblioteca (Libstor80-equivalente,
-  linkagem estática seletiva — só os módulos referenciados entram no `.COM` final), integração com o
-  sistema de projeto (`.msxproject`, mesmo padrão dos demais editores) e um caminho de saída para
-  **MSX-BASIC** consumir o código montado — via `BLOAD` do `.bin` ou via um listing de `DATA`/`POKE` em
-  hexadecimal gerado automaticamente (mesmo espírito do "Gerar bytes crus" já existente no editor de
-  som PSG). Detalhe
-  completo do processo de implementação em [`docs/resumo-asm.md`](docs/resumo-asm.md).
+  saída absoluta (`.bin`, **Executar → Montar Assembly (.bin)...**), o motor gera saída **relocável
+  `.REL`** de verdade (`ASEG`/`CSEG`/`DSEG`/`COMMON`/`PUBLIC`/`EXTRN`, formato estendido Nestor80,
+  validado byte a byte contra o `N80.exe`), agora exposta no editor via **Executar → Montar Assembly
+  relocável (.REL)...**. **Linker** (`editor/Z80Link.pbi`, Linkstor80-equivalente — linka múltiplos
+  `.REL` e resolve `.REQUEST`/biblioteca com linkagem estática seletiva) e **gerenciador de biblioteca**
+  (`editor/Z80Lib.pbi`, Libstor80-equivalente — `create`/`add`/`list`/`remove`), ambos validados byte a
+  byte contra `LK80.exe`/`LB80.exe` reais, têm janela própria no editor: **Executar → Linkar (.REL) →
+  binário...** (`editor/Z80LinkGui.pbi`) e **Criar → Biblioteca Z80 (.LIB)...** (`editor/Z80LibGui.pbi`).
+  A saída (montagem absoluta ou link) passa por um escolhedor comum (`editor/Z80OutputGui.pbi`): `.bin`
+  solto no PC (com ou sem cabeçalho MSX BLOAD), **disco MSX (`.dsk`)** pronto pra rodar via
+  `AUTOEXEC.BAS` (`BLOAD"...",R`, reaproveitando `MSXDisk.pbi`) ou **listing BASIC** (`FOR`/`READ`/`POKE`
+  + `DATA` em hexa, mesmo espírito do "Gerar bytes crus" do editor de som PSG). Uma nova tabela
+  `asm_builds` no sistema de projeto (`ProjectDB.pbi`) guarda o metadado da última exportação de
+  binário/disco por origem (caminho do `.asm` ou, numa sessão de link, a lista de `.rel` escolhida).
+  Detalhe completo do processo de implementação em [`docs/resumo-asm.md`](docs/resumo-asm.md).
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
-e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): saída `.REL`/linker/
-biblioteca e integração de projeto/BASIC do assembler Z80 (ver bullet acima), editor de tile (além do
+e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/
+`--align-*`/detecção de sobreposição de segmento/saída Intel HEX no linker, editor de tile (além do
 charset/fonte 8×8), tracker, outros modos de tela além do SCREEN 2 (SCREEN 1/5/7/8) reaproveitando o
 mesmo motor gráfico, extensão NestorBASIC, saída via `msxbas2rom`, controle do openMSX via socket/XML em
 tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e
@@ -550,6 +555,29 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   **Executar →**) — próxima etapa, ver checklist Fase B em `docs/resumo-asm.md`. Documentação
   atualizada em todos os `*.md` do projeto (`README.md`, `docs/SPEC.md` módulo 2b, `docs/MANUAL.md`
   seção "Assembler Z80"). Versão embutida no executável atualizada para `7.3.3`.
+
+- **2026-07-25 — Integração de menu do linker/biblioteca + saída MSX-BASIC + sistema de projeto,
+  fechando o módulo 2b/2c**: **Executar → Linkar (.REL) → binário...** (`editor/Z80LinkGui.pbi`) linka
+  uma lista ordenada de `.REL` (Adicionar/Remover/Subir/Descer) com pasta de biblioteca opcional
+  (`.REQUEST`); **Criar → Biblioteca Z80 (.LIB)...** (`editor/Z80LibGui.pbi`) cria/abre uma `.LIB`,
+  lista programas com tamanho/símbolos públicos, adiciona `.REL` e remove programa — sem cópia de
+  rascunho (`Z80Lib.pbi` já grava atômico no arquivo escolhido). Novo **Executar → Montar Assembly
+  relocável (.REL)...** monta a aba `.asm` ativa em `.REL`, o insumo que faltava pro linker/biblioteca a
+  partir do editor. A saída (montagem absoluta ou link) passa por um escolhedor comum novo
+  (`editor/Z80OutputGui.pbi`): `.bin` no PC, **disco MSX (`.dsk`)** pronto pra rodar via `AUTOEXEC.BAS`
+  (`BLOAD"...",R`, reaproveitando `MSXDisk.pbi`/mesmo mecanismo do `RunOnOpenMSX()`), ou **listing
+  BASIC** (`Z80Gen_BasicLoader()` — `FOR`/`READ`/`POKE` + `DATA` em hexa, mesmo espírito do "Gerar bytes
+  crus" do editor de som PSG). Sistema de projeto ganhou a tabela `asm_builds` (`ProjectDB.pbi`),
+  metadado da última exportação por origem (caminho do `.asm`, ou a lista de `.rel` de uma sessão de
+  link), coberta por round-trip em `editor/tools/ProjectDBTestCli.pb` (fora da soma de
+  `HasUnsavedContent()` de propósito, mesmo motivo de `documents`). Bug real encontrado na integração:
+  `Z80Link.pbi` e `Z80Asm.pbi` cada um fazia seu próprio `XIncludeFile "Z80RelFormat.pbi"` de dentro do
+  respectivo `DeclareModule`, mas `XIncludeFile` deduplica por caminho de arquivo em todo o programa
+  (não por `Module`) — funcionava isolado no CLI de teste (que nunca inclui `Z80Asm.pbi`), mas quebrava
+  assim que os dois módulos passaram a coexistir na mesma unidade de compilação (`BadigEditor.pb`);
+  corrigido com `editor/Z80RelFormatLink.pbi`, uma cópia dedicada pro `Module Z80Link` (mesmo espírito
+  de "cada Module tem sua cópia" já usado pra `Z80LinkItemType`). Versão embutida no executável
+  atualizada para `7.3.5`.
 
 ## Ferramentas e ambiente
 

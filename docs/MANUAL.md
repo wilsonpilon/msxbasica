@@ -941,16 +941,30 @@ aba.
 
 ### Montar (Ctrl+F5)
 
-Com uma aba `.asm` ativa, **Executar → Montar Assembly (.bin)...** (atalho `Ctrl+F5`) monta o código.
-Se houver um erro, uma mensagem mostra a **linha** e a **descrição do problema** em vez de travar ou dar
-um erro genérico. Se der certo, uma pergunta escolhe o formato do arquivo antes do diálogo de salvar:
+Com uma aba `.asm` ativa, **Executar → Montar Assembly (.bin)...** (atalho `Ctrl+F5`) monta o código em
+modo **absoluto**. Se houver um erro, uma mensagem mostra a **linha** e a **descrição do problema** em
+vez de travar ou dar um erro genérico. Se der certo, abre a janela **"Saída da montagem"** com três
+caminhos (a mesma janela usada depois de **Linkar**, ver seção seguinte):
 
-- **Sim — com cabeçalho MSX BLOAD**: grava os 7 bytes clássicos (`0FEh` + endereço inicial + endereço
-  final + endereço de execução, este último igual ao inicial) antes do código — é o formato que
-  `BLOAD "ARQUIVO.BIN",R` do MSX-BASIC espera. Pronto pra copiar pro disco/disquete e carregar direto.
-- **Não — binário cru**: só os bytes montados, sem cabeçalho nenhum. Se o fonte usa `ORG 100h`, esse
-  arquivo já é um `.COM` válido (formato CP/M/MSX-DOS — carregado e executado em `0100h` sem cabeçalho
-  nenhum, é assim que MSX-DOS/CP-M já esperam um `.COM`).
+- **Salvar .bin no PC...**: pergunta o formato do arquivo antes do diálogo de salvar —
+  - **Sim — com cabeçalho MSX BLOAD**: grava os 7 bytes clássicos (`0FEh` + endereço inicial + endereço
+    final + endereço de execução, este último igual ao inicial) antes do código — é o formato que
+    `BLOAD "ARQUIVO.BIN",R` do MSX-BASIC espera.
+  - **Não — binário cru**: só os bytes montados, sem cabeçalho nenhum. Se o fonte usa `ORG 100h`, esse
+    arquivo já é um `.COM` válido (formato CP/M/MSX-DOS).
+- **Gravar disco MSX (.dsk, BLOAD)...**: monta um disquete `.dsk` (reaproveitando `MSXDisk.pbi`, o mesmo
+  mecanismo do "Rodar no openMSX") já com o binário (sempre com cabeçalho BLOAD, senão o `AUTOEXEC.BAS`
+  não saberia o endereço de carga) e um `AUTOEXEC.BAS` de autorun (`10 BLOAD"NOME.BIN",R`) — abrir esse
+  disco no openMSX já carrega e roda o código sozinho.
+- **Gerar listing BASIC (DATA/POKE)...**: abre uma janela com um loop `FOR/READ/POKE` + blocos `DATA` em
+  hexadecimal (16 bytes por linha) que carregam o binário no endereço de montagem, mais um comentário
+  `DEFUSR=.../A=USR(0)` pronto pra chamar — útil pra colar o código Z80 dentro de um programa BASIC sem
+  precisar carregar um arquivo à parte. Botões **Copiar**/**Injetar no cursor** (mesmo padrão dos
+  editores de som/música/desenho).
+
+As exportações que produzem um arquivo de verdade (`.bin`/`.dsk`, não o listing) ficam registradas no
+projeto atual (`.msxproject`) como a "última build" dessa aba — sem janela própria pra consultar isso
+ainda, é só metadado interno usado pra futuras integrações (ex.: um "recarregar último binário").
 
 Pra código que precisa ficar guardado num endereço mas **rodar** em outro (ex.: rotina copiada da ROM
 pra RAM antes de executar, ou justamente o próprio cabeçalho BLOAD — o cabeçalho tem que vir ANTES dos
@@ -986,32 +1000,46 @@ MACRO-80, seção "Relocation Before Loading").
   binário (`B`, ou prefixo `0b`/`%`), strings de 1-2 caracteres como valor numérico, e `$` para "o
   endereço desta linha".
 
-### Saída relocável (`.REL`), linker e biblioteca (motor pronto, ainda sem menu)
+### Montar relocável (.REL)
 
-O assembler também sabe gerar código **relocável** (`.REL`, formato Nestor80/LK80, `ASEG`/`CSEG`/
-`DSEG`/`COMMON`/`PUBLIC`/`ENTRY`/`GLOBAL`/`EXTRN`/`EXT`/`EXTERNAL`/`.REQUEST` todos com efeito real),
-existe um **linker** nativo que junta múltiplos `.REL` (incl. `.REQUEST`/biblioteca, com linkagem
-estática seletiva — só os módulos realmente referenciados entram no binário final, com resolução
-transitiva) e um **gerenciador de biblioteca `.LIB`** (`create`/`add`/`list`/`remove`). As três peças
-(`Z80Asm::AssembleRelocatable`, `editor/Z80Link.pbi`, `editor/Z80Lib.pbi`) já estão validadas byte a
-byte contra os originais reais (`N80.exe`/`LK80.exe`/`LB80.exe`) — mas **hoje só são acessíveis via os
-harnesses de teste em `editor/tools/Z80AsmTestCli.exe`/`Z80LinkTestCli.exe`, sem nenhuma opção no menu
-do editor**. Integrar isso a **Executar →** (gerar `.REL` de uma aba, linkar vários arquivos, montar
-biblioteca) é a próxima etapa planejada. Detalhe técnico completo (algoritmo, formato de bit-stream,
-testes) em [`docs/resumo-asm.md`](resumo-asm.md), seção "Checklist Fase B".
+**Executar → Montar Assembly relocável (.REL)...** monta a aba `.asm` ativa em código **relocável**
+(`.REL`, formato Nestor80/LK80, `ASEG`/`CSEG`/`DSEG`/`COMMON`/`PUBLIC`/`ENTRY`/`GLOBAL`/`EXTRN`/`EXT`/
+`EXTERNAL`/`.REQUEST` todos com efeito real) em vez de absoluto. O nome do "programa" dentro do `.REL`
+é o nome do arquivo em maiúsculas — é esse nome que aparece depois em **Biblioteca Z80...** e nas
+mensagens do linker. Diferente de "Montar Assembly (.bin)...", só pergunta onde salvar o `.rel` — não
+faz sentido perguntar cabeçalho BLOAD nem oferecer disco/listing aqui, porque um `.REL` é um artefato
+intermediário (não roda sozinho no MSX): o próximo passo é **Linkar** (seção seguinte) ou empacotar numa
+biblioteca.
+
+### Linkar (.REL) → binário
+
+**Executar → Linkar (.REL) → binário...** abre a janela do linker: uma lista de arquivos `.REL` **na
+ordem em que devem ser linkados** (a ordem importa — é a mesma ordem de concatenação de `CSEG`/`DSEG`/
+`COMMON` que o LK80 real usa), com botões **Adicionar...**/**Remover**/**Subir**/**Descer**, mais um
+campo opcional de **pasta de biblioteca** (onde um `.REQUEST` dentro de algum `.REL` vai procurar a
+`.LIB` correspondente). O botão **Linkar...** resolve `PUBLIC`↔`EXTRN` entre os módulos (incl. `.REQUEST`
+contra a biblioteca, trazendo só os programas que realmente resolvem algum símbolo pendente — linkagem
+estática seletiva de verdade) e manda o binário final pra mesma janela "Saída da montagem" da seção
+"Montar" acima (`.bin`/disco `.dsk`/listing BASIC).
+
+### Biblioteca Z80 (.LIB)
+
+**Criar → Biblioteca Z80 (.LIB)...** gerencia bibliotecas de objetos relocáveis: **Nova...**/**Abrir...**
+escolhem o arquivo `.lib`, a lista mostra cada programa já empacotado (nome, tamanho, símbolos
+públicos), **Adicionar .REL...** empacota um ou mais `.rel` na biblioteca (cria o arquivo se ainda não
+existir) e **Remover selecionado** tira um programa específico (apaga o arquivo inteiro se era o
+último). Diferente do gerenciador de disco (**Criar → Disco...**), não há rascunho em cópia temporária
+nem botão "Salvar" — cada operação já grava direto e de forma atômica no arquivo `.lib` escolhido.
+
+Detalhe técnico completo do motor por trás dessas três janelas (algoritmo, formato de bit-stream,
+testes byte a byte contra `N80.exe`/`LK80.exe`/`LB80.exe`) em [`docs/resumo-asm.md`](resumo-asm.md).
 
 ### O que ainda não é suportado
 
-- **Menu no editor pra `.REL`/linker/biblioteca** — ver seção acima; o motor já existe, falta só a UI.
 - **`--code`/`--data`/`--align-code`/`--align-data`/`--code-before-data` do linker**, detecção de
   sobreposição de segmento entre programas e saída Intel HEX — fora do escopo dos cortes já feitos.
-- **Integração com o sistema de projeto** — o texto-fonte `.asm` já é salvo dentro do `.msxproject`
-  (igual qualquer aba de texto), mas ainda não existe uma tabela dedicada pro binário montado, tag,
-  navegação, etc. (como sprites/alfabetos/sons/músicas/telas já têm).
-- **Colocar o `.bin`/`.com` direto num disco `.dsk`** — hoje "Montar" salva no sistema de arquivos do
-  PC; ainda não existe um atalho pra jogar o arquivo montado direto num disco (reaproveitando
-  `MSXDisk.pbi`, como `RunOnOpenMSX()` já faz pro fluxo Dignified) nem pra gerar um listing `DATA`/
-  `POKE` em hexadecimal (como o botão "Gerar bytes crus" do editor de som) — o formato de arquivo em
-  si (cabeçalho BLOAD) já existe, ver seção "Montar" acima.
+- **Consulta ao histórico de builds no projeto** — o `.msxproject` já guarda a última exportação de
+  binário/disco por origem (ver seção "Montar" acima), mas ainda não existe uma janela pra navegar esse
+  histórico (diferente de sprites/alfabetos/sons/músicas/telas, que têm barra de navegação própria).
 - `REPT`/`IRP`/`IRPC`/`IRPS` (macros de repetição), `MODULE`/rótulos locais, saída em Intel HEX,
   arquivo de listagem `.LST`, R800/Z280 (só Z80 puro por enquanto).
