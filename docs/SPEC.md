@@ -52,7 +52,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 | 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
-| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). Ver seções 14/14b |
+| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). Ver seções 14/14b/14c |
 
 ## Decisões fechadas
 
@@ -1394,6 +1394,49 @@ código cuidadosa da lógica de âncora/prévia/PenMode/clamp, mais execução d
 **Continua de fora** (próximos cortes, sem mudança de escopo): menu TEXTO (F2), menu TELA (F3), menu
 AJUSTE (F4), menu MISCELÂNEA (F5) e CRIA/ARQUIVA/RECUPERA SHAPES, os formatos nativos `.SCR`/`.LAY`/
 `.VTC`+`.ATC`, e integração com o sistema de projeto (`ProjectDB.pbi`).
+
+### 14c. Graphos III — Fase 3: menu TEXTO (2026-07-25, mesma sessão)
+
+Implementa o menu **TEXTO (F2)** do Graphos III original: escreve na tela usando um alfabeto já
+registrado no projeto (`ProjectDB::FetchAlphabet`, mesmo formato `CharsetBytes(255,7)` do módulo 4 —
+não cria nenhuma tabela nova, só lê o que o editor de alfabetos já grava). Seis variações, na mesma
+ordem do manual (`graphos/graphos.txt`, seção 3.2.2):
+
+- **NORMAL** — glifo 8×8 sem transformação.
+- **ITALIC**/**BOLD** — reaproveitam, sem duplicar a fórmula de bits, as mesmas transformações já
+  escritas pro editor de alfabetos (`CharEd_ItalicEditGrid`/`CharEd_BoldEditGrid`, `CharsetEditorGui.pbi`,
+  módulo 4c). A diferença crucial: lá a transformação é aplicada e **gravada** de volta no alfabeto
+  (`Registrar`); aqui (`GraphosScr_BlitTextStyled`/`GraphosScr_DrawTextPreview`) ela só existe no
+  instante do blit — o alfabeto no banco nunca é alterado, cada impressão parte sempre do glifo
+  original via `CharEd_UnpackChar`.
+- **DUPLO**/**LARGO**/**DUPLO BOLD** — duplicação geométrica de linha/coluna no framebuffer (cada pixel
+  do glifo vira um bloco `ScaleX×ScaleY`), sem alterar a forma — o mesmo sentido de "dupla altura/
+  largura" de impressora matricial que dá nome às opções originais (não confundir com o "Largo"/
+  "Estreitar" do editor de alfabetos, que são um truque de **compressão** de bits pra caber mais
+  colunas na mesma célula 8px, o oposto do que se quer aqui). `GraphosScr_TextScaleX`/`TextScaleY`
+  resolvem as 6 combinações com um único par de loops de duplicação em vez de 6 blits especializados.
+
+**Fluxo de UI**: alfabeto (`ComboBoxGadget` populado por `ProjectDB::ListAlphabetNumbers`, mesmo padrão
+do editor "Draw Screen 2..."), estilo (`ComboBoxGadget` com as 6 opções) e texto (`StringGadget`) ficam
+na coluna direita; **Posicionar TEXTO...** congela alfabeto/texto/cores/estilo no momento do clique
+(`TextPendingCharset`/`TextPendingStr`/`TextPendingInk`/`TextPendingPaper`/`TextPendingStyle`, pra não
+mudar no meio do posicionamento se o usuário mexer nos campos) e arma `TextPlacementActive` — mesmo
+padrão de "Posicionar → prévia elástica segue o mouse → clique fixa" já usado pela ferramenta TEXTO do
+editor "Draw Screen 2..." (módulo 5), mas sem o grid de 8px/STEP daquele editor (irrelevante aqui, já
+que este editor ainda não gera código BASIC — só framebuffer). Botão direito do mouse cancela o
+posicionamento pendente (equivalente ao ESC do original); selecionar qualquer ferramenta do menu
+DESENHO também cancela (mutuamente exclusivo com TRAÇO/BLOCO/etc., via
+`SpriteEd_UnpressOtherTools(ToolGadgets(), -1)` ao entrar em modo TEXTO).
+
+**Verificação**: compilação limpa (`.\build.ps1`). Mesma limitação de automação de clique ao vivo já
+registrada nas fases anteriores — verificado por revisão de código cuidadosa da lógica de
+transformação/escala/congelamento de estado, mais execução do `.exe` compilado para o usuário testar
+interativamente.
+
+**Continua de fora** (próximos cortes, sem mudança de escopo): menu TELA (F3), menu AJUSTE (F4), menu
+MISCELÂNEA (F5) e CRIA/ARQUIVA/RECUPERA SHAPES, os formatos nativos `.SCR`/`.LAY`/`.VTC`+`.ATC`, e
+integração mais ampla com o sistema de projeto (persistência da própria tela, não só leitura de
+alfabetos).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

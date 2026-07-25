@@ -49,13 +49,31 @@
 ;  cancelar com o botao direito (equivalente ao ESC do original) ou trocar
 ;  de ferramenta.
 ;
-;  Deliberadamente FORA desta fase (proximos cortes): menu TEXTO (F2 -
-;  NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO usando um alfabeto do banco);
-;  menu TELA (F3 - INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE, IMPRIME TELA); menu
-;  AJUSTE (F4 - SCROLL/ROTACAO inteiro e 8x8); menu MISCELANEA (F5 - ZOOM,
-;  SHAPE, CORTE, GRID) e CRIA/ARQUIVA/RECUPERA SHAPES; os formatos nativos
-;  DISPLAY (.SCR), LAYOUT (.LAY) e COMPAC (.VTC+.ATC); integracao com o
-;  sistema de projeto (ProjectDB.pbi).
+;  FASE 3 (esta sessao) implementa o menu TEXTO (F2): escreve na tela com um
+;  alfabeto ja registrado no projeto (Criar -> Alfabeto Graphos III...,
+;  ProjectDB::FetchAlphabet - mesmo formato 256x8 do modulo 4), nas 6
+;  variacoes do manual original - NORMAL, ITALIC, BOLD, DUPLO (dupla
+;  altura), DUPLO BOLD (dupla altura e largura) e LARGO (dupla largura).
+;  ITALIC/BOLD reaproveitam as MESMAS transformacoes de bits ja escritas pro
+;  editor de alfabetos (CharEd_ItalicEditGrid/BoldEditGrid,
+;  CharsetEditorGui.pbi, modulo 4c) sem duplicar a formula - a diferenca e
+;  que aqui a transformacao e' aplicada so na hora de desenhar (o alfabeto
+;  guardado no banco nunca e' alterado). DUPLO/LARGO/DUPLO BOLD sao
+;  duplicacao geometrica de linha/coluna no framebuffer (nao mexem no
+;  formato do glifo), igual ao "dupla altura/largura" classico de impressora
+;  matricial que da nome as opcoes. Mesmo padrao de "Posicionar -> previa
+;  elastica segue o mouse -> clique fixa" ja usado pela ferramenta TEXTO do
+;  editor "Draw Screen 2..." (Scr2Ed_DrawTextPreview original, aqui
+;  reescrito como GraphosScr_DrawTextPreview pra suportar as 6 variacoes),
+;  so que sem o grid de 8px/STEP (irrelevante aqui, ja que este editor nao
+;  gera codigo BASIC ainda - so framebuffer).
+;
+;  Deliberadamente FORA desta fase (proximos cortes): menu TELA (F3 -
+;  INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE, IMPRIME TELA); menu AJUSTE (F4 -
+;  SCROLL/ROTACAO inteiro e 8x8); menu MISCELANEA (F5 - ZOOM, SHAPE, CORTE,
+;  GRID) e CRIA/ARQUIVA/RECUPERA SHAPES; os formatos nativos DISPLAY (.SCR),
+;  LAYOUT (.LAY) e COMPAC (.VTC+.ATC); integracao com o sistema de projeto
+;  (ProjectDB.pbi) alem da leitura de alfabetos ja existente.
 ; ------------------------------------------------------------
 ;
 
@@ -77,6 +95,17 @@ EndEnumeration
 Enumeration GraphosPenMode
   #GraphosPenMode_Insert
   #GraphosPenMode_Delete
+EndEnumeration
+
+; As 6 variacoes do menu TEXTO (F2) do Graphos III original, na mesma ordem
+; do manual (graphos/graphos.txt, secao 3.2.2).
+Enumeration GraphosTextStyle
+  #GraphosTextStyle_Normal
+  #GraphosTextStyle_Italic
+  #GraphosTextStyle_Bold
+  #GraphosTextStyle_Duplo
+  #GraphosTextStyle_DuploBold
+  #GraphosTextStyle_Largo
 EndEnumeration
 
 ; Tamanho valido do cursor da ferramenta BLOCO (campos de texto livre, sem
@@ -193,6 +222,104 @@ Procedure GraphosScr_ClearWithColors(Array PatternBit.a(2), Array RowFG.a(2), Ar
   Next
 EndProcedure
 
+; --- TEXTO (fase 3): imprime uma string usando um alfabeto do projeto
+; (ProjectDB::FetchAlphabet, formato CharsetBytes(255,7) do modulo 4) -----
+;
+; NORMAL/ITALIC/BOLD sao transformacao de FORMA do glifo (reaproveita
+; CharEd_UnpackChar/ItalicEditGrid/BoldEditGrid de CharsetEditorGui.pbi, sem
+; duplicar a formula de bits) - continuam 8x8; DUPLO/LARGO/DUPLO BOLD sao
+; duplicacao geometrica de linha/coluna no framebuffer, sem mexer na forma.
+; ScaleX/ScaleY resolvem as 6 combinacoes com um so par de loops.
+Procedure GraphosScr_TextScaleX(Style.i)
+  ProcedureReturn Bool(Style = #GraphosTextStyle_Largo Or Style = #GraphosTextStyle_DuploBold) + 1
+EndProcedure
+
+Procedure GraphosScr_TextScaleY(Style.i)
+  ProcedureReturn Bool(Style = #GraphosTextStyle_Duplo Or Style = #GraphosTextStyle_DuploBold) + 1
+EndProcedure
+
+; StartX/StartY = pixel bruto do canto superior esquerdo do 1o caractere,
+; igual a Scr2Ed_BlitText - cada caractere seguinte desloca (8*ScaleX)px.
+Procedure GraphosScr_BlitTextStyled(Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2), Array CharsetBytes.a(2), TextStr.s, StartX.i, StartY.i, InkColor.i, PaperColor.i, Style.i)
+  Protected ScaleX = GraphosScr_TextScaleX(Style)
+  Protected ScaleY = GraphosScr_TextScaleY(Style)
+  Protected i, Code, Row, Col, DupRow, DupCol, BaseX, BaseY, PixelOn.b
+  Dim Grid.a(7, 7)
+  BaseX = StartX
+  For i = 1 To Len(TextStr)
+    Code = Asc(Mid(TextStr, i, 1))
+    If Code >= 0 And Code <= 255
+      CharEd_UnpackChar(CharsetBytes(), Code, Grid())
+      Select Style
+        Case #GraphosTextStyle_Italic
+          CharEd_ItalicEditGrid(Grid())
+        Case #GraphosTextStyle_Bold
+          CharEd_BoldEditGrid(Grid())
+      EndSelect
+      BaseY = StartY
+      For Row = 0 To 7
+        For Col = 0 To 7
+          PixelOn = Bool(Grid(Row, Col))
+          For DupRow = 0 To ScaleY - 1
+            For DupCol = 0 To ScaleX - 1
+              If PixelOn
+                Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), BaseX + Col * ScaleX + DupCol, BaseY + Row * ScaleY + DupRow, InkColor, #True)
+              Else
+                Scr2_SetPixel(PatternBit(), RowFG(), RowBG(), BaseX + Col * ScaleX + DupCol, BaseY + Row * ScaleY + DupRow, PaperColor, #False)
+              EndIf
+            Next
+          Next
+        Next
+      Next
+    EndIf
+    BaseX + 8 * ScaleX
+  Next
+EndProcedure
+
+; "Quadro elastico" da ferramenta TEXTO - mesmo espirito de
+; Scr2Ed_DrawTextPreview (editor "Draw Screen 2..."), mas desenhando por
+; cima do canvas ja redesenhado (nao toca no framebuffer real) e suportando
+; as 6 variacoes via GraphosScr_TextScaleX/Y, igual ao blit de verdade.
+Procedure GraphosScr_DrawTextPreview(Canvas, Array CharsetBytes.a(2), TextStr.s, BaseX.i, BaseY.i, InkColor.l, PaperColor.l, Style.i)
+  If Not StartDrawing(CanvasOutput(Canvas))
+    ProcedureReturn
+  EndIf
+  Protected ScaleX = GraphosScr_TextScaleX(Style)
+  Protected ScaleY = GraphosScr_TextScaleY(Style)
+  Protected i, Code, Row, Col, CX, CY, CurX
+  Dim Grid.a(7, 7)
+  CurX = BaseX
+  For i = 1 To Len(TextStr)
+    Code = Asc(Mid(TextStr, i, 1))
+    If Code >= 0 And Code <= 255
+      CharEd_UnpackChar(CharsetBytes(), Code, Grid())
+      Select Style
+        Case #GraphosTextStyle_Italic
+          CharEd_ItalicEditGrid(Grid())
+        Case #GraphosTextStyle_Bold
+          CharEd_BoldEditGrid(Grid())
+      EndSelect
+      For Row = 0 To 7
+        For Col = 0 To 7
+          CX = (CurX + Col * ScaleX) * #Scr2Ed_Zoom
+          CY = (BaseY + Row * ScaleY) * #Scr2Ed_Zoom
+          If Grid(Row, Col)
+            Box(CX, CY, ScaleX * #Scr2Ed_Zoom, ScaleY * #Scr2Ed_Zoom, InkColor)
+          Else
+            Box(CX, CY, ScaleX * #Scr2Ed_Zoom, ScaleY * #Scr2Ed_Zoom, PaperColor)
+          EndIf
+        Next
+      Next
+    EndIf
+    CurX + 8 * ScaleX
+  Next
+  Protected TextW = (CurX - BaseX) * #Scr2Ed_Zoom, TextH = 8 * ScaleY * #Scr2Ed_Zoom
+  DrawingMode(#PB_2DDrawing_Outlined)
+  Box(BaseX * #Scr2Ed_Zoom, BaseY * #Scr2Ed_Zoom, TextW, TextH, Scr2Ed_AnchorColor)
+  DrawingMode(#PB_2DDrawing_Default)
+  StopDrawing()
+EndProcedure
+
 ; --- Icones novos (fase 2) - mesmo estilo monocromatico/24bpp dos icones ja
 ; usados pelo editor de sprites (SpriteEditorGui.pbi), so que especificos
 ; de operacoes que nao existem em nenhum outro editor desta IDE. BLOCO,
@@ -304,7 +431,14 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   Protected BlockFieldY = BlockLabelY + 18
   Protected BlockBottom = BlockFieldY + 22
 
-  Protected ClearY = BlockBottom + 16
+  Protected TextLabelY = BlockBottom + 16
+  Protected TextAlphaY = TextLabelY + 18
+  Protected TextStyleY = TextAlphaY + 26
+  Protected TextStrY = TextStyleY + 26
+  Protected TextBtnY = TextStrY + 26
+  Protected TextBottom = TextBtnY + 26
+
+  Protected ClearY = TextBottom + 16
   Protected ClearBottom = ClearY + 28
 
   Protected StatusY = ClearBottom + 14
@@ -408,6 +542,23 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   GadgetToolTip(G_BlockW, "Largura do bloco em pixels (1-64)")
   GadgetToolTip(G_BlockH, "Altura do bloco em pixels (1-64)")
 
+  ; --- TEXTO (F2): alfabeto do projeto + variacao + string, "Posicionar"
+  ; arma o modo de colocacao (previa elastica segue o mouse ate o clique) ---
+  TextGadget(#PB_Any, RightX, TextLabelY, RightW, 16, "Texto (alfabeto do projeto):")
+  Protected G_TextAlpha = ComboBoxGadget(#PB_Any, RightX, TextAlphaY, RightW, 22)
+  Protected G_TextStyle = ComboBoxGadget(#PB_Any, RightX, TextStyleY, RightW, 22)
+  AddGadgetItem(G_TextStyle, -1, "NORMAL")
+  AddGadgetItem(G_TextStyle, -1, "ITALIC")
+  AddGadgetItem(G_TextStyle, -1, "BOLD")
+  AddGadgetItem(G_TextStyle, -1, "DUPLO")
+  AddGadgetItem(G_TextStyle, -1, "DUPLO BOLD")
+  AddGadgetItem(G_TextStyle, -1, "LARGO")
+  SetGadgetState(G_TextStyle, #GraphosTextStyle_Normal)
+  Protected G_TextStr = StringGadget(#PB_Any, RightX, TextStrY, RightW, 22, "")
+  GadgetToolTip(G_TextStr, "Texto a imprimir")
+  Protected G_TextPlace = ButtonGadget(#PB_Any, RightX, TextBtnY, RightW, 26, "Posicionar TEXTO...")
+  GadgetToolTip(G_TextPlace, "Arma o modo de posicionamento - mova o mouse ate o lugar certo e clique no canvas (direito cancela)")
+
   Protected G_ClearScreen = ButtonGadget(#PB_Any, RightX, ClearY, RightW, 28, "Limpar tela")
   GadgetToolTip(G_ClearScreen, "LIMPA TELA (menu TELA): apaga tudo com as cores Tinta/Fundo atuais")
 
@@ -437,11 +588,30 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   Protected PendingActive.b = #False
   Protected AnchorX.i, AnchorY.i
 
+  ; TEXTO (F2) - mesmo padrao de PendingActive acima, mas com o alfabeto/
+  ; texto/cores/estilo congelados no momento de "Posicionar..." (pra nao
+  ; mudar no meio do posicionamento se o usuario mexer nos campos).
+  Protected TextPlacementActive.b = #False
+  Protected TextPendingStr.s, TextPendingAlpha.i, TextPendingInk.i, TextPendingPaper.i, TextPendingStyle.i
+  Dim TextPendingCharset.a(255, 7)
+
   Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
   Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkColor, Palette())
   Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperColor, Palette())
   SetGadgetState(G_ToolTraco, #True)
   SetGadgetState(G_Pencil, #True)
+
+  ; Popula o combo de alfabetos do projeto - ProjectDB::FetchAlphabet e
+  ; chamado de verdade so em G_TextPlace, ao entrar no modo de colocacao.
+  ProjectDB::EnsureOpen()
+  NewList TextAlphaNums.i()
+  ProjectDB::ListAlphabetNumbers(TextAlphaNums())
+  ForEach TextAlphaNums()
+    AddGadgetItem(G_TextAlpha, -1, "#" + Str(TextAlphaNums()))
+  Next
+  If ListSize(TextAlphaNums()) > 0
+    SetGadgetState(G_TextAlpha, 0)
+  EndIf
 
   Protected Event, Quit = #False
   Protected MouseX, MouseY, PX, PY, Idx
@@ -495,8 +665,9 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
             SetGadgetState(EventGadget(), #True)
             DisableGadget(G_Pencil, Bool(Not GraphosScr_ToolUsesPenMode(ToolMode)))
             DisableGadget(G_Eraser, Bool(Not GraphosScr_ToolUsesPenMode(ToolMode)))
-            If PendingActive
+            If PendingActive Or TextPlacementActive
               PendingActive = #False
+              TextPlacementActive = #False
               Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
             EndIf
 
@@ -513,8 +684,33 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
           Case G_ClearScreen
             GraphosScr_ClearWithColors(PatternBit(), RowFG(), RowBG(), InkColor, PaperColor)
             PendingActive = #False
+            TextPlacementActive = #False
             Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
             SetGadgetText(G_Status, "Tela limpa (Tinta " + Str(InkColor) + ", Fundo " + Str(PaperColor) + ").")
+
+          Case G_TextPlace
+            If GetGadgetState(G_TextAlpha) < 0
+              MessageRequester("Posicionar TEXTO", "Nenhum alfabeto registrado no projeto - use 'Criar -> Alfabeto Graphos III...' primeiro.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+            ElseIf Trim(GetGadgetText(G_TextStr)) = ""
+              MessageRequester("Posicionar TEXTO", "Digite um texto antes de posicionar.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+            Else
+              TextPendingAlpha = Val(Mid(GetGadgetText(G_TextAlpha), 2))
+              If ProjectDB::FetchAlphabet(TextPendingAlpha, TextPendingCharset())
+                TextPendingStr = GetGadgetText(G_TextStr)
+                TextPendingInk = InkColor
+                TextPendingPaper = PaperColor
+                TextPendingStyle = GetGadgetState(G_TextStyle)
+                PendingActive = #False
+                TextPlacementActive = #True
+                SpriteEd_UnpressOtherTools(ToolGadgets(), -1)
+                SetGadgetText(G_Status, "TEXTO: mova o mouse ate o lugar certo e clique no canvas (direito cancela)")
+              Else
+                MessageRequester("Posicionar TEXTO", "Nao foi possivel carregar o alfabeto #" + Str(TextPendingAlpha) + " do projeto.",
+                                  #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+              EndIf
+            EndIf
 
           Case G_Canvas
             Select EventType()
@@ -523,7 +719,12 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
                 MouseY = GetGadgetAttribute(G_Canvas, #PB_Canvas_MouseY)
                 PX = MouseX / Zoom
                 PY = MouseY / Zoom
-                If PX >= 0 And PX < #Scr2_Width And PY >= 0 And PY < #Scr2_Height
+                If TextPlacementActive
+                  GraphosScr_BlitTextStyled(PatternBit(), RowFG(), RowBG(), TextPendingCharset(), TextPendingStr, PX, PY, TextPendingInk, TextPendingPaper, TextPendingStyle)
+                  TextPlacementActive = #False
+                  Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                  SetGadgetText(G_Status, "TEXTO impresso em (" + Str(PX) + "," + Str(PY) + ")")
+                ElseIf PX >= 0 And PX < #Scr2_Width And PY >= 0 And PY < #Scr2_Height
                   Select ToolMode
 
                     Case #GraphosScrTool_Traco, #GraphosScrTool_Pintura, #GraphosScrTool_Spray
@@ -593,8 +794,9 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
                 EndIf
 
               Case #PB_EventType_RightButtonDown
-                If PendingActive
+                If PendingActive Or TextPlacementActive
                   PendingActive = #False
+                  TextPlacementActive = #False
                   Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
                   SetGadgetText(G_Status, "Operacao cancelada.")
                 EndIf
@@ -604,6 +806,10 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
                 MouseY = GetGadgetAttribute(G_Canvas, #PB_Canvas_MouseY)
                 PX = MouseX / Zoom
                 PY = MouseY / Zoom
+                If TextPlacementActive
+                  Scr2Ed_RedrawCanvas(G_Canvas, PatternBit(), RowFG(), RowBG(), Palette())
+                  GraphosScr_DrawTextPreview(G_Canvas, TextPendingCharset(), TextPendingStr, PX, PY, Palette(TextPendingInk), Palette(TextPendingPaper), TextPendingStyle)
+                Else
                 Select ToolMode
                   Case #GraphosScrTool_Traco, #GraphosScrTool_Bloco, #GraphosScrTool_Pintura, #GraphosScrTool_Spray
                     If GetGadgetAttribute(G_Canvas, #PB_Canvas_Buttons) & #PB_Canvas_LeftButton
@@ -639,6 +845,7 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
                     EndIf
 
                 EndSelect
+                EndIf
             EndSelect
 
           Case G_Close

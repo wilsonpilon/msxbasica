@@ -671,6 +671,22 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   formatos nativos `.SCR`/`.LAY`/`.VTC`+`.ATC` e persistência no `.msxproject`. Versão embutida no
   executável atualizada para `7.5.2`.
 
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 3**: implementa o menu **TEXTO (F2)** do Graphos III
+  original em `editor/GraphosScreenGui.pbi` — escreve na tela com um alfabeto já registrado no projeto
+  (**Criar → Alfabeto Graphos III...**, `ProjectDB::FetchAlphabet`, mesmo formato 256×8 do módulo 4), nas
+  6 variações do manual: **NORMAL**, **ITALIC**, **BOLD**, **DUPLO** (dupla altura), **DUPLO BOLD**
+  (dupla altura e largura) e **LARGO** (dupla largura). ITALIC/BOLD reaproveitam as mesmas transformações
+  de bits já escritas pro editor de alfabetos (`CharEd_ItalicEditGrid`/`BoldEditGrid`, módulo 4c) sem
+  duplicar a fórmula — a diferença é que aqui a transformação só afeta o desenho na tela, nunca o
+  alfabeto salvo no banco. DUPLO/LARGO/DUPLO BOLD são duplicação geométrica de linha/coluna no
+  framebuffer (`GraphosScr_TextScaleX`/`TextScaleY` resolvem as 6 combinações com um só par de loops),
+  sem mexer na forma do glifo — o mesmo sentido de "dupla altura/largura" de impressora matricial que dá
+  nome às opções originais. Fluxo igual ao "Posicionar → prévia elástica segue o mouse → clique fixa" já
+  usado pela ferramenta TEXTO do editor "Draw Screen 2..." (módulo 5) — `GraphosScr_DrawTextPreview`
+  reescreve `Scr2Ed_DrawTextPreview` original pra suportar as 6 variações, sem o grid de 8px/STEP (esse
+  editor ainda não gera código BASIC, só framebuffer). Botão direito cancela o posicionamento pendente;
+  trocar de ferramenta DESENHO também cancela. Versão embutida no executável atualizada para `7.5.3`.
+
 ## Ferramentas e ambiente
 
 Projeto desenvolvido com:
