@@ -52,7 +52,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 | 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
-| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). Ver seções 14/14b/14c |
+| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. **Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)** — SALVA TELA/Restaurar, INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE VIDEO/ATRIBUTOS, todos com ícone; coluna direita e faixa abaixo do canvas reequilibradas, ver seção 14d. **Fase 5: persistência no projeto (2026-07-25, mesma sessão)** — Telas/Layouts/Shapes no `.msxproject` via `ProjectDB.pbi`, mesmo padrão número/navegação/tag/Novo/Registrar do editor de sprites/alfabetos, ver seção 14e. **Fase 6: menu AJUSTE (2026-07-25, mesma sessão)** — SCROLL/ROTAÇÃO, 1px e 8x8, 4 direções, ver seção 14f. **Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)** — ZOOM (janela à parte), SHAPE (carimbo com 4 modos lógicos), CORTE (Inverter/Espelhar), GRID (overlay não destrutivo), ver seção 14g. **Fase 8 (2026-07-25, mesma sessão): cursor de teclado — tentada e revertida**, ver seção 14h (usuário achou desnecessária com o mouse já disponível). **Fase 9: formatos nativos .ALF/.LAY/.SCR/.SHP (2026-07-25, mesma sessão)** — importar/exportar telas/layouts/shapes no formato binário que o Graphos III de verdade grava em disco (`editor/GraphosNativeIO.pbi`), verificado por round-trip contra arquivos reais (`editor/tools/GraphosNativeIOTestCli.pb`), ver seção 14i. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). **Todos os 5 menus do original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) + os formatos de arquivo nativos estão implementados.** Ver seções 14/14b a 14i |
 
 ## Decisões fechadas
 
@@ -1438,6 +1438,409 @@ MISCELÂNEA (F5) e CRIA/ARQUIVA/RECUPERA SHAPES, os formatos nativos `.SCR`/`.LA
 integração mais ampla com o sistema de projeto (persistência da própria tela, não só leitura de
 alfabetos).
 
+### 14d. Graphos III — Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)
+
+Três pedidos explícitos do usuário na mesma mensagem: implementar o menu **TELA (F3)**, reorganizar o
+layout da janela (coluna direita ficando alta demais, área abaixo do canvas vazia) e usar ícone em todo
+botão de ação. Também nesta sessão, fora deste arquivo: seed automático de um alfabeto "padrao" no
+arranque da IDE.
+
+**Menu TELA (F3)** — todas as operações do manual (`graphos/graphos.txt`, seção 3.2.3) exceto
+**IMPRIME TELA** (sem suporte a impressora nesta IDE, fora de escopo):
+
+- **SALVA TELA**/**Restaurar** (`GraphosScr_SalvaTela`/`RestauraTela`) — backup/restauração da tela
+  **inteira** (pixels + Tinta + Fundo) num buffer dedicado (`FullBackupPattern`/`FullBackupFG`/
+  `FullBackupBG` + `FullBackupValid`). Equivalente ao "buffer" do Graphos III original, mas escopado só
+  a este par de botões — o original salva automaticamente a cada operação (tecla RETURN) e HOME/CLS
+  sempre recupera o último passo, o que seria um undo geral pra qualquer ação desta janela (fora de
+  escopo).
+- **INVERTE VIDEO** (`GraphosScr_InvertVideo`) — inverte `PatternBit(Y,X) = 1 - PatternBit(Y,X)` de
+  cada pixel, sem tocar em `RowFG`/`RowBG`.
+- **INVERTE ATRIBUTOS** (`GraphosScr_InvertAttrs`) — troca `RowFG(Y,Cx)` com `RowBG(Y,Cx)` de toda
+  faixa, sem tocar em `PatternBit`.
+- **RETIRA VIDEO**/**REPOE VIDEO** (`GraphosScr_RetiraVideo`/`RepoeVideo`) — RETIRA copia `PatternBit`
+  pro backup `VideoBackupPattern` e zera tudo (tela passa a mostrar só a cor de PAPER de cada faixa);
+  REPOE devolve. Cada par tem seu **próprio** slot de backup (não compartilha com Atributos/Tela
+  inteira) — mais simples de raciocinar, e os 3 backups nunca colidem entre si.
+- **RETIRA ATRIBUTOS**/**REPOE ATRIBUTOS** (`GraphosScr_RetiraAtributos`/`RepoeAtributos`) — RETIRA
+  copia `RowFG`/`RowBG` pro backup `AttrBackupFG`/`AttrBackupBG` e grava `#Scr2_DefaultFG`/`BG` (branco/
+  preto) em toda faixa — "deixando à vista somente os pixels setados", como o manual descreve; REPOE
+  devolve as cores guardadas.
+- **LIMPA TELA** (já existia desde a Fase 1, `GraphosScr_ClearWithColors`) passou a viver na mesma
+  grade de ícones do resto do menu TELA, com ícone em vez de botão-texto.
+
+Todas as 9 operações são botões de ação única (`ButtonImageGadget` **sem** `#PB_Button_Toggle` — não
+ficam "pressionados"), e todas cancelam qualquer âncora pendente de LINHA/RETÂNGULO/RAIO/CÍRCULO/TEXTO
+(`PendingActive`/`TextPlacementActive = #False`) antes de mexer no framebuffer, já que uma operação de
+tela inteira invalida qualquer prévia elástica em andamento.
+
+**Reorganização de layout** — antes desta fase, a coluna direita já somava ~800px de altura (paleta +
+9 ferramentas DESENHO em 3 linhas + Lápis/Borracha + BLOCO + TEXTO + Limpar + status), bem mais alta que
+o canvas (~490px), deixando a área abaixo do canvas praticamente vazia. Mudanças:
+
+- `RightW` (largura da coluna direita) subiu de 160 pra 200 — permite **5 ícones por linha** em vez de
+  3, cortando as grades DESENHO (9 ferramentas) e TELA (9 operações) de 3 linhas pra 2 cada.
+- **BLOCO** (Largura×Altura) e **TEXTO** (alfabeto/estilo/string/Posicionar) — controles de texto/combo,
+  mais naturais numa faixa horizontal larga do que espremidos numa coluna de 160-200px — desceram pra
+  uma faixa abaixo do canvas (`BelowLabelY`/`BelowRowY`), ao lado do botão **Fechar**, ocupando o espaço
+  que antes ficava vazio. `WinW` agora é o maior entre "coluna direita + margem" e "faixa abaixo do
+  canvas + margem" (a faixa de TEXTO, com 4 controles lado a lado, acaba sendo a mais larga das duas).
+- Resultado: janela bem mais baixa (right column ~630px vs ~800px antes) e as duas metades da janela
+  (canvas+faixa abaixo vs coluna direita) ficam com alturas parecidas em vez de uma dominar a outra.
+
+**Ícones em todo botão de ação** — `GraphosScr_CreateRetiraRepoeIcon(Size, IsAttrs, IsRepoe)` é um único
+gerador parametrizado pros 4 botões RETIRA/REPOE (vídeo e atributos) em vez de 4 ícones quase-idênticos:
+quadrado xadrez preto/branco quando `IsAttrs=#False` (VIDEO, é sobre pixel) ou laranja sólido quando
+`IsAttrs=#True` (ATRIBUTOS, é sobre cor — mesma cor já usada pelo ícone de PINTURA, módulo 14b, mesma
+convenção visual "laranja = cor de fundo"), com uma seta no canto superior direito apontando pra cima
+(`IsRepoe=#False`, RETIRA/remove) ou pra baixo (`IsRepoe=#True`, REPOE/devolve). Além desse, 4 ícones
+novos de uso único: `GraphosScr_CreateSaveIcon` (disquete, SALVA TELA), `GraphosScr_CreateUndoIcon`
+(seta circular, Restaurar), `GraphosScr_CreateInvertVideoIcon` (quadrado metade preta/metade branca com
+pontos trocados) e `GraphosScr_CreateInvertAttrsIcon` (dois retalhos laranja/azul com setas opostas).
+LIMPA TELA reaproveita `SpriteEd_CreateClearIcon` (já usado pelo editor de alfabetos) em vez de ganhar
+um novo.
+
+**Alfabeto padrão automático** (fora deste arquivo — `editor/BadigEditor.pb`): `App_EnsureDefaultAlphabet()`,
+chamada logo após `ProjectDB::EnsureOpen()` no arranque normal da IDE (dentro do mesmo `If
+CountProgramParameters() = 0`, nunca no caminho `--diskmanipulator`). Percorre `ProjectDB::
+ListAlphabetNumbers()` conferindo `LastAlphabetTag()` de cada um; se nenhum tiver a tag **"padrao"**
+(comparação case-insensitive, `LCase()`), registra um novo (`ProjectDB::StoreAlphabet`, número =
+maior existente + 1, ou 0 se a lista estiver vazia) semeado com `ProjectDB::FetchDefaultAlphabet(0,
+...)` — o mesmo charset MSX embutido no `.exe` que "Novo alfabeto" já usa (`DefaultCharsetMsx.pbi`),
+nenhum dado novo. Não mexe em nada se um "padrao" já existir (projeto salvo por sessão anterior) — só
+garante que ele exista, nunca sobrescreve. Objetivo: o menu TEXTO deste editor (e qualquer consumidor
+futuro de alfabetos) sempre encontra pelo menos um alfabeto pronto, sem exigir que o usuário passe por
+**Criar → Alfabeto Graphos III...** manualmente antes de usar TEXTO pela primeira vez.
+
+**Verificação**: compilação limpa (`.\build.ps1`). Mesma limitação de automação de clique ao vivo já
+registrada nas fases anteriores — verificado por revisão de código cuidadosa da lógica de backup/
+inversão/layout, mais execução do `.exe` compilado para o usuário testar interativamente.
+
+**Continua de fora** (próximos cortes, sem mudança de escopo): menu AJUSTE (F4), menu MISCELÂNEA (F5) e
+CRIA/ARQUIVA/RECUPERA SHAPES, os formatos nativos `.SCR`/`.LAY`/`.VTC`+`.ATC`. Persistência de Tela/
+Layout/Shape no `.msxproject` foi implementada logo em seguida, ver seção 14e.
+
+### 14e. Graphos III — Fase 5: persistência no projeto (2026-07-25, mesma sessão)
+
+Pedido explícito do usuário: "colocar os trabalhos do Graphos no arquivo de Projeto também. Telas,
+shapes, layouts... menu similar aos outros onde o usuário pode nomear a tela/shape/layout, adicionar
+novos, registrar, avançar para o próximo, retroceder, ir para o primeiro e para o último" — mesmo padrão
+já usado pelo editor de sprites/alfabetos (módulos 4/13).
+
+**Três tabelas novas em `ProjectDB.pbi`** (`graphos_screens`/`graphos_layouts`/`graphos_shapes`) —
+**deliberadamente separadas** da tabela `screens` já existente (editor "Draw Screen 2...", módulo 5),
+que guarda uma **lista de comandos** serializada, não um framebuffer; as tabelas Graphos guardam o
+framebuffer puro (`PatternBit`/`RowFG`/`RowBG`), formato incompatível com `screens`. Pattern/Color são
+empacotados **1 byte por célula de 8 pixels** (mesmo layout lógico da Pattern/Color Table de verdade do
+TMS9918 — INK no nibble alto, PAPER no nibble baixo do byte de cor), hex-codificados 2 dígitos por byte,
+mesmo padrão já usado por `StoreAlphabet`. Como `ProjectDB.pbi` compila **antes** de `Screen2Synth.pbi`
+na ordem de `XIncludeFile` de `BadigEditor.pb`, os limites 256/192/32 são literais no código, não
+`#Scr2_Width`/`Height`/`Cols` — mesmo motivo de `StoreAlphabet` já hardcodar 256/8 em vez de uma
+constante externa.
+
+- **`graphos_screens`** (TELA) — `StoreGraphosScreen`/`FetchGraphosScreen`/`HasGraphosScreen`/
+  `ListGraphosScreenNumbers`: framebuffer 256×192 completo (pixels + INK/PAPER por faixa).
+- **`graphos_layouts`** (LAYOUT) — `StoreGraphosLayout`/`FetchGraphosLayout`/`HasGraphosLayout`/
+  `ListGraphosLayoutNumbers`: só `PatternBit`, sem nenhuma cor — equivalente ao `.LAY` original ("só o
+  vídeo sem atributos").
+- **`graphos_shapes`** (SHAPE) — `StoreGraphosShape`/`FetchGraphosShape`/`HasGraphosShape`/
+  `ListGraphosShapeNumbers`: recorte retangular de tamanho **variável** (`Width`/`Height` próprios,
+  colunas extras); `PatternBit`/`RowFG`/`RowBG` do chamador continuam dimensionados no tamanho máximo
+  do canvas (256×192) — só a sub-região `[0..Height-1, 0..Width-1]` é lida/escrita.
+
+Todas entram na soma de `HasUnsavedContent()` (conteúdo real do usuário, mesmo critério de sprites/
+alfabetos/sons/músicas).
+
+**UI em `GraphosScreenGui.pbi`** — três barras de projeto na faixa abaixo do canvas (Tela/Layout/Shape),
+cada uma reaproveitando **sem nenhuma mudança** os componentes já validados do editor de alfabetos:
+`CharEd_CreateNavIcon`/`CreateNewIcon`/`CreateRegisterIcon` (ícones Primeiro/Anterior/Próximo/Último/
+Novo/Registrar), `#CharEd_IconBtnW`/`IconBtnH` (dimensões) e `SpriteEd_FindNavTarget` (lógica de
+"qual número é o alvo do botão X", genérica, já usada pelo editor de sprites).
+
+- **TELA e LAYOUT compartilham o mesmo canvas em edição** e a mesma flag `CanvasDirty` — são **2
+  formatos de salvar o mesmo framebuffer** (TELA = pixels + cores; LAYOUT = só pixels), não 2 documentos
+  independentes, refletindo como o Graphos III original também trata ARQUIVA TELA/LAYOUT (salvar o
+  buffer atual em formatos diferentes, não editá-los separadamente). "Novo" em qualquer um dos dois
+  limpa o canvas (`Scr2_ClearFramebuffer`) e numera automaticamente (maior número já registrado + 1, ou
+  0 se a lista estiver vazia); navegar (Primeiro/Anterior/Próximo/Último) busca do projeto e substitui o
+  canvas inteiro. `GraphosScr_ConfirmDiscardChanges()` (mensagem genérica, reaproveitada também por
+  Shape e pelo botão Fechar/fechamento da janela) pede confirmação antes de descartar alterações não
+  registradas — mesmo padrão de `CharEd_ConfirmDiscardAlphabet`/`Scr2Ed_ConfirmDiscardScreen`.
+- **SHAPE tem buffer próprio** (`ShapeCapturePattern`/`ShapeCaptureFG`/`ShapeCaptureBG`, dimensionado no
+  tamanho máximo do canvas mas só a sub-região `ShapeW × ShapeH` é significativa) e sua própria flag
+  `ShapeDirty`, independentes do canvas principal. **Marcar área...** arma `ShapeMarkPending`/
+  `ShapeMarkHasAnchor` — mesmo fluxo de 2 cliques do RETANGULO (`Scr2Ed_DrawLinePreview` com
+  `BoxMode=1` como prévia elástica), mas em vez de desenhar, o 2º clique **captura** o recorte marcado
+  do canvas principal para o buffer do shape (pixel a pixel + célula de cor a célula de cor). O eixo X
+  da seleção é sempre alinhado (snap) ao grid de 8px antes de capturar (`SelX = (SelX/8)*8`, `SelX2`
+  arredondado pra cima do mesmo jeito) — garante que cada célula de cor **local** do shape corresponda a
+  uma célula **inteira** da tela de origem, sem precisar reamostrar/interpolar cor nenhuma (o eixo Y não
+  precisa de snap, já que a cor é por linha de varredura, não por bloco 8×8). `GraphosScr_
+  RedrawShapePreview` desenha uma prévia em miniatura do recorte capturado, escalada (zoom inteiro,
+  `Min(CaixaW/W, CaixaH/H)`, mínimo 1) pra caber numa caixa fixa de 150×70 — não dá pra reaproveitar
+  `Scr2Ed_RedrawCanvas` (fixo em 256×192/zoom 2) pra um recorte de tamanho variável, mas o lookup de cor
+  por pixel reaproveita `Scr2_GetPixelColor` sem nenhuma mudança (os limites 256/192 do motor continuam
+  válidos mesmo com `W`/`H` lógicos menores).
+- A barra do Shape (nav + "Marcar área..." + prévia) acabou sendo a linha mais larga da janela — mais
+  larga que "coluna direita + margem", único termo usado no cálculo original de `WinW`. Em vez de prever
+  esse total de antemão, a janela é alargada de verdade (`ResizeWindow`) **depois** de todos os gadgets
+  já criados com suas posições X absolutas, comparando a extensão real da barra do Shape contra o `WinW`
+  já calculado.
+
+**Verificação**: compilação limpa (`.\build.ps1`), aplicação executada (`.\build.ps1 -R`) sem erro em
+tempo de execução. Mesma limitação de automação de clique ao vivo já registrada nas fases anteriores —
+verificado por revisão de código cuidadosa da lógica de captura/snap de 8px/dirty-tracking/layout, mais
+execução do `.exe` compilado para o usuário testar interativamente.
+
+**Continua de fora** (próximos cortes, sem mudança de escopo): menu AJUSTE (F4), menu MISCELÂNEA (F5) e
+escolha de máscara/tipo do SHAPE (CRIA SHAPES de verdade, seção 3.8 do manual — fica pro carimbo AND/OR/
+XOR de MISCELÂNEA), os formatos de arquivo nativos `.SCR`/`.LAY`/`.VTC`+`.ATC` **em disco** (a
+persistência desta fase é só no banco SQLite do projeto, não arquivos `.SCR`/`.LAY`/`.VTC`/`.ATC`
+avulsos).
+
+**Correção pós-fase (mesma sessão)**: o usuário reportou o botão "Marcar área..." e a prévia do Shape
+aparecendo por cima do fim da coluna direita (grade TELA (F3)/status). Causa raiz: `ScreenBarY` (início
+da faixa abaixo do canvas) estava ancorado só em `CanvasY + CanvasH` — mas a coluna direita (paleta +
+DESENHO + BLOCO + Modo + TELA + status) é bem mais alta que o canvas sozinho, e a barra do Shape se
+estende bastante em X (até a prévia de 150px), então parte dela caía numa faixa Y que a coluna direita
+ainda ocupava, mesmo a faixa abaixo do canvas "começando" nominalmente depois do canvas. Corrigido
+ancorando em `Max(CanvasY + CanvasH, StatusBottom)` em vez de só `CanvasY + CanvasH` — `StatusBottom`
+(fim da coluna direita) já era calculado antes desse ponto do código, só não era considerado. Versão
+`7.5.7`.
+
+**Refinamento (mesma sessão, logo em seguida)**: a correção da `7.5.7` resolvia a colisão mas deixava a
+janela ocupando quase toda a altura da tela (pedido explícito do usuário: "muito espaço por fora não
+aproveitado"). Diagnóstico correto: a colisão nunca foi um problema de **Y** (a faixa abaixo do canvas
+"começando tarde demais") — foi um problema de **X**: a barra do Shape se estendia até quase encostar em
+`RightX` só por causa de "Marcar área..." + a prévia (150px) penduradas na mesma linha dos navegadores.
+Duas colunas lado a lado (esquerda estreita, direita = coluna de ferramentas) podem compartilhar
+qualquer faixa de Y livremente, **desde que não se sobreponham em X** — o `Max(..., StatusBottom)` da
+`7.5.7` era uma correção de sintoma, não da causa. Correção definitiva:
+- `ScreenBarY` voltou a ser só `CanvasY + CanvasH + 14` (removido o `Max` com `StatusBottom`).
+- "Marcar área..."/prévia do Shape ganharam **linha própria** (`ShapeMarkRowY = ShapeBarY + 30`),
+  abaixo dos 3 navegadores — sem eles, a barra do Shape (só nav + tag) termina em ~X=508, bem antes de
+  `RightX` (547 nesta janela), então nunca mais invade a coluna direita, não importa em que Y ela caia.
+- **INK/PAPER lado a lado** (pedido explícito do usuário, aproveitando a revisão) em vez de empilhados —
+  `DesenhoLabelY` agora é só `CanvasY + 18 + PaletteSize + 16` (removido o bloco `PaperY` inteiro),
+  economizando 72px de altura na coluna direita e reduzindo ainda mais a chance de a coluna direita
+  ficar mais alta que o canvas.
+Versão `7.5.8`.
+
+**Correção (mesma sessão, logo em seguida)**: o usuário reportou que a linha nova de "Marcar área.../
+prévia" ainda sobrepunha os botões de navegação da barra do Shape acima. Bug de aritmética: `G_ShapePreview`
+usava `ShapeMarkRowY - 22` (tentativa de centralizar verticalmente a prévia de 70px com o botão de 30px),
+mas `ShapeMarkRowY` era só `ShapeBarY + 30` — subtrair 22 disso resultava em `ShapeBarY + 8`, bem dentro
+da faixa Y que os ícones de navegação do Shape (altura ~30) ainda ocupavam. Corrigido alinhando o topo
+da prévia com `ShapeMarkRowY` (sem deslocamento negativo) e aumentando a margem pra `ShapeBarY + 34`.
+Versão `7.5.9`.
+
+### 14f. Graphos III — Fase 6: menu AJUSTE (2026-07-25, mesma sessão)
+
+Pedido explícito do usuário: "scroll pixel a pixel nas 4 direções e scroll de 8 pixels por vez... mais
+duas opções de rotacionar pixel a pixel e 8 pixels por vez" — as 4 operações do manual original (seção
+3.2.4): SCROLL, SCROLL 8x8, ROTAÇÃO, ROTAÇÃO 8x8.
+
+**Distinção "vídeo" vs "atributos"** segue exatamente a mesma convenção já estabelecida por INVERTE
+VIDEO/INVERTE ATRIBUTOS (Fase 4, módulo 14b): "vídeo" = só `PatternBit` (pixels); "atributos" = `RowFG`/
+`RowBG` (cores). SCROLL/ROTAÇÃO comuns (1px) mexem só no vídeo; as variantes 8x8 mexem nos dois juntos.
+
+- **`GraphosScr_ScrollVideo1px(PatternBit, Direction)`** — desloca 1 pixel na direção indicada (0=cima,
+  1=baixo, 2=esquerda, 3=direita, mesma convenção usada em todo o resto do arquivo). A parte que sai da
+  tela é perdida (preenchida com `0`).
+- **`GraphosScr_ScrollVideo8px(PatternBit, RowFG, RowBG, Direction, InkColor, PaperColor)`** — desloca 8
+  *scanlines* (cima/baixo) ou 8 colunas de pixel = **1 célula de cor inteira** (esquerda/direita). A cor
+  no MSX real já é por linha de varredura (não por bloco 8×8 como em SCREEN 1), então um deslocamento
+  vertical não precisa de nenhum alinhamento especial de célula — só o horizontal precisa (`Cx = X/8`),
+  daí deslocar `RowFG`/`RowBG` por **1 célula** em vez de "8 unidades". Área vazia preenchida com
+  `InkColor`/`PaperColor` atuais (pixels resetados, células de cor = Tinta/Fundo).
+- **`GraphosScr_RotateVideo1px`/`RotateVideo8px`** — mesma lógica, mas com **wraparound** (aritmética
+  modular `%`) em vez de perder/preencher a parte que sai — a parte que sai por um lado reentra pelo
+  lado oposto, sem nenhuma perda de dado.
+
+Todas as 4 usam uma cópia temporária do framebuffer (`Dim Tmp`) em vez de deslocar in-place — mais
+simples de raciocinar (sem se preocupar com ordem de iteração sobrescrevendo dados ainda não lidos) e
+barato o bastante numa tela 256×192.
+
+**UI**: nova seção "Ajuste (AJUSTE):" na coluna direita, logo abaixo da grade TELA (F3). Dois
+alternadores **independentes** (mesmo padrão botão-imagem + `SpriteEd_UnpressOtherTools` já usado por
+Lápis/Borracha — dois grupos à parte do `ToolMode` das ferramentas de DESENHO): **passo** (1px — reusa
+`GraphosScr_CreatePixelIcon` da fase 2 — ou 8px — `GraphosScr_CreateStep8Icon`, quadrado sólido maior) e
+**modo** (SCROLL — reaproveita `CharEd_CreateNavIcon(Size, 1, #True)`, a "parede" no fim da seta já
+existia pra Primeiro/Último e comunica bem "a parte que sai é perdida" — ou ROTAÇÃO —
+`GraphosScr_CreateRotateModeIcon`, seta circular com cor própria pra não confundir com o ícone de
+"Restaurar"/`GraphosScr_CreateUndoIcon`, mesma ideia conceitual mas ações diferentes). As **4 setas de
+direção** são ação única (`GraphosScr_CreateArrowIcon(Size, Direction)`, um só gerador parametrizado
+reaproveitando `CharEd_DrawFilledHTri`/`VTri` do editor de alfabetos — módulo 4c — em vez de desenhar
+triângulo do zero): aplicam a combinação passo+modo atual assim que clicadas, sem precisar de
+"Registrar" (mesmo espírito das operações do menu TELA, módulo 14b). `GraphosScr_AjusteStatusText`
+monta a mensagem de status legível pras 16 combinações passo×modo×direção.
+
+**Verificação**: compilação limpa (`.\build.ps1`) na primeira tentativa, aplicação executada
+(`.\build.ps1 -R`) sem erro em tempo de execução. Mesma limitação de automação de clique ao vivo já
+registrada nas fases anteriores — verificado por revisão de código cuidadosa da lógica de deslocamento/
+wraparound/alinhamento de célula de cor, mais execução do `.exe` compilado para o usuário testar
+interativamente.
+
+**Continua de fora** (próximos cortes, sem mudança de escopo): menu MISCELÂNEA (F5 — ZOOM, SHAPE com
+máscara/AND/OR/XOR, CORTE, GRID), os formatos de arquivo nativos `.SCR`/`.LAY`/`.VTC`+`.ATC` em disco.
+
+### 14g. Graphos III — Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)
+
+Pedido explícito do usuário: "Zoom, Shape, Corte, Grid" — as 4 ferramentas avançadas do manual original
+(seção 3.2.5).
+
+**GRID** (`GraphosScr_DrawGridOverlay`) — reinterpretação deliberadamente **não destrutiva**: o Graphos
+III original altera de verdade a cor de PAPER de toda a tela pra desenhar a malha (limitação de
+hardware de 1987, sem camada de renderização separada); aqui é um overlay de linhas finas cinza a cada
+8 pixels, desenhado por cima do canvas a cada redesenho, **nunca** gravado em `PatternBit`/`RowFG`/
+`RowBG`. Isso exigiu um redesenho "completo" novo — `GraphosScr_RedrawCanvasFull(Canvas, PatternBit,
+RowFG, RowBG, Palette, ShowGrid)` — que chama `Scr2Ed_RedrawCanvas` e, se `ShowGrid`, desenha o overlay
+em seguida; **as 31 chamadas diretas** a `Scr2Ed_RedrawCanvas(G_Canvas, ...)` espalhadas pelo arquivo
+foram substituídas por essa função (find-and-replace mecânico, `GridVisible` já em escopo em todas —
+mesma variável local da procedure principal), senão o overlay ficaria desatualizado a cada operação de
+desenho.
+
+**CORTE** — marca um retângulo (2 cliques, mesmo padrão âncora+prévia elástica de RETÂNGULO/SHAPE, mas
+**sem** o alinhamento de 8px do SHAPE, já que CORTE só mexe em `PatternBit`, nunca em `RowFG`/`RowBG` —
+fiel ao manual: "o usuário manipula e modifica os pixels de uma determinada parte da tela"):
+- `GraphosScr_CorteInvert(PatternBit, X, Y, W, H)` — inverte cada pixel do recorte.
+- `GraphosScr_CorteMirrorH`/`MirrorV` — espelha o recorte na horizontal ("E")/vertical ("R") do manual,
+  trocando pares de colunas/linhas dentro do recorte.
+Deliberadamente fora: "TECLAS DO CURSOR deslocam o corte" do original (arrastar uma seleção flutuante
+pela tela) — mesma simplificação já aplicada em TEXTO/SHAPE (clique fixa o resultado, sem um passo
+extra de mover-e-confirmar).
+
+**SHAPE (carimbo)** — usa o shape **já carregado na barra de projeto Shape** (Fase 5, seção 14e);
+nenhuma UI de seleção nova precisou ser criada. `GraphosScr_StampShape(PatternBit, RowFG, RowBG,
+ShapePattern, ShapeFG, ShapeBG, DestX, DestY, ShapeW, ShapeH, Mode)`:
+- **MÁSCARA** (`#GraphosStampMode_Mascara`) — cola pixels **e** cores do shape, substituindo tudo
+  ("o shape se sobrepõe à tela, apagando o que está por baixo"). `DestX` precisa estar alinhado ao grid
+  de 8px (mesma exigência da captura do SHAPE) pra colar as células de cor corretamente — por isso o
+  destino do carimbo é sempre snapado (`(PX / 8) * 8`) antes de chamar `StampShape`, independente do
+  modo escolhido (simplifica o modelo mental, mesmo que AND/OR/XOR não precisassem tecnicamente).
+- **AND**/**OR**/**XOR** — lógica **só no bit do pixel**, nunca tocam `RowFG`/`RowBG` (fiel ao manual:
+  "embora os atributos não sejam alterados") — onde um pixel novo acende nessas 3, ele usa a cor que a
+  célula de destino já tinha. `AND = SPix & DPix`, `OR = SPix | DPix`, `XOR = Bool(SPix <> DPix)`.
+- Ícones dos 4 modos (`GraphosScr_CreateStampModeIcon(Size, Mode)`) — 2 quadrados sobrepostos (shape
+  azul, tela laranja) mostrando exatamente qual região lógica fica colorida em cada modo, em vez de 4
+  ícones sem relação visual entre si.
+- Posicionamento no mesmo padrão "Posicionar → prévia segue o mouse → clique fixa" de TEXTO
+  (`GraphosScr_DrawStampPreview`, sempre mostra as cores próprias do shape independente do modo — é só
+  um guia visual, o resultado real depende do modo escolhido na hora de carimbar).
+- Deliberadamente fora: distinção de **TIPO** de shape do CRIA SHAPES original (seção 3.8 — só o TIPO 1
+  permite escolher máscara/AND/OR/XOR pelas outras seriam diferentes); aqui todo shape aceita os 4
+  modos uniformemente, simplificação deliberada já que o sistema de captura de Shape (Fase 5) não
+  modela tipos.
+
+**ZOOM** — reinterpretação simplificada: o original tinha 3 quadros de prévia (TELA/INK/PAPER) e modos
+A(lterna)/S(eta)/R(eseta) de pixel escolhidos por tecla; aqui é só Lápis/Borracha, mesmo par já usado no
+resto do editor. Fluxo: marca uma região (2 cliques, sem alinhamento de 8px — zoom só lê/escreve pixels
+absolutos, não precisa de nenhum alinhamento de célula de cor) e `GraphosScr_OpenZoomWindow(ParentWin,
+PatternBit, RowFG, RowBG, Palette, RegionX, RegionY, RegionW, RegionH, InkColor, PaperColor)` abre uma
+**janela à parte** com seu próprio laço de eventos (`WaitWindowEvent`, modal em relação à janela
+principal via `DisableWindow` — mesmo padrão de sub-janela já usado por `SpriteEditorGui`/
+`CharsetEditorGui`), mostrando a região ampliada (fator de zoom calculado pra caber numa área de
+~300×300px, clampado entre 2x e 24x). Como **arrays são passados por referência no PureBasic**, a
+janela de Zoom escreve **direto** nos mesmos `PatternBit`/`RowFG`/`RowBG` da janela principal — não há
+cópia nem "aplicar de volta": fechar o Zoom só exige 1 `GraphosScr_RedrawCanvasFull` na janela principal
+pra refletir visualmente as edições que já aconteceram nos arrays compartilhados.
+
+**Verificação**: compilação limpa (`.\build.ps1`) na primeira tentativa apesar do tamanho da mudança
+(~700 linhas novas), aplicação executada (`.\build.ps1 -R`) sem erro em tempo de execução. Mesma
+limitação de automação de clique ao vivo já registrada nas fases anteriores — verificado por revisão de
+código cuidadosa da lógica de overlay/recorte/carimbo lógico/janela aninhada, mais execução do `.exe`
+compilado para o usuário testar interativamente.
+
+Com isso, **todos os 5 menus do Graphos III original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) estão
+implementados** nesta IDE, ainda que com simplificações deliberadas documentadas em cada fase. Os
+formatos de arquivo nativos (`.SCR`/`.LAY`/`.SHP`) em disco foram endereçados depois, ver seção 14i.
+
+### 14h (tentada e revertida). Cursor de teclado
+
+Uma tentativa de implementar as "TECLAS DO CURSOR" do Graphos III original (setas movendo um cursor
+visível dentro do canvas, barra de espaço como clique, TAB pulando 8px, SHIFT/CONTROL alterando a
+velocidade) foi feita e **revertida na mesma sessão** — o usuário testou e reportou que não funcionava
+como esperado e que, com o mouse já disponível, a navegação por teclado dentro do canvas era
+desnecessária. Removida por completo de `GraphosScreenGui.pbi` (nenhum vestígio de
+`#PB_Canvas_Keyboard`/`CursorX`/`CursorY`/`TriggerClick` ficou no código); versão voltou a `7.5.11`. Não
+reintroduzir esse padrão de interação sem um pedido explícito novo do usuário.
+
+### 14i. Graphos III — Fase 9: formatos de arquivo nativos (.ALF/.LAY/.SCR/.SHP) (2026-07-25, mesma sessão)
+
+Pedido explícito do usuário: entender os formatos nativos que o Graphos III de verdade grava em disco
+(usando os visualizadores Python de referência em `graphos-IV/` — `alphabetV.py`/`layoutV.py`/
+`screenV.py`/`shapeV_2.py`, gitignored, ver `.gitignore`) e permitir importar/exportar telas, layouts e
+shapes nesses formatos, além da persistência já existente no projeto (Fase 5, seção 14e). Novo arquivo
+`editor/GraphosNativeIO.pbi`.
+
+**.ALF (alfabeto)** não precisou de nenhuma mudança — já implementado corretamente em
+`CharsetEditorGui.pbi` desde antes desta fase (cabeçalho BSAVE de 7 bytes + 2048 bytes crus, base
+`$9200`).
+
+**Conversão de endereçamento VRAM** (`GraphosNative_Pack/UnpackPatternVram`, `Pack/UnpackColorVram`) — o
+ponto central que os outros 3 codecs dependem: os arrays internos desta IDE (`PatternBit(Y,X)`,
+`RowFG`/`RowBG(Y,Cx)`) usam ordem linha-a-linha simples, mas o hardware real do TMS9918 em SCREEN 2
+divide a tela em 3 "terços" de 64 scanlines cada, e dentro de cada terço endereça 256 tiles de 8×8 —
+`offset = terço*2048 + tile*8 + linha_do_tile`. Essa é a ordem que os arquivos `.LAY`/`.SCR` gravam em
+disco; os dois procedimentos convertem nos dois sentidos.
+
+**.LAY (layout, só padrão/pixels, sem cor)** — cabeçalho BSAVE (base `$9200`) + RLE restrito: cada byte
+do arquivo tem um deslocamento de `+$99` (mod 256) somado por cima do valor real; só os valores reais
+`$00`/`$FF` (branco/preto sólido, os mais comuns num desenho 1-bit) viram um par
+marcador+contagem — qualquer outro valor é literal. `GraphosNative_SaveLay`/`LoadLay`.
+
+**.SCR (tela completa)** — cabeçalho BSAVE + uma **rotina de apresentação Z80 de verdade** (copia os
+dados pra VRAM quando o MSX executa `BLOAD"nome",R`) + 6144 bytes de padrão + 6144 de cor, em ordem real
+de VRAM. Comparando várias amostras reais (`graphos-IV/III/*.SCR`, `graphos/Telas/MSX_310/*.SCR`)
+descobriu-se que o tamanho dessa rotina **varia** entre arquivos (129 bytes numas, 121 noutras — parecem
+programas ligeiramente diferentes, um deles com texto legível tipo "COMPACTA"/"IMPR" embutido, ainda não
+decodificado a fundo) — por isso `GraphosNative_LoadScr` **nunca** confia no endereço-fim do cabeçalho
+pra saber quantos bytes pular; calcula a partir do **tamanho real do arquivo em disco**
+(`TamanhoArquivo - 7 - 12288`), já que os últimos 12288 bytes são sempre padrão+cor de tamanho fixo. A
+rotina é sempre descartada sem ser interpretada (nunca executamos Z80 nenhum, só pulamos os bytes). Ao
+exportar, gravamos sempre uma rotina de 129 bytes verificada byte a byte contra `graphos-IV/III/
+GRAPHOS.SCR`/`STARWARS.SCR` (funciona de verdade num MSX real via `BLOAD"nome",R`), embutida com
+`DataSection`/`Data.b` (mesmo padrão já usado por `DefaultCharsetMsx.pbi`).
+
+**.SHP (banco de shapes)** — sem cabeçalho BSAVE, estrutura própria de blocos
+`[K=número][T=tipo 1-4][S=largura em px][H=altura em tiles][dados]` terminada por `$FF`; tipos:
+1=padrão, 2=padrão+cor, 3=máscara+padrão, 4=máscara+padrão+cor. `GraphosNative_ScanShpFile` mapeia todos
+os blocos de um banco (offset/número/tipo/tamanho, sem ler a imagem) pra uma `List
+GraphosNative_ShpEntry()`; `GraphosNative_LoadShapeAt` lê um shape específico já localizado.
+Exportação (`GraphosNative_SaveShp`) sempre grava tipo 2 (padrão+cor, sem máscara — o carimbo MÁSCARA/
+AND/OR/XOR da Fase 7 já cobre o uso prático) como banco de **um único shape**; a altura é arredondada
+pra cima pro múltiplo de 8 mais próximo (tiles inteiros), já que a captura de shape desta IDE (Fase 5)
+permite alturas em pixels não-múltiplas de 8. Importação de tipos 3/4 lê e descarta a máscara (nenhuma
+ferramenta desta IDE usa máscara de shape ainda).
+
+**UI**: dado o pouco espaço horizontal sobrando nas 3 barras de projeto (Tela/Layout/Shape — a barra já
+termina a ~24-39px da borda da coluna direita, ver histórico de regressão de layout na Fase 5), em vez de
+adicionar 2 botões de ícone por barra (não cabia), foi adicionado **1** botão por barra (ícone de
+disquete, reaproveitando `GraphosScr_CreateSaveIcon`) que abre um `CreatePopupMenu`/`DisplayPopupMenu`
+com "Importar.../Exportar..." — a seleção chega de forma assíncrona como `#PB_Event_Menu` no laço de
+eventos principal (`DisplayPopupMenu` não bloqueia nem retorna a escolha diretamente), tratada num novo
+`Case #PB_Event_Menu` com IDs 1-6 (2 por barra) pra desambiguar de qual das 3 barras a seleção veio, já
+que os 3 popups compartilham o mesmo laço de eventos. Importação de Tela é "tudo" (pixels + cores);
+importação de Layout mantém as cores atuais da tela (só pixels, mesma filosofia já usada pela navegação
+de Layout no projeto - Fase 5); importação de Shape com mais de 1 entrada no banco pede o número (K) via
+`InputRequester`.
+
+**Verificação**: harness `editor/tools/GraphosNativeIOTestCli.pb` — round-trip completo (importa arquivo
+real → exporta → reimporta → compara bit a bit) contra amostras reais já presentes no repositório
+(`graphos/Layout/MSX_327/AFIF1.LAY`, `graphos/Telas/MSX_310/S-SHP01.SCR`,
+`graphos/Shapes/MSX_092/PC-1.SHP`) — 24/24 checks OK, incluindo 0 diffs em todos os round-trips.
+Cross-validado independentemente com um decodificador Python ad-hoc (fórmula de endereçamento VRAM +
+RLE) que confirma visualmente (dump ASCII) uma imagem coerente, não ruído. Compilação limpa
+(`.\build.ps1`) na primeira tentativa. Mesma limitação de automação de clique ao vivo das fases
+anteriores para a parte de UI (popup/file requesters) — verificado por revisão cuidadosa da lógica de
+posicionamento (linha do botão termina em X≈539, RightX=547) e pela bateria de testes do codec em si.
+
+**Continua de fora** (simplificações deliberadas, sem mudança de escopo): a rotina de apresentação
+"COMPACTA"/121-byte encontrada em alguns `.SCR` reais não foi decodificada a fundo (só descartada com
+segurança no import); máscara de shape (tipos 3/4) é lida mas ignorada, sem ferramenta nesta IDE que a
+use ainda; importação de banco `.SHP` com múltiplos shapes só carrega 1 por vez (sem uma lista/prévia de
+todos os shapes do banco).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -1473,6 +1876,26 @@ alfabetos).
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-25 (mesma sessão, o mais recente — ver módulo 14 acima pro detalhe completo
+de cada fase) — Graphos III completo (Fases 1-7 e 9) + revert da Fase 8 + correção de nome de aba
+"noname"**: nesta única sessão maratona, todo o **Graphos III** (`editor/GraphosScreenGui.pbi`) foi
+implementado partindo do zero (Fase 1: tela+color clash) até cobrir os 5 menus do original
+(DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA, Fases 2-7) **mais** persistência no projeto (Fase 5:
+Telas/Layouts/Shapes em `ProjectDB.pbi`) **mais** os formatos de arquivo nativos do MSX de verdade
+(Fase 9: `.ALF`/`.LAY`/`.SCR`/`.SHP`, novo `editor/GraphosNativeIO.pbi` + harness
+`editor/tools/GraphosNativeIOTestCli.pb`, 24/24 checks OK contra arquivos reais já presentes no
+repositório). A única tentativa revertida foi a Fase 8 (cursor de teclado dentro do canvas — usuário
+testou e achou desnecessário com o mouse já disponível, removido por completo, ver seção 14h). Fora do
+Graphos III, uma correção pontual no editor de texto principal: as abas "noname" de documentos novos
+não tinham extensão nenhuma no nome (`Docs()\UntitledName`); passaram a incluir a extensão real do modo
+(`noname1.dmx`, `noname2.dmx`, ... ou `.asm` pra Assembly), evitando duplicar a extensão no diálogo
+"Salvar como" (`editor/BadigEditor.pb`, procedures `AddDocumentTab`/`SaveDocument`). Versão embutida no
+executável: **`7.5.12`**. **Importante para retomar em outra máquina**: das fases desta sessão, só as
+Fases 1-3 estão commitadas (`8f1ce92`/`8797ad5`/`b483acf`) — Fases 4-9 e a correção do "noname" estavam
+**sem commit** no fim desta sessão, nenhum `git commit`/`push` foi feito (por instrução padrão do
+projeto, só commitar quando pedido explicitamente). Ver `docs/resumo-graphos.md` pra um resumo dedicado
+dessa frente de trabalho, incluindo o que falta e como reproduzir os testes.
 
 **Estado ao fim de 2026-07-25 (quarta sessão) — Graphos III, Fase 1 (tela + color clash)**: pedido
 explícito do usuário para replicar o Graphos III (manual lido de `graphos/graphos.txt`), começando

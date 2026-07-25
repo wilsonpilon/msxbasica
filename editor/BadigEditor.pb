@@ -52,6 +52,7 @@ XIncludeFile "MmlSynth.pbi"
 XIncludeFile "MmlEditorGui.pbi"
 XIncludeFile "Screen2Synth.pbi"
 XIncludeFile "Screen2EditorGui.pbi"
+XIncludeFile "GraphosNativeIO.pbi"
 XIncludeFile "GraphosScreenGui.pbi"
 XIncludeFile "Z80Link.pbi"
 XIncludeFile "Z80Lib.pbi"
@@ -400,7 +401,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.5.3"
+  #App_Version = "7.5.12"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -1413,7 +1414,11 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
 
   If Path = ""
     UntitledCount + 1
-    Docs()\UntitledName = "noname" + Str(UntitledCount)
+    Protected UntitledExt.s = ".dmx"
+    If DocMode = "ASM"
+      UntitledExt = ".asm"
+    EndIf
+    Docs()\UntitledName = "noname" + Str(UntitledCount) + UntitledExt
   EndIf
 
   If Content <> ""
@@ -1672,17 +1677,15 @@ Procedure.b SaveDocument(SaveAs.b = #False)
   EndIf
 
   Protected Path.s = Docs()\Path
-  Protected DefaultExt.s = ".dmx"
   Protected Pattern.s = #File_Pattern
   If Docs()\Mode = "ASM"
-    DefaultExt = ".asm"
     Pattern = #File_Pattern_ASM
   EndIf
 
   If SaveAs Or Path = ""
     Protected Suggestion.s = Path
     If Suggestion = ""
-      Suggestion = Docs()\UntitledName + DefaultExt
+      Suggestion = Docs()\UntitledName
     EndIf
     Protected NewPath.s = SaveFileRequester("Salvar como", Suggestion, Pattern, 0)
     If NewPath = ""
@@ -1813,6 +1816,43 @@ Procedure App_ApplyWindowIcon(WinNum)
   EndIf
   If App_IconSmall
     SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_SMALL, App_IconSmall)
+  EndIf
+EndProcedure
+
+; Garante que o projeto ativo sempre tenha um alfabeto marcado com a tag
+; "padrao" - pedido explicito do usuario pra que o Graphos III (menu TEXTO,
+; GraphosScreenGui.pbi) e qualquer outro consumidor futuro sempre encontrem
+; um alfabeto pronto pra usar, sem precisar que o usuario passe primeiro por
+; "Criar -> Alfabeto Graphos III..." e registre um manualmente. So cria um
+; alfabeto novo se NENHUM dos ja registrados tiver essa tag (percorre e
+; confere via LastAlphabetTag() apos cada FetchAlphabet - nao ha indice por
+; tag no schema); se ja existir um "padrao" (por exemplo, projeto salvo por
+; uma sessao anterior), nao mexe em nada. O conteudo semeado e' o mesmo
+; charset MSX embutido no executavel que "Novo alfabeto" ja usa
+; (ProjectDB::FetchDefaultAlphabet(0, ...), ver DefaultCharsetMsx.pbi) -
+; nenhum dado novo, so reaproveitado.
+Procedure App_EnsureDefaultAlphabet()
+  NewList Nums.i()
+  ProjectDB::ListAlphabetNumbers(Nums())
+  Protected Found.b = #False
+  Dim ExistingBytes.a(255, 7)
+  ForEach Nums()
+    ProjectDB::FetchAlphabet(Nums(), ExistingBytes())
+    If LCase(ProjectDB::LastAlphabetTag()) = "padrao"
+      Found = #True
+      Break
+    EndIf
+  Next
+  If Not Found
+    Protected NextNum.i = 0
+    If ListSize(Nums()) > 0
+      LastElement(Nums())
+      NextNum = Nums() + 1
+    EndIf
+    Dim DefaultBytes.a(255, 7)
+    If ProjectDB::FetchDefaultAlphabet(0, DefaultBytes())
+      ProjectDB::StoreAlphabet(NextNum, "padrao", DefaultBytes())
+    EndIf
   EndIf
 EndProcedure
 
@@ -2480,6 +2520,7 @@ BadigCfg_Load()
 ; nao forca a criacao do projeto implicito.
 If CountProgramParameters() = 0
   ProjectDB::EnsureOpen()
+  App_EnsureDefaultAlphabet()
 EndIf
 
 App_CloseSplash()

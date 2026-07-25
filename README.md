@@ -687,6 +687,181 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   editor ainda não gera código BASIC, só framebuffer). Botão direito cancela o posicionamento pendente;
   trocar de ferramenta DESENHO também cancela. Versão embutida no executável atualizada para `7.5.3`.
 
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 4 (menu TELA) + reorganização de layout + alfabeto
+  padrão**: três pedidos explícitos do usuário na mesma mensagem.
+  - **Menu TELA (F3)** completo (exceto IMPRIME TELA, sem suporte a impressora nesta IDE):
+    **SALVA TELA**/**Restaurar** (backup/restauração da tela inteira — pixels + Tinta + Fundo — num
+    buffer dedicado), **INVERTE VIDEO** (inverte cada pixel sem mexer em cor), **INVERTE ATRIBUTOS**
+    (troca Tinta/Fundo de toda a tela sem mexer em pixel), **RETIRA VIDEO**/**REPOE VIDEO** (apaga os
+    pixels guardando-os num buffer, e devolve) e **RETIRA ATRIBUTOS**/**REPOE ATRIBUTOS** (idem só para
+    as cores — a tela fica só com os pixels setados à vista, cor branco/preto padrão, até repor).
+    LIMPA TELA (já existia desde a Fase 1) passou a viver nessa mesma grade de ícones. Cada par
+    RETIRA/REPOE usa seu próprio slot de backup independente (vídeo/atributos/tela inteira) em vez do
+    "buffer único, sempre atualizado a cada operação" do Graphos III original (isso exigiria um undo
+    geral pra qualquer ação da janela — fora de escopo aqui).
+  - **Reorganização de layout**: a coluna direita estava crescendo demais a cada fase (chegou a ~800px
+    de altura) enquanto a área abaixo do canvas ficava vazia. BLOCO (Largura×Altura) e TEXTO
+    (alfabeto/estilo/string/Posicionar) — controles de texto, mais naturais na horizontal — desceram
+    pra uma faixa abaixo do canvas, ao lado do botão Fechar; as duas grades de ferramentas (DESENHO e
+    a nova TELA) passaram de 3 para 5 ícones por linha, cortando uma linha de cada. Resultado: janela
+    bem mais baixa e equilibrada entre canvas e coluna direita.
+  - **Ícones em todo botão de ação** (pedido explícito — nada mais só-texto): **RETIRA**/**REPOE**
+    (vídeo e atributos, 4 botões) compartilham um único gerador parametrizado
+    (`GraphosScr_CreateRetiraRepoeIcon`, xadrez preto/branco = vídeo, laranja sólido = atributos, seta
+    pra cima = retira, pra baixo = repõe) em vez de 4 ícones quase-idênticos; **SALVA TELA** ganhou um
+    ícone de disquete, **Restaurar** uma seta circular de undo, **INVERTE VIDEO**/**INVERTE ATRIBUTOS**
+    ícones próprios (quadrado dividido preto/branco; dois retalhos de cor com setas opostas).
+  - **Alfabeto padrão automático**: `editor/BadigEditor.pb` ganhou `App_EnsureDefaultAlphabet()`,
+    chamada uma vez no arranque da IDE (junto com `ProjectDB::EnsureOpen()`) — garante que o projeto
+    ativo sempre tenha um alfabeto com a tag **"padrao"** (semeado do mesmo charset MSX embutido que
+    "Novo alfabeto" já usa, `ProjectDB::FetchDefaultAlphabet(0, ...)`), pra este editor (menu TEXTO) e
+    qualquer outro consumidor futuro sempre terem um alfabeto pronto sem passar por **Criar → Alfabeto
+    Graphos III...** primeiro. Só cria um novo se nenhum dos já registrados tiver essa tag — não mexe
+    em projetos que já têm um "padrao" salvo por uma sessão anterior. Versão embutida no executável
+    atualizada para `7.5.4`.
+
+- **2026-07-25 (mesma sessão) — Graphos III: ajuste fino de layout**: dois pedidos explícitos do
+  usuário sobre a Fase 4. **BLOCO** (Largura×Altura) voltou pra coluna direita, logo abaixo da grade
+  **Ferramenta (DESENHO)** — fica junto da ferramenta que ele configura, em vez de longe dela na faixa
+  abaixo do canvas. **TEXTO** passou a ser uma linha por opção (Alfabeto, Estilo, Texto, Posicionar —
+  cada um com seu próprio label + campo), em vez de tudo espremido lado a lado numa única linha.
+  Versão embutida no executável atualizada para `7.5.5`.
+
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 5: persistência no projeto (Telas/Layouts/Shapes)**:
+  pedido explícito do usuário — "colocar os trabalhos do Graphos no arquivo de Projeto também. Telas,
+  shapes, layouts... menu similar aos outros onde o usuário pode nomear a tela/shape/layout, adicionar
+  novos, registrar, avançar para o próximo, retroceder, ir para o primeiro e para o último". Três
+  tabelas novas em `ProjectDB.pbi` (`graphos_screens`/`graphos_layouts`/`graphos_shapes` —
+  **diferentes** da tabela `screens` já existente do editor "Draw Screen 2..." módulo 5, que guarda
+  lista de comandos em vez de framebuffer), cada uma com o mesmo padrão número/navegação/tag/Novo/
+  Registrar já usado pelo editor de sprites/alfabetos (reaproveita `CharEd_CreateNavIcon`/`NewIcon`/
+  `RegisterIcon`/`SpriteEd_FindNavTarget` sem nenhuma mudança):
+  - **TELA** e **LAYOUT** compartilham o mesmo canvas em edição e a mesma flag de "não registrado" —
+    são 2 formatos de salvar o mesmo framebuffer (TELA = pixels + cores; LAYOUT = só pixels,
+    equivalente ao `.LAY` original), não 2 documentos independentes. Confirmação antes de descartar
+    alterações não registradas, mesmo padrão do editor de alfabetos.
+  - **SHAPE** é um recorte retangular de tamanho **variável**, buffer próprio e independente do canvas
+    principal — **Marcar área...** arma um modo de 2 cliques igual ao RETANGULO (mesma prévia elástica)
+    que captura o recorte marcado do canvas pro buffer do shape. O eixo X da seleção é sempre alinhado
+    ao grid de 8px antes de capturar, garantindo que cada célula de cor local do shape corresponda a
+    uma célula inteira da tela de origem sem precisar reamostrar cor nenhuma. Uma prévia em miniatura
+    (escalada pra caber numa caixa fixa) mostra o recorte capturado.
+  - Pattern/Color são empacotados 1 byte por célula de 8 pixels (mesmo layout lógico da Pattern/Color
+    Table de verdade do TMS9918 — INK no nibble alto, PAPER no nibble baixo), hex-codificados 2 dígitos
+    por byte, mesmo padrão já usado por `StoreAlphabet`.
+  - Deliberadamente fora: escolha de máscara/tipo do SHAPE (isso é CRIA SHAPES de verdade, seção 3.8 do
+    manual — fica pro carimbo AND/OR/XOR de MISCELÂNEA, fase futura) e os formatos de arquivo nativos
+    `.SCR`/`.LAY`/`.VTC`+`.ATC` em disco (a persistência desta fase é só no banco SQLite do projeto).
+  Versão embutida no executável atualizada para `7.5.6`.
+
+- **2026-07-25 (mesma sessão) — correção de layout: barras de Tela/Shape colidindo com a coluna
+  direita**: pedido explícito do usuário — o botão "Marcar área..." e a prévia do Shape apareciam por
+  cima do fim da coluna direita (grade TELA (F3)/status). Causa: a faixa abaixo do canvas (onde ficam
+  as barras de projeto Tela/Layout/Shape) estava ancorada só em "fundo do canvas", mas a coluna direita
+  é bem mais alta que o canvas sozinho (paleta + DESENHO + BLOCO + Modo + TELA + status) — a barra do
+  Shape, que se estende bastante pra direita até a prévia, caía numa faixa Y que a coluna direita ainda
+  ocupava. Corrigido ancorando a faixa abaixo do canvas no que for mais baixo entre "fundo do canvas" e
+  "fundo da coluna direita". Versão embutida no executável atualizada para `7.5.7`.
+
+- **2026-07-25 (mesma sessão) — refinamento de layout: janela alta demais + INK/PAPER lado a lado**:
+  pedido explícito do usuário — a correção da `7.5.7` (ancorar a faixa abaixo do canvas no fim da coluna
+  direita) resolvia a colisão mas deixava a janela ocupando quase toda a altura da tela, com muito
+  espaço não aproveitado. Causa raiz real: a barra do Shape só colidia com a coluna direita porque
+  **"Marcar área..." + a prévia se estendiam demais em X** (até quase encostar em `RightX`) — não porque
+  a faixa abaixo do canvas precisasse ficar mais baixa. Correção definitiva: **"Marcar área..." e a
+  prévia do Shape ganharam linha própria**, abaixo dos 3 navegadores (Tela/Layout/Shape) — bem mais
+  estreita, nunca chega perto da coluna direita — e a faixa abaixo do canvas voltou a ficar ancorada
+  logo após o fim do canvas (não mais no fim da coluna direita), subindo tudo de volta pra perto do
+  canvas. Aproveitado também: **INK e PAPER lado a lado** em vez de empilhados, economizando uma faixa
+  inteira (72px) de altura na coluna direita. Versão embutida no executável atualizada para `7.5.8`.
+
+- **2026-07-25 (mesma sessão) — correção: prévia do Shape ainda sobrepondo os navegadores**: pedido
+  explícito do usuário — a linha nova de "Marcar área.../prévia" (`7.5.8`) ainda encostava nos botões de
+  navegação da barra do Shape logo acima. Causa: a prévia (70px de altura) estava deslocada 22px pra
+  cima da sua própria linha (tentativa de centralizar com o botão, mais baixo), o que a empurrava de
+  volta pra dentro da faixa Y que os ícones de navegação ainda ocupavam. Corrigido alinhando o topo da
+  prévia com o topo da linha (sem deslocamento negativo) e aumentando a margem entre a barra de
+  navegação do Shape e a linha de baixo. Versão embutida no executável atualizada para `7.5.9`.
+
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 6: menu AJUSTE (F4)**: pedido explícito do usuário —
+  "scroll pixel a pixel nas 4 direções e scroll de 8 pixels por vez... mais duas opções de rotacionar
+  pixel a pixel e 8 pixels por vez". Implementa as 4 operações do manual original em
+  `editor/GraphosScreenGui.pbi`:
+  - **SCROLL** (1px) — desloca só o **vídeo** (`PatternBit`), a parte que sai da tela é perdida.
+  - **SCROLL 8x8** — desloca vídeo **e** atributos juntos (8 pixels/1 célula de cor), a área vazia é
+    preenchida com as cores Tinta/Fundo atuais.
+  - **ROTAÇÃO** (1px) — igual ao SCROLL, mas a parte que sai **reentra pelo lado oposto** (wraparound),
+    sem perder nada.
+  - **ROTAÇÃO 8x8** — idem, vídeo e atributos juntos, com wraparound.
+  "Vídeo" vs "atributos" segue a mesma distinção já usada por INVERTE VIDEO/INVERTE ATRIBUTOS (Fase 4).
+  UI: dois alternadores independentes (**passo** 1px/8px; **modo** SCROLL/ROTAÇÃO) + 4 setas de direção
+  — ação única, aplicam a combinação passo+modo atual na hora do clique, sem precisar de "Registrar".
+  Ícones das setas reaproveitam `CharEd_DrawFilledHTri`/`VTri` (já usados pelo editor de alfabetos, ver
+  módulo 4c) em vez de desenhar triângulos do zero; o ícone do modo SCROLL reaproveita
+  `CharEd_CreateNavIcon` com `WithBar=#True` (a "parede" no fim da seta já existia pra Primeiro/Último).
+  Versão embutida no executável atualizada para `7.5.10`.
+
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 7: menu MISCELÂNEA (F5)**: pedido explícito do
+  usuário — "Zoom, Shape, Corte, Grid". As 4 ferramentas avançadas do manual original em
+  `editor/GraphosScreenGui.pbi`:
+  - **GRID** — no original altera de verdade a cor de PAPER de toda a tela pra desenhar uma malha
+    (destrutivo, limitação de hardware de 1987); aqui é um **overlay não destrutivo** (linhas finas
+    desenhadas por cima do canvas a cada redesenho, nunca gravadas em `PatternBit`/`RowFG`/`RowBG`) —
+    mais seguro e no espírito de "mostrar/esconder grade" de qualquer editor gráfico moderno. Precisou
+    de um redesenho "completo" novo (`GraphosScr_RedrawCanvasFull`) que substitui as 31 chamadas
+    diretas a `Scr2Ed_RedrawCanvas` espalhadas pelo arquivo — senão o overlay ficaria desatualizado a
+    cada operação de desenho.
+  - **CORTE** — marca um retângulo (2 cliques, sem alinhamento de 8px — só mexe em pixels, nunca em
+    cor, fiel ao manual) + **Inverter**/**Espelhar horizontal**/**Espelhar vertical**, aplicados direto
+    no recorte marcado. Sem o "teclas do cursor deslocam o corte" do original (arrastar uma seleção
+    flutuante) — mesma simplificação já usada em TEXTO/SHAPE (clique fixa, sem arrastar-e-confirmar).
+  - **SHAPE (carimbo)** — usa o shape **já carregado na barra de projeto Shape** (Fase 5), nenhuma UI de
+    seleção nova. **MÁSCARA** cola pixels e cores (substitui tudo); **AND**/**OR**/**XOR** são lógica só
+    no bit do pixel (fiel ao manual: "embora os atributos não sejam alterados") — os ícones dos 4 modos
+    mostram 2 quadrados sobrepostos (shape/tela) com a região logicamente colorida de cada operação.
+    Posicionamento no mesmo padrão "Posicionar → prévia segue o mouse → clique fixa" de TEXTO.
+  - **ZOOM** — reinterpretação simplificada (o original tinha 3 quadros TELA/INK/PAPER e modos A/S/R
+    por tecla) — marca uma região (2 cliques) e abre uma **janela à parte** com edição ampliada
+    (Lápis/Borracha, INK/PAPER herdados da janela principal), escrevendo **direto** nos mesmos arrays
+    da janela principal (arrays passados por referência no PureBasic) — fechar o Zoom só precisa de 1
+    redesenho pra refletir as edições, sem nenhuma cópia/aplicação de volta.
+  Versão embutida no executável atualizada para `7.5.11`.
+
+- **2026-07-25 (mesma sessão) — Graphos III, Fase 9: formatos de arquivo nativos (.ALF/.LAY/.SCR/.SHP)**:
+  pedido explícito do usuário — entender os formatos que o Graphos III de verdade grava em disco (usando
+  os visualizadores Python de referência `alphabetV.py`/`layoutV.py`/`screenV.py`/`shapeV_2.py`) e permitir
+  importar/exportar telas, layouts e shapes nesse formato, além da persistência já existente no projeto
+  (Fase 5). Novo `editor/GraphosNativeIO.pbi`:
+  - **.ALF** não precisou de nada novo (já correto em `CharsetEditorGui.pbi`).
+  - **.LAY** (só padrão/pixels) — RLE restrito (só `$00`/`$FF` viram par marcador+contagem) com
+    deslocamento `+$99` em todo byte gravado.
+  - **.SCR** (tela completa) — cabeçalho BSAVE + uma rotina de apresentação Z80 de verdade (roda no MSX
+    via `BLOAD"nome",R`) + padrão + cor em ordem real de VRAM (3 "terços" × 256 tiles de 8×8). Comparando
+    várias amostras reais descobriu-se que essa rotina **varia de tamanho** entre arquivos (129 ou 121
+    bytes) — por isso a importação calcula o tamanho a partir do **arquivo real em disco**, nunca do
+    cabeçalho, e descarta a rotina sem interpretá-la; a exportação grava uma rotina de 129 bytes
+    verificada byte a byte contra amostras reais (`GRAPHOS.SCR`/`STARWARS.SCR`).
+  - **.SHP** (banco de shapes) — blocos `[número][tipo][largura][altura em tiles][dados]` terminados por
+    `$FF`; importação lê qualquer um dos 4 tipos (máscara é lida e descartada, ainda sem uso nesta IDE);
+    exportação sempre grava tipo padrão+cor, um shape por banco.
+  - **UI**: 1 botão por barra de projeto (Tela/Layout/Shape — ícone de disquete, sem espaço pra 2 ícones
+    separados) abre um menu popup **Importar.../Exportar...** (`CreatePopupMenu`/`DisplayPopupMenu`,
+    seleção tratada de forma assíncrona via `#PB_Event_Menu`).
+  - Verificado com um novo harness `editor/tools/GraphosNativeIOTestCli.pb`: round-trip completo
+    (importa arquivo real → exporta → reimporta → compara bit a bit) contra amostras já presentes no
+    repositório, 24/24 checks OK. Cross-validado independentemente com um decodificador Python ad-hoc.
+  Versão embutida no executável atualizada para `7.5.12`.
+
+- **2026-07-25 (mesma sessão) — correção: abas "noname" sem extensão**: pedido explícito do usuário —
+  as abas de documento novo apareciam como `noname1`/`noname2`/... sem nenhuma extensão. Passaram a
+  mostrar a extensão real do modo (`noname1.dmx`, `noname2.dmx`, ... ou `.asm` pra Assembly — `.dmx` e
+  não `.bas` pra bater com o que **Salvar** de fato grava, formato Dignified já documentado no módulo 3).
+  `editor/BadigEditor.pb`: `Docs()\UntitledName` passou a incluir a extensão (`AddDocumentTab`); a
+  sugestão de "Salvar como" (`SaveDocument`) parou de concatenar a extensão de novo em cima (evitava
+  duplicar, ex.: `noname1.dmx.dmx`) — os outros 6 pontos que sugerem nome pra exportação (ASCII/
+  tokenizado/objeto relocável/etc.) já extraiam o nome base antes de anexar sua própria extensão, então
+  não precisaram de nenhuma mudança.
+
 ## Ferramentas e ambiente
 
 Projeto desenvolvido com:

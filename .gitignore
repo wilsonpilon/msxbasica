@@ -8,6 +8,13 @@
 # Z80 (modulo 2, ver docs/SPEC.md), nao dependencia de runtime.
 /nestor80/
 
+# Copia local do Graphos IV (Python) - referencia de leitura dos formatos
+# nativos do Graphos III (.ALF/.LAY/.SCR/.SHP), incluindo os viewers
+# alphabetV.py/layoutV.py/screenV.py/shapeV_2.py e as fontes Pascal originais
+# de CyberKnight (readers/*.pas, g3viewer.doc) - especificacao de formato a
+# portar nativamente pro modulo 14 (Graphos III), nao dependencia de runtime.
+/graphos-IV/
+
 # Cache local de fontes (nao faz parte do projeto) - exceto Source Code Pro,
 # que e sincronizada com o GitHub (fonte usada/testada pelo editor).
 /fonts/*

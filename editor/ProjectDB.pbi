@@ -101,6 +101,46 @@ DeclareModule ProjectDB
   Declare.i HasScreen(Number.i)
   Declare ListScreenNumbers(List Numbers.i())
 
+  ; Graphos III (modulo 14, GraphosScreenGui.pbi) guarda 3 tipos de conteudo,
+  ; cada um um FRAMEBUFFER puro (nao lista de comandos como "screens" acima,
+  ; que pertence ao editor "Draw Screen 2..." do modulo 5 - tabelas
+  ; separadas de proposito, formatos incompativeis): TELA (pixels + Tinta/
+  ; Fundo por faixa, igual ao framebuffer PatternBit/RowFG/RowBG do editor),
+  ; LAYOUT (so pixels, sem cor - equivalente ao .LAY do Graphos III
+  ; original) e SHAPE (recorte retangular de tamanho VARIAVEL, igual ao
+  ; CRIA SHAPES do original, sem a escolha de mascara/tipo ainda - isso fica
+  ; pro carimbo em MISCELANEA, fase futura). Pattern/Color sao empacotados 1
+  ; byte por celula de 8 pixels (mesmo layout logico da Pattern/Color Table
+  ; de verdade do TMS9918 - byte de cor com INK no nibble alto e PAPER no
+  ; nibble baixo), hex-codificados 2 digitos por byte, mesmo padrao ja usado
+  ; por StoreAlphabet acima. Como este arquivo compila ANTES de
+  ; Screen2Synth.pbi (ordem de XIncludeFile em BadigEditor.pb), os limites
+  ; 256/192/32 sao literais aqui, nao #Scr2_Width/Height/Cols - mesmo motivo
+  ; de StoreAlphabet hardcodar 256/8 em vez de uma constante externa.
+  Declare.i StoreGraphosScreen(Number.i, Tag.s, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+  Declare.i FetchGraphosScreen(Number.i, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+  Declare.s LastGraphosScreenTag()
+  Declare.i HasGraphosScreen(Number.i)
+  Declare ListGraphosScreenNumbers(List Numbers.i())
+
+  Declare.i StoreGraphosLayout(Number.i, Tag.s, Array PatternBit.a(2))
+  Declare.i FetchGraphosLayout(Number.i, Array PatternBit.a(2))
+  Declare.s LastGraphosLayoutTag()
+  Declare.i HasGraphosLayout(Number.i)
+  Declare ListGraphosLayoutNumbers(List Numbers.i())
+
+  ; Width/Height variam por shape (recorte retangular do tamanho que o
+  ; usuario marcou no canvas) - PatternBit()/RowFG()/RowBG() do chamador sao
+  ; sempre dimensionados no tamanho MAXIMO do canvas (igual Tela/Layout);
+  ; Store/Fetch so leem/escrevem a sub-regiao [0..Height-1, 0..Width-1].
+  Declare.i StoreGraphosShape(Number.i, Tag.s, Width.i, Height.i, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+  Declare.i FetchGraphosShape(Number.i, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+  Declare.s LastGraphosShapeTag()
+  Declare.i LastGraphosShapeWidth()
+  Declare.i LastGraphosShapeHeight()
+  Declare.i HasGraphosShape(Number.i)
+  Declare ListGraphosShapeNumbers(List Numbers.i())
+
   ; Metadado da ULTIMA exportacao de binario feita a partir do assembler Z80
   ; (modulo 2/2b, ver editor/Z80Asm.pbi/Z80Link.pbi) - montagem absoluta de
   ; uma aba .asm (BuildKind="ABS") ou binario final de uma sessao de link
@@ -177,6 +217,11 @@ Module ProjectDB
   Global FetchedSongTag.s = ""
   Global FetchedScreenTag.s = ""
   Global FetchedScreenCommandsText.s = ""
+  Global FetchedGraphosScreenTag.s = ""
+  Global FetchedGraphosLayoutTag.s = ""
+  Global FetchedGraphosShapeTag.s = ""
+  Global FetchedGraphosShapeWidth.i = 0
+  Global FetchedGraphosShapeHeight.i = 0
   Global FetchedAsmBuildKind.s = ""
   Global FetchedAsmBuildOutputKind.s = ""
   Global FetchedAsmBuildOutputPath.s = ""
@@ -226,6 +271,25 @@ Module ProjectDB
                          "screen_number INTEGER PRIMARY KEY, " +
                          "tag TEXT, " +
                          "commands_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS graphos_screens (" +
+                         "screen_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "pattern_data TEXT NOT NULL, " +
+                         "color_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS graphos_layouts (" +
+                         "layout_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "pattern_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS graphos_shapes (" +
+                         "shape_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "width INTEGER NOT NULL, " +
+                         "height INTEGER NOT NULL, " +
+                         "pattern_data TEXT NOT NULL, " +
+                         "color_data TEXT NOT NULL, " +
                          "updated_at TEXT)")
     DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS asm_builds (" +
                          "source_key TEXT PRIMARY KEY, " +
@@ -400,6 +464,9 @@ Module ProjectDB
                            "(SELECT COUNT(*) FROM psg_sounds) + " +
                            "(SELECT COUNT(*) FROM mml_songs) + " +
                            "(SELECT COUNT(*) FROM screens) + " +
+                           "(SELECT COUNT(*) FROM graphos_screens) + " +
+                           "(SELECT COUNT(*) FROM graphos_layouts) + " +
+                           "(SELECT COUNT(*) FROM graphos_shapes) + " +
                            "(SELECT COUNT(*) FROM asm_subprojects)")
       If NextDatabaseRow(#DB)
         Count = Val(GetDatabaseString(#DB, 0))
@@ -957,6 +1024,305 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT screen_number FROM screens ORDER BY screen_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; --- Graphos III (modulo 14) - Telas/Layouts/Shapes, ver comentario grande
+  ; na declaracao no topo do arquivo. Pattern: 1 bit por pixel (bit 7-Col do
+  ; byte, mesma convencao de StoreAlphabet/CharEd_PackChar). Color: 1 byte
+  ; por celula de 8 pixels, INK no nibble alto/PAPER no nibble baixo (layout
+  ; logico da Color Table de verdade do TMS9918).
+
+  Procedure.i StoreGraphosScreen(Number.i, Tag.s, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Y, Cx, Bit, X, ByteVal.a
+    Protected PatternHex.s = "", ColorHex.s = ""
+    For Y = 0 To 191
+      For Cx = 0 To 31
+        ByteVal = 0
+        For Bit = 0 To 7
+          X = Cx * 8 + Bit
+          If PatternBit(Y, X)
+            ByteVal | (1 << (7 - Bit))
+          EndIf
+        Next
+        PatternHex + RSet(Hex(ByteVal), 2, "0")
+        ByteVal = ((RowFG(Y, Cx) & $F) << 4) | (RowBG(Y, Cx) & $F)
+        ColorHex + RSet(Hex(ByteVal), 2, "0")
+      Next
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    DatabaseUpdate(#DB, "DELETE FROM graphos_screens WHERE screen_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO graphos_screens (screen_number, tag, pattern_data, color_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', '" + PatternHex + "', '" + ColorHex + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  Procedure.i FetchGraphosScreen(Number.i, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, pattern_data, color_data FROM graphos_screens WHERE screen_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedGraphosScreenTag = GetDatabaseString(#DB, 0)
+        Protected PatternHex.s = GetDatabaseString(#DB, 1)
+        Protected ColorHex.s = GetDatabaseString(#DB, 2)
+        Protected Y, Cx, Bit, X, ByteVal.a, Idx = 0
+        For Y = 0 To 191
+          For Cx = 0 To 31
+            ByteVal = Val("$" + Mid(PatternHex, Idx * 2 + 1, 2))
+            For Bit = 0 To 7
+              X = Cx * 8 + Bit
+              If ByteVal & (1 << (7 - Bit))
+                PatternBit(Y, X) = 1
+              Else
+                PatternBit(Y, X) = 0
+              EndIf
+            Next
+            ByteVal = Val("$" + Mid(ColorHex, Idx * 2 + 1, 2))
+            RowFG(Y, Cx) = (ByteVal >> 4) & $F
+            RowBG(Y, Cx) = ByteVal & $F
+            Idx + 1
+          Next
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastGraphosScreenTag()
+    ProcedureReturn FetchedGraphosScreenTag
+  EndProcedure
+
+  Procedure.i HasGraphosScreen(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM graphos_screens WHERE screen_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListGraphosScreenNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+    If DatabaseQuery(#DB, "SELECT screen_number FROM graphos_screens ORDER BY screen_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; LAYOUT: so o pixel (PatternBit) - sem cor nenhuma, equivalente ao .LAY
+  ; do Graphos III original ("so o video sem atributos").
+  Procedure.i StoreGraphosLayout(Number.i, Tag.s, Array PatternBit.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Y, Cx, Bit, X, ByteVal.a
+    Protected PatternHex.s = ""
+    For Y = 0 To 191
+      For Cx = 0 To 31
+        ByteVal = 0
+        For Bit = 0 To 7
+          X = Cx * 8 + Bit
+          If PatternBit(Y, X)
+            ByteVal | (1 << (7 - Bit))
+          EndIf
+        Next
+        PatternHex + RSet(Hex(ByteVal), 2, "0")
+      Next
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    DatabaseUpdate(#DB, "DELETE FROM graphos_layouts WHERE layout_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO graphos_layouts (layout_number, tag, pattern_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', '" + PatternHex + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  Procedure.i FetchGraphosLayout(Number.i, Array PatternBit.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, pattern_data FROM graphos_layouts WHERE layout_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedGraphosLayoutTag = GetDatabaseString(#DB, 0)
+        Protected PatternHex.s = GetDatabaseString(#DB, 1)
+        Protected Y, Cx, Bit, X, ByteVal.a, Idx = 0
+        For Y = 0 To 191
+          For Cx = 0 To 31
+            ByteVal = Val("$" + Mid(PatternHex, Idx * 2 + 1, 2))
+            For Bit = 0 To 7
+              X = Cx * 8 + Bit
+              If ByteVal & (1 << (7 - Bit))
+                PatternBit(Y, X) = 1
+              Else
+                PatternBit(Y, X) = 0
+              EndIf
+            Next
+            Idx + 1
+          Next
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastGraphosLayoutTag()
+    ProcedureReturn FetchedGraphosLayoutTag
+  EndProcedure
+
+  Procedure.i HasGraphosLayout(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM graphos_layouts WHERE layout_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListGraphosLayoutNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+    If DatabaseQuery(#DB, "SELECT layout_number FROM graphos_layouts ORDER BY layout_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; SHAPE: recorte retangular de tamanho VARIAVEL (Width/Height proprios,
+  ; diferente de Tela/Layout que sao sempre 256x192) - PatternBit()/RowFG()/
+  ; RowBG() do chamador continuam dimensionados no tamanho MAXIMO do canvas;
+  ; so a sub-regiao [0..Height-1, 0..Width-1] e' lida/escrita.
+  Procedure.i StoreGraphosShape(Number.i, Tag.s, Width.i, Height.i, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected ColsW = (Width + 7) / 8
+    Protected Y, Cx, Bit, X, ByteVal.a
+    Protected PatternHex.s = "", ColorHex.s = ""
+    For Y = 0 To Height - 1
+      For Cx = 0 To ColsW - 1
+        ByteVal = 0
+        For Bit = 0 To 7
+          X = Cx * 8 + Bit
+          If X < Width And PatternBit(Y, X)
+            ByteVal | (1 << (7 - Bit))
+          EndIf
+        Next
+        PatternHex + RSet(Hex(ByteVal), 2, "0")
+        ByteVal = ((RowFG(Y, Cx) & $F) << 4) | (RowBG(Y, Cx) & $F)
+        ColorHex + RSet(Hex(ByteVal), 2, "0")
+      Next
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    DatabaseUpdate(#DB, "DELETE FROM graphos_shapes WHERE shape_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO graphos_shapes (shape_number, tag, width, height, pattern_data, color_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', " + Str(Width) + ", " + Str(Height) + ", '" + PatternHex + "', '" + ColorHex + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  Procedure.i FetchGraphosShape(Number.i, Array PatternBit.a(2), Array RowFG.a(2), Array RowBG.a(2))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, width, height, pattern_data, color_data FROM graphos_shapes WHERE shape_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedGraphosShapeTag = GetDatabaseString(#DB, 0)
+        FetchedGraphosShapeWidth = Val(GetDatabaseString(#DB, 1))
+        FetchedGraphosShapeHeight = Val(GetDatabaseString(#DB, 2))
+        Protected PatternHex.s = GetDatabaseString(#DB, 3)
+        Protected ColorHex.s = GetDatabaseString(#DB, 4)
+        Protected ColsW = (FetchedGraphosShapeWidth + 7) / 8
+        Protected Y, Cx, Bit, X, ByteVal.a, Idx = 0
+        For Y = 0 To FetchedGraphosShapeHeight - 1
+          For Cx = 0 To ColsW - 1
+            ByteVal = Val("$" + Mid(PatternHex, Idx * 2 + 1, 2))
+            For Bit = 0 To 7
+              X = Cx * 8 + Bit
+              If X < FetchedGraphosShapeWidth
+                If ByteVal & (1 << (7 - Bit))
+                  PatternBit(Y, X) = 1
+                Else
+                  PatternBit(Y, X) = 0
+                EndIf
+              EndIf
+            Next
+            ByteVal = Val("$" + Mid(ColorHex, Idx * 2 + 1, 2))
+            RowFG(Y, Cx) = (ByteVal >> 4) & $F
+            RowBG(Y, Cx) = ByteVal & $F
+            Idx + 1
+          Next
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastGraphosShapeTag()
+    ProcedureReturn FetchedGraphosShapeTag
+  EndProcedure
+
+  Procedure.i LastGraphosShapeWidth()
+    ProcedureReturn FetchedGraphosShapeWidth
+  EndProcedure
+
+  Procedure.i LastGraphosShapeHeight()
+    ProcedureReturn FetchedGraphosShapeHeight
+  EndProcedure
+
+  Procedure.i HasGraphosShape(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM graphos_shapes WHERE shape_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListGraphosShapeNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+    If DatabaseQuery(#DB, "SELECT shape_number FROM graphos_shapes ORDER BY shape_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))
