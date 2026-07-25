@@ -1,22 +1,25 @@
 ;
 ; ------------------------------------------------------------
 ;  Z80OutputGui.pbi - o que fazer com os bytes de um binario ja montado (modo
-;  absoluto, Executar -> Montar Assembly (.bin)...) ou ja linkado (Executar ->
-;  Linkar (.REL) -> binario..., ver Z80LinkGui.pbi): tres caminhos de saida
-;  consumiveis por MSX-BASIC/MSX de verdade, alem do "so salvar o .bin cru no
-;  PC" que ja existia:
-;    1) .bin no PC, com ou sem cabecalho MSX BLOAD (jah existia, so
-;       extraido pra ca pra ser reaproveitado tambem pelo linker).
-;    2) Disco MSX (.dsk) pronto pra rodar via AUTOEXEC.BAS ("BLOAD...,R") -
+;  absoluto, Executar -> Montar Assembly (.bin)...), ja linkado (Executar ->
+;  Linkar (.REL) -> binario..., ver Z80LinkGui.pbi) ou ja construido por um
+;  subprojeto (Criar -> Assembly Sub Project..., ver Z80SubProjectGui.pbi):
+;  quatro caminhos de saida, cobrindo tanto MSX-BASIC quanto MSX-DOS puro:
+;    1) .bin no PC, com ou sem cabecalho MSX BLOAD (consumido pelo
+;       MSX-BASIC).
+;    2) .COM pronto pro MSX-DOS (sem cabecalho nenhum, sempre carregado em
+;       0100h - o assembler funciona 100% independente do MSX-BASIC nesse
+;       caminho, avisa se o fonte nao foi montado pra 0100h).
+;    3) Disco MSX (.dsk) pronto pra rodar via AUTOEXEC.BAS ("BLOAD...,R") -
 ;       reaproveita MSXDisk.pbi, mesmo mecanismo ja usado por RunOnOpenMSX()
 ;       em BadigEditor.pb pro fluxo Dignified.
-;    3) Listing BASIC (FOR/READ/POKE + DATA em hexa) pra colar dentro de um
+;    4) Listing BASIC (FOR/READ/POKE + DATA em hexa) pra colar dentro de um
 ;       programa MSX-BASIC sem precisar carregar um arquivo a parte - mesmo
 ;       espirito de PsgGen_RawBytes (PsgSynth.pbi), mas com o loop de POKE
 ;       que o PSG nao precisa (o PSG so gera uma tabela de dados pra uma
 ;       futura rotina Z80, nao um binario que precisa ir pra um endereco
 ;       especifico da RAM).
-;  Cada exportacao que produz um arquivo de verdade (.bin/.dsk, nao o
+;  Cada exportacao que produz um arquivo de verdade (.bin/.com/.dsk, nao o
 ;  listing, que so vai pra area de transferencia/cursor) registra o metadado
 ;  em ProjectDB::StoreAsmBuild() quando SourceKey <> "" - ver comentario da
 ;  declaracao em ProjectDB.pbi.
@@ -135,9 +138,50 @@ Procedure Z80Out_ExportBin(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, StartA
                    #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
 EndProcedure
 
-; Caminho 2: disco MSX (.dsk) com AUTOEXEC.BAS ("10 BLOAD"NOME.BIN",R") -
+; Caminho 2: .COM pronto pra rodar direto do MSX-DOS (sem passar pelo
+; MSX-BASIC/BLOAD nenhum) - binario cru, SEM cabecalho (diferente do caminho
+; 1, que pergunta) porque um .COM classico CP/M/MSX-DOS nao tem cabecalho
+; nenhum: o carregador do sistema operacional sempre poe o codigo em 0100h e
+; pula pra la, o proprio ORG 100h do fonte e o que faz esse endereco bater
+; com o que o assembler calculou. Avisa (sem bloquear) se o fonte foi
+; montado pra outro endereco, porque nesse caso o binario ainda e gravado
+; mas provavelmente nao vai rodar certo (enderecos absolutos calculados a
+; partir de outro ORG).
+Procedure Z80Out_ExportCom(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, StartAddr.u, EndAddr.u, SourceKey.s, BuildKind.s)
+  If StartAddr <> $100
+    Protected WarnTxt.s = "O codigo foi montado para o endereco " + Hex(StartAddr, #PB_Word) + "h, nao " + Hex($100, #PB_Word) + "h." + Chr(10) + Chr(10) +
+      "Um .COM e sempre carregado em 0100h pelo MSX-DOS/CP-M, independente do ORG do fonte - se o " +
+      "codigo usa enderecos absolutos calculados a partir de outro ORG, ele provavelmente nao vai " +
+      "funcionar certo." + Chr(10) + Chr(10) + "Salvar mesmo assim?"
+    If MessageRequester("Endereco diferente de 0100h", WarnTxt, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning) = #PB_MessageRequester_No
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Protected SavePath.s = SaveFileRequester("Salvar .COM (MSX-DOS)", SuggestBaseName + ".com",
+                                           "Programa MSX-DOS (*.com)|*.com|Todos os arquivos (*.*)|*.*", 0)
+  If SavePath = ""
+    ProcedureReturn
+  EndIf
+  SavePath = EnsureExtension(SavePath, "com")
+
+  If Not Z80Out_WriteBinFile(SavePath, Bytes(), NBytes, StartAddr, EndAddr, #False)
+    MessageRequester("Erro", "Nao foi possivel salvar o arquivo:" + Chr(10) + SavePath,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  If SourceKey <> ""
+    ProjectDB::StoreAsmBuild(SourceKey, BuildKind, "COM", SavePath, StartAddr, EndAddr, #False)
+  EndIf
+
+  MessageRequester("Montado", Str(NBytes) + " bytes salvos em:" + Chr(10) + SavePath,
+                   #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+EndProcedure
+
+; Caminho 3: disco MSX (.dsk) com AUTOEXEC.BAS ("10 BLOAD"NOME.BIN",R") -
 ; sempre grava com cabecalho (BLOAD,R depende dele pra saber endereco de
-; carga/execucao, diferente do caminho 1 que pergunta) - reaproveita
+; carga/execucao, diferente do caminho 1/bin que pergunta) - reaproveita
 ; MSXDisk.pbi, mesmo mecanismo ja usado por RunOnOpenMSX() (BadigEditor.pb)
 ; pro fluxo Dignified. Arquivos intermediarios ficam na pasta temporaria do
 ; sistema e sao apagados depois de montar o disco.
@@ -194,7 +238,7 @@ Procedure Z80Out_ExportDisk(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, Start
                    #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
 EndProcedure
 
-; Caminho 3: listing BASIC (FOR/READ/POKE + DATA) - nao produz arquivo
+; Caminho 4: listing BASIC (FOR/READ/POKE + DATA) - nao produz arquivo
 ; nenhum (so vai pra area de transferencia ou pro cursor da aba ativa), por
 ; isso nao chama StoreAsmBuild (ver comentario da declaracao em
 ; ProjectDB.pbi: so builds que viram arquivo de verdade sao registradas).
@@ -240,14 +284,15 @@ Procedure Z80Out_ShowListing(Array Bytes.a(1), NBytes.i, StartAddr.u, ParentWind
   CloseWindow(Win)
 EndProcedure
 
-; Janela pequena de escolha, reaproveitada tanto por "Montar Assembly (.bin)"
-; (modo absoluto) quanto por "Linkar (.REL) -> binario" (Z80LinkGui.pbi) -
-; um so lugar pra decidir o que fazer com um binario ja pronto. SourceKey/
-; BuildKind alimentam ProjectDB::StoreAsmBuild() quando a exportacao produz
-; arquivo de verdade (bin/disco) - "" desliga o registro (usado quando nao
-; ha uma chave estavel, ex. aba ainda sem salvar).
+; Janela pequena de escolha, reaproveitada por "Montar Assembly (.bin)"
+; (modo absoluto), "Linkar (.REL) -> binario" (Z80LinkGui.pbi) e "Assembly
+; Sub Project -> Montar tudo" (Z80SubProjectGui.pbi) - um so lugar pra
+; decidir o que fazer com um binario ja pronto. SourceKey/BuildKind
+; alimentam ProjectDB::StoreAsmBuild() quando a exportacao produz arquivo de
+; verdade (bin/com/disco) - "" desliga o registro (usado quando nao ha uma
+; chave estavel, ex. aba ainda sem salvar).
 Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, StartAddr.u, EndAddr.u, SourceKey.s, BuildKind.s, ParentWindow.i)
-  Protected Win = OpenWindow(#PB_Any, 0, 0, 360, 200, "Saida da montagem",
+  Protected Win = OpenWindow(#PB_Any, 0, 0, 360, 234, "Saida da montagem",
                               #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
@@ -258,10 +303,11 @@ Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, 
   Protected InfoTxt.s = Str(NBytes) + " bytes, endereco " + Hex(StartAddr, #PB_Word) + "h-" + Hex(EndAddr, #PB_Word) + "h."
   TextGadget(#PB_Any, 15, 14, 330, 20, InfoTxt)
 
-  Protected G_Bin    = ButtonGadget(#PB_Any, 15, 44, 330, 32, "Salvar .bin no PC...")
-  Protected G_Dsk    = ButtonGadget(#PB_Any, 15, 82, 330, 32, "Gravar disco MSX (.dsk, BLOAD)...")
-  Protected G_List   = ButtonGadget(#PB_Any, 15, 120, 330, 32, "Gerar listing BASIC (DATA/POKE)...")
-  Protected G_Cancel = ButtonGadget(#PB_Any, 15, 160, 330, 28, "Cancelar")
+  Protected G_Bin    = ButtonGadget(#PB_Any, 15, 44, 330, 30, "Salvar .bin no PC...")
+  Protected G_Com    = ButtonGadget(#PB_Any, 15, 78, 330, 30, "Gerar .COM (MSX-DOS, independente do BASIC)...")
+  Protected G_Dsk    = ButtonGadget(#PB_Any, 15, 112, 330, 30, "Gravar disco MSX (.dsk, BLOAD)...")
+  Protected G_List   = ButtonGadget(#PB_Any, 15, 146, 330, 30, "Gerar listing BASIC (DATA/POKE)...")
+  Protected G_Cancel = ButtonGadget(#PB_Any, 15, 184, 330, 28, "Cancelar")
 
   Protected Event, Quit = #False
   Repeat
@@ -271,6 +317,9 @@ Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, 
         Select EventGadget()
           Case G_Bin
             Z80Out_ExportBin(SuggestBaseName, Bytes(), NBytes, StartAddr, EndAddr, SourceKey, BuildKind)
+            Quit = #True
+          Case G_Com
+            Z80Out_ExportCom(SuggestBaseName, Bytes(), NBytes, StartAddr, EndAddr, SourceKey, BuildKind)
             Quit = #True
           Case G_Dsk
             Z80Out_ExportDisk(SuggestBaseName, Bytes(), NBytes, StartAddr, EndAddr, SourceKey, BuildKind)

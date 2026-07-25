@@ -40,7 +40,7 @@ servir de especificação byte-a-byte ao port nativo:
 | # | Módulo | Esforço relativo | Status da spec |
 |---|--------|-------------------|-----------------|
 | 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
-| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | **Fase A completa (2026-07-24)** — motor `editor/Z80Asm.pbi` (opcodes/expressões/diretivas/condicionais/macros básicas), validado byte-a-byte contra o oráculo `N80.exe` (Nestor80), integrado ao menu (Executar → Montar Assembly). Detalhe em `docs/resumo-asm.md`. **Fase B: motor completo** — geração de `.REL` real, linker multi-módulo com `.REQUEST`/biblioteca (`Z80Link.pbi`) e gerenciador de biblioteca (`Z80Lib.pbi`) todos validados por oráculo (`N80.exe`/`LK80.exe`/`LB80.exe`); falta só UI de menu, ver módulo 2b |
+| 2 | Assembler Z80 (2 passes, nativo) | médio-alto | **Completo (2026-07-25)** — motor `editor/Z80Asm.pbi` (opcodes/expressões/diretivas/condicionais/macros básicas, saída absoluta e relocável `.REL`), validado byte-a-byte contra os oráculos `N80.exe`/`LK80.exe`/`LB80.exe` (Nestor80). Menu completo: **Executar → Montar Assembly (.bin)/relocável (.REL)/Linkar (.REL) → binário**, **Criar → Biblioteca Z80 (.LIB)/Assembly Sub Project** ("Makefile primitivo" — vários `.asm` + libs numa lista ordenada, monta tudo de uma vez, ver módulo 2d). Saída consumível por MSX-BASIC e MSX-DOS (`.bin`/`.com`/disco `.dsk`/listing `DATA`+`POKE`, módulo 2c) e sistema de projeto (`asm_builds`/`asm_subprojects` em `ProjectDB.pbi`). Detalhe em `docs/resumo-asm.md`, módulos 2b/2c/2d abaixo |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. **Editor de alfabetos Aquarela (.FNT) implementado (2026-07-23)** — `editor/AquarelaCharsetEditorGui.pbi`, ferramenta autocontida baseada em arquivo, sem integração com o sistema de projeto, ver seção 4b. **Editor de alfabetos Graphos III ganhou 13 efeitos de edição em lote (2026-07-23)** — desfazer/refazer, marcar tudo, espelhar/girar/apagar/estreitar/itálico/negrito/largo (+ variantes bold e largo-bold), ver seção 4c. Tile (além do charset/fonte 8×8) ainda não iniciado |
 | 5 | Editor gráfico LINE/CIRCLE/PSET/DRAW | baixo-médio | **Implementado (2026-07-24)** — `editor/Screen2Synth.pbi` (motor)/`editor/Screen2EditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 5 |
@@ -52,6 +52,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 | 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
+| 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). Ver seção 14 |
 
 ## Decisões fechadas
 
@@ -173,16 +174,19 @@ coexistir na mesma unidade de compilação (`BadigEditor.pb`): a segunda inclus�
 Z80Link` — mesmo espírito de "cada Module tem sua cópia" já usado pra `Z80LinkItemType`.
 
 **Módulo 2c — integrações com o resto da IDE — implementado (2026-07-25)**:
-- **Saída consumível por MSX-BASIC**: `editor/Z80OutputGui.pbi` centraliza o que fazer com um binário já
-  montado (absoluto) ou já linkado — janela de escolha com três caminhos: (1) `.bin` solto no PC (com ou
-  sem cabeçalho MSX BLOAD, comportamento que já existia, só extraído pra cá); (2) **disco MSX (`.dsk`)**
-  pronto pra rodar via `AUTOEXEC.BAS` (`"10 BLOAD"NOME.BIN",R"`, sempre com cabeçalho — reaproveita
-  `MSXDisk.pbi`, mesmo mecanismo já usado por `RunOnOpenMSX()` no fluxo Dignified); (3) **listing BASIC**
-  (`Z80Gen_BasicLoader()` — loop `FOR/READ/POKE` + blocos `DATA` em hexa, 16 bytes por linha, mais um
-  comentário `DEFUSR=.../A=USR(0)` pronto pra chamar — mesmo espírito do "Gerar bytes crus" do editor de
-  som PSG, mas com o loop de `POKE` que o PSG não precisa) numa janela com **Copiar**/**Injetar no
-  cursor** (reaproveita `InjectTextAtCursor()`). Usado tanto por "Montar Assembly (.bin)..." quanto por
-  "Linkar (.REL) → binário...".
+- **Saída consumível por MSX-BASIC e por MSX-DOS puro**: `editor/Z80OutputGui.pbi` centraliza o que
+  fazer com um binário já montado (absoluto), já linkado ou já construído por um subprojeto — janela de
+  escolha com quatro caminhos: (1) `.bin` solto no PC (com ou sem cabeçalho MSX BLOAD, comportamento que
+  já existia, só extraído pra cá); (2) **`.COM` (MSX-DOS)** — `Z80Out_ExportCom()` (2026-07-25, pedido
+  explícito do usuário "assim o assembler pode trabalhar independente do MSX BASIC"), binário cru sem
+  cabeçalho nenhum (formato CP/M/MSX-DOS clássico), avisa sem bloquear se `StartAddr <> 0100h`; (3)
+  **disco MSX (`.dsk`)** pronto pra rodar via `AUTOEXEC.BAS` (`"10 BLOAD"NOME.BIN",R"`, sempre com
+  cabeçalho — reaproveita `MSXDisk.pbi`, mesmo mecanismo já usado por `RunOnOpenMSX()` no fluxo
+  Dignified); (4) **listing BASIC** (`Z80Gen_BasicLoader()` — loop `FOR/READ/POKE` + blocos `DATA` em
+  hexa, 16 bytes por linha, mais um comentário `DEFUSR=.../A=USR(0)` pronto pra chamar — mesmo espírito
+  do "Gerar bytes crus" do editor de som PSG, mas com o loop de `POKE` que o PSG não precisa) numa
+  janela com **Copiar**/**Injetar no cursor** (reaproveita `InjectTextAtCursor()`). Usado por "Montar
+  Assembly (.bin)...", "Linkar (.REL) → binário..." e "Assembly Sub Project → Montar tudo (Build)...".
 - **Sistema de projeto** (módulo 13): nova tabela `asm_builds` em `ProjectDB.pbi` — metadado da
   **última** exportação de binário/disco por `SourceKey` (caminho do `.asm`, pra montagem absoluta; ou
   `"LINK|" + .rel's` na ordem escolhida, pra uma sessão de link — não há uma única aba de origem nesse
@@ -215,6 +219,41 @@ confirmando os estilos certos) com rótulos, mnemônicos, registradores, condiç
 reconhecido (só o comentário de linha `;`); a fronteira exata "dígitos" vs. "sufixo de radix" dentro de
 um literal numérico pode variar internamente sem afetar o destaque visual (o token inteiro sempre fica
 colorido como número, ver comentário em `HighlightZ80Text()`).
+
+### 2d. Assembly Sub Project — "Makefile primitivo" (implementado 2026-07-25)
+
+**Status: implementado**, pedido explícito do usuário depois de fechado o módulo 2b/2c: **Criar →
+Assembly Sub Project...** (`editor/Z80SubProjectGui.pbi`, motor sem GUI em `editor/Z80SubProject.pbi`)
+— um subprojeto onde o usuário reúne vários `.asm` (cada um vira um `.REL` na hora do build) mais
+bibliotecas referenciadas via `.REQUEST`, numa lista **ordenada**, e manda montar tudo de uma vez num
+binário final (`.bin`/`.com`) — "como um Makefile primitivo". Também gera bibliotecas a partir de um
+subconjunto dos `.asm` do próprio subprojeto e oferece adicioná-las de volta à lista.
+
+- **Motor** (`Z80SubProject.pbi`): `Z80SubProj_Build()` monta cada `.asm` em `.REL`
+  (`Z80Asm::AssembleRelocatable`, nome de programa = nome do arquivo maiúsculo) numa pasta de trabalho
+  temporária dedicada e linka tudo (`Z80Link::LinkFiles`); `Z80SubProj_BuildLibraryFromAsm()` monta um
+  subconjunto e empacota via `Z80Lib::CreateOrAddLibrary`.
+- **Achado real**: `Z80Link::LResolveLibPath()` (motor do linker, módulo 2b) sempre resolve um nome de
+  `.REQUEST` bare para `"<nome>.rel"` — **mesmo que o nome já termine em `.lib`** (vira
+  `"nome.lib.rel"`, nunca encontrado) — então bibliotecas geradas por **Criar → Biblioteca Z80 (.LIB)**
+  (que sugere extensão `.lib`) não funcionavam sozinhas via `.REQUEST`. Corrigido no nível certo:
+  `Z80SubProj_StageLibraries()` sempre copia+renomeia cada biblioteca da lista do usuário para
+  `"<nome-base>.rel"` numa pasta de trabalho temporária antes de linkar, independente da extensão
+  original — `Z80LibGui.pbi`/`Z80Lib.pbi` não precisaram de nenhuma mudança. Detalhe completo em
+  `docs/resumo-asm.md`.
+- **Persistência** (`ProjectDB.pbi`): tabela `asm_subprojects` (`asm_files`/`lib_files` como TEXT unidos
+  por `Chr(10)` na ordem escolhida, mesmo padrão de `mml_songs`) — diferente de `asm_builds` (metadado
+  de algo já exportado, fora da soma), um subprojeto é configuração real sem cópia em outro lugar e
+  **entra** na soma de `HasUnsavedContent()`.
+- **GUI**: mesma barra de projeto (número/tag/navegação/Novo/Registrar) dos demais tipos de conteúdo
+  registrados no `.msxproject`, reaproveitando os ícones/lógica de navegação do editor de sprites.
+  Botão **"Montar tudo (Build)..."** manda o resultado pro mesmo escolhedor de saída do assembler/
+  linker (`Z80Out_ChooseAndExport`, módulo 2c) — `.bin`/`.com`, disco `.dsk` ou listing BASIC.
+- **Validação**: `editor/tools/Z80SubProjectTestCli.pb` (4/4, self-contained) monta pares `.asm` reais
+  de `sample/` DIRETO dos fontes (não dos `.rel` já prontos) e confere byte a byte contra os mesmos
+  resultados já validados contra o `LK80.exe` real no módulo 2b, incluindo o caso completo "gerar
+  biblioteca a partir de `.asm` → build final resolvendo `.REQUEST` contra ela" (linkagem estática
+  seletiva confirmada de ponta a ponta).
 
 ### 3. Basic Dignified reescrito nativo
 
@@ -1247,6 +1286,60 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   no canvas do editor de sprites se mostrou não confiável neste ambiente (mesmo tipo de fragilidade já
   observada em telas anteriores, ver seção 12 acima sobre `LVM_SETITEMSTATE`/`SCI_SETTEXT`).
 
+### 14. Graphos III — edição de telas SCREEN 2 (Fase 1: implementada 2026-07-25)
+
+Pedido explícito do usuário: replicar o **Graphos III** (Renato Degiovani, 1987; revisão A&L Software,
+1997 — manual completo em `graphos/graphos.txt`, lido integralmente para levantar o escopo de funções),
+um editor de vídeo clássico do MSX que só trabalha em **SCREEN 2**. Cada função do Graphos III original
+vira uma opção **separada** dentro de "Criar" nesta IDE (pedido explícito) — o editor de alfabetos do
+Graphos III **já existe** (`CharsetEditorGui.pbi`, formato `.ALF`, módulo 4) e fica **de fora** deste
+módulo de propósito. O Graphos III original navegava os menus **DESENHO/TEXTO/TELA/AJUSTE/MISCELANEA**
+pelas teclas **F1-F5**; aqui cada operação vira um botão/ícone, no mesmo espírito do editor de sprites,
+em vez de teclas de função.
+
+**Arquivo**: `editor/GraphosScreenGui.pbi` (menu **Criar → Graphos III Screen 2...**). Sem motor próprio
+novo — reaproveita **na íntegra**, sem nenhuma mudança, o motor já validado do módulo 5
+(`editor/Screen2Synth.pbi`: `Scr2_SetPixel`/`GetPixelColor`/`ClearFramebuffer`, mesmo modelo
+`PatternBit`/`RowFG`/`RowBG` fiel ao color clash real do TMS9918 — 1 par tinta/fundo por faixa de
+scanline de 8 pixels, já coberto por 69 casos de teste) e os helpers de desenho de canvas/paleta já
+escritos em `editor/Screen2EditorGui.pbi` (`Scr2Ed_RedrawCanvas`/`RedrawMiniPalette`) e
+`editor/SpriteEditorGui.pbi` (`SpriteEd_FillPalette`, ícones `CreatePencilIcon`/`CreateEraserIcon`,
+`SpriteEd_UnpressOtherTools`) — a mesma paleta MSX1 de 16 cores e o mesmo desenho de swatch já usados
+pelo editor "Draw Screen 2..." aparecem aqui identicamente.
+
+**Fase 1 (esta sessão) cobre só "a tela que representa a SCREEN 2"**, pedido explícito do usuário como
+ponto de partida antes do resto do toolset:
+- Canvas 256×192 (zoom 2× = 512×384) com color clash idêntico ao MSX de verdade (herdado do motor, não
+  reimplementado).
+- Paleta **INK**/**PAPER** (16 cores fixas MSX1, clicáveis).
+- **TRAÇO** do menu DESENHO/F1 original — **Lápis** (INS, liga o pixel com INK) e **Borracha** (DEL,
+  apaga o pixel gravando PAPER na faixa), ambos com **arrastar contínuo** (mesmo padrão de
+  `SpriteEd_ApplyTool`/`#PB_Canvas_Buttons` do editor de sprites) e alternância mutuamente exclusiva via
+  `ButtonImageGadget` com `#PB_Button_Toggle`.
+- **LIMPA TELA** do menu TELA/F3 original — apaga tudo e grava INK/PAPER atuais em toda a tela
+  (`GraphosScr_ClearWithColors`, variante de `Scr2_ClearFramebuffer` que usa as cores escolhidas pelo
+  usuário em vez dos defaults fixos).
+
+**Deliberadamente fora desta fase** (próximos cortes, um por vez): resto do menu **DESENHO** (BLOCO com
+tamanho de cursor ajustável, LINHA/RAIO encadeados, RETÂNGULO, CÍRCULO, PINTURA — só cor de fundo sem
+alterar pixels —, SPRAY, FILL); menu **TEXTO** (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO, usando um
+alfabeto do banco já existente); menu **TELA** (INVERTE VÍDEO/ATRIBUTOS, RETIRA/REPÕE VÍDEO/ATRIBUTOS,
+IMPRIME TELA); menu **AJUSTE** (SCROLL/SCROLL 8×8/ROTAÇÃO/ROTAÇÃO 8×8); menu **MISCELÂNEA** (ZOOM,
+SHAPE — carimbar shapes do banco com MÁSCARA/AND/OR/XOR —, CORTE — inverter/espelhar um recorte —,
+GRID); **CRIA/ARQUIVA/RECUPERA SHAPES** (4 tipos de shape, ver `graphos/graphos.txt` seção 3.8);
+integração com o sistema de projeto (nenhuma tabela nova em `ProjectDB.pbi` ainda — sem número/tag/
+Registrar/navegação por enquanto, já que o formato de conteúdo real só faz sentido definir depois que o
+toolset estiver mais completo); e os formatos de arquivo nativos do Graphos III — **DISPLAY** (`.SCR`,
+BSAVE de `&H9200`, Pattern+Color Table completas — o mesmo layout que `BLOAD "nome.SCR",R` do
+MSX-BASIC espera em SCREEN 2), **LAYOUT** (`.LAY`, só o vídeo sem atributos, compactado RLE) e
+**COMPAC** (`.VTC`+`.ATC`, vídeo e atributos separados, RLE) — nenhum lido/escrito ainda.
+
+**Verificação**: compilação limpa (`/CHECK` inclusive); a correção do color clash em si já vem
+integralmente testada pelo módulo 5 (`editor/tools/Screen2TestCli.pb`, 69 casos) — nenhuma lógica de
+clash nova foi escrita aqui. Automação de clique ao vivo não foi possível neste ambiente (mesma
+limitação de isolamento de sessão do Windows já registrada em `docs/resumo-asm.md`), então a UI em si
+foi verificada por revisão de código cuidadosa em vez de clique real.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -1282,6 +1375,42 @@ já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-25 (quarta sessão) — Graphos III, Fase 1 (tela + color clash)**: pedido
+explícito do usuário para replicar o Graphos III (manual lido de `graphos/graphos.txt`), começando
+pela "tela que representa a SCREEN 2" antes do resto do toolset (menus DESENHO/TEXTO/TELA/AJUSTE/
+MISCELANEA, shapes, formatos de arquivo `.SCR`/`.LAY`/`.VTC`+`.ATC`) — ver módulo 14 acima pro detalhe
+completo. Resumo: novo **Criar → Graphos III Screen 2...** (`editor/GraphosScreenGui.pbi`), zero motor
+novo (reaproveita 100% do módulo 5 — `Screen2Synth.pbi`/`Screen2EditorGui.pbi` — e dos ícones/paleta do
+editor de sprites), TRAÇO (Lápis/Borracha com arrastar contínuo) + LIMPA TELA como primeiras
+ferramentas. Editor de alfabetos do Graphos III **não** entra aqui — já existe (módulo 4), pedido
+explícito do usuário pra manter cada função do Graphos III como opção separada dentro de "Criar".
+Ainda sem persistência no `.msxproject` (fica pro corte que definir o formato de conteúdo, depois do
+toolset mais completo). Versão embutida no executável atualizada para **7.5.1**.
+
+**Estado ao fim de 2026-07-25 (terceira sessão) — botão "Gerar .COM"**: pedido explícito do usuário
+("vamos criar uma opção de gerar .COM, assim o assembler pode trabalhar independente do MSX BASIC")
+logo depois do Assembly Sub Project — ver módulo 2c acima pro texto atualizado. Resumo: novo botão
+**Gerar .COM (MSX-DOS, independente do BASIC)...** na janela "Saída da montagem"
+(`Z80Out_ExportCom()`, `editor/Z80OutputGui.pbi`), reaproveitando `Z80Out_WriteBinFile()` sem nenhuma
+mudança (o "binário cru" já gravado desde a sessão anterior já era um `.COM` válido quando `ORG 100h`)
+— só formaliza esse caminho como opção de primeira classe, com aviso (não bloqueante) se o endereço de
+montagem não for `0100h`. Vale pros três pontos de entrada que já usam essa janela (Montar Assembly,
+Linkar, Assembly Sub Project). Versão embutida no executável atualizada para **7.3.9**.
+
+**Estado ao fim de 2026-07-25 (sessão seguinte) — Assembly Sub Project**: pedido explícito do usuário
+logo depois de fechado o módulo 2/2b/2c ("no assembly, vamos criar uma opção Criar->Assembly Sub
+Project... como se fosse um Makefile primitivo... ter opções de gerar LIBs e de adicionar estas libs
+no projeto também") — ver módulo 2d acima pro detalhe completo. Resumo: `editor/Z80SubProject.pbi`
+(motor: monta N `.asm` em `.REL` + linka + resolve `.REQUEST`) e `editor/Z80SubProjectGui.pbi` (janela,
+**Criar → Assembly Sub Project...**), nova tabela `asm_subprojects` em `ProjectDB.pbi`. Achado real: a
+extensão `.rel` é obrigatória pra qualquer coisa referenciada via `.REQUEST` (`Z80Link::
+LResolveLibPath()` sempre anexa `.rel`, mesmo a um nome que já termine em `.lib`) — bibliotecas geradas
+por **Criar → Biblioteca Z80 (.LIB)** (sessão anterior, extensão `.lib` sugerida) não funcionavam
+sozinhas via `.REQUEST`; corrigido normalizando a extensão na hora de montar a pasta de biblioteca do
+subprojeto (`Z80SubProj_StageLibraries()`), sem mudar `Z80LibGui.pbi`/`Z80Lib.pbi`. Suíte própria
+`editor/tools/Z80SubProjectTestCli.pb` (4/4) reconstrói binários já validados contra `LK80.exe`
+diretamente a partir dos `.asm` originais. Versão embutida no executável atualizada para **7.3.7**.
 
 **Estado ao fim de 2026-07-25**: as três lacunas restantes do módulo 2/2b/2c foram fechadas nesta
 sessão (pedido explícito do usuário: "1-Menu de UI para o Linker/Lib, 2-Saida consumivel do assembler

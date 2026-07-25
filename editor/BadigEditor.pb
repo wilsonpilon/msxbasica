@@ -52,11 +52,14 @@ XIncludeFile "MmlSynth.pbi"
 XIncludeFile "MmlEditorGui.pbi"
 XIncludeFile "Screen2Synth.pbi"
 XIncludeFile "Screen2EditorGui.pbi"
+XIncludeFile "GraphosScreenGui.pbi"
 XIncludeFile "Z80Link.pbi"
 XIncludeFile "Z80Lib.pbi"
 XIncludeFile "Z80OutputGui.pbi"
 XIncludeFile "Z80LinkGui.pbi"
 XIncludeFile "Z80LibGui.pbi"
+XIncludeFile "Z80SubProject.pbi"
+XIncludeFile "Z80SubProjectGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -350,6 +353,8 @@ Enumeration MenuItems
   #Menu_CreateMml
   #Menu_CreateScreen2
   #Menu_CreateZ80Lib
+  #Menu_CreateAsmSubProject
+  #Menu_CreateGraphosScreen
   #Menu_RunBasic
   #Menu_AssembleZ80
   #Menu_AssembleZ80Rel
@@ -395,7 +400,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.3.5"
+  #App_Version = "7.5.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2514,7 +2519,9 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateSound, "Som (PSG)...")
     MenuItem(#Menu_CreateMml, "Musica (PLAY)...")
     MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
+    MenuItem(#Menu_CreateGraphosScreen, "Graphos III Screen 2...")
     MenuItem(#Menu_CreateZ80Lib, "Biblioteca Z80 (.LIB)...")
+    MenuItem(#Menu_CreateAsmSubProject, "Assembly Sub Project...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
@@ -2644,8 +2651,14 @@ Repeat
         Case #Menu_CreateScreen2
           Screen2Editor_OpenWindow(#MainWindow)
 
+        Case #Menu_CreateGraphosScreen
+          GraphosScreenGui_OpenWindow(#MainWindow)
+
         Case #Menu_CreateZ80Lib
           Z80LibGui_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateAsmSubProject
+          Z80SubProjectGui_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()

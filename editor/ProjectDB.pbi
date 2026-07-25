@@ -125,6 +125,23 @@ DeclareModule ProjectDB
   Declare.i HasAsmBuild(SourceKey.s)
   Declare ListAsmBuildKeys(List Keys.s())
 
+  ; Um "subprojeto de Assembly" (Criar -> Assembly Sub Project..., modulo 2/2b,
+  ; ver editor/Z80SubProject.pbi/Z80SubProjectGui.pbi) e um "Makefile
+  ; primitivo": uma lista ORDENADA de fontes .asm (cada uma vira um .REL na
+  ; hora de montar) mais uma lista ORDENADA de bibliotecas (.REQUEST)
+  ; referenciadas no link - a ordem de ambas importa (mesma ordem de
+  ; concatenacao CSEG/DSEG/COMMON e de resolucao que Z80Link::LinkFiles usa).
+  ; AsmFiles()/LibFiles() sao TEXT unidos por Chr(10) na ordem escolhida
+  ; (mesmo padrao de mml_songs\lines_a/b/c) - simples o bastante pra nao
+  ; precisar de tabela filha. Diferente de asm_builds (metadado de algo ja
+  ; exportado pra um arquivo independente), aqui e configuracao de verdade
+  ; sem nenhuma copia em outro lugar - entra na soma de HasUnsavedContent().
+  Declare.i StoreAsmSubProject(Number.i, Tag.s, List AsmFiles.s(), List LibFiles.s())
+  Declare.i FetchAsmSubProject(Number.i, List AsmFiles.s(), List LibFiles.s())
+  Declare.s LastAsmSubProjectTag()
+  Declare.i HasAsmSubProject(Number.i)
+  Declare ListAsmSubProjectNumbers(List Numbers.i())
+
   ; "Projeto 0": banco SQLite a parte, sempre em memoria (nunca em arquivo,
   ; nunca salvo), recriado do zero a cada vez que a IDE abre - fonte interna
   ; de conteudo padrao (hoje so o alfabeto 0 = msx.alf embutido no executavel
@@ -166,6 +183,7 @@ Module ProjectDB
   Global FetchedAsmBuildStartAddr.u = 0
   Global FetchedAsmBuildEndAddr.u = 0
   Global FetchedAsmBuildBLoadHeader.i = 0
+  Global FetchedSubProjTag.s = ""
   Global DefaultsOpen.b = #False
 
   Procedure.s NewTempPath()
@@ -217,6 +235,12 @@ Module ProjectDB
                          "start_addr INTEGER NOT NULL, " +
                          "end_addr INTEGER NOT NULL, " +
                          "bload_header INTEGER NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS asm_subprojects (" +
+                         "subproject_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "asm_files TEXT NOT NULL, " +
+                         "lib_files TEXT NOT NULL, " +
                          "updated_at TEXT)")
   EndProcedure
 
@@ -355,12 +379,15 @@ Module ProjectDB
   ; True quando o projeto ainda e o temporario implicito (nunca foi salvo
   ; num local permanente) E ja tem pelo menos um registro num dos tipos de
   ; conteudo que so existem dentro do banco do projeto (sprites, alfabetos,
-  ; sons PSG, musicas MML, telas SCREEN 2) - e o sinal usado pra avisar o
-  ; usuario ao sair ou ao criar outro projeto. Documentos (.dmx/.asm/
-  ; tokenizado) ficam de fora de proposito: sao copia de um arquivo que ja
-  ; existe em disco por conta propria, entao perder a copia do banco
-  ; temporario nao perde trabalho de verdade (diferente de sprite/
-  ; alfabeto/som/musica/tela, que so vivem aqui).
+  ; sons PSG, musicas MML, telas SCREEN 2, subprojetos de Assembly) - e o
+  ; sinal usado pra avisar o usuario ao sair ou ao criar outro projeto.
+  ; Documentos (.dmx/.asm/tokenizado) E asm_builds (metadado de "ultima
+  ; exportacao", ver comentario da declaracao de StoreAsmBuild) ficam de
+  ; fora de proposito: sao copia/derivado de um arquivo que ja existe em
+  ; disco por conta propria, entao perder o registro no banco temporario
+  ; nao perde trabalho de verdade (diferente de sprite/alfabeto/som/musica/
+  ; tela/subprojeto, que so vivem aqui - um subprojeto e so a LISTA de
+  ; arquivos/libs, configuracao real sem nenhuma copia em outro lugar).
   Procedure.i HasUnsavedContent()
     If Not IsOpen Or Not TempFlag
       ProcedureReturn #False
@@ -372,7 +399,8 @@ Module ProjectDB
                            "(SELECT COUNT(*) FROM alphabets) + " +
                            "(SELECT COUNT(*) FROM psg_sounds) + " +
                            "(SELECT COUNT(*) FROM mml_songs) + " +
-                           "(SELECT COUNT(*) FROM screens)")
+                           "(SELECT COUNT(*) FROM screens) + " +
+                           "(SELECT COUNT(*) FROM asm_subprojects)")
       If NextDatabaseRow(#DB)
         Count = Val(GetDatabaseString(#DB, 0))
       EndIf
@@ -1032,6 +1060,107 @@ Module ProjectDB
       While NextDatabaseRow(#DB)
         AddElement(Keys())
         Keys() = GetDatabaseString(#DB, 0)
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; Grava (DELETE+INSERT, mesmo padrao dos demais Store*) as listas de .asm/
+  ; .lib do subprojeto Number, unindo cada lista por Chr(10) na ordem dada
+  ; (mesmo padrao de StoreSong\lines_a/b/c).
+  Procedure.i StoreAsmSubProject(Number.i, Tag.s, List AsmFiles.s(), List LibFiles.s())
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Joined1.s = "", Joined2.s = ""
+    ForEach AsmFiles()
+      If Joined1 <> ""
+        Joined1 + Chr(10)
+      EndIf
+      Joined1 + AsmFiles()
+    Next
+    ForEach LibFiles()
+      If Joined2 <> ""
+        Joined2 + Chr(10)
+      EndIf
+      Joined2 + LibFiles()
+    Next
+    Joined1 = ReplaceString(Joined1, "'", "''")
+    Joined2 = ReplaceString(Joined2, "'", "''")
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+
+    DatabaseUpdate(#DB, "DELETE FROM asm_subprojects WHERE subproject_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO asm_subprojects (subproject_number, tag, asm_files, lib_files, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', '" + Joined1 + "', '" + Joined2 + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; Le de volta as listas de .asm/.lib do subprojeto Number pra dentro de
+  ; AsmFiles()/LibFiles() (limpas primeiro); tag extra via
+  ; LastAsmSubProjectTag() (mesmo padrao de FetchSong/LastSongTag()).
+  Procedure.i FetchAsmSubProject(Number.i, List AsmFiles.s(), List LibFiles.s())
+    ClearList(AsmFiles())
+    ClearList(LibFiles())
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, asm_files, lib_files FROM asm_subprojects WHERE subproject_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedSubProjTag = GetDatabaseString(#DB, 0)
+        Protected RawAsm.s = GetDatabaseString(#DB, 1)
+        Protected RawLib.s = GetDatabaseString(#DB, 2)
+        Protected i, n
+        If RawAsm <> ""
+          n = CountString(RawAsm, Chr(10)) + 1
+          For i = 1 To n
+            AddElement(AsmFiles())
+            AsmFiles() = StringField(RawAsm, i, Chr(10))
+          Next
+        EndIf
+        If RawLib <> ""
+          n = CountString(RawLib, Chr(10)) + 1
+          For i = 1 To n
+            AddElement(LibFiles())
+            LibFiles() = StringField(RawLib, i, Chr(10))
+          Next
+        EndIf
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastAsmSubProjectTag()
+    ProcedureReturn FetchedSubProjTag
+  EndProcedure
+
+  Procedure.i HasAsmSubProject(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM asm_subprojects WHERE subproject_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListAsmSubProjectNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT subproject_number FROM asm_subprojects ORDER BY subproject_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
       Wend
       FinishDatabaseQuery(#DB)
     EndIf

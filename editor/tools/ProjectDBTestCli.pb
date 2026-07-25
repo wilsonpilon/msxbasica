@@ -388,6 +388,69 @@ CheckTrue(Bool(ListSize(AsmBuildKeys()) = 2), "ListAsmBuildKeys (esperado 2, ach
 CheckTrue(ProjectDB::HasAsmBuild("LINK|C:\proj\a.rel|C:\proj\b.rel"), "HasAsmBuild(link) = #True")
 CheckTrue(Bool(Not ProjectDB::HasAsmBuild("nao existe")), "HasAsmBuild(chave inexistente) = #False")
 
+; 8h) StoreAsmSubProject/FetchAsmSubProject - "Makefile primitivo" do
+; assembler Z80 (Criar -> Assembly Sub Project...): lista ordenada de .asm +
+; lista ordenada de .lib, cada uma serializada como TEXT unido por Chr(10)
+; (mesmo padrao de StoreSong/lines_a).
+Procedure.i StrListsMatch(List A.s(), List B.s())
+  If ListSize(A()) <> ListSize(B())
+    ProcedureReturn #False
+  EndIf
+  FirstElement(A()) : FirstElement(B())
+  Protected i
+  For i = 1 To ListSize(A())
+    If A() <> B()
+      ProcedureReturn #False
+    EndIf
+    NextElement(A()) : NextElement(B())
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+NewList SubProjAsmA.s()
+AddElement(SubProjAsmA()) : SubProjAsmA() = "src\main.asm"
+AddElement(SubProjAsmA()) : SubProjAsmA() = "src\utils.asm"
+NewList SubProjLibA.s()
+AddElement(SubProjLibA()) : SubProjLibA() = "libs\mathlib.rel"
+CheckTrue(ProjectDB::StoreAsmSubProject(1, "jogo1", SubProjAsmA(), SubProjLibA()),
+         "StoreAsmSubProject #1 (2 .asm, 1 .lib)")
+
+NewList SubProjAsmB.s()
+AddElement(SubProjAsmB()) : SubProjAsmB() = "demo\demo.asm"
+NewList SubProjLibB.s()
+CheckTrue(ProjectDB::StoreAsmSubProject(2, "demo", SubProjAsmB(), SubProjLibB()),
+         "StoreAsmSubProject #2 (1 .asm, sem lib)")
+
+NewList SubProjNumbers.i()
+ProjectDB::ListAsmSubProjectNumbers(SubProjNumbers())
+CheckTrue(Bool(ListSize(SubProjNumbers()) = 2), "ListAsmSubProjectNumbers (esperado 2, achou " + Str(ListSize(SubProjNumbers())) + ")")
+
+NewList LoadedSubProjAsm.s()
+NewList LoadedSubProjLib.s()
+CheckTrue(ProjectDB::FetchAsmSubProject(1, LoadedSubProjAsm(), LoadedSubProjLib()), "FetchAsmSubProject #1")
+CheckTrue(Bool(ProjectDB::LastAsmSubProjectTag() = "jogo1"), "SubProject #1: tag = 'jogo1'")
+CheckTrue(StrListsMatch(SubProjAsmA(), LoadedSubProjAsm()), "SubProject #1: lista de .asm bate com a original")
+CheckTrue(StrListsMatch(SubProjLibA(), LoadedSubProjLib()), "SubProject #1: lista de .lib bate com a original")
+
+; Sobrescreve (mesmo numero) - reordena os .asm e some com a lib
+NewList SubProjAsmA2.s()
+AddElement(SubProjAsmA2()) : SubProjAsmA2() = "src\utils.asm"
+AddElement(SubProjAsmA2()) : SubProjAsmA2() = "src\main.asm"
+NewList SubProjLibA2.s()
+CheckTrue(ProjectDB::StoreAsmSubProject(1, "jogo1b", SubProjAsmA2(), SubProjLibA2()),
+         "StoreAsmSubProject #1 de novo (sobrescrevendo, ordem trocada, sem lib)")
+ClearList(SubProjNumbers())
+ProjectDB::ListAsmSubProjectNumbers(SubProjNumbers())
+CheckTrue(Bool(ListSize(SubProjNumbers()) = 2), "Ainda 2 subprojetos apos sobrescrever #1 (nao duplicou)")
+ClearList(LoadedSubProjAsm()) : ClearList(LoadedSubProjLib())
+ProjectDB::FetchAsmSubProject(1, LoadedSubProjAsm(), LoadedSubProjLib())
+CheckTrue(Bool(ProjectDB::LastAsmSubProjectTag() = "jogo1b"), "SubProject #1: tag atualizada para 'jogo1b'")
+CheckTrue(StrListsMatch(SubProjAsmA2(), LoadedSubProjAsm()), "SubProject #1: ordem de .asm atualizada")
+CheckTrue(Bool(ListSize(LoadedSubProjLib()) = 0), "SubProject #1: lista de .lib esvaziada apos sobrescrever")
+
+CheckTrue(ProjectDB::HasAsmSubProject(2), "HasAsmSubProject(2) = #True")
+CheckTrue(Bool(Not ProjectDB::HasAsmSubProject(99)), "HasAsmSubProject(99) = #False")
+
 ; "Projeto 0" (defaults, sempre em memoria): alfabeto 0 = msx.alf embutido
 ; no executavel - confere que bate byte a byte com o .alf real do
 ; repositorio (alfabetos\msx.alf, dois niveis acima de editor\tools\), pra
@@ -450,6 +513,13 @@ ProjectDB::ListAsmBuildKeys(AsmBuildKeys())
 CheckTrue(Bool(ListSize(AsmBuildKeys()) = 2), "ListAsmBuildKeys ainda mostra 2 builds apos SaveAs")
 ProjectDB::FetchAsmBuild("C:\proj\game.asm")
 CheckTrue(Bool(ProjectDB::LastAsmBuildOutputPath() = "C:\proj\game_v2.bin"), "AsmBuild(game.asm) ainda bate apos SaveAs")
+ClearList(SubProjNumbers())
+ProjectDB::ListAsmSubProjectNumbers(SubProjNumbers())
+CheckTrue(Bool(ListSize(SubProjNumbers()) = 2), "ListAsmSubProjectNumbers ainda mostra 2 subprojetos apos SaveAs")
+ClearList(LoadedSubProjAsm()) : ClearList(LoadedSubProjLib())
+ProjectDB::FetchAsmSubProject(2, LoadedSubProjAsm(), LoadedSubProjLib())
+CheckTrue(Bool(ProjectDB::LastAsmSubProjectTag() = "demo" And StrListsMatch(SubProjAsmB(), LoadedSubProjAsm())),
+         "SubProject #2 ainda bate (tag 'demo', lista de .asm) apos SaveAs")
 
 ; 11) OpenExisting - simula "Arquivo -> Abrir projeto...": fecha tudo e
 ; reabre do zero so a partir do caminho salvo, sem passar por EnsureOpen.
@@ -486,6 +556,13 @@ ProjectDB::ListAsmBuildKeys(AsmBuildKeys())
 CheckTrue(Bool(ListSize(AsmBuildKeys()) = 2), "ListAsmBuildKeys ainda mostra 2 builds apos OpenExisting")
 ProjectDB::FetchAsmBuild("LINK|C:\proj\a.rel|C:\proj\b.rel")
 CheckTrue(Bool(ProjectDB::LastAsmBuildOutputPath() = "C:\proj\game.dsk"), "AsmBuild(link) ainda bate apos OpenExisting")
+ClearList(SubProjNumbers())
+ProjectDB::ListAsmSubProjectNumbers(SubProjNumbers())
+CheckTrue(Bool(ListSize(SubProjNumbers()) = 2), "ListAsmSubProjectNumbers ainda mostra 2 subprojetos apos OpenExisting")
+ClearList(LoadedSubProjAsm()) : ClearList(LoadedSubProjLib())
+ProjectDB::FetchAsmSubProject(1, LoadedSubProjAsm(), LoadedSubProjLib())
+CheckTrue(Bool(ProjectDB::LastAsmSubProjectTag() = "jogo1b" And StrListsMatch(SubProjAsmA2(), LoadedSubProjAsm())),
+         "SubProject #1 ainda bate (tag 'jogo1b', ordem de .asm) apos OpenExisting")
 CheckTrue(Bool(Not ProjectDB::OpenExisting(WorkDir + "nao_existe.msxproject")), "OpenExisting falha graciosamente com arquivo inexistente")
 
 ; 12) Close nao deve travar (limpeza final)

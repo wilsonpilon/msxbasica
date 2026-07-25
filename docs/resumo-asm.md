@@ -350,11 +350,69 @@ detalhe mais importante, a visibilidade de `Structure` através de `Module`):
       linha, mesmo espírito de `PsgGen_RawBytes()` do editor de som PSG, mas com o loop de `POKE` que
       o PSG não precisa) numa janela com **Copiar**/**Injetar no cursor**. Validado por um script
       isolado conferindo a formatação exata (quebra de linha a cada 16 bytes, caso de 1 byte só).
+- [x] **`.COM` direto (MSX-DOS, independente do MSX-BASIC) — implementado (2026-07-25)**: pedido
+      explícito do usuário — `Z80Out_ExportCom()` em `editor/Z80OutputGui.pbi`, quarto botão da janela
+      "Saída da montagem" (**Gerar .COM (MSX-DOS, independente do BASIC)...**). Sempre grava sem
+      cabeçalho nenhum (um `.COM` CP/M/MSX-DOS clássico não tem cabeçalho — o próprio sistema
+      operacional carrega em `0100h` e pula pra lá) e avisa (sem bloquear) se `StartAddr <> 0100h`, já
+      que nesse caso o binário provavelmente não vai rodar certo (endereços absolutos calculados a
+      partir de outro `ORG`). Reaproveita `Z80Out_WriteBinFile()` sem nenhuma mudança (já era
+      exatamente esse formato quando chamado com `AddHeader = #False`) — a única lógica nova é o aviso
+      de endereço e o novo `output_kind = "COM"` em `ProjectDB::StoreAsmBuild()`.
 - [x] **`.PHASE`/`.DEPHASE`** (2026-07-24) — necessário pro caso geral de "código montado num
       endereço, mas com labels resolvendo como se rodasse noutro" (ROM→RAM, ou o próprio cabeçalho
       BLOAD que precisa vir ANTES do código no arquivo mas sem deslocar os labels do código). Ver log
       técnico abaixo pro mecanismo (`RealPos` vs. `CurLoc`) e `sample/teste3_phase.asm` (exemplo oficial
       do próprio manual do Nestor80/MACRO-80, validado idêntico byte a byte, 47 bytes)
+
+## Assembly Sub Project — "Makefile primitivo" (implementado 2026-07-25)
+
+Pedido explícito do usuário: **Criar → Assembly Sub Project...** — um subprojeto onde o usuário junta
+vários `.asm` (cada um vira um `.REL` na hora do build) mais bibliotecas referenciadas via `.REQUEST`,
+numa lista com ORDEM, e manda montar tudo de uma vez num binário final (`.bin`/`.com`), com opção de
+gerar bibliotecas a partir de um subconjunto dos `.asm` do próprio subprojeto e adicioná-las à lista.
+
+- [x] **Motor** (`editor/Z80SubProject.pbi`, sem GUI): `Z80SubProj_Build(List AsmPaths, List LibPaths,
+      Array OutBytes)` monta cada `.asm` em `.REL` (`Z80SubProj_AssembleAllToRel`, pasta de trabalho
+      temporária dedicada, `Z80SubProj_WorkDir()`) e linka tudo (`Z80Link::LinkFiles`), devolvendo o
+      binário final + endereços via getters. `Z80SubProj_BuildLibraryFromAsm(List AsmPaths, LibPath)`
+      monta um subconjunto e empacota via `Z80Lib::CreateOrAddLibrary`.
+- [x] **Achado real: extensão obrigatória `.rel` pra bibliotecas via `.REQUEST`** — `Z80Link::
+      LResolveLibPath()` sempre resolve um nome de `.REQUEST` bare pra `"<nome>.rel"` dentro da pasta
+      de biblioteca (SEMPRE anexa `.rel`, mesmo que o nome já termine em `.lib` — vira `"nome.lib.rel"`,
+      nunca encontrado). Isso significa que a extensão `.lib` sugerida por `editor/Z80LibGui.pbi`
+      (**Criar → Biblioteca Z80 (.LIB)...**, sessão anterior) **não funciona sozinha** com `.REQUEST` -
+      só o nome-base do arquivo importa. Corrigido no nível certo (o subprojeto, que é quem realmente
+      monta a `LibraryDir` passada pro linker): `Z80SubProj_StageLibraries()` copia cada biblioteca da
+      lista do usuário (de qualquer extensão/pasta) pra uma pasta de trabalho temporária, RENOMEANDO
+      pra `"<nome-base>.rel"` antes de linkar — o usuário pode continuar salvando bibliotecas como
+      `.lib` sem problema, o subprojeto normaliza sozinho. `Z80LibGui.pbi`/`Z80Lib.pbi` não precisaram
+      de nenhuma mudança (o "bug" não é deles — `Z80Lib::CreateOrAddLibrary` nunca exigiu extensão
+      nenhuma, é só a resolução de `.REQUEST` no linker que é rígida quanto a isso).
+- [x] **Persistência** (`ProjectDB.pbi`): tabela `asm_subprojects` — `asm_files`/`lib_files` como TEXT
+      unidos por `Chr(10)` na ordem escolhida (mesmo padrão de `mml_songs`), `Store`/`Fetch`/`Has`/
+      `List` completos. Diferente de `asm_builds` (metadado de algo já exportado, fora da soma), um
+      subprojeto é configuração de verdade sem cópia em nenhum outro lugar — **entra** na soma de
+      `HasUnsavedContent()`.
+- [x] **GUI** (`editor/Z80SubProjectGui.pbi`) — mesma barra de projeto (número/tag/navegação/Novo/
+      Registrar, reaproveitando `SpriteEd_FindNavTarget`/`SpriteEd_CreateNewSpriteIcon`/
+      `CreateRegisterIcon` do editor de sprites) dos demais tipos de conteúdo registrados no
+      `.msxproject`. Duas listas lado a lado (`.asm` com Adicionar/Remover/Subir/Descer + seleção
+      múltipla; bibliotecas com Adicionar/Remover), botão **"Gerar biblioteca a partir dos .ASM
+      selecionados..."** (sem nada marcado, usa a lista inteira) que oferece adicionar a lib recém-
+      gerada à lista do subprojeto, e **"Montar tudo (Build)..."** que chama `Z80SubProj_Build()` e
+      manda o resultado pro mesmo escolhedor de saída do assembler/linker (`Z80Out_ChooseAndExport`,
+      `Z80OutputGui.pbi`) — `.bin`/`.com` (o usuário escolhe a extensão ao salvar), disco `.dsk` ou
+      listing BASIC.
+- [x] **Validação ponta a ponta** (`editor/tools/Z80SubProjectTestCli.pb`, 4/4, self-contained): monta
+      os pares `.asm` reais de `sample/teste7_*`/`teste8_*` (PUBLIC/EXTRN cruzado; bloco `COMMON`
+      compartilhado) DIRETO dos fontes `.asm` (não dos `.rel` já prontos) e confere que o binário final
+      bate byte a byte com os mesmos resultados já validados contra o `LK80.exe` real em
+      `Z80LinkTestCli.pb` — prova que o "compilar tudo e linkar" ponta a ponta reproduz exatamente o
+      que já se sabia correto. Um quarto teste gera uma biblioteca a partir de
+      `teste9_link_request_moda.asm`+`modb.asm`, salva com o nome-base exato que
+      `teste9_link_request_main.asm` pede via `.request`, e confirma que o build final resolve o
+      `.REQUEST` corretamente (só `MODB` entra, `MODA` fica de fora — linkagem estática seletiva).
 
 ## Fora de escopo (Fase C, backlog distante)
 
@@ -366,6 +424,46 @@ pedido explícito do usuário 2026-07-24.)
 
 _(preenchido conforme a implementação avança — bugs encontrados, ajustes de design em relação ao
 plano original, etc., mesmo espírito do "Próximos passos em aberto" do `docs/SPEC.md`)_
+
+- **2026-07-25 (mesmo dia, terceira sessão) — botão "Gerar .COM" na janela de saída**, pedido explícito
+  do usuário: "Nas opções de Execução/Assembler, vamos criar uma opção de gerar .COM, assim o
+  assembler pode trabalhar independente do MSX BASIC". Não precisou de lógica nova de verdade — o
+  binário "cru" (sem cabeçalho) que `Z80Out_WriteBinFile()` já sabia gravar desde a sessão anterior JÁ
+  é um `.COM` válido quando `ORG 100h` (documentado desde então em `docs/MANUAL.md`, seção "Montar"),
+  só não tinha um botão dedicado — o usuário tinha que usar "Salvar .bin no PC...", responder "Não" na
+  pergunta de cabeçalho, e digitar a extensão `.com` manualmente. `Z80Out_ExportCom()` só formaliza esse
+  caminho como opção de primeira classe (nome do botão deixa explícito "independente do BASIC", sem
+  pergunta de cabeçalho já que `.COM` nunca tem, aviso se `StartAddr <> 0100h`). Decisão de escopo: não
+  mexi no caminho de disco (`Z80Out_ExportDisk`, que continua BASIC/BLOAD apenas) nem tentei inventar um
+  equivalente "disco MSX-DOS bootável" — o pedido era especificamente sobre gerar o arquivo `.COM`, não
+  sobre todo um fluxo de disco MSX-DOS (que teria outras questões em aberto, tipo se MSX-DOS suporta
+  autorun tipo `AUTOEXEC.BAT` sem carregar antes um shell/COMMAND.COM — não pesquisado, fora de escopo
+  deste pedido).
+
+- **2026-07-25 (mesmo dia, sessão seguinte) — Assembly Sub Project ("Makefile primitivo"), pedido
+  explícito do usuário**: "no assembly, vamos criar uma opção Criar->Assembly Sub Project, vamos criar
+  um subprojeto onde o usuário pode colocar os arquivos .ASM que vão ser compilados em vários .REL para
+  gerar um .BIN ou .COM final, [...] ter opções de gerar LIBs e de adicionar estas libs no projeto
+  também". Ver seção "Assembly Sub Project" acima pro detalhe completo do que foi construído; aqui só o
+  achado técnico real:
+  - **Extensão `.rel` é obrigatória pra qualquer arquivo referenciado via `.REQUEST`** —
+    `Z80Link::LResolveLibPath()` (já existente, validado desde a Fase B) sempre resolve um nome bare
+    pra `"<nome>.rel"`, mesmo que o nome já termine em `.lib` (vira `"nome.lib.rel"`, nunca encontrado
+    de verdade). Isso só virou um problema prático agora porque o Assembly Sub Project é a primeira
+    peça que gera E consome bibliotecas dentro do mesmo fluxo (`Z80LibGui.pbi`, sessão anterior, sugere
+    `.lib` como extensão default) — sem essa descoberta, uma biblioteca gerada por "Criar → Biblioteca
+    Z80..." e depois usada via `.REQUEST` falharia silenciosamente com "não consegui abrir biblioteca".
+    Corrigido no lugar certo: `Z80SubProj_StageLibraries()` sempre copia+renomeia pra `.rel` antes de
+    linkar, então o usuário pode continuar salvando com qualquer extensão. Pego durante a escrita do
+    harness de teste (`Z80SubProjectTestCli.pb`) — a primeira tentativa nomeou o arquivo de teste com um
+    prefixo de isolamento (`z80subprojtest_teste9_link_request_lib.rel`) que mudava o nome-BASE e
+    quebrava a resolução por motivo completamente diferente (nome não batendo com o `.request` do
+    fonte) — dois bugs distintos pegos na mesma sessão de debug, resolvidos separadamente (extensão no
+    motor, nome-base no teste).
+  - Suíte própria 4/4 (self-contained, sem precisar de `LK80.exe` presente) reconstrói binários já
+    validados byte a byte contra o `LK80.exe` real **a partir dos `.asm` originais** (não dos `.rel` já
+    prontos), servindo de prova end-to-end de que compilar-e-linkar pelo pipeline novo reproduz
+    exatamente o resultado já conhecido correto.
 
 - **2026-07-25 — integração de menu/saída/projeto (checklist Fase B fechado), pedido explícito do
   usuário: "1-Menu de UI para o Linker/Lib, 2-Saida consumivel do assembler para o MSX BASIC, 3

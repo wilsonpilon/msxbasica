@@ -72,10 +72,17 @@
     - [Lista de comandos e mini buffers](#lista-de-comandos-e-mini-buffers)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-2)
     - [Barra de projeto](#barra-de-projeto-2)
-13. [Assembler Z80](#assembler-z80)
+13. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
+    - [Canvas e color clash](#canvas-e-color-clash)
+    - [Paleta INK/PAPER e ferramentas](#paleta-inkpaper-e-ferramentas)
+14. [Assembler Z80](#assembler-z80)
     - [Aba Assembly (.asm)](#aba-assembly-asm)
     - [Montar (Ctrl+F5)](#montar-ctrlf5)
     - [O que já é suportado](#o-que-já-é-suportado)
+    - [Montar relocável (.REL)](#montar-relocável-rel)
+    - [Linkar (.REL) → binário](#linkar-rel--binário)
+    - [Biblioteca Z80 (.LIB)](#biblioteca-z80-lib)
+    - [Assembly Sub Project (Makefile primitivo)](#assembly-sub-project-makefile-primitivo)
     - [O que ainda não é suportado](#o-que-ainda-não-é-suportado)
 
 ---
@@ -923,6 +930,47 @@ duplicar uma tela inteira). Diferente do editor de sprites/alfabetos, o que fica
 comandos** (não uma imagem/framebuffer) — permitindo reabrir a tela depois e continuar editando,
 reordenando ou removendo comandos individuais.
 
+## Graphos III — Tela SCREEN 2
+
+**Criar → Graphos III Screen 2...** é o início de uma réplica do **Graphos III**, um editor de vídeo
+clássico do MSX (Renato Degiovani, 1987) que só trabalha em SCREEN 2 — o manual original completo está
+em `graphos/graphos.txt`. Diferente do **Editor de DRAW Screen 2** (seção anterior), que monta uma
+*lista de comandos* `PSET`/`LINE`/`CIRCLE`/etc. pra gerar código BASIC, o Graphos III edita o
+**framebuffer diretamente**, pixel a pixel — mais parecido com um editor de bitmap de verdade. Cada
+função do Graphos III original ganha sua **própria opção** dentro de "Criar" nesta IDE: o editor de
+alfabetos do Graphos III **já existe** (**Alfabeto Graphos III...**, mais atrás neste manual) e não faz
+parte desta janela. O programa original usava as teclas **F1** a **F5** pra abrir os menus
+DESENHO/TEXTO/TELA/AJUSTE/MISCELANEA — aqui cada operação vai virando um botão/ícone conforme é
+implementada, no mesmo espírito do editor de sprites.
+
+> Esta é a **primeira fase**: só a tela e as ferramentas mais básicas. O resto do menu DESENHO (BLOCO,
+> LINHA, RETÂNGULO, RAIO, CÍRCULO, PINTURA, SPRAY, FILL), os menus TEXTO/TELA/AJUSTE/MISCELÂNEA, os
+> shapes e os formatos de arquivo do Graphos III (`.SCR`/`.LAY`/`.VTC`+`.ATC`) ainda não existem —
+> ficam para os próximos cortes. Esta janela ainda não registra nada no `.msxproject`.
+
+### Canvas e color clash
+
+O canvas mostra a tela inteira (256×192 pixels, ampliada 2× pra facilitar o clique) com o **color
+clash idêntico ao hardware real do MSX**: cada faixa horizontal de 8 pixels (1 byte da Pattern Table)
+só pode mostrar **2 cores ao mesmo tempo** — a cor de tinta (INK) dos pixels ligados e a cor de fundo
+(PAPER) dos pixels desligados dessa faixa. Pintar um pixel com uma tinta diferente na mesma faixa muda
+a cor de **todos** os pixels ligados da faixa, exatamente como uma TV ligada num MSX de verdade
+mostraria. Esse comportamento não foi reescrito para esta janela — é o mesmo motor já usado e testado
+pelo **Editor de DRAW Screen 2** (`editor/Screen2Synth.pbi`).
+
+### Paleta INK/PAPER e ferramentas
+
+- **Tinta (INK)** / **Fundo (PAPER)**: dois seletores de paleta com as 16 cores fixas do MSX1 — clique
+  numa cor pra selecioná-la.
+- **Lápis** (TRAÇO/INS no manual original): liga o pixel sob o cursor com a cor de Tinta selecionada.
+  Clique uma vez ou segure o botão esquerdo e arraste pra riscar continuamente.
+- **Borracha** (TRAÇO/DEL): apaga o pixel sob o cursor, gravando a cor de Fundo selecionada na faixa —
+  mesmo comportamento de arrastar contínuo do Lápis. Lápis e Borracha são mutuamente exclusivos (só um
+  fica "pressionado" por vez).
+- **Limpar tela** (LIMPA TELA do menu TELA original): apaga a tela inteira e grava as cores de Tinta/
+  Fundo atualmente selecionadas em toda ela — equivalente a começar uma tela nova já com as "cores de
+  ATRIBUTOS" escolhidas.
+
 ## Assembler Z80
 
 Assembler Z80 nativo, **compatível com M80/L80** (o Microsoft MACRO-80/LINK-80 clássico) — a
@@ -943,15 +991,21 @@ aba.
 
 Com uma aba `.asm` ativa, **Executar → Montar Assembly (.bin)...** (atalho `Ctrl+F5`) monta o código em
 modo **absoluto**. Se houver um erro, uma mensagem mostra a **linha** e a **descrição do problema** em
-vez de travar ou dar um erro genérico. Se der certo, abre a janela **"Saída da montagem"** com três
-caminhos (a mesma janela usada depois de **Linkar**, ver seção seguinte):
+vez de travar ou dar um erro genérico. Se der certo, abre a janela **"Saída da montagem"** com quatro
+caminhos (a mesma janela usada depois de **Linkar** e depois do **Assembly Sub Project**, ver seções
+seguintes):
 
 - **Salvar .bin no PC...**: pergunta o formato do arquivo antes do diálogo de salvar —
   - **Sim — com cabeçalho MSX BLOAD**: grava os 7 bytes clássicos (`0FEh` + endereço inicial + endereço
     final + endereço de execução, este último igual ao inicial) antes do código — é o formato que
     `BLOAD "ARQUIVO.BIN",R` do MSX-BASIC espera.
-  - **Não — binário cru**: só os bytes montados, sem cabeçalho nenhum. Se o fonte usa `ORG 100h`, esse
-    arquivo já é um `.COM` válido (formato CP/M/MSX-DOS).
+  - **Não — binário cru**: só os bytes montados, sem cabeçalho nenhum.
+- **Gerar .COM (MSX-DOS, independente do BASIC)...**: grava o binário cru (sem cabeçalho, sem
+  perguntar — um `.COM` clássico CP/M/MSX-DOS nunca tem cabeçalho) direto com extensão `.com`. Se o
+  fonte usa `ORG 100h`, o resultado é idêntico ao "binário cru" acima; se o endereço de montagem for
+  outro, avisa (sem bloquear) que o código provavelmente não vai rodar certo, já que o MSX-DOS sempre
+  carrega um `.COM` em `0100h` independente do `ORG` do fonte. Este é o caminho pra rodar o código
+  montado **sem passar pelo MSX-BASIC nenhum** — direto do prompt do MSX-DOS.
 - **Gravar disco MSX (.dsk, BLOAD)...**: monta um disquete `.dsk` (reaproveitando `MSXDisk.pbi`, o mesmo
   mecanismo do "Rodar no openMSX") já com o binário (sempre com cabeçalho BLOAD, senão o `AUTOEXEC.BAS`
   não saberia o endereço de carga) e um `AUTOEXEC.BAS` de autorun (`10 BLOAD"NOME.BIN",R`) — abrir esse
@@ -962,9 +1016,10 @@ caminhos (a mesma janela usada depois de **Linkar**, ver seção seguinte):
   precisar carregar um arquivo à parte. Botões **Copiar**/**Injetar no cursor** (mesmo padrão dos
   editores de som/música/desenho).
 
-As exportações que produzem um arquivo de verdade (`.bin`/`.dsk`, não o listing) ficam registradas no
-projeto atual (`.msxproject`) como a "última build" dessa aba — sem janela própria pra consultar isso
-ainda, é só metadado interno usado pra futuras integrações (ex.: um "recarregar último binário").
+As exportações que produzem um arquivo de verdade (`.bin`/`.com`/`.dsk`, não o listing) ficam
+registradas no projeto atual (`.msxproject`) como a "última build" dessa aba — sem janela própria pra
+consultar isso ainda, é só metadado interno usado pra futuras integrações (ex.: um "recarregar último
+binário").
 
 Pra código que precisa ficar guardado num endereço mas **rodar** em outro (ex.: rotina copiada da ROM
 pra RAM antes de executar, ou justamente o próprio cabeçalho BLOAD — o cabeçalho tem que vir ANTES dos
@@ -1020,7 +1075,7 @@ campo opcional de **pasta de biblioteca** (onde um `.REQUEST` dentro de algum `.
 `.LIB` correspondente). O botão **Linkar...** resolve `PUBLIC`↔`EXTRN` entre os módulos (incl. `.REQUEST`
 contra a biblioteca, trazendo só os programas que realmente resolvem algum símbolo pendente — linkagem
 estática seletiva de verdade) e manda o binário final pra mesma janela "Saída da montagem" da seção
-"Montar" acima (`.bin`/disco `.dsk`/listing BASIC).
+"Montar" acima (`.bin`/`.com`/disco `.dsk`/listing BASIC).
 
 ### Biblioteca Z80 (.LIB)
 
@@ -1033,6 +1088,37 @@ nem botão "Salvar" — cada operação já grava direto e de forma atômica no 
 
 Detalhe técnico completo do motor por trás dessas três janelas (algoritmo, formato de bit-stream,
 testes byte a byte contra `N80.exe`/`LK80.exe`/`LB80.exe`) em [`docs/resumo-asm.md`](resumo-asm.md).
+
+> **Nota sobre `.REQUEST`**: o linker sempre procura o arquivo pedido por um `.REQUEST <nome>` como
+> `<nome>.rel` dentro da pasta de biblioteca — mesmo que você tenha salvo a biblioteca com extensão
+> `.lib` pela janela acima. Chamando o linker/Sub Project diretamente com uma pasta de biblioteca
+> manual, salve (ou renomeie) o arquivo com extensão `.rel`; o **Assembly Sub Project** (próxima
+> seção) faz essa normalização sozinho, então esse detalhe só importa se você estiver montando a pasta
+> de biblioteca manualmente.
+
+### Assembly Sub Project (Makefile primitivo)
+
+**Criar → Assembly Sub Project...** junta o fluxo completo — vários `.asm`, bibliotecas e o binário
+final — numa única janela, "como um Makefile primitivo". Mesma barra de projeto dos demais editores
+(número/tag/**Primeiro**/**Anterior**/**Próximo**/**Último**/**Novo**/**Registrar**).
+
+- **Lista de arquivos .ASM** (esquerda): a ordem importa — é a ordem de link. **Adicionar...** (aceita
+  selecionar vários de uma vez), **Remover**, **Subir**/**Descer** reordenam.
+- **Lista de bibliotecas** (direita): bibliotecas `.rel`/`.lib` que algum `.asm` da lista referencia via
+  `.REQUEST nome` — o nome do arquivo (sem extensão) precisa bater com o nome pedido. **Adicionar
+  biblioteca...**/**Remover biblioteca**.
+- **Gerar biblioteca a partir dos .ASM selecionados...**: marque algumas linhas na lista de `.asm`
+  (clique com Ctrl/Shift pra selecionar várias) e clique aqui para montar só essas e empacotar numa
+  biblioteca nova ou existente — sem nada marcado, usa a lista inteira do subprojeto. Depois de gerar,
+  pergunta se quer adicionar essa biblioteca de volta à lista do subprojeto (útil pro caso comum de
+  "algumas rotinas viram uma lib interna que o resto do próprio subprojeto usa via `.REQUEST`").
+- **Montar tudo (Build)...**: monta cada `.asm` em `.REL`, resolve as bibliotecas da lista e linka tudo
+  num binário final — mesma janela "Saída da montagem" das seções anteriores (`.bin`/`.com`, disco
+  `.dsk` ou listing BASIC). Diferente de "Montar Assembly (.bin)..." (uma aba só), aqui não precisa ter
+  nenhum arquivo aberto no editor — os `.asm` são lidos direto do disco pelos caminhos da lista.
+
+Detalhe técnico completo (algoritmo de staging de biblioteca, achado sobre a extensão `.rel`, suíte de
+testes) em [`docs/resumo-asm.md`](resumo-asm.md), seção "Assembly Sub Project".
 
 ### O que ainda não é suportado
 
