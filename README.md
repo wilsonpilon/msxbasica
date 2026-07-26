@@ -224,6 +224,8 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   DESENHO (BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL), TEXTO, AJUSTE, MISCELÂNEA (ZOOM/
   SHAPE/CORTE/GRID), shapes e os formatos de arquivo nativos (`.SCR`/`.LAY`/`.VTC`+`.ATC`) ficam para
   os próximos cortes.
+
+  ![Editor Graphos III (Criar → Graphos III Screen 2...) replicando o editor de vídeo clássico do MSX](images/msxbasica-11.png)
 - **Assembler Z80 nativo** (`editor/Z80Asm.pbi`, menu **Executar → Montar Assembly (.bin)...**,
   `Ctrl+F5`) — compatível com **M80/L80** (Microsoft MACRO-80/LINK-80), especificação de comportamento
   portada do [**Nestor80**](https://github.com/Konamiman/Nestor80) (assembler C# moderno 100%
@@ -257,6 +259,8 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   volta à lista. Registrado no `.msxproject` (tabela `asm_subprojects`), mesma barra de projeto
   (número/tag/navegação/Novo/Registrar) dos demais editores. Detalhe completo do processo de
   implementação em [`docs/resumo-asm.md`](docs/resumo-asm.md).
+
+  ![Assembler Z80 nativo (Executar → Montar Assembly), compatível M80/L80](images/msxbasica-12.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/

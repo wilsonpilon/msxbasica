@@ -26,6 +26,10 @@
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
 
+# Pacote de distribuicao gerado por build.ps1 -D/--distribute (artefato de
+# build, nao fonte).
+/distribute/
+
 # Preferencias locais persistidas pelo proprio editor (Configurar -> ...),
 # especificas de cada maquina/usuario.
 /editor/editor_settings.json

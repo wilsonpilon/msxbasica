@@ -35,6 +35,8 @@
     .\build.ps1 -V "5.2.0" -R
 .EXAMPLE
     .\build.ps1 -H
+.EXAMPLE
+    .\build.ps1 -D
 #>
 
 $ErrorActionPreference = "Stop"
@@ -55,12 +57,17 @@ Opcoes:
                              (padrao: editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
                              (padrao: editor\BadigEditor.exe).
+  -D, --distribute          Depois de compilar com sucesso, monta o pacote de
+                             distribuicao na pasta distribute\ (executavel
+                             final, README.md, docs\MANUAL.md, LICENSE,
+                             pasta sample\, msxbasica.ico, msxbasica.png).
 
 Exemplos:
   .\build.ps1
   .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"
   .\build.ps1 --compiler "C:\Basic\Compilers\pbcompiler.exe" --run
   .\build.ps1 -V "5.2.0" -R
+  .\build.ps1 -D
 "@ | Write-Host
 }
 
@@ -71,6 +78,7 @@ $Run = $false
 $Version = "7.5.12"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
+$Distribute = $false
 
 # $args e uma variavel automatica por escopo (uma funcao chamada daqui teria
 # o SEU PROPRIO $args, nao o deste script) - por isso o parsing e feito inline
@@ -106,6 +114,8 @@ while ($i -lt $args.Count) {
             if ($i -ge $args.Count) { Write-Error "Falta o caminho depois de $token."; exit 1 }
             $OutputExe = $args[$i]
         }
+
+        '^(-D|--distribute)$' { $Distribute = $true }
 
         default {
             Write-Warning "Parametro desconhecido: $token (use -H ou --help para ver as opcoes)."
@@ -200,6 +210,36 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Build concluido: $OutputExe"
+
+if ($Distribute) {
+    Write-Host ""
+    Write-Host "Montando pacote de distribuicao..."
+
+    $DistributeDir = Join-Path $PSScriptRoot "distribute"
+    if (Test-Path $DistributeDir) {
+        Remove-Item -Path $DistributeDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $DistributeDir -Force | Out-Null
+
+    function Copy-DistItem([string]$Path, [switch]$Recurse) {
+        if (Test-Path $Path) {
+            Copy-Item -Path $Path -Destination $DistributeDir -Recurse:$Recurse -Force
+            Write-Host "  incluido: $Path"
+        } else {
+            Write-Warning "  nao encontrado, pulando: $Path"
+        }
+    }
+
+    Copy-DistItem -Path $OutputExe
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "README.md")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "docs\MANUAL.md")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "sample") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.ico")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.png")
+
+    Write-Host "Pacote de distribuicao criado em: $DistributeDir"
+}
 
 if ($Run) {
     Write-Host "Executando $OutputExe ..."
