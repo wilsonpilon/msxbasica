@@ -7,8 +7,9 @@
 ;  usando a palheta original de 16 cores do MSX1 (TMS9918). Um canto mostra
 ;  a previa do sprite em escala reduzida e outro o seletor de cores. Radios
 ;  de modo MSX1/MSX2 controlam a regra de cor (sprite inteiro com uma cor,
-;  ou uma cor por linha). Por enquanto so a montagem visual - sem exportar
-;  para DATA/arquivo ainda.
+;  ou uma cor por linha). Alem da montagem visual, os botoes Injetar/Inserir
+;  sprite corrente/Gerar DATA do banco exportam o sprite (ou o banco inteiro)
+;  como DATA no formato Basic Dignified direto no cursor da aba de texto ativa.
 ; ------------------------------------------------------------
 ;
 
@@ -701,6 +702,58 @@ Procedure SpriteEd_CreateInjectIcon(Size.i)
   ProcedureReturn Img
 EndProcedure
 
+; Icone do botao "Inserir sprite corrente": igual ao de Injetar (pagina de
+; codigo recebendo seta reta azul), mais um lacinho laranja (seta circular)
+; ao lado, simbolizando o loop de leitura que este botao gera junto do DATA.
+Procedure SpriteEd_CreateInsertLoopIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(2, 11, Size - 4, Size - 13, RGB(90, 90, 90))
+    DrawingMode(#PB_2DDrawing_Default)
+    Line(5, 15, Size - 10, 0, RGB(150, 150, 150))
+    Line(5, 19, Size - 10, 0, RGB(150, 150, 150))
+    Protected i
+    For i = -1 To 1
+      LineXY(6 + i, 1, 6 + i, 9, RGB(60, 110, 210))
+    Next
+    LineXY(2, 6, 6, 11, RGB(60, 110, 210))
+    LineXY(10, 6, 6, 11, RGB(60, 110, 210))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Circle(Size - 6, 5, 4, RGB(210, 130, 40))
+    DrawingMode(#PB_2DDrawing_Default)
+    LineXY(Size - 3, 2, Size - 1, 4, RGB(210, 130, 40))
+    LineXY(Size - 1, 4, Size - 4, 5, RGB(210, 130, 40))
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; Icone do botao "Gerar DATA do banco": tres paginas empilhadas (todos os
+; sprites ja registrados no projeto) com uma seta roxa para baixo.
+Procedure SpriteEd_CreateInsertAllIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(1, 10, Size - 8, Size - 13, RGB(150, 150, 150))
+    Box(3, 12, Size - 8, Size - 13, RGB(120, 120, 120))
+    Box(5, 14, Size - 8, Size - 13, RGB(90, 90, 90))
+    DrawingMode(#PB_2DDrawing_Default)
+    Protected i
+    For i = -1 To 1
+      LineXY(Size / 2 + 2 + i, 0, Size / 2 + 2 + i, 8, RGB(130, 80, 190))
+    Next
+    LineXY(Size / 2 - 2, 5, Size / 2 + 2, 9, RGB(130, 80, 190))
+    LineXY(Size / 2 + 6, 5, Size / 2 + 2, 9, RGB(130, 80, 190))
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
 ; Empacota um bloco 8x8 da grade (comecando em RowOff,ColOff) em 8 bytes hex
 ; (um por linha, bit 7 = pixel mais a esquerda) - bloco basico tanto do
 ; sprite 8x8 (um bloco so) quanto de cada quadrante do sprite 16x16.
@@ -777,6 +830,118 @@ Procedure.s SpriteEd_BuildInjectText(Array Grid.b(2), GridSize.i, SpriteMode.i, 
   Text + "data &H" + RSet(Hex(GridSize), 2, "0") + ",&H" + RSet(Hex(SpriteMode), 2, "0") + #CRLF$
   Text + "data " + SpriteEd_PackColorsHex(Grid(), GridSize, SpriteMode, SelectedColor) + #CRLF$
   Text + "data " + SpriteEd_PackPatternHex(Grid(), GridSize) + #CRLF$
+  ProcedureReturn Text
+EndProcedure
+
+; Monta o loop FOR/READ que consome o DATA deste sprite e junta os bytes nas
+; variaveis temporarias sp<N>_cor$/sp<N>_pat$ - limites do loop fixos de
+; acordo com o tamanho (8x8 = 8 bytes, 16x16 = 32 bytes) e o modo (MSX1 = 1
+; byte de cor lido direto, MSX2 = 1 byte de cor por linha, GridSize bytes)
+; deste sprite especifico, sem precisar reler tamanho/modo do proprio DATA
+; feito pela func .CreateSprite generica de sample/sprite_loader.dmx.
+; Nomes de variavel longos (3+ caracteres) de proposito: o Basic Dignified
+; encurta cada um automaticamente pra uma variavel de 2 letras unica (ver
+; docs/BADIG-USER.md), entao o prefixo com o numero do sprite so serve pra
+; manter o codigo gerado legivel quando varios sprites forem inseridos em
+; sequencia - nao ha risco real de colisao.
+Procedure.s SpriteEd_BuildReadLoopText(GridSize.i, SpriteMode.i, SpriteNumber.i)
+  Protected Quote.s = Chr(34)
+  Protected VarPrefix.s = "sp" + Str(SpriteNumber) + "_"
+  Protected PatternBytes.i = 8
+  If GridSize = 16
+    PatternBytes = 32
+  EndIf
+  Protected Text.s = ""
+
+  If SpriteMode = 1
+    Text + "read " + VarPrefix + "cor" + #CRLF$
+  Else
+    Text + VarPrefix + "cor$ = " + Quote + Quote + #CRLF$
+    Text + "for " + VarPrefix + "i = 1 to " + Str(GridSize) + #CRLF$
+    Text + "  read " + VarPrefix + "c" + #CRLF$
+    Text + "  " + VarPrefix + "cor$ = " + VarPrefix + "cor$ + chr$(" + VarPrefix + "c)" + #CRLF$
+    Text + "next " + VarPrefix + "i" + #CRLF$
+  EndIf
+
+  Text + VarPrefix + "pat$ = " + Quote + Quote + #CRLF$
+  Text + "for " + VarPrefix + "i = 1 to " + Str(PatternBytes) + #CRLF$
+  Text + "  read " + VarPrefix + "b" + #CRLF$
+  Text + "  " + VarPrefix + "pat$ = " + VarPrefix + "pat$ + chr$(" + VarPrefix + "b)" + #CRLF$
+  Text + "next " + VarPrefix + "i" + #CRLF$
+
+  ProcedureReturn Text
+EndProcedure
+
+; Monta o texto completo que o botao "Inserir sprite corrente" cola no
+; cursor: {label} + as 3 linhas DATA (mesmo formato de SpriteEd_BuildInjectText)
+; + RESTORE pro label + o loop de leitura (SpriteEd_BuildReadLoopText) +
+; um comentario-guia parando o cursor no ponto onde falta so atribuir as
+; variaveis temporarias a um numero de sprite (0-31).
+Procedure.s SpriteEd_BuildInsertLoopText(Array Grid.b(2), GridSize.i, SpriteMode.i, SelectedColor.i, SpriteNumber.i, SpriteTag.s)
+  Protected VarPrefix.s = "sp" + Str(SpriteNumber) + "_"
+  Protected LabelName.s = "spr" + Str(SpriteNumber)
+
+  Protected Text.s = "{" + LabelName + "}" + #CRLF$
+  Text + SpriteEd_BuildInjectText(Grid(), GridSize, SpriteMode, SelectedColor, SpriteNumber, SpriteTag)
+  Text + #CRLF$
+  Text + "restore {" + LabelName + "}" + #CRLF$
+  Text + SpriteEd_BuildReadLoopText(GridSize, SpriteMode, SpriteNumber)
+  Text + #CRLF$
+  Text + "' Atribua " + VarPrefix + "pat$"
+  If SpriteMode = 2
+    Text + " e " + VarPrefix + "cor$"
+  EndIf
+  Text + " a um sprite numerado (0-31), ex.:" + #CRLF$
+  Text + "'   sprite$(N) = " + VarPrefix + "pat$" + #CRLF$
+  If SpriteMode = 2
+    Text + "'   color sprite$(N) = " + VarPrefix + "cor$" + #CRLF$
+  EndIf
+  Text + #CRLF$
+
+  ProcedureReturn Text
+EndProcedure
+
+; Primeira cor nao-transparente encontrada na grade (varredura linha a
+; linha) - usada no lugar da SelectedColor "ao vivo" do editor (que so
+; acompanha o sprite atualmente aberto na tela, nao cada sprite do banco)
+; pra montar corretamente a cor MSX1 de um sprite so lido do ProjectDB.
+Procedure.i SpriteEd_FirstColorInGrid(Array Grid.b(2), GridSize.i)
+  Protected Row, Col
+  For Row = 0 To GridSize - 1
+    For Col = 0 To GridSize - 1
+      If Grid(Row, Col) > 0
+        ProcedureReturn Grid(Row, Col)
+      EndIf
+    Next
+  Next
+  ProcedureReturn 0
+EndProcedure
+
+; Monta o DATA (comentario + {label} proprio + as 3 linhas DATA) de todos os
+; sprites ja registrados no banco do projeto, na ordem crescente de numero -
+; usado pelo botao "Gerar DATA do banco". So o DATA (sem loop de leitura):
+; cada bloco pode ser consumido depois com "restore {sprN}" + a func generica
+; de sample/sprite_loader.dmx, ou com o loop montado por
+; SpriteEd_BuildReadLoopText pra cada sprite individualmente.
+Procedure.s SpriteEd_BuildAllSpritesDataText()
+  Protected Text.s = ""
+  Protected Number.i, GridSize.i, SpriteMode.i
+  Dim BankGrid.b(15, 15)
+
+  NewList Numbers.i()
+  ProjectDB::ListSpriteNumbers(Numbers())
+
+  ForEach Numbers()
+    Number = Numbers()
+    If ProjectDB::FetchSprite(Number, BankGrid())
+      GridSize = ProjectDB::LastGridSize()
+      SpriteMode = ProjectDB::LastSpriteMode()
+      Text + "{spr" + Str(Number) + "}" + #CRLF$
+      Text + SpriteEd_BuildInjectText(BankGrid(), GridSize, SpriteMode, SpriteEd_FirstColorInGrid(BankGrid(), GridSize), Number, ProjectDB::LastTag())
+      Text + #CRLF$
+    EndIf
+  Next
+
   ProcedureReturn Text
 EndProcedure
 
@@ -955,7 +1120,7 @@ EndProcedure
 
 Procedure SpriteEditor_OpenWindow(ParentWindow)
   Protected RightW = 170
-  Protected WinW = 15 + #SpriteEd_CanvasSize + 20 + RightW + 15 + 45
+  Protected WinW = 15 + #SpriteEd_CanvasSize + 20 + RightW + 15 + 45 + 90
   Protected TopOffset = 38   ; altura reservada pra barra de projeto (numero/navegacao/tag/novo/registrar/copiar/colar)
   Protected ToolY = (78 + TopOffset) + #SpriteEd_CanvasSize + 10, ToolH = 28
   Protected ToolY2 = ToolY + ToolH + 8
@@ -1022,6 +1187,16 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   Protected InjectIcon = SpriteEd_CreateInjectIcon(22)
   Protected G_Inject = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(InjectIcon))
   GadgetToolTip(G_Inject, "Injetar: insere o codigo DATA deste sprite no cursor da aba de texto ativa")
+  Cx + 34 + 16
+
+  Protected InsertLoopIcon = SpriteEd_CreateInsertLoopIcon(22)
+  Protected G_InsertLoop = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(InsertLoopIcon))
+  GadgetToolTip(G_InsertLoop, "Inserir sprite corrente: DATA + loop de leitura deste sprite no cursor da aba de texto ativa, pronto pra atribuir a um sprite numerado")
+  Cx + 34 + 6
+
+  Protected InsertAllIcon = SpriteEd_CreateInsertAllIcon(22)
+  Protected G_InsertAll = ButtonImageGadget(#PB_Any, Cx, 12, 34, 26, ImageID(InsertAllIcon))
+  GadgetToolTip(G_InsertAll, "Gerar DATA do banco: insere o DATA de todos os sprites registrados no projeto no cursor da aba de texto ativa")
 
   TextGadget(#PB_Any, 15, 18 + TopOffset, 90, 20, "Tipo de sprite:")
   Protected G_Size8  = OptionGadget(#PB_Any, 110, 16 + TopOffset, 70, 22, "8 x 8")
@@ -1713,6 +1888,28 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
               SetGadgetText(G_Status, "Codigo do sprite #" + Str(SpriteNumber) + " injetado no cursor.")
             Else
               MessageRequester("Nao foi possivel injetar",
+                                "Nenhuma aba de texto ativa no editor pra receber o codigo.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            EndIf
+
+          Case G_InsertLoop
+            Protected InsertLoopText.s = SpriteEd_BuildInsertLoopText(Grid(), GridSize, SpriteMode, SelectedColor, SpriteNumber, SpriteTag)
+            If InjectTextAtCursor(InsertLoopText)
+              SetGadgetText(G_Status, "Sprite #" + Str(SpriteNumber) + " inserido: DATA + loop de leitura no cursor.")
+            Else
+              MessageRequester("Nao foi possivel inserir",
+                                "Nenhuma aba de texto ativa no editor pra receber o codigo.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            EndIf
+
+          Case G_InsertAll
+            Protected AllSpritesText.s = SpriteEd_BuildAllSpritesDataText()
+            If AllSpritesText = ""
+              MessageRequester("Banco vazio", "Nenhum sprite registrado no projeto ainda (use o botao Registrar).", #PB_MessageRequester_Ok)
+            ElseIf InjectTextAtCursor(AllSpritesText)
+              SetGadgetText(G_Status, "DATA de todos os sprites do banco inserido no cursor.")
+            Else
+              MessageRequester("Nao foi possivel inserir",
                                 "Nenhuma aba de texto ativa no editor pra receber o codigo.",
                                 #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
             EndIf

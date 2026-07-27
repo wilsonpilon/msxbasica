@@ -61,6 +61,14 @@ XIncludeFile "Z80LinkGui.pbi"
 XIncludeFile "Z80LibGui.pbi"
 XIncludeFile "Z80SubProject.pbi"
 XIncludeFile "Z80SubProjectGui.pbi"
+XIncludeFile "NestorBasicSupport.pbi"
+XIncludeFile "NestorBasicHelpData.pbi"
+XIncludeFile "NestorBasicHelpGui.pbi"
+XIncludeFile "MsxBasicDictData.pbi"
+XIncludeFile "MsxBasic2PlusDictData.pbi"
+XIncludeFile "MsxBasicManualData.pbi"
+XIncludeFile "MsxBasic2PlusManualData.pbi"
+XIncludeFile "MsxBasicHelpGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -334,6 +342,7 @@ EndEnumeration
 Enumeration MenuItems
   #Menu_New
   #Menu_NewAssembly
+  #Menu_NewNestorBasic
   #Menu_NewProject
   #Menu_OpenProject
   #Menu_SaveProject
@@ -357,12 +366,15 @@ Enumeration MenuItems
   #Menu_CreateAsmSubProject
   #Menu_CreateGraphosScreen
   #Menu_RunBasic
+  #Menu_RunNestorBasic
   #Menu_AssembleZ80
   #Menu_AssembleZ80Rel
   #Menu_LinkZ80
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_HelpCommands
+  #Menu_HelpNestorBasic
+  #Menu_HelpMsxBasic
   #Menu_HelpAbout
 EndEnumeration
 
@@ -514,6 +526,7 @@ EndStructure
 
 Global NewList Docs.Document()
 Global UntitledCount = 0
+Global NestorBasicUntitledCount = 0   ; contador separado pra "nbasic1.dmx", "nbasic2.dmx"... (ver AddDocumentTab)
 Global ActiveTabPosition.i = -1
 Global HoverTabPosition.i = -1
 Global HoverCloseTabPosition.i = -1
@@ -571,7 +584,7 @@ Declare.s ComputeTabCaption(Position)
 Declare   RedrawTabBar()
 Declare   RedrawRuler()
 Declare   SetActiveTab(Position)
-Declare   AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
+Declare   AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBase.s = "noname")
 Declare   FindDocumentByGadget(GadgetNum)
 Declare   UpdateTabCaption(Position)
 Declare   OpenDocumentDialog()
@@ -583,7 +596,7 @@ Declare   CloseTab(Position)
 Declare   SaveAsTokenizedNative()
 Declare   SaveAsAsciiFromDignified()
 Declare   SaveAsTokenizedFromDignified()
-Declare   RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
+Declare   RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s, IncludeNestorBasic.b = #False)
 Declare   Dig_SyncConfigFromBadigCfg()
 Declare   ResizeInterface()
 
@@ -1379,7 +1392,7 @@ Procedure SetActiveTab(Position)
   UpdateStatusBar()
 EndProcedure
 
-Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
+Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBase.s = "noname")
   Protected InnerW, InnerH, Sci
 
   InnerW = GadgetWidth(#RulerGadget)
@@ -1413,12 +1426,17 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX")
   Docs()\MarkEnd   = -1
 
   If Path = ""
-    UntitledCount + 1
     Protected UntitledExt.s = ".dmx"
     If DocMode = "ASM"
       UntitledExt = ".asm"
     EndIf
-    Docs()\UntitledName = "noname" + Str(UntitledCount) + UntitledExt
+    If UntitledBase = "noname"
+      UntitledCount + 1
+      Docs()\UntitledName = "noname" + Str(UntitledCount) + UntitledExt
+    Else
+      NestorBasicUntitledCount + 1
+      Docs()\UntitledName = UntitledBase + Str(NestorBasicUntitledCount) + UntitledExt
+    EndIf
   EndIf
 
   If Content <> ""
@@ -2192,6 +2210,46 @@ Procedure RunBasicFromActiveTab()
   RunOnOpenMSX(BaseName, DmxSource, AsciiOut, HexOut)
 EndProcedure
 
+; Menu "Executar -> Nestor Basic": identico a RunBasicFromActiveTab(), so que
+; manda IncludeNestorBasic=#True pra RunOnOpenMSX() copiar NBASIC.BIN/
+; NBASIC.DAT (de res/) pro disco antes de montar o run.dsk e rodar.
+Procedure RunNestorBasicFromActiveTab()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  If Docs()\Mode = "ASM"
+    MessageRequester("Executar -> Nestor Basic",
+                     "A aba ativa e Assembly (.asm), nao MSX-BASIC/Dignified." + Chr(10) +
+                     "Executar Assembly ainda nao e suportado.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  Protected AsciiOut.s = RunDignifiedPreprocessor()
+  If AsciiOut = ""
+    ProcedureReturn
+  EndIf
+
+  Protected HexOut.s = Tok_Tokenize(AsciiOut)
+  If Tok_HasError
+    MessageRequester("Erro ao tokenizar",
+                     "Linha " + Str(Tok_ErrorLine) + ": " + Tok_ErrorMsg,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Protected BaseName.s = GetFilePart(Suggestion, #PB_FileSystem_NoExtension)
+
+  Protected DmxSource.s = ReadSciText(Docs()\SciGadget)
+  RunOnOpenMSX(BaseName, DmxSource, AsciiOut, HexOut, #True)
+EndProcedure
+
 ;- ------------------------------------------------------------
 ;- Montar Assembly (.asm) -> binario (menu "Executar") - modo absoluto
 ;- (.bin, Ctrl+F5) e relocavel (.REL, insumo do linker/biblioteca - modulo
@@ -2367,7 +2425,7 @@ Procedure ClearDiskDir(Dir.s)
   FinishDirectory(d)
 EndProcedure
 
-Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
+Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s, IncludeNestorBasic.b = #False)
   If BadigCfg\EmulatorPath = ""
     MessageRequester("openMSX nao configurado",
                      "Configure o caminho do executavel do openMSX em" + Chr(10) +
@@ -2409,6 +2467,21 @@ Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
   f = CreateFile(#PB_Any, AutoexecLocal)
   If f : WriteString(f, "10 RUN " + Chr(34) + UBase + ".BMX" + Chr(34) + Chr(13) + Chr(10)) : CloseFile(f) : EndIf
 
+  ; "Executar -> Nestor Basic": copia NBASIC.BIN/NBASIC.DAT (de res/, ao
+  ; lado de editor/) pro mesmo diretorio de disco antes de montar o run.dsk -
+  ; sem eles no disco, o BLOAD"NBASIC.BIN",R gerado por
+  ; NestorBasicSupport.pbi nao acha o arquivo dentro do openMSX.
+  Protected NBasicBinLocal.s = DiskDir + "NBASIC.BIN"
+  Protected NBasicDatLocal.s = DiskDir + "NBASIC.DAT"
+  If IncludeNestorBasic
+    Protected ResDir.s = GetPathPart(ProgramFilename()) + "..\res\"
+    If Not CopyFile(ResDir + "NBASIC.BIN", NBasicBinLocal) Or Not CopyFile(ResDir + "NBASIC.DAT", NBasicDatLocal)
+      MessageRequester("Erro", "Nao foi possivel copiar NBASIC.BIN/NBASIC.DAT de:" + Chr(10) + ResDir,
+                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+      ProcedureReturn
+    EndIf
+  EndIf
+
   ; MSX-DOS/FAT12 e 8.3 - nomes de arquivo maiores que 8 caracteres sao
   ; truncados automaticamente por MSXDisk::ConvertToFAT11() ao adicionar.
   Protected DiskPath.s = DiskDir + "run.dsk"
@@ -2423,6 +2496,10 @@ Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s)
   If Ok : Ok = MSXDisk::AddFile(AmxLocal, UBase + ".AMX") : EndIf
   If Ok : Ok = MSXDisk::AddFile(BmxLocal, UBase + ".BMX") : EndIf
   If Ok : Ok = MSXDisk::AddFile(AutoexecLocal, "AUTOEXEC.BAS") : EndIf
+  If Ok And IncludeNestorBasic
+    Ok = MSXDisk::AddFile(NBasicBinLocal, "NBASIC.BIN")
+    If Ok : Ok = MSXDisk::AddFile(NBasicDatLocal, "NBASIC.DAT") : EndIf
+  EndIf
   Protected DiskErr.s = MSXDisk::GetLastErrorMessage()
   MSXDisk::CloseDisk()
 
@@ -2535,6 +2612,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
     MenuItem(#Menu_New,      "Novo" + Chr(9) + "Alt+N")
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
+    MenuItem(#Menu_NewNestorBasic, "Novo Nestor Basic...")
     MenuItem(#Menu_NewProject, "Novo projeto...")
     MenuItem(#Menu_OpenProject, "Abrir projeto...")
     MenuItem(#Menu_SaveProject, "Salvar projeto")
@@ -2565,6 +2643,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateAsmSubProject, "Assembly Sub Project...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
+    MenuItem(#Menu_RunNestorBasic, "Nestor Basic")
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
     MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)...")
     MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario...")
@@ -2573,6 +2652,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_ConfigureEditor, "Editor...")
   MenuTitle("Ajuda")
     MenuItem(#Menu_HelpCommands, "Comandos..." + Chr(9) + "Ctrl+K H")
+    MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
+    MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 ; Novo/Fechar aba usam Alt (nao Ctrl) porque Ctrl+N e Ctrl+W tem funcao propria
@@ -2615,6 +2696,9 @@ Repeat
 
         Case #Menu_NewAssembly
           AddDocumentTab("", "", "ASM")
+
+        Case #Menu_NewNestorBasic
+          AddDocumentTab("", NestorBasicTemplateText(), "DMX", "nbasic")
 
         Case #Menu_NewProject
           If OfferSaveProject()
@@ -2704,6 +2788,9 @@ Repeat
         Case #Menu_RunBasic
           RunBasicFromActiveTab()
 
+        Case #Menu_RunNestorBasic
+          RunNestorBasicFromActiveTab()
+
         Case #Menu_AssembleZ80
           AssembleZ80FromActiveTab()
 
@@ -2730,6 +2817,12 @@ Repeat
 
         Case #Menu_HelpCommands
           WS_ShowHelp()
+
+        Case #Menu_HelpNestorBasic
+          NestorBasicHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpMsxBasic
+          MsxBasicHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpAbout
           ShowAboutDialog()

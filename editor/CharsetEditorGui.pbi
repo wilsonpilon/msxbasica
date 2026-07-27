@@ -150,6 +150,121 @@ Procedure.b CharEd_SaveAlf(Path.s, Array CharsetBytes.a(2))
   ProcedureReturn #True
 EndProcedure
 
+; Endereco VRAM da Pattern Generator Table pra cada SCREEN do MSX-BASIC
+; (0=Texto 1, 1=Graphic 1, 2=Graphic 2, 3=Multicolor). Por padrao do
+; MSX-BASIC (sem BASE(4)=... explicito) a PGT fica em &H0000 nos quatro
+; modos - so a Name/Color Table muda de endereco entre eles - mas mantido
+; como funcao por SCREEN (nao uma constante unica) pra deixar explicito e
+; facil de ajustar se algum dia um desses modos precisar de outro valor
+; (ex.: SCREEN 2 tem 3 "tercos" de 2048 bytes na PGT; este alfabeto de 256
+; caracteres/2048 bytes so preenche o primeiro terco, &H0000-&H07FF).
+Procedure.u CharEd_ScreenPgtAddress(ScreenMode.i)
+  ProcedureReturn $0000
+EndProcedure
+
+; Monta as linhas DATA do alfabeto inteiro (256 caracteres x 8 bytes = 2048
+; bytes), 16 bytes hex por linha - mesmo formato/largura de linha usado por
+; Scr2Ed_GenAlphabetLoader (Screen2EditorGui.pbi) pro alfabeto da SCREEN 2.
+Procedure.s CharEd_BuildDataLines(Array CharsetBytes.a(2))
+  Protected Text.s = ""
+  Protected Row, Col, LineVals.s = "", Count = 0
+  For Row = 0 To 255
+    For Col = 0 To 7
+      If Count > 0 And Count % 16 = 0
+        Text + "data " + LineVals + #CRLF$
+        LineVals = ""
+      EndIf
+      If LineVals <> "" : LineVals + "," : EndIf
+      LineVals + "&H" + RSet(Hex(CharsetBytes(Row, Col)), 2, "0")
+      Count + 1
+    Next
+  Next
+  If LineVals <> ""
+    Text + "data " + LineVals + #CRLF$
+  EndIf
+  ProcedureReturn Text
+EndProcedure
+
+; Texto do botao "Gerar apenas DATA": comentario de identificacao + as
+; linhas DATA, sem loop de leitura nenhum - so os bytes crus, prontos pra
+; um RESTORE/READ escrito a mao (ou pra um loop montado depois com
+; CharEd_BuildLoopText, se o usuario decidir usar o loop mais tarde).
+Procedure.s CharEd_BuildDataOnlyText(Array CharsetBytes.a(2), AlphaNumber.i, AlphaTag.s)
+  Protected TagSuffix.s = ""
+  If AlphaTag <> ""
+    TagSuffix = " (" + AlphaTag + ")"
+  EndIf
+  Protected Text.s = "' Alfabeto #" + Str(AlphaNumber) + TagSuffix +
+                      " - 256 caracteres 8x8, Pattern Generator Table (" + Str(#CharEd_AlfDataSize) + " bytes)" + #CRLF$
+  Text + CharEd_BuildDataLines(CharsetBytes())
+  ProcedureReturn Text
+EndProcedure
+
+; Texto do botao "Gerar DATA + loop VRAM": {label} + DATA (via
+; CharEd_BuildDataOnlyText) + RESTORE + um loop FOR/READ/VPOKE que copia os
+; 2048 bytes direto pra Pattern Generator Table do SCREEN escolhido no
+; menu popup (CharEd_ScreenPgtAddress).
+Procedure.s CharEd_BuildLoopText(Array CharsetBytes.a(2), AlphaNumber.i, AlphaTag.s, ScreenMode.i)
+  Protected LabelName.s = "alf" + Str(AlphaNumber)
+  Protected PgtAddr.u = CharEd_ScreenPgtAddress(ScreenMode)
+  Protected AddrHex.s = "&H" + RSet(Hex(PgtAddr), 4, "0")
+
+  Protected Text.s = "{" + LabelName + "}" + #CRLF$
+  Text + CharEd_BuildDataOnlyText(CharsetBytes(), AlphaNumber, AlphaTag)
+  Text + #CRLF$
+  Text + "restore {" + LabelName + "}" + #CRLF$
+  Text + "' Copia para a Pattern Generator Table da SCREEN " + Str(ScreenMode) + " (" + AddrHex + ")" + #CRLF$
+  Text + "for alf_i = 0 to " + Str(#CharEd_AlfDataSize - 1) + #CRLF$
+  Text + "  read alf_b" + #CRLF$
+  Text + "  vpoke " + AddrHex + " + alf_i, alf_b" + #CRLF$
+  Text + "next alf_i" + #CRLF$
+
+  ProcedureReturn Text
+EndProcedure
+
+; Texto do botao "Salvar BIN (Graphos III) + BLOAD", inserido no cursor
+; depois de escrever o .bin em disco (mesmo formato de CharEd_SaveAlf: BSAVE
+; de 7 bytes, base &H9200): a linha BLOAD carrega no endereco gravado no
+; proprio cabecalho do arquivo (&H9200, convencao do Graphos III) - como o
+; BLOAD classico do MSX-BASIC nao aceita endereco de destino alternativo,
+; se a Pattern Generator Table real do SCREEN escolhido for outro endereco
+; (o caso comum: &H0000) um segundo loop copia de VRAM pra VRAM
+; (VPEEK/VPOKE) de &H9200 pro endereco final, cobrindo o "deslocamento"
+; entre o endereco de carga do arquivo e o endereco de uso em tela.
+Procedure.s CharEd_BuildBloadText(Filename.s, ScreenMode.i)
+  Protected PgtAddr.u = CharEd_ScreenPgtAddress(ScreenMode)
+  Protected LoadAddrHex.s = "&H" + RSet(Hex(#CharEd_AlfLoadAddress), 4, "0")
+  Protected PgtAddrHex.s = "&H" + RSet(Hex(PgtAddr), 4, "0")
+  Protected Quote.s = Chr(34)
+
+  Protected Text.s = "' Carrega " + Filename + " (formato Graphos III, base " + LoadAddrHex + ")" + #CRLF$
+  Text + "bload " + Quote + Filename + Quote + ",s" + #CRLF$
+  If PgtAddr <> #CharEd_AlfLoadAddress
+    Text + "' Copia da area de carga do Graphos III (" + LoadAddrHex + ") pra Pattern Generator Table da SCREEN " +
+           Str(ScreenMode) + " (" + PgtAddrHex + ")" + #CRLF$
+    Text + "for alf_i = 0 to " + Str(#CharEd_AlfDataSize - 1) + #CRLF$
+    Text + "  vpoke " + PgtAddrHex + " + alf_i, vpeek(" + LoadAddrHex + " + alf_i)" + #CRLF$
+    Text + "next alf_i" + #CRLF$
+  EndIf
+
+  ProcedureReturn Text
+EndProcedure
+
+; Menu popup pequeno com as 4 SCREEN validas pro alfabeto (usado tanto por
+; "Gerar DATA + loop VRAM" quanto por "Salvar BIN + BLOAD") - a escolha do
+; usuario chega depois no loop de eventos como #PB_Event_Menu/EventMenu()
+; (0-3, mesmo numero da SCREEN), nunca sincronamente aqui; cancelar o popup
+; (clicar fora) nao gera evento nenhum.
+Procedure CharEd_ShowScreenPopupMenu(Win)
+  Protected Menu = CreatePopupMenu(#PB_Any)
+  MenuItem(0, "SCREEN 0 (Texto 1)")
+  MenuItem(1, "SCREEN 1 (Graphic 1)")
+  MenuItem(2, "SCREEN 2 (Graphic 2)")
+  MenuItem(3, "SCREEN 3 (Multicolor)")
+  DisplayPopupMenu(Menu, WindowID(Win))
+  FreeMenu(Menu)
+EndProcedure
+
 ; Desempacota os 8 bytes do caractere CharIndex em EditGrid (8x8, 0/1) - bit
 ; 7 de cada byte e a coluna 0 (pixel mais a esquerda), igual ao layout real
 ; do bitmap MSX.
@@ -905,6 +1020,78 @@ Procedure CharEd_CreateSaveAsIcon(Size.i)
   ProcedureReturn Img
 EndProcedure
 
+; "Gerar DATA + loop VRAM": pagina de codigo com linhas de texto e uma seta
+; pra baixo com lacinho (circulo), sinalizando DATA + FOR/READ/VPOKE.
+Procedure CharEd_CreateGenLoopIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(2, 2, Size - 10, Size - 6, #CharEd_IconInk)
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(4, 5, Size - 14, 2, #CharEd_IconInkLt)
+    Box(4, 9, Size - 14, 2, #CharEd_IconInkLt)
+    Box(4, 13, Size - 18, 2, #CharEd_IconInkLt)
+    Protected i
+    For i = -1 To 1
+      LineXY(Size - 6 + i, 1, Size - 6 + i, 11, #CharEd_IconInk)
+    Next
+    LineXY(Size - 10, 7, Size - 6, 12, #CharEd_IconInk)
+    LineXY(Size - 2, 7, Size - 6, 12, #CharEd_IconInk)
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Circle(Size - 6, Size - 4, 3, #CharEd_IconInk)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Gerar apenas DATA": pagina de codigo com linhas de texto, sem seta - so
+; o DATA puro, sem loop de leitura.
+Procedure CharEd_CreateGenDataIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(2, 2, Size - 4, Size - 4, #CharEd_IconInk)
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(5, 5, Size - 10, 2, #CharEd_IconInkLt)
+    Box(5, 9, Size - 10, 2, #CharEd_IconInkLt)
+    Box(5, 13, Size - 14, 2, #CharEd_IconInkLt)
+    Box(5, 17, Size - 10, 2, #CharEd_IconInkLt)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
+; "Salvar BIN (Graphos III) + BLOAD": disquete igual ao "Salvar como...",
+; com uma setinha no canto inferior indicando que tambem gera a linha BLOAD.
+Procedure CharEd_CreateSaveBinIcon(Size.i)
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  If StartDrawing(ImageOutput(Img))
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Box(1, 1, Size - 9, Size - 4, RGB(245, 245, 245))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(1, 1, Size - 9, Size - 4, #CharEd_IconInk)
+    DrawingMode(#PB_2DDrawing_Default)
+    Box(3, 1, Size - 13, 5, #CharEd_IconInkLt)
+    Box(3, Size - 10, Size - 13, 6, RGB(255, 255, 255))
+    DrawingMode(#PB_2DDrawing_Outlined)
+    Box(3, Size - 10, Size - 13, 6, #CharEd_IconInk)
+    DrawingMode(#PB_2DDrawing_Default)
+    Protected j
+    For j = -1 To 1
+      LineXY(Size - 5 + j, Size - 13, Size - 5 + j, Size - 4, #CharEd_IconInk)
+    Next
+    LineXY(Size - 9, Size - 8, Size - 5, Size - 4, #CharEd_IconInk)
+    LineXY(Size - 1, Size - 8, Size - 5, Size - 4, #CharEd_IconInk)
+    StopDrawing()
+  EndIf
+  ProcedureReturn Img
+EndProcedure
+
 ; "Marcar inicio": colchete "[" grosso.
 Procedure CharEd_CreateMarkStartIcon(Size.i)
   Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
@@ -1233,7 +1420,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected ProjBarY = 15
   Protected AlphaClipY = ProjBarY + 34
   Protected FileBarY = AlphaClipY + 34
-  Protected TableY = FileBarY + 34
+  Protected ExportBarY = FileBarY + 34
+  Protected TableY = ExportBarY + 34
 
   Protected RightX = LeftX + #CharEd_TableCanvasW + 20
   Protected RightW = #CharEd_EditCanvasSize
@@ -1338,6 +1526,21 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected SaveAsIcon = CharEd_CreateSaveAsIcon(#CharEd_IconSize)
   Protected G_SaveAs       = ButtonImageGadget(#PB_Any, LeftX + 270 + #CharEd_IconBtnW + 6, FileBarY, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(SaveAsIcon))
   GadgetToolTip(G_SaveAs, "Salvar como...: exporta o alfabeto em edicao para um arquivo .alf do Graphos III, independente do projeto")
+
+  ; Barra de exportacao pra codigo Basic Dignified: os tres botoes abaixo
+  ; inserem texto no cursor da aba de texto ativa (mesmo InjectTextAtCursor
+  ; usado pelo editor de sprites), nao mexem no arquivo .alf/projeto.
+  Protected GenLoopIcon = CharEd_CreateGenLoopIcon(#CharEd_IconSize)
+  Protected G_GenLoop = ButtonImageGadget(#PB_Any, LeftX, ExportBarY, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(GenLoopIcon))
+  GadgetToolTip(G_GenLoop, "Gerar DATA + loop VRAM: pergunta a SCREEN (0-3) e insere DATA + loop FOR/READ/VPOKE pra Pattern Generator Table no cursor da aba de texto ativa")
+
+  Protected GenDataIcon = CharEd_CreateGenDataIcon(#CharEd_IconSize)
+  Protected G_GenData = ButtonImageGadget(#PB_Any, LeftX + #CharEd_IconBtnW + 6, ExportBarY, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(GenDataIcon))
+  GadgetToolTip(G_GenData, "Gerar apenas DATA: insere so as linhas DATA do alfabeto (sem loop de leitura) no cursor da aba de texto ativa")
+
+  Protected SaveBinIcon = CharEd_CreateSaveBinIcon(#CharEd_IconSize)
+  Protected G_SaveBin = ButtonImageGadget(#PB_Any, LeftX + (#CharEd_IconBtnW + 6) * 2, ExportBarY, #CharEd_IconBtnW, #CharEd_IconBtnH, ImageID(SaveBinIcon))
+  GadgetToolTip(G_SaveBin, "Salvar BIN (Graphos III) + BLOAD: salva o alfabeto em disco (mesmo formato do 'Salvar como...') e insere a linha BLOAD no cursor, perguntando a SCREEN (0-3) de destino")
 
   Protected G_Table = CanvasGadget(#PB_Any, LeftX, TableY, #CharEd_TableCanvasW, #CharEd_TableCanvasH)
 
@@ -1510,6 +1713,13 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   Protected NavTarget.i
   NewList Nav.i()
 
+  ; Estado da acao pendente no menu popup de SCREEN (0-3): a escolha do
+  ; usuario chega depois, como #PB_Event_Menu, entao o botao que abriu o
+  ; popup (Gerar DATA+loop ou Salvar BIN) precisa ficar marcado aqui pra
+  ; saber o que fazer quando o EventMenu() chegar.
+  Protected PendingScreenAction.i = 0   ; 0 = nenhuma, 1 = Gerar DATA+loop, 2 = Salvar BIN
+  Protected PendingBinFilename.s = ""   ; nome do .bin ja salvo, usado so pela acao 2
+
   Repeat
     Event = WaitWindowEvent()
     Select Event
@@ -1570,6 +1780,36 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
               Else
                 MessageRequester("Erro ao salvar alfabeto",
                                   "Nao foi possivel salvar em:" + Chr(10) + SavePath + Chr(10) + CharEd_GetLastError(),
+                                  #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+              EndIf
+            EndIf
+
+          Case G_GenLoop
+            PendingScreenAction = 1
+            CharEd_ShowScreenPopupMenu(Win)
+
+          Case G_GenData
+            Protected DataOnlyText.s = CharEd_BuildDataOnlyText(CharsetBytes(), AlphaNumber, AlphaTag)
+            If InjectTextAtCursor(DataOnlyText)
+              SetGadgetText(G_CharStatus, "DATA do alfabeto #" + Str(AlphaNumber) + " inserido no cursor.")
+            Else
+              MessageRequester("Nao foi possivel inserir",
+                                "Nenhuma aba de texto ativa no editor pra receber o codigo.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            EndIf
+
+          Case G_SaveBin
+            Protected BinPath.s = SaveFileRequester("Salvar alfabeto MSX (BIN Graphos III)", CurrentPath,
+                                                     "Binario MSX BLOAD (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+            If BinPath <> ""
+              BinPath = EnsureExtension(BinPath, "bin")
+              If CharEd_SaveAlf(BinPath, CharsetBytes())
+                PendingBinFilename = UCase(GetFilePart(BinPath))
+                PendingScreenAction = 2
+                CharEd_ShowScreenPopupMenu(Win)
+              Else
+                MessageRequester("Erro ao salvar alfabeto",
+                                  "Nao foi possivel salvar em:" + Chr(10) + BinPath + Chr(10) + CharEd_GetLastError(),
                                   #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
               EndIf
             EndIf
@@ -2053,6 +2293,33 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
             EndIf
 
         EndSelect
+
+      ; Resposta do menu popup de SCREEN aberto por G_GenLoop/G_SaveBin (ver
+      ; CharEd_ShowScreenPopupMenu) - PendingScreenAction diz qual dos dois
+      ; botoes abriu o popup, ja que a escolha chega assincrona.
+      Case #PB_Event_Menu
+        Protected ChosenScreen.i = EventMenu()
+        Select PendingScreenAction
+          Case 1
+            Protected LoopText.s = CharEd_BuildLoopText(CharsetBytes(), AlphaNumber, AlphaTag, ChosenScreen)
+            If InjectTextAtCursor(LoopText)
+              SetGadgetText(G_CharStatus, "Alfabeto #" + Str(AlphaNumber) + " inserido: DATA + loop VRAM (SCREEN " + Str(ChosenScreen) + ") no cursor.")
+            Else
+              MessageRequester("Nao foi possivel inserir",
+                                "Nenhuma aba de texto ativa no editor pra receber o codigo.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            EndIf
+          Case 2
+            Protected BloadText.s = CharEd_BuildBloadText(PendingBinFilename, ChosenScreen)
+            If InjectTextAtCursor(BloadText)
+              SetGadgetText(G_CharStatus, "Linha BLOAD (SCREEN " + Str(ChosenScreen) + ") inserida no cursor.")
+            Else
+              MessageRequester("Nao foi possivel inserir",
+                                "Nenhuma aba de texto ativa no editor pra receber o codigo.",
+                                #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+            EndIf
+        EndSelect
+        PendingScreenAction = 0
 
       Case #PB_Event_CloseWindow
         If Not (EditDirty Or AlphaDirty) Or CharEd_ConfirmDiscardAlphabet()
