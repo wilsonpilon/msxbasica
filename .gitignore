@@ -1,7 +1,12 @@
 # Copia local do toolchain Basic Dignified Suite - referencia de comportamento
 # a ser portada nativamente (ver docs/SPEC.md), nao dependencia de runtime.
 # Baixavel via Configurar -> Basic Dignified... -> "Baixar Basic Dignified Suite..."
+# (nome do diretorio default e "badig", mas o .zip/clone do GitHub tambem pode
+# cair como "basic-dignified" dependendo de como foi baixado manualmente -
+# a documentacao usada por Ajuda -> Basic Dignified... foi lida de uma copia
+# baixada assim, ver editor/BasicDignifiedHelpData.pbi).
 /badig/
+/basic-dignified/
 
 # Copia local do Nestor80 (Konamiman) - referencia de comportamento (fonte C#
 # do N80/LK80, compativel M80/L80) a ser portada nativamente para o assembler

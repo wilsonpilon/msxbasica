@@ -584,6 +584,10 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
 
   Protected G_DownloadSuite = ButtonGadget(#PB_Any, 15, 365, 260, 26, "Baixar Basic Dignified Suite...")
   TextGadget(#PB_Any, 285, 368, 260, 40, "Clona com Git ou baixa um .zip do GitHub e descompacta no diretorio acima.")
+  TextGadget(#PB_Any, 15, 400, 555, 40,
+    "Opcional: o editor ja tem pre-processador e tokenizador nativos (menu Arquivo), nao precisa " +
+    "deste diretorio pra funcionar. So baixe/instale se quiser rodar o Basic Dignified Suite " +
+    "original em Python separadamente.")
 
   ;- Pagina 2: MSX -------------------------------------------------------------
   AddGadgetItem(Panel, -1, "MSX")

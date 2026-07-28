@@ -47,12 +47,14 @@ servir de especificação byte-a-byte ao port nativo:
 | 6 | Editor de som SOUND (PSG) | baixo | **Implementado (2026-07-21)** — `editor/PsgSynth.pbi` (motor)/`editor/PsgEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 6 |
 | 7 | Tracker | alto | Só escopo geral, sem detalhe de UI/formato |
 | 8 | Editor MML (comando `PLAY`) | médio | **Implementado (2026-07-21)** — `editor/MmlSynth.pbi` (motor)/`editor/MmlEditorGui.pbi` (janela), integrado ao sistema de projeto (módulo 13), ver seção 8 |
-| 9 | Extensão NestorBASIC (nbasic) | médio | Definido, com exemplo de sintaxe (seção 7) |
+| 9 | Suporte a NestorBASIC | médio | **Implementado (2026-07-27)** — `editor/NestorBasicSupport.pbi` (template com loader + 87 wrappers `.NB_*`) + `editor/NestorBasicHelpData.pbi`/`NestorBasicHelpGui.pbi` (janela de ajuda). Abordagem real ficou mais simples que a spec original desta seção (texto colado, sem extensão de sintaxe no pré-processador), ver seção 9 abaixo |
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
 | 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
 | 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. **Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)** — SALVA TELA/Restaurar, INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE VIDEO/ATRIBUTOS, todos com ícone; coluna direita e faixa abaixo do canvas reequilibradas, ver seção 14d. **Fase 5: persistência no projeto (2026-07-25, mesma sessão)** — Telas/Layouts/Shapes no `.msxproject` via `ProjectDB.pbi`, mesmo padrão número/navegação/tag/Novo/Registrar do editor de sprites/alfabetos, ver seção 14e. **Fase 6: menu AJUSTE (2026-07-25, mesma sessão)** — SCROLL/ROTAÇÃO, 1px e 8x8, 4 direções, ver seção 14f. **Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)** — ZOOM (janela à parte), SHAPE (carimbo com 4 modos lógicos), CORTE (Inverter/Espelhar), GRID (overlay não destrutivo), ver seção 14g. **Fase 8 (2026-07-25, mesma sessão): cursor de teclado — tentada e revertida**, ver seção 14h (usuário achou desnecessária com o mouse já disponível). **Fase 9: formatos nativos .ALF/.LAY/.SCR/.SHP (2026-07-25, mesma sessão)** — importar/exportar telas/layouts/shapes no formato binário que o Graphos III de verdade grava em disco (`editor/GraphosNativeIO.pbi`), verificado por round-trip contra arquivos reais (`editor/tools/GraphosNativeIOTestCli.pb`), ver seção 14i. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). **Todos os 5 menus do original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) + os formatos de arquivo nativos estão implementados.** Ver seções 14/14b a 14i |
+| 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
+| 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
 
 ## Decisões fechadas
 
@@ -82,8 +84,13 @@ servir de especificação byte-a-byte ao port nativo:
   dialeto msxbas2rom para gerar ROM.
 - Editores visuais (sprite, som, tracker, MML, draw) todos alimentam o mesmo pipeline de saída
   (blocos BASIC/DATA/POKE ou bytes hexa para bloco `#asm`), não são apêndices isolados.
-- NestorBASIC: tabela de aliases (função → número `USR`, parâmetro → posição em array `P`/`F$`),
-  gerada como extensão do sistema de símbolos do Basic Dignified.
+- ~~NestorBASIC: tabela de aliases (função → número `USR`, parâmetro → posição em array `P`/`F$`),
+  gerada como extensão do sistema de símbolos do Basic Dignified.~~ — **atualizado 2026-07-27**: a
+  abordagem implementada de fato foi mais simples (ver módulo 9/seção 9 abaixo): em vez de estender o
+  sistema de símbolos do pré-processador, `Arquivo → Novo Nestor Basic...` cola um texto Basic Dignified
+  pronto (loader + biblioteca de wrappers `.NB_*` com `func`/`ret`) direto na aba nova — os `p(n)`/`usr(n)`
+  crus ficam escondidos dentro dos próprios wrappers, sem precisar de nenhuma diretiva nova no
+  pré-processador nem de tabela de símbolos separada.
 
 ## Detalhe por módulo
 
@@ -1010,11 +1017,14 @@ engano), clicar as 7 notas, "Inserir nova linha", "Gerar código PLAY" produzind
 `PLAY "L4CDEFGABL8C"` pra duas linhas commitadas, "Tocar" sem travar o processo, "Fechar" devolvendo o
 editor principal intacto.
 
-### 9. Extensão NestorBASIC (nbasic)
+### 9. Suporte a NestorBASIC — implementado (2026-07-27)
+
+**Spec original (pré-implementação)**, mantida aqui como contexto histórico — a ideia era estender o
+pré-processador com uma sintaxe dedicada:
 - Todas as funções do NestorMan/InterNestor Suite/InterNestor Lite passam por um único `USR` com array
   de parâmetros inteiros `P` (e array de strings próprio para arquivo/string) — padrão "uma função,
   várias posições de array", compatível com Turbo-BASIC.
-- Sintaxe de definição no pré-processador:
+- Sintaxe de definição no pré-processador cogitada:
   ```
   #nbasic_func LOAD_SECTOR = 23      ' número da função NestorBASIC
   #nbasic_param DRIVE = P(1)
@@ -1029,6 +1039,47 @@ editor principal intacto.
   regras, não pode ser substituição de texto ingênua.
 - Trabalho real: mapear com precisão a lista de funções/parâmetros do NestorBASIC (não é desafio de
   algoritmo, é levantamento de dados).
+
+**O que foi de fato implementado** ficou mais simples que essa spec: nenhuma sintaxe nova entrou no
+pré-processador. Em vez disso, `editor/NestorBasicSupport.pbi` monta um texto Basic Dignified pronto
+(loader + biblioteca inteira de wrappers `.NB_*`) que o menu **Arquivo → Novo Nestor Basic...** cola
+direto numa aba nova (`AddDocumentTab("", NestorBasicTemplateText(), "DMX", "nbasic")`). Não há
+highlighting dedicado — os wrappers já ficam visíveis como `func`/`ret` normais do Basic Dignified.
+
+- **Fonte de referência**: `nestor/SRC/NBASIC/nbas111e.txt` (manual original do NestorBASIC 1.11, Nestor
+  Soriano/Konami Man) — mapeamento completo de funções/parâmetros feito (resolve a lacuna "trabalho real"
+  citada acima).
+- **Loader** (rótulos `{NBasicLoad}`/`{VoltaNBasicLoad}` em `NestorBasicTemplateText()`): `BLOAD
+  "NBASIC.BIN",R` seguido de checagem do código de erro em `p(0)`. Escrito com `GOTO` puro, nunca
+  `func`/`ret` — achado do usuário: `BLOAD"...",R` mexe na pilha do BASIC, então um `GOSUB`/`RETURN` ao
+  redor dessa chamada específica quebra (`RETURN` sem saber pra onde voltar). Os wrappers `.NB_*`
+  continuam usando `usr()` puro (sem `BLOAD`), esses são seguros com `func`/`ret` normal.
+- **87 funções (0-86)** organizadas em 3 tiers, cada uma um wrapper `.NB_NomeDaFuncao(...)`:
+  - **Tier 1** (`NestorBasicLibraryText()`) — funções gerais (0-1), acesso a segmentos RAM (2-12), VRAM
+    (13-25), disco (26-52).
+  - **Tier 2** (`NestorBasicLibraryTier2Text()`) — compressão/descompressão gráfica (53-54), execução de
+    programas BASIC guardados em RAM (55-57), execução de código de máquina/rotinas diversas (58-66),
+    efeitos PSG (67-70), tocador Moonblaster (71-79).
+  - **Tier 3** (`NestorBasicLibraryTier3Text()`) — controle de quantos segmentos o NestorBASIC aloca pra
+    si (80), interação com NestorMan/InterNestor Suite/Lite (81-86).
+  - Convenção: cada `.NB_*` devolve só o(s) valor(es) "principal(is)" da chamada, sempre com o código de
+    erro por último; `.NB_ErrorText(codigo)` traduz o código para mensagem. Os demais resultados
+    documentados no manual (ex. versão, DOS, VRAM em K) continuam disponíveis direto em `p()`/`f$()` logo
+    após a chamada — os arrays globais não são copiados pelo wrapper, então "menos retornos que a
+    definição original" nunca perde informação, é só preferência por brevidade no uso comum.
+- **Decisão de entrega** (confirmada com o usuário): texto inteiro colado por aba, sem `INCLUDE`
+  separado — `INCLUDE` só resolve caminho relativo ao arquivo salvo (ou absoluto), e uma aba nova ainda
+  sem salvar (`Path=""`) não teria de onde puxar um `nestorbasic.dmx` externo.
+- **Executar → Nestor Basic** (`RunNestorBasicFromActiveTab()`) — idêntico a **Executar → BASIC**, mas
+  chama `RunOnOpenMSX(..., IncludeNestorBasic=#True)`, que copia `NBASIC.BIN`/`NBASIC.DAT` (de `res/`)
+  para o disco `.dsk` gerado antes de abrir o openMSX — sem isso o `BLOAD` do loader falha dentro do
+  emulador.
+- **Ajuda → Nestor Basic...** (`editor/NestorBasicHelpData.pbi`/`NestorBasicHelpGui.pbi`) — janela de
+  referência não-modal com árvore (grupos = seções do manual, funções numeradas como filhos) + busca
+  (nome/número/grupo) + histórico (Alt+seta-esquerda). Conteúdo em Markdown bem limitado (`## `
+  subtítulo, `**negrito**`, `` `código` `` inline) — mesma base de dados também gera
+  `docs/reference/nestorbasic.md` via `NBHelp_ExportMarkdown()`, então editar o conteúdo em um lugar
+  atualiza os dois ao mesmo tempo.
 
 ### 10. msxbas2rom (back-end opcional de ROM)
 - CLI open source, compilador experimental multiplataforma inspirado no Basic-kun, compilação/geração
@@ -1134,7 +1185,13 @@ Dignified...`). Fluxo atual:
    Dignified) para `editor/MSXDisk.pbi`, incluído via `XIncludeFile` e chamado com sintaxe qualificada
    de módulo (`MSXDisk::CreateDisk()`/`AddFile()`/etc.) — **compilado direto no executável do editor,
    sem processo externo** para montar o disco (única exceção: o próprio `openMSX` é lançado via
-   `RunProgram`, já que rodar o programa MSX de outro jeito não faz sentido).
+   `RunProgram`, já que rodar o programa MSX de outro jeito não faz sentido). **Atualizado
+   (2026-07-28)**: auditoria confirmou zero dependência de build ou runtime no diretório separado
+   `msxDiskUtil/` (`editor/MSXDisk.pbi` é 100% self-contained, sem `XIncludeFile` externo) — um bug de
+   `MatchesFAT11` sob Unicode (comparação por `Mid()`/`Asc()` por índice de caractere em vez de byte
+   cru, que quebrava casamento por curinga tipo `extract *.BAS`) só tinha sido corrigido na cópia
+   vendorizada; portado de volta para `msxDiskUtil/MSXDisk.pbi` antes da remoção. `msxDiskUtil/` foi
+   removido do repositório nesta data.
 2. Abre o `openMSX` configurado (`BadigCfg\EmulatorPath`) com `-machine <BadigCfg\EmMachine>` (se
    preenchido), `-ext<slot> <nome>` (se preenchido — o campo aceita `Nome:slot`, ex. `Nome:exta`; o
    slot vira parte do NOME da flag, não um argumento separado, replicando a regra real do openMSX) e
@@ -1841,6 +1898,109 @@ segurança no import); máscara de shape (tipos 3/4) é lida mas ignorada, sem f
 use ainda; importação de banco `.SHP` com múltiplos shapes só carrega 1 por vez (sem uma lista/prévia de
 todos os shapes do banco).
 
+### 15. Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) — implementado (2026-07-27)
+
+Módulo não previsto nas seções anteriores — surgiu como pedido explícito do usuário: transformar dois
+livros/manuais MSX de referência (digitalizados/lidos à parte) numa base de ajuda navegável dentro do
+próprio editor, em vez de deixar o usuário procurar em PDF.
+
+- **UI compartilhada** (`editor/MsxBasicHelpGui.pbi`, menu **Ajuda → MSX BASIC...**) — reaproveita a
+  infraestrutura de renderização/navegação já escrita para `editor/NestorBasicHelpGui.pbi` (seção 9
+  acima): `NBHelpGui_SetupStyles`/`_RenderMarkdown`/`_EmitRun` entendem a mesma marcação mínima (`## `,
+  `**negrito**`, `` `código` ``). Layout idêntico ao da Ajuda do NestorBASIC (busca no topo, árvore à
+  esquerda, conteúdo somente-leitura à direita, histórico Alt+seta-esquerda), janela não-modal — fica
+  aberta enquanto o usuário edita.
+- **Lista única "achatada"** (`MSXHelpGui_Rows()`, montada uma vez por sessão): junta duas listas
+  heterogêneas — `MSXManual_Topics()` (tópicos de prosa/manual, agrupados por `Parte`) e
+  `MSXDict_Keywords()` (dicionário de palavras reservadas, um grupo só "Parte II") — mais a página
+  especial de cores, guardando o tipo de cada linha (grupo / tópico / palavra / cores) e o índice de
+  volta pra lista de origem. `MSXHelpGui_SearchKey()` filtra por essa lista achatada.
+- **MSX1** — fonte: livro *"Linguagem BASIC MSX"* (Denise Santoro Cruz, Editora Aleph/Gradiente, 1986).
+  - `editor/MsxBasicDictData.pbi` — 141 palavras reservadas (`MSXDict_Add()`), campo `Sistema="MSX1"`
+    automático.
+  - `editor/MsxBasicManualData.pbi` — tópicos de prosa/tabelas: Parte I (estrutura do BASIC MSX), Parte
+    III (aplicações especiais), Apêndices, mais `MSXColor_BuildData()` (as 16 cores do VDP, renderizadas
+    como faixas coloridas por `MSXHelpGui_RenderColors` — único ponto que não usa o mini-Markdown
+    genérico, porque precisa de uma cor de fundo por linha).
+- **MSX 2+** — fonte: *"Manual MSX 2+ FM"* (Ademir Carchano/Flávio Monaco, ACVS Eletrônica), digitalizado
+  em `docs/manual_msx2fm_acvs.pdf` (66 páginas).
+  - `editor/MsxBasic2PlusDictData.pbi` — 45 verbetes, inseridos na **mesma lista única**
+    `MSXDict_Keywords()` do MSX1 (decisão do usuário: não criar uma seção separada) via
+    `MSXDict_Add2Plus()` (inserção alfabética ordenada, em vez do `AddElement` no fim usado por
+    `MSXDict_Add()`). Comandos do MSX1 com comportamento estendido no MSX2+ (`SCREEN`, `COLOR`, `WIDTH`,
+    `CIRCLE`/`DRAW`/`LINE`/`PAINT`/`POINT`/`PRESET`/`PSET`, `PAD`, `PDL`, `BASE`, `VDP`, `PLAY`) ganham um
+    segundo verbete `"NOME (MSX2+)"` logo depois do original (a ordenação alfabética de string já garante
+    isso: `"SCREEN" < "SCREEN (MSX2+)" < próxima palavra`). Comandos totalmente novos (`COLOR=`,
+    `COLORSPRITE`, `COPY`, `SETPAGE`, `CALL MEMINI`, os comandos de música FM como `CALL MUSIC`/`CALL
+    VOICE`, etc.) entram na posição alfabética correta. Campo `Sistema="MSX2+"` os distingue dos
+    verbetes MSX1. `PaginaLivro` aqui se refere às páginas do manual ACVS, não do livro Gradiente —
+    offset descoberto: página impressa no manual = página do PDF − 1.
+  - `editor/MsxBasic2PlusManualData.pbi` — 7 tópicos de prosa/apêndices, cobrindo o que **não** é
+    comando/função (isso fica no dicionário acima): apresentação do MSX2+ e legenda de sintaxe do manual
+    (com uma categoria a mais que o livro Gradiente: COMANDO), apresentação do FM-Music, e os 4 apêndices
+    A-D (programação de instrumentos, dicas/macetes, relação de instrumentos, exemplos de música).
+    **Apêndice D é caso especial**: o manual traz duas músicas completas ("Unchained Melody" e "Theme
+    From Over The Net") com listagens de strings de notas muito densas/concatenadas — em vez de
+    transcrever nota a nota (alto risco de erro silencioso: um dígito trocado quebra a música sem gerar
+    erro de sintaxe), o tópico **descreve** cada música (canais usados, instrumentos, técnica), a mesma
+    lógica já aplicada à tabela ASCII completa e às formas de envelope do `SOUND` no dicionário MSX1.
+  - **Cobertura verificada página a página contra o índice real do PDF (66 páginas)**: páginas 7-47 são
+    comandos/funções (inteiramente no dicionário), páginas 5-6/37/48-53 são a prosa/apêndices acima,
+    páginas 53-62 são as partituras (descritas, não transcritas), páginas 63-66 são certificado de
+    garantia/contracapa (sem conteúdo de linguagem, nada a converter), páginas 1-4 são capa/índice. Não
+    há lacuna real de conteúdo pendente.
+- **Wiring**: `editor/BadigEditor.pb` inclui os 6 arquivos (`MsxBasicDictData.pbi`,
+  `MsxBasic2PlusDictData.pbi`, `MsxBasicManualData.pbi`, `MsxBasic2PlusManualData.pbi`,
+  `NestorBasicHelpData.pbi`, `NestorBasicHelpGui.pbi`) via `XIncludeFile`; `MSXManual_BuildData()`
+  chama `MSXManual_BuildMSX2Plus()` e o equivalente do dicionário chama `MSXDict_BuildMSX2Plus()` — tudo
+  já wired na janela de Ajuda, sem passo de registro adicional.
+
+### 16. Ajuda do Basic Dignified (sintaxe + configurações desta IDE) — implementado (2026-07-28)
+
+Pedido explícito do usuário: transformar `basic-dignified/documentation/*.md` (documentação oficial do
+Basic Dignified Suite original, baixável pelo botão de download em `Configurar → Basic Dignified...`,
+ver módulo 9) numa janela de ajuda navegável dentro do editor, cobrindo tanto a **sintaxe** do dialeto
+quanto as **configurações** desta IDE.
+
+- **UI** (`editor/BasicDignifiedHelpGui.pbi`, menu **Ajuda → Basic Dignified...**) — mesmo padrão de
+  `MsxBasicHelpGui.pbi`/`NestorBasicHelpGui.pbi`: janela não-modal, árvore agrupada por `Grupo` + busca
+  + histórico (`Alt+seta-esquerda`), reaproveitando `NBHelpGui_SetupStyles`/`_RenderMarkdown` sem
+  nenhuma renderização própria — mais simples que `MsxBasicHelpGui.pbi` porque só tem uma fonte de
+  dados (sem dicionário/página de cores misturados), então a lista achatada guarda só `IsGroup`/
+  `RefIndex` em vez de 4 tipos de linha.
+- **Dados** (`editor/BasicDignifiedHelpData.pbi`, `BDHelp_Add(Titulo, Grupo, Corpo)`) — 21 tópicos em 4
+  grupos, escritos a partir da leitura completa dos 10 `.md` de `basic-dignified/documentation/`
+  (`BASIC_DIGNIFIED.md`, `DIFFERENCES.md`, `DIGNIFIER.md`, `BATOKEN.md`, `COCOTOCAS.md`,
+  `IDE_TOOLS.md`, `IMPLEMENTATIONS.md`, `INSTALLATION.md`, `MODULE_TOOLS.md`, `NEW_MODULES.md`):
+  - **Introdução** (1 tópico) — o que é o dialeto, extensões `.dmx`/`.amx`/`.bmx`, regras gerais de
+    formato.
+  - **Sintaxe Dignified** (10 tópicos) — labels/loop labels, defines, variáveis longas/`DECLARE`,
+    proto-funções `FUNC`/`RET` (incluindo o achado real já registrado em memória de sessão: `func`/
+    `ret` precisa ficar depois do `end` do fluxo principal, senão o programa cai dentro da função sem
+    ter sido chamada), separação/junção de linha, comentários/toggles, tradução Unicode, `INCLUDE`,
+    `TRUE`/`FALSE` e operadores compostos.
+  - **Configurar → Basic Dignified...** (6 tópicos) — cada campo das 3 abas da tela de configuração
+    (`BadigSettings.pbi`), auditado contra o código real antes de escrever o tópico: confirmado por
+    grep que `Dig_SyncConfigFromBadigCfg()` só sincroniza `LineStart`/`LineStep`/`RemHeader`/
+    `TabLenght`/`StripSpaces`/`CapitalizeAll`/`Translate`/`ConvertPrint`/`StripThenGoto` — os 6
+    checkboxes de relatório + `VerboseLevel` (aba 1), as 4 opções do tokenizador (aba MSX) e
+    `EmSetting`/`EmMonitor`/`EmNoThrottle`/`EmVerbose` (aba Emulador) **não têm consumidor** hoje,
+    dito explicitamente nos tópicos correspondentes em vez de simplesmente traduzir a doc original
+    (que descreve o comportamento do `badig.py` em Python, nem sempre igual ao port nativo).
+  - **Remtags** (3 tópicos) — o que são, e a lista exata das flags que `Dig_ApplyArgumentsRemtag()`
+    realmente aplica via `##BB:arguments=` (`-tl -ls -lp -rh -ss -ca -tr -cp -tg`) vs. as aceitas e
+    ignoradas (`-id -vb -prr -lbr -lnr -var -lex -par -asc -ini -rtg`), mais `export_file=`/`help=`.
+  - **Sobre a suíte original** (2 tópicos) — ferramentas não portadas pra esta IDE (DignifieR de
+    conversão reversa, integração Sublime/VSCode, suporte CoCo, arquitetura de novos módulos) e uma
+    referência rápida do formato tokenizado `.bmx`.
+- **Wiring**: `editor/BadigEditor.pb` inclui os dois arquivos via `XIncludeFile`, posicionados depois
+  de `MsxBasicDictData.pbi` (usa a constante `MSXQ` de lá) e de `NestorBasicHelpGui.pbi` (usa
+  `NBHelpGui_*` de lá); novo item **Ajuda → Basic Dignified...** entre **MSX BASIC...** e **Sobre...**.
+- **Verificação**: compilado com sucesso (`build.ps1`) e testado com um lançamento smoke-test do
+  `.exe` (processo permanece de pé, sem crash de inicialização) — sem automação de clique real na UI,
+  pelos mesmos motivos já documentados no módulo 2 (sessão em janela de outro processo/sessão do
+  Windows, inacessível a `FindWindow`/`PostMessage` a partir do shell).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -1859,7 +2019,8 @@ todos os shapes do banco).
 - ~~Seção 8 (editor MML/`PLAY`): detalhe da conversa original não foi recuperado.~~ — **resolvida
   (2026-07-21)**: implementada com spec própria, não precisou do detalhe original recuperado (dialeto
   MML confirmado por pesquisa direta, não pela conversa perdida) — ver seção 8 acima.
-- Mapeamento completo de funções/parâmetros NestorBASIC (módulo 9).
+- ~~Mapeamento completo de funções/parâmetros NestorBASIC (módulo 9).~~ — **resolvida (2026-07-27)**:
+  todas as 87 funções (0-86) mapeadas a partir de `nestor/SRC/NBASIC/nbas111e.txt`, ver seção 9 acima.
 - Lista de comandos suportados/incompatíveis do msxbas2rom (módulo 10), antes de decidir se vale a pena.
 - `badig/msx/openmsx_output.tcl` ainda não foi lido (script que faz a tela do openMSX ecoar para o
   stdout — necessário para portar o módulo 12 corretamente).
@@ -1876,6 +2037,48 @@ todos os shapes do banco).
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-28 — documentação posta em dia (README/SPEC/MANUAL/changelog) para o trabalho
+de 2026-07-27 (Nestor BASIC + Ajuda MSX BASIC/MSX2+)**: sessão anterior (2026-07-27) implementou e
+**commitou** (`b2307ce "Nesto Basic Support"`) três coisas de uma vez sem atualizar nenhuma documentação
+— cota da API estourou no meio do trabalho antes da parte de docs. Esta sessão fechou essa lacuna:
+- Confirmado por auditoria (agente de exploração dedicado) que a conversão do **manual MSX2+ ACVS**
+  (`docs/manual_msx2fm_acvs.pdf`, 66 páginas) está **completa**, não parcial como parecia à primeira
+  vista — o que parecia um buraco (páginas 7-47 sem tópico de prosa) é na verdade conteúdo de
+  comandos/funções que mora corretamente em `MsxBasic2PlusDictData.pbi`, não em
+  `MsxBasic2PlusManualData.pbi`. Ver seção 15 (novo módulo) para o detalhe completo da divisão dict vs.
+  manual e a checagem página a página contra o índice real do PDF.
+- README.md: versão do topo corrigida (estava presa em `7.3.3`, defasada da `7.5.12` já em uso desde a
+  Fase 9 do Graphos III), duas novas seções em "O que já temos" (sistema de Ajuda MSX BASIC + suporte a
+  NestorBASIC, com a imagem `images/msxbasica-13.png`), remoção de "extensão NestorBASIC" da lista de
+  não-implementado, changelog com as duas entradas que faltavam (`build.ps1 -D`/`--distribute`,
+  2026-07-25; Nestor BASIC + Ajuda MSX BASIC, 2026-07-27).
+- SPEC.md: módulo 9 (NestorBASIC) reescrito para refletir a implementação real (mais simples que a spec
+  original — texto colado em vez de sintaxe nova no pré-processador); novo módulo 15 (Sistema de Ajuda
+  MSX BASIC); lacuna "mapeamento completo de funções NestorBASIC" marcada resolvida.
+- MANUAL.md: novas seções de uso final para **Ajuda → MSX BASIC...** e **Arquivo → Novo Nestor
+  Basic.../Executar → Nestor Basic/Ajuda → Nestor Basic...**.
+
+**O que fica genuinamente em aberto** (nenhum é bloqueio, só não foi feito ainda):
+- ~~Sem bump de versão dedicado~~ para o trabalho de 2026-07-27: o `.exe` commitado em `b2307ce` já
+  reflete o código novo, mas `build.ps1`/`#App_Version` continuam em `7.5.12` (mesma versão da Fase 9 do
+  Graphos III, sessão anterior) — quebra a convenção do projeto de estampar uma versão nova por sessão de
+  feature. — **resolvida (2026-07-28, mesma sessão, pedido explícito do usuário)**: `build.ps1`
+  (`$Version`) e `#App_Version` (`editor/BadigEditor.pb`) atualizados juntos para `7.5.13` e o `.exe`
+  recompilado, cobrindo de uma vez o trabalho desta sessão inteira (Nestor BASIC, Ajuda MSX BASIC/MSX2+
+  e `Ajuda → Basic Dignified...`).
+- **Revisão de proofreading do MSX2+** (mencionada mas não feita): todo o texto de
+  `MsxBasic2PlusDictData.pbi`/`MsxBasic2PlusManualData.pbi` foi transcrito numa única sessão sem revisão
+  incremental linha a linha contra `docs/manual_msx2fm_acvs.pdf` — baixo risco (o dicionário MSX1
+  equivalente nunca teve esse tipo de revisão dedicada e não apareceu bug reportado), mas fica registrado
+  caso apareçam futuros bugs de conteúdo na Ajuda MSX2+.
+- **Nada foi commitado nesta sessão de documentação** (2026-07-28) — só os 3 arquivos `.md` foram
+  editados no working tree; commitar fica a critério do usuário, por instrução padrão do projeto (só
+  commitar quando pedido explicitamente).
+- Itens gerais do projeto (não relacionados a esta sessão) continuam abertos e listados na íntegra em
+  "Ainda não implementado" do `README.md`: opções `--code`/`--data`/`--align-*`/detecção de sobreposição
+  de segmento/saída Intel HEX no linker Z80, editor de tile, tracker, SCREEN 1/5/7/8 no Graphos, saída
+  `msxbas2rom`, controle do openMSX via socket/XML em tempo real.
 
 **Estado ao fim de 2026-07-25 (mesma sessão, o mais recente — ver módulo 14 acima pro detalhe completo
 de cada fase) — Graphos III completo (Fases 1-7 e 9) + revert da Fase 8 + correção de nome de aba

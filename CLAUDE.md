@@ -90,9 +90,13 @@ with per-file label/variable namespacing, remtags) → **classic ASCII (`.amx`)*
 `BadigEditor.pb`) then wraps the result plus a synthesized `AUTOEXEC.BAS` into a `.dsk` via `MSXDisk.pbi`
 and launches openMSX with the configured machine/extension.
 
-**MSXDisk.pbi** is a verbatim vendored copy of the user's separate `msxDiskUtil` project (also present
-in this repo, tracked, under `msxDiskUtil/`) — resync manually if that project evolves; don't edit the
-disk format logic without checking upstream first. It's exposed three ways: internally by
+**MSXDisk.pbi** originated as a vendored copy of the user's separate `msxDiskUtil` project. As of
+2026-07-28, `msxDiskUtil/` was removed from the repo — a runtime/build audit confirmed
+`editor/MSXDisk.pbi` is fully self-contained (no `XIncludeFile` reaching outside `editor/`) and the app
+has zero dependency on the external directory; a Unicode `MatchesFAT11` bugfix that had only been
+applied to the vendored copy was ported back into `msxDiskUtil/MSXDisk.pbi` before deletion, so the two
+were in sync at removal time. `editor/MSXDisk.pbi` is now the sole source of truth for disk format
+logic. It's exposed three ways: internally by
 `RunOnOpenMSX()`, as a headless CLI (`BadigEditor.exe --diskmanipulator ...`, detected at the very start
 of the "Programa principal" section before any window opens), and as the graphical
 `DiskMgr_OpenWindow()` (`DiskManagerGui.pbi`). The GUI tool stages all edits on a temp copy

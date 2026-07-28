@@ -9,7 +9,8 @@
 > Documento vivo — cresce conforme novas partes da IDE (editores visuais, etc.) forem ficando
 > prontas. Hoje cobre o editor de texto, o gerenciador de disco, o editor de sprites, o editor
 > de alfabetos (Graphos III e Aquarela), o editor de som, o editor de música, o editor de DRAW
-> Screen 2, o assembler Z80, o sistema de projeto e o processo de build.
+> Screen 2, o assembler Z80, o sistema de projeto, a ajuda embutida de MSX BASIC/MSX2+, o
+> suporte a NestorBASIC e o processo de build.
 
 ---
 
@@ -84,6 +85,15 @@
     - [Biblioteca Z80 (.LIB)](#biblioteca-z80-lib)
     - [Assembly Sub Project (Makefile primitivo)](#assembly-sub-project-makefile-primitivo)
     - [O que ainda não é suportado](#o-que-ainda-não-é-suportado)
+15. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
+    - [Abrindo e navegando](#abrindo-e-navegando)
+    - [O que está coberto](#o-que-está-coberto)
+16. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
+    - [Arquivo → Novo Nestor Basic...](#arquivo--novo-nestor-basic)
+    - [Executar → Nestor Basic](#executar--nestor-basic)
+    - [Ajuda → Nestor Basic...](#ajuda--nestor-basic)
+17. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
+    - [O que está coberto](#o-que-está-coberto-1)
 
 ---
 
@@ -1129,3 +1139,111 @@ testes) em [`docs/resumo-asm.md`](resumo-asm.md), seção "Assembly Sub Project"
   histórico (diferente de sprites/alfabetos/sons/músicas/telas, que têm barra de navegação própria).
 - `REPT`/`IRP`/`IRPC`/`IRPS` (macros de repetição), `MODULE`/rótulos locais, saída em Intel HEX,
   arquivo de listagem `.LST`, R800/Z280 (só Z80 puro por enquanto).
+
+## Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)
+
+Menu **Ajuda → MSX BASIC...** abre uma janela de referência com todo o dicionário de comandos/
+funções/instruções do MSX BASIC mais os capítulos de prosa dos manuais originais, pesquisável e
+navegável sem sair do editor.
+
+### Abrindo e navegando
+
+A janela **não é modal** — pode ficar aberta do lado do editor enquanto você escreve código,
+igual a **Ajuda → Nestor Basic...** (mesmo layout: busca no topo, árvore à esquerda, conteúdo à
+direita).
+
+- **Buscar**: digite parte do nome de um comando ou de um tópico — a árvore filtra em tempo real.
+- **Árvore**: agrupada por seção (Parte I/III/Apêndices do manual MSX1, dicionário completo, manual
+  MSX 2+, FM-Music, Cores do MSX). Clicar num item mostra o conteúdo à direita.
+- **Voltar** (botão ou `Alt+seta-esquerda`): volta ao tópico anterior, empilhado num histórico —
+  útil depois de seguir uma referência cruzada dentro do texto.
+
+### O que está coberto
+
+- **Dicionário MSX1** — as 141 palavras reservadas do livro *"Linguagem BASIC MSX"* (Denise
+  Santoro Cruz, Editora Aleph/Gradiente, 1986): sintaxe, descrição, exemplos, página do livro de
+  origem.
+- **Manual MSX1** — tópicos de prosa e tabelas do mesmo livro (Parte I — estrutura do BASIC MSX;
+  Parte III — aplicações especiais; Apêndices).
+- **Dicionário MSX 2+** — 45 verbetes do cartucho MSX2+ FM (ACVS Eletrônica): comandos totalmente
+  novos (`COLOR=`, `COLORSPRITE`, `COPY`, `SETPAGE`, os comandos de música FM como `CALL MUSIC`/
+  `CALL VOICE`, etc.) e comandos do MSX1 que ganham comportamento extra no MSX2+ — esses aparecem
+  como um **segundo verbete** logo depois do original, com o sufixo `(MSX2+)` no nome (ex.:
+  `SCREEN` e depois `SCREEN (MSX2+)`).
+- **Manual MSX 2+** — apresentação do cartucho, legenda de sintaxe do manual (com a categoria
+  COMANDO, além de INSTRUÇÃO/FUNÇÃO), apresentação do FM-Music e os 4 apêndices (programação de
+  instrumentos, dicas e macetes, relação dos 64 instrumentos, exemplos de música — as duas músicas
+  completas do apêndice D são **descritas**, não transcritas nota a nota, por segurança contra erro
+  de transcrição em strings de notas muito densas).
+- **Cores do MSX** — página com as 16 cores do VDP em faixas coloridas, aproximando os lápis de cor
+  da contracapa do livro Gradiente.
+
+## Suporte a NestorBASIC
+
+Integração com o **NestorBASIC 1.11** (Nestor Soriano/Konami Man): uma biblioteca de rotinas em
+código de máquina que dá acesso, direto do BASIC, a memória mapeada, VRAM, disco, compressão
+gráfica, execução de programas/código guardados em RAM, efeitos sonoros PSG e ao tocador
+Moonblaster.
+
+### Arquivo → Novo Nestor Basic...
+
+Cria uma aba nova de Basic Dignified já com:
+
+- O **loader**: código que carrega `NBASIC.BIN` (`BLOAD"NBASIC.BIN",R`) e checa se a instalação
+  deu certo antes de continuar.
+- A **biblioteca inteira de wrappers** `.NB_NomeDaFuncao(...)` — as 87 funções do NestorBASIC já
+  prontas para chamar por nome, sem precisar decorar números de função nem mexer direto nos arrays
+  `p()`/`f$()` que o NestorBASIC usa internamente. Cada wrapper devolve o(s) valor(es) principal(is)
+  da chamada mais o código de erro por último; `.NB_ErrorText(codigo)` traduz esse código para uma
+  mensagem legível.
+
+O texto vem todo colado na aba (sem `INCLUDE`) — pode apagar as funções que não for usar, é só um
+ponto de partida.
+
+### Executar → Nestor Basic
+
+Equivalente a **Executar → BASIC** (gera o disco, abre o openMSX já rodando o programa), mas
+também copia `NBASIC.BIN`/`NBASIC.DAT` para o disco gerado — sem esses dois arquivos presentes, o
+`BLOAD` do loader falha assim que o programa roda no emulador. Use este item (em vez de **Executar
+→ BASIC**) sempre que a aba ativa usar alguma função `.NB_*`.
+
+### Ajuda → Nestor Basic...
+
+Janela de referência não-modal (mesma UI de busca/árvore/histórico da Ajuda MSX BASIC acima) com
+as 87 funções do NestorBASIC organizadas pelas seções do manual original. Cada função mostra o nome
+do wrapper Dignified e um exemplo de chamada pronto, antes da descrição completa dos parâmetros de
+entrada e saída — útil para conferir rapidamente a assinatura de uma função sem procurar no manual
+original.
+
+![Suporte a NestorBASIC: template gerado por Arquivo → Novo Nestor Basic... ao lado da janela Ajuda → Nestor Basic...](../images/msxbasica-13.png)
+
+## Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)
+
+Menu **Ajuda → Basic Dignified...** abre uma janela de referência (mesma UI não-modal de
+busca/árvore/histórico das outras duas janelas de Ajuda) compilada a partir da documentação oficial
+do Basic Dignified Suite original, cruzada com o código desta IDE para dizer o que realmente se
+aplica aqui.
+
+### O que está coberto
+
+- **Sintaxe Dignified** — as regras do dialeto que você escreve no editor: labels e loop labels
+  (`{rotulo}`, `nome{ ... }`, `exit`), defines (`define [nome][conteúdo]`), variáveis de nome longo
+  e `DECLARE`, proto-funções `FUNC`/`RET` (incluindo o aviso de que a definição precisa ficar
+  **depois** do `end` do fluxo principal, senão o programa executa a função sem ela ter sido
+  chamada), separação/junção de linha com `:`/`_`, comentários exclusivos e toggles (`##`, `#nome`),
+  tradução de caracteres Unicode especiais, `INCLUDE` de arquivos externos e `TRUE`/`FALSE`/
+  operadores compostos.
+- **Configurar → Basic Dignified...** — cada campo das 3 abas da tela de configuração, explicado
+  campo a campo. Importante: os tópicos dizem explicitamente **quais campos afetam a conversão de
+  verdade** (numeração de linha, TAB, cabeçalho REM, espaços, maiúsculas, tradução Unicode,
+  converter `?`/`PRINT`, remover `THEN`/`GOTO`, rodar no openMSX com máquina/extensão) e **quais
+  existem só por compatibilidade** com o `.ini` do toolchain Python original, sem efeito nenhum
+  nesta IDE hoje (os 6 checkboxes de relatório e a verbosidade da primeira aba, as opções de
+  listagem do tokenizador na aba MSX, e monitor/nothrottle/setting/verbosidade do emulador na aba
+  Emulador).
+- **Remtags** — o que são as diretivas `##BB:comando=valor` no código, e a lista exata de flags que
+  `##BB:arguments=` de fato aplica nesta IDE, mais `export_file=` (troca o destino sugerido ao
+  salvar) e `help=`.
+- **Sobre a suíte original** — ferramentas do Basic Dignified Suite em Python que **não foram
+  portadas** para esta IDE (o conversor reverso DignifieR, a integração com Sublime Text/VSCode, o
+  suporte a Tandy CoCo), mais uma referência rápida do formato binário tokenizado `.bmx`.

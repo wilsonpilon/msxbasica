@@ -69,6 +69,8 @@ XIncludeFile "MsxBasic2PlusDictData.pbi"
 XIncludeFile "MsxBasicManualData.pbi"
 XIncludeFile "MsxBasic2PlusManualData.pbi"
 XIncludeFile "MsxBasicHelpGui.pbi"
+XIncludeFile "BasicDignifiedHelpData.pbi"
+XIncludeFile "BasicDignifiedHelpGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -375,6 +377,7 @@ Enumeration MenuItems
   #Menu_HelpCommands
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
+  #Menu_HelpBasicDignified
   #Menu_HelpAbout
 EndEnumeration
 
@@ -413,7 +416,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.5.12"
+  #App_Version = "7.5.13"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2654,6 +2657,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpCommands, "Comandos..." + Chr(9) + "Ctrl+K H")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
     MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
+    MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 ; Novo/Fechar aba usam Alt (nao Ctrl) porque Ctrl+N e Ctrl+W tem funcao propria
@@ -2823,6 +2827,9 @@ Repeat
 
         Case #Menu_HelpMsxBasic
           MsxBasicHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpBasicDignified
+          BasicDignifiedHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpAbout
           ShowAboutDialog()

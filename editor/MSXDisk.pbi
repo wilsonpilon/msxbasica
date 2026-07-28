@@ -221,8 +221,8 @@ Module MSXDisk
   ; num unico char errado - dai casamento por curinga (ex.: extract *.BAS)
   ; sempre falhava, mesmo com bytes identicos. Comparacao/copia por bytes crus
   ; (aqui e em CopyMemory/GetEntryName) nao sofre disso; so a leitura via
-  ; Mid()/indice de caractere sofria. Bug real, ainda presente no
-  ; msxDiskUtil/MSXDisk.pbi original (nao corrigido la ainda).
+  ; Mid()/indice de caractere sofria. Fix portado de volta para
+  ; msxDiskUtil/MSXDisk.pbi em 2026-07-28.
   Procedure.i MatchesFAT11(FAT11_Entry$, FAT11_Mask$)
     Protected k
     For k = 0 To 10
