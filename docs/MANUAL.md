@@ -10,7 +10,7 @@
 > prontas. Hoje cobre o editor de texto, o gerenciador de disco, o editor de sprites, o editor
 > de alfabetos (Graphos III e Aquarela), o editor de som, o editor de música, o editor de DRAW
 > Screen 2, o assembler Z80, o sistema de projeto, a ajuda embutida de MSX BASIC/MSX2+, o
-> suporte a NestorBASIC e o processo de build.
+> suporte a NestorBASIC, o editor hexadecimal e o processo de build.
 
 ---
 
@@ -94,6 +94,12 @@
     - [Ajuda → Nestor Basic...](#ajuda--nestor-basic)
 17. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
     - [O que está coberto](#o-que-está-coberto-1)
+18. [Editor Hexa](#editor-hexa)
+    - [Abrir/Salvar e a grade hex/ASCII](#abrirsalvar-e-a-grade-hexascii)
+    - [Reconhecimento de formato](#reconhecimento-de-formato)
+    - [Galeria de templates](#galeria-de-templates)
+    - [Intervalo marcado e operações de bloco](#intervalo-marcado-e-operações-de-bloco)
+    - [Barra de rolagem](#barra-de-rolagem)
 
 ---
 
@@ -1247,3 +1253,95 @@ aplica aqui.
 - **Sobre a suíte original** — ferramentas do Basic Dignified Suite em Python que **não foram
   portadas** para esta IDE (o conversor reverso DignifieR, a integração com Sublime Text/VSCode, o
   suporte a Tandy CoCo), mais uma referência rápida do formato binário tokenizado `.bmx`.
+
+## Editor Hexa
+
+Menu **Executar → Editor Hexa...** (`editor/HexEditorGui.pbi`) abre um editor hexadecimal genérico —
+diferente dos outros editores visuais da IDE, ele não trabalha com a aba de texto ativa: abre
+**qualquer arquivo** do disco (até 8 MB) e mostra offset/hex/ASCII numa grade rolável, com
+reconhecimento automático dos formatos binários que a própria IDE produz e consome.
+
+### Abrir/Salvar e a grade hex/ASCII
+
+- **Abrir arquivo...** / **Salvar** / **Salvar como...** — mesmo fluxo de qualquer editor da IDE;
+  o rótulo ao lado do caminho ganha um `*` quando há bytes editados ainda não salvos, e fechar a
+  janela com alterações pendentes pergunta antes de descartar.
+- A grade mostra 16 bytes por linha (endereço à esquerda, hex agrupado 8+8, ASCII à direita —
+  bytes não imprimíveis aparecem como `.`). Clicar num byte (hex ou ASCII) seleciona um "cursor":
+  o byte ganha uma borda na cor de destaque e a linha inteira tem o endereço pintado na mesma cor,
+  pra localizar de longe mesmo com a grade rolada. Editar esse byte é digitar 1-2 dígitos
+  hexadecimais no campo **Valor (hex)** e clicar **Aplicar**.
+- Todo valor hex nesta janela (grade, endereços, campos) sempre aparece com largura fixa (`00`, não
+  `0`) — o PureBasic usado aqui não completa zero à esquerda automaticamente em `Hex()`, então isso
+  é forçado manualmente para não confundir `00` com `0`, `0C` com `C`, etc.
+
+### Reconhecimento de formato
+
+O painel à esquerda mostra o tipo de arquivo detectado e os campos relevantes, reconhecendo:
+
+- **Binário MSX BLOAD/BSAVE** — primeiro byte `FEh`, seguido de endereço inicial/final/execução (2
+  bytes cada, little-endian) — mesmo cabeçalho gerado por **Executar → Montar Assembly (.bin)...**
+  e pelos editores de sprite/alfabeto/tela. Mostra os três endereços e o tamanho dos dados
+  (fim − início + 1).
+- **MSX-BASIC tokenizado** — primeiro byte `FFh`, endereço de carga `8001h` por convenção desta IDE
+  (ver `#Tok_Base` em `MsxTokenizer.pbi`) — o formato gerado por **Dignified → tokenizado nativo
+  (.bmx)...** e **Executar → BASIC**.
+- **Imagem de disco MSX (FAT12)** — extensão `.dsk`: lê o boot sector (setor 0) e mostra bytes por
+  setor, setores por cluster, número de FATs, entradas do diretório raiz, total de setores, descritor
+  de mídia e setores por FAT — os mesmos offsets que `MSXDisk.pbi` lê/escreve internamente.
+- **Texto ASCII** ou, se nada bater, **binário desconhecido/dados crus**.
+
+### Galeria de templates
+
+Binários BLOAD/BSAVE reconhecidos passam por uma segunda checagem contra uma **galeria de
+templates**: cada template tem nome, extensão, byte de tipo, endereço inicial e tamanho dos dados
+(qualquer campo em branco/−1 significa "qualquer valor") — se um arquivo bater com um template, o
+painel mostra o nome amigável (ex.: "Alfabeto Graphos III (.ALF)") em vez do genérico "Binário MSX
+(BLOAD/BSAVE)", mais uma linha "Template: ...".
+
+A galeria persiste em `editor/hexeditor_templates.json` (mesmo estilo de persistência de
+`editor_settings.json`/`badig_settings.json` — arquivo local da máquina, não versionado) e já vem
+semeada com os três formatos nativos do Graphos III (ver `GraphosNativeIO.pbi`/
+`CharsetEditorGui.pbi`):
+
+| Template | Extensão | Byte | Endereço | Tamanho dos dados |
+| --- | --- | --- | --- | --- |
+| Alfabeto Graphos III (.ALF) | `alf` | `FEh` | `9200h` | 2048 bytes (exato) |
+| Layout Graphos III (.LAY) | `lay` | `FEh` | `9200h` | qualquer (RLE comprimido) |
+| Tela Graphos III (.SCR) | `scr` | `FEh` | qualquer (`9200h` ou `9000h`) | qualquer |
+
+O botão **Galeria de templates...** abre uma janela própria para adicionar (nome + campos, cada um
+opcional) ou remover templates da lista — toda alteração é salva no JSON na hora.
+
+### Intervalo marcado e operações de bloco
+
+Além de editar um byte por vez, a barra de operações de bloco trabalha sobre um **intervalo**:
+
+- **Marcar início** / **Marcar fim** — usam o byte selecionado na grade (clique) como limite do
+  intervalo; **Limpar seleção** desmarca. O intervalo marcado aparece na grade com um preenchimento
+  mais suave que o cursor de byte único, e um rótulo acima da grade mostra o intervalo atual
+  (endereço inicial/final e tamanho em bytes).
+- **Preencher...** — preenche o intervalo marcado com um valor hex escolhido; se nada estiver
+  marcado, pergunta endereço inicial e final antes do valor.
+- **Inserir bloco...** — insere bytes numa posição (o byte selecionado, ou perguntada se nada
+  estiver selecionado), **deslocando** o resto do arquivo pra frente (o arquivo cresce).
+- **Sobrepor bloco...** — mesma escolha de posição, mas **sem deslocar** o que já existe depois — só
+  cresce o arquivo se o bloco novo passar do fim atual.
+- Tanto **Inserir** quanto **Sobrepor** perguntam a origem dos dados: um **arquivo inteiro**
+  escolhido na hora, ou **bytes em branco** (quantidade + valor, ambos escolhidos pelo usuário).
+- **Excluir bloco...** — usa o intervalo marcado (ou pergunta início/fim); depois pergunta se
+  **desloca de verdade** (remove os bytes e desloca o restante pra trás, o arquivo encolhe) ou só
+  **sobrescreve com `00`** no lugar (tamanho do arquivo não muda).
+
+Qualquer operação que mude o tamanho do arquivo (Inserir/Sobrepor além do fim/Excluir deslocando)
+limpa a seleção e o intervalo marcado, já que os offsets antigos deixam de fazer sentido.
+
+### Barra de rolagem
+
+A rolagem vertical é uma barra customizada (não o `ScrollBarGadget` nativo do PureBasic, que nesta
+configuração renderizava enorme/esticado e com os botões trocados — esquerda subindo, direita
+descendo): uma seta tradicional no topo, outra na base, e uma trilha no meio desenhando um "thumb"
+proporcional ao trecho do arquivo visível na grade no momento — clicar na trilha pula direto pra
+posição proporcional clicada. A grade também rola pela roda do mouse.
+
+![Editor Hexa reconhecendo um alfabeto Graphos III (galeria de templates) — grade hex/ASCII, painel de tipo de arquivo, barra de operações de bloco e barra de rolagem customizada](../images/msxbasica-14.png)

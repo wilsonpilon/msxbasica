@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.5.13** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
+**Versão atual: 7.7.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
 no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -318,6 +318,27 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   (`##BB:arguments=`/`export_file=`/`help=`, com a lista exata de flags que o remtag `arguments=`
   realmente aplica) e **sobre a suíte original** (ferramentas não portadas pra esta IDE, como o
   DignifieR de conversão reversa, e referência do formato tokenizado `.bmx`).
+- **Editor Hexa** (`editor/HexEditorGui.pbi`, menu **Executar → Editor Hexa...**) — editor
+  hexadecimal genérico: abre **qualquer arquivo** do disco (não só os do editor de texto), mostra
+  offset/hex/ASCII numa grade rolável e permite editar bytes individuais (clique seleciona, campo +
+  **Aplicar** grava). Reconhece os formatos que a própria IDE produz/consome — binário MSX
+  BLOAD/BSAVE (cabeçalho `FEh` + início/fim/execução), MSX-BASIC tokenizado (`FFh`, endereço de carga
+  `8001h`) e o boot sector FAT12 de uma imagem `.dsk` (mesmos offsets que `MSXDisk.pbi` lê/escreve) —
+  e ainda mantém uma **galeria de templates** (`hexeditor_templates.json`, mesmo estilo de persistência
+  de `editor_settings.json`/`badig_settings.json`) que dá nome amigável a binários BLOAD/BSAVE cujo
+  byte de tipo + endereço inicial + tamanho dos dados batam com um template registrado — de fábrica já
+  vem com os três formatos nativos do Graphos III (**Alfabeto `.ALF`**: `FEh`/`9200h`/2048 bytes exatos,
+  **Layout `.LAY`** e **Tela `.SCR`**: `FEh`/`9200h` com tamanho variável). Operações de bloco a partir
+  de um intervalo marcado (**Marcar início**/**Marcar fim**/**Limpar seleção**) ou, se nada estiver
+  marcado, perguntando endereço inicial/final na hora: **Preencher...** (um valor num intervalo),
+  **Inserir bloco...** (desloca o resto do arquivo pra frente) e **Sobrepor bloco...** (não desloca),
+  ambos trazendo os bytes de outro arquivo inteiro ou gerando bytes em branco (quantidade + valor), e
+  **Excluir bloco...** (desloca de verdade, encolhendo o arquivo, ou só sobrescreve com `00` no lugar).
+  Barra de rolagem vertical customizada (setas topo/base tradicionais + barra visual com a posição
+  proporcional no arquivo, desenhada à mão porque o `ScrollBarGadget` nativo do PureBasic renderizava
+  enorme e com os botões trocados nesta configuração) mais rolagem pela roda do mouse.
+
+  ![Editor Hexa (Executar → Editor Hexa...) reconhecendo um alfabeto Graphos III via galeria de templates](images/msxbasica-14.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/
@@ -975,6 +996,22 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   a lacuna deixada pela sessão anterior (Nestor BASIC + Ajuda MSX BASIC/MSX2+ + `Ajuda → Basic
   Dignified...`, que não tinham bump dedicado — ficaram todos na `7.5.12` da Fase 9 do Graphos III).
   `build.ps1` (`$Version`) e `#App_Version` (`editor/BadigEditor.pb`) atualizados juntos.
+- **2026-07-29 — novo Editor Hexa** (`editor/HexEditorGui.pbi`, menu **Executar → Editor Hexa...**):
+  pedido explícito do usuário — editor hexadecimal genérico (offset/hex/ASCII, edição byte a byte) que
+  reconhece os formatos binários que a própria IDE produz/consome (BLOAD/BSAVE `FEh`, tokenizado
+  `FFh`, boot sector FAT12 de `.dsk`) e traz uma galeria de templates persistida em JSON (semeada com
+  Alfabeto/Layout/Tela do Graphos III) pra dar nome amigável a binários reconhecidos. Duas rodadas de
+  ajuste pedidas na mesma sessão: (1) correção de um campo de status que sobrepunha o botão "Fechar",
+  máscara de largura fixa nos valores hex (`Hex(v,#PB_Byte)` não completa com zero à esquerda neste
+  PureBasic — `HexEd_Hex2`/`Hex4`/`Hex6` resolvem isso com `RSet`) e cursor de seleção com borda de
+  destaque; (2) barra de rolagem vertical customizada (o `ScrollBarGadget` nativo renderizava enorme e
+  com os botões trocados — substituído por setas topo/base tradicionais + barra visual de posição
+  proporcional) e operações de bloco completas: **Marcar início/fim**, **Preencher...**, **Inserir
+  bloco...** (desloca)/**Sobrepor bloco...** (não desloca, ambos a partir de outro arquivo ou bytes em
+  branco) e **Excluir bloco...** (deslocando ou zerando o intervalo).
+- **2026-07-29 (mesma sessão) — bump de versão para `7.7.1`**: pedido explícito do usuário, fechando
+  o Editor Hexa (item acima). `build.ps1` (`$Version`) e `#App_Version` (`editor/BadigEditor.pb`)
+  atualizados juntos.
 
 ## Ferramentas e ambiente
 

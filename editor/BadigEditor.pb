@@ -372,6 +372,7 @@ Enumeration MenuItems
   #Menu_AssembleZ80
   #Menu_AssembleZ80Rel
   #Menu_LinkZ80
+  #Menu_HexEditor
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_HelpCommands
@@ -416,7 +417,7 @@ EndEnumeration
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.5.13"
+  #App_Version = "7.7.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -450,6 +451,12 @@ Global Color_Syntax_Default, Color_Syntax_Comment, Color_Syntax_String
 Global Color_Syntax_Statement, Color_Syntax_Operator, Color_Syntax_Function
 Global Color_Syntax_Number, Color_Syntax_Label, Color_Syntax_DignifiedStmt
 Global Color_Syntax_Remtag, Color_Caret, Color_SelBack, Color_LineNumberFore
+
+; So pode entrar aqui (nao junto com os demais XIncludeFile no topo) porque
+; usa os globais Color_* acima - com EnableExplicit a declaracao Global
+; precisa aparecer antes textualmente, ja que XIncludeFile e so inclusao
+; textual (mesmo caso do XIncludeFile "WordStarKeys.pbi" no fim do arquivo).
+XIncludeFile "HexEditorGui.pbi"
 
 ; Preenche todos os globais Color_* acima de acordo com EditorCfg\Theme.
 Procedure ApplyTheme()
@@ -2650,6 +2657,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
     MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)...")
     MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario...")
+    MenuBar()
+    MenuItem(#Menu_HexEditor, "Editor Hexa...")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
@@ -2803,6 +2812,9 @@ Repeat
 
         Case #Menu_LinkZ80
           Z80LinkGui_OpenWindow(#MainWindow)
+
+        Case #Menu_HexEditor
+          HexEditor_OpenWindow(#MainWindow)
 
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)
