@@ -416,6 +416,9 @@ EndEnumeration
 ; Versao/build normalmente injetadas via build.ps1 (/CONSTANT App_Version=...,
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
 ; PureBasic (F5), fora do build.ps1.
+; 7.7.1 = codinome "BFG9200" (pedido explicito do usuario) - BFG9000 do Doom
+; cruzado com 9200h, o endereco de VRAM (Alfabeto/Layout/Tela do Graphos III)
+; que virou a assinatura desta sessao (galeria de templates do Editor Hexa).
 CompilerIf Not Defined(App_Version, #PB_Constant)
   #App_Version = "7.7.1"
 CompilerEndIf

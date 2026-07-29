@@ -4,8 +4,8 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.7.1** — versão e build (data/hora UTC de compilação, em hexadecimal) são embutidas
-no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
+**Versão atual: 7.7.1** ("`BFG9200`") — versão e build (data/hora UTC de compilação, em hexadecimal)
+são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
 linha) e Z80 assembly, construída em torno de um editor com highlighting via Scintilla e um
@@ -1009,9 +1009,12 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   proporcional) e operações de bloco completas: **Marcar início/fim**, **Preencher...**, **Inserir
   bloco...** (desloca)/**Sobrepor bloco...** (não desloca, ambos a partir de outro arquivo ou bytes em
   branco) e **Excluir bloco...** (deslocando ou zerando o intervalo).
-- **2026-07-29 (mesma sessão) — bump de versão para `7.7.1`**: pedido explícito do usuário, fechando
-  o Editor Hexa (item acima). `build.ps1` (`$Version`) e `#App_Version` (`editor/BadigEditor.pb`)
-  atualizados juntos.
+- **2026-07-29 (mesma sessão) — bump de versão para `7.7.1`, codinome "`BFG9200`"**: pedido explícito
+  do usuário, fechando o Editor Hexa (item acima). `build.ps1` (`$Version`) e `#App_Version`
+  (`editor/BadigEditor.pb`) atualizados juntos. O codinome também foi pedido explicitamente pelo
+  usuário — MSX + Doom + heavy metal: "BFG9200" cruza o BFG9000 (a arma mais brutal do Doom) com o
+  `9200h`, o endereço de VRAM que virou praticamente a assinatura desta sessão (base de carga do
+  Alfabeto/Layout/Tela do Graphos III, ver galeria de templates do Editor Hexa acima).
 
 ## Ferramentas e ambiente
 
