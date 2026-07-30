@@ -55,6 +55,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. **Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)** — SALVA TELA/Restaurar, INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE VIDEO/ATRIBUTOS, todos com ícone; coluna direita e faixa abaixo do canvas reequilibradas, ver seção 14d. **Fase 5: persistência no projeto (2026-07-25, mesma sessão)** — Telas/Layouts/Shapes no `.msxproject` via `ProjectDB.pbi`, mesmo padrão número/navegação/tag/Novo/Registrar do editor de sprites/alfabetos, ver seção 14e. **Fase 6: menu AJUSTE (2026-07-25, mesma sessão)** — SCROLL/ROTAÇÃO, 1px e 8x8, 4 direções, ver seção 14f. **Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)** — ZOOM (janela à parte), SHAPE (carimbo com 4 modos lógicos), CORTE (Inverter/Espelhar), GRID (overlay não destrutivo), ver seção 14g. **Fase 8 (2026-07-25, mesma sessão): cursor de teclado — tentada e revertida**, ver seção 14h (usuário achou desnecessária com o mouse já disponível). **Fase 9: formatos nativos .ALF/.LAY/.SCR/.SHP (2026-07-25, mesma sessão)** — importar/exportar telas/layouts/shapes no formato binário que o Graphos III de verdade grava em disco (`editor/GraphosNativeIO.pbi`), verificado por round-trip contra arquivos reais (`editor/tools/GraphosNativeIOTestCli.pb`), ver seção 14i. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). **Todos os 5 menus do original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) + os formatos de arquivo nativos estão implementados.** Ver seções 14/14b a 14i |
 | 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
 | 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
+| 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. Ver seção 17 |
 
 ## Decisões fechadas
 
@@ -1268,11 +1269,95 @@ cross-process (`LVM_SETITEMSTATE`, `LVM_GETITEMRECT`, `SCI_SETTEXT`) ou input re
 ser evitada — preferir testar essa lógica por trás das cortinas (harness CLI) quando possível.
 confirmado abrindo sem nenhuma janela de console residual.
 
-**Não implementado ainda** (a fatia "difícil" do módulo): controle via socket/protocolo XML em tempo
-real, envio de input simulado durante a execução, e detecção de erro em runtime com retorno à linha
-certa no editor — nenhuma das duas abordagens documentadas acima (script Tcl+convenção `CHR$(7)`, ou
-hook de erro via `POKE`+breakpoint) foi implementada. O fluxo atual é "gerar disco e abrir o openMSX
-já rodando", sem nenhuma comunicação de volta da emulação para a IDE.
+**Não implementado ainda** (a fatia "difícil" do módulo): envio de input simulado durante a execução
+(além do console manual — ver abaixo) e detecção de erro em runtime com retorno à linha certa no editor
+— nenhuma das duas abordagens documentadas acima (script Tcl+convenção `CHR$(7)`, ou hook de erro via
+`POKE`+breakpoint) foi implementada. O controle via named pipe (ver abaixo) cobre o caso manual; o fluxo
+`RunOnOpenMSX()` (F5/"Executar → BASIC") continua sendo "gerar disco e abrir o openMSX já rodando", sem
+`-control`, sem nenhuma comunicação de volta da emulação para a IDE.
+
+**Console de comandos — menu "Executar → openMSX..." (⚠ EXPERIMENTAL, implementado 2026-07-29,
+arquitetura corrigida no mesmo dia)**: `editor/OpenMSXBridge.pbi` (processo/protocolo) +
+`editor/OpenMSXConsoleGui.pbi` (janela) — caminho **separado** de `RunOnOpenMSX()` acima (não mexe
+nele), voltado a controlar manualmente uma instância do openMSX já aberta.
+
+**Status: experimental, não validado ponta a ponta contra o openMSX de verdade** (ver último item
+desta lista) — diferente do resto do projeto, que só é documentado como "implementado" depois de
+verificação real. Documentado como experimental também em `README.md` (seção "Ainda não implementado")
+e `docs/MANUAL.md` (seção "Controle remoto do openMSX (experimental)").
+
+- **Primeira tentativa (não funcionou)**: `-control stdio` + `RunProgram(...#PB_Program_Write)`
+  escrevendo comandos no stdin do processo, seguindo a doc oficial "Controlling openMSX from External
+  Applications" à risca (incluindo o handshake `<openmsx-control>\n` antes do primeiro `<command>`).
+  Nenhum comando surtia efeito nem gerava resposta no log, nem mesmo os botões Ligar/Desligar.
+- **Causa raiz** (achada lendo o código de verdade, a pedido do usuário, em vez de só a doc): duas
+  fontes cruzadas —
+  1. `openmsx/openmsx/src/events/AdhocCliCommParser.cc` mostra que o parser real é uma máquina de
+     estados byte-a-byte que só procura `<command>...</command>` em qualquer lugar do stream — **não
+     exige handshake nenhum**, a doc estava incompleta/genérica nesse ponto.
+  2. `openmsx/catapult/src/openMSXController.cpp`, método `Launch()`, bloco `#ifdef __WXMSW__`: o
+     Catapult real **nunca usa `-control stdio` no Windows**. Ele usa `-control pipe:<nome>` — um named
+     pipe dedicado só pra comandos de entrada (`CreateNamedPipe_` com `PIPE_ACCESS_OUTBOUND`, o mesmo
+     processo conecta como cliente ao processar essa flag — `openmsx/openmsx/src/events/CliConnection.cc`,
+     `PipeConnection::PipeConnection()`) — mantendo STDOUT/STDERR normais (pipe anônimo comum via
+     `CreateProcess`+`STARTF_USESTDHANDLES`) só pra ler respostas/log. Ou seja: a metade "escrever no
+     stdin" de `-control stdio` é a que não é confiável no Windows (motivo exato não documentado nem no
+     próprio Catapult, só o workaround); a metade "ler do stdout" sempre funcionou normalmente.
+- **Arquitetura atual** (`OpenMSXBridge.pbi`), espelhando exatamente o Catapult real:
+  - `OMSX_Start()` cria um named pipe próprio (`CreateNamedPipe_`, `PIPE_ACCESS_OUTBOUND`, nome
+    `BadigEditorOMSX_<pid>_<contador>`) **antes** de lançar o processo (o construtor de `PipeConnection`
+    do openMSX tenta abrir esse pipe como cliente assim que processa `-control pipe:<nome>` — falharia se
+    o servidor, nós, ainda não tivesse criado). Continua passando os mesmos `-machine`/`-ext<slot>` de
+    `RunOnOpenMSX()`. `RunProgram(...#PB_Program_Open|Read|Error)` — **sem** `#PB_Program_Write` (não
+    mexe no stdin de verdade do processo, igual ao Catapult).
+  - `ConnectNamedPipe_()` bloqueia até o openMSX conectar — roda numa `CreateThread()` dedicada (mesma
+    ideia exata de `openmsx/catapult/src/PipeConnectThread.cpp`) pra não travar a GUI. Assim que conecta,
+    essa mesma thread manda o handshake `<openmsx-control>` + `unset renderer` (reverte pro renderer
+    padrão — `-control` sobe com `renderer none`; nome fixo tipo `SDL` quebra em builds onde só existe
+    `SDLGL-PP`, mesma lição do `InitLaunchScript()`/`player.py` do Catapult) + `set power on` (a máquina
+    fica desligada sob `-control` — confirmado lendo `main.cc` do openMSX: `reactor.powerOn()` só roda
+    quando `parseStatus == RUN`, não `CONTROL`) — evento-driven, sem timer fixo de "esperar 3 segundos"
+    como na primeira tentativa.
+  - `OMSX_SendCommand()`/`OMSX_ShowWindow()` escrevem via `WriteFile_()` direto no handle do named pipe.
+  - Guarda o processo (`OMSX_Prog`) e o pipe (`OMSX_PipeHandle`) em `Global`s pra reaproveitar a mesma
+    instância se o menu for aberto de novo.
+- `OMSXGui_OpenWindow()`: log de saída (tags XML limpas, não é parser de verdade) + campo de comando
+  (Enter ou botão) + atalhos Reset/Pausar/Continuar/Ligar/Desligar/"Mostrar janela" (`unset renderer` sob
+  demanda) + botão "Ajuda" (abre a janela do módulo 12b abaixo, pra consulta sem sair do console). Modal
+  em relação à janela principal (`DisableWindow`), mesmo motivo de toda outra janela secundária deste app
+  (loop de eventos compartilhado — ver módulo do gerenciador de disco acima); fechar o console **não**
+  mata o openMSX, só desconecta a janela (reabrir o menu reconecta na mesma instância).
+- **Não verificado ao vivo nesta sessão**: sem um `openmsx.exe` disponível no ambiente onde a correção
+  foi escrita, a nova arquitetura foi validada por partes (API de named pipe testada isoladamente,
+  compilação limpa, app estável) mas não ponta-a-ponta contra o emulador de verdade — fica registrado
+  como lacuna até o usuário confirmar na própria máquina.
+
+### 12b. Ajuda → openMSX... — implementado (2026-07-29)
+
+- `editor/OpenMsxHelpData.pbi` (dados) + `editor/OpenMsxHelpGui.pbi` (janela) — mesmo padrão exato das
+  outras 3 janelas de Ajuda (`BasicDignifiedHelpGui.pbi`/`NestorBasicHelpGui.pbi`/`MsxBasicHelpGui.pbi`):
+  árvore agrupada (grupo = `"<manual> - <seção>"`) + busca por título/grupo + histórico
+  (Alt+seta-esquerda), reaproveitando o mesmo mini-Markdown/renderizador (`NBHelpGui_RenderMarkdown`).
+  Sem hyperlink clicável dentro do corpo (a mini-Markdown não suporta isso, nem nenhuma das outras 3
+  janelas) — a navegação entre tópicos relacionados é via árvore/busca, como no resto da Ajuda.
+- Conteúdo: os 5 manuais originais do openMSX (`docs/openmsx-setup.html`/`-user.html`/
+  `-diskmanipulator.html`/`-control.html`/`-commands.html` — Setup Guide, User's Manual, Using
+  Diskmanipulator, Controlling openMSX from External Applications, Console Command Reference),
+  convertidos de HTML pra mini-Markdown por um script Python descartável (não versionado) rodado uma
+  única vez — 252 tópicos no total. Divertida em 7 `Build*()` (uma por manual, duas pro Manual do
+  Usuário e duas pra Referência de Comandos — Comandos/Configurações, por volume), mesmo motivo de
+  `NestorBasicHelpData.pbi` (`BuildDataDisk`/`BuildDataVram`/etc.): manter cada `Procedure` de tamanho
+  razoável.
+- **Limite real do PB encontrado**: uma cadeia de concatenação `"a" + "b" + ...` só com literais é
+  constant-folded em tempo de compilação, e o literal resultante não pode passar de 8192 caracteres — um
+  punhado de tópicos grandes (subseções `<h4>` sem `<h3>` próprio, mescladas no corpo do tópico pai)
+  passavam disso. Corrigido dividindo esses corpos em múltiplas atribuições a uma variável `CBody`
+  (variável no lado esquerdo quebra o fold puramente-literal) em vez de uma expressão única gigante.
+- `OMSXHelp_ExportMarkdown()` gera `docs/reference/openmsx.md` a partir da mesma base de dados (mesma
+  ideia de `NBHelp_ExportMarkdown()` em `NestorBasicHelpData.pbi`) — `editor/tools/OpenMsxHelpExportCli.pb`
+  é uma ferramenta de linha de comando de verdade pra rodar de novo (`OpenMsxHelpExportCli.exe
+  <saida.md>`), diferente do precedente do Nestor Basic (exportado uma única vez, sem ferramenta pra
+  regenerar).
 
 ### 13. Sistema de projeto (arquivo `.msxproject`, SQLite) — implementado (2026-07-18)
 
@@ -2001,6 +2086,46 @@ quanto as **configurações** desta IDE.
   pelos mesmos motivos já documentados no módulo 2 (sessão em janela de outro processo/sessão do
   Windows, inacessível a `FindWindow`/`PostMessage` a partir do shell).
 
+### 17. Editor Hexa genérico — implementado (2026-07-29)
+
+Pedido explícito do usuário: um editor hexadecimal genérico dentro da IDE, não amarrado a nenhum
+formato específico — abre **qualquer arquivo** do disco (diferente dos demais editores visuais, que só
+operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
+
+- **UI** (`editor/HexEditorGui.pbi`, menu **Executar → Editor Hexa...**) — janela própria com grade
+  rolável offset/hex/ASCII; clique seleciona um byte, campo de valor + **Aplicar** grava. Rolagem
+  vertical **customizada** (setas topo/base + barra visual com posição proporcional, desenhada à mão)
+  em vez do `ScrollBarGadget` nativo do PureBasic, que nesta configuração renderizava enorme e com os
+  botões trocados — mesma classe de problema já visto em outros gadgets nativos do projeto, resolvido
+  do mesmo jeito (desenho próprio). Roda do mouse também rola.
+- **Reconhecimento de formato**: sem exigir nada do usuário, detecta os três formatos binários que a
+  própria IDE produz/consome, pelos mesmos offsets que o código que os gera/lê usa: binário MSX
+  BLOAD/BSAVE (cabeçalho `FEh` + endereços inicial/final/execução), MSX-BASIC tokenizado (`FFh`,
+  endereço de carga fixo `8001h`, ver módulo 11) e o boot sector FAT12 de uma imagem `.dsk` (mesmos
+  offsets que `MSXDisk.pbi`, módulo 13, lê/escreve).
+- **Galeria de templates** (`hexeditor_templates.json`, mesmo estilo de persistência de
+  `editor_settings.json`/`badig_settings.json`) — dá nome amigável a um binário BLOAD/BSAVE reconhecido
+  quando byte de tipo + endereço inicial + tamanho dos dados batem com um template registrado. De
+  fábrica já vem semeada com os três formatos nativos do Graphos III (módulo 14): **Alfabeto `.ALF`**
+  (`FEh`/`9200h`/2048 bytes exatos), **Layout `.LAY`** e **Tela `.SCR`** (`FEh`/`9200h`, tamanho
+  variável) — mesmo endereço `9200h` (Pattern Generator Table da VRAM) que já aparecia nesses três
+  formatos, batizando o codinome de versão desta sessão ("BFG9200", ver changelog do README).
+- **Operações de bloco**: a partir de um intervalo marcado (**Marcar início**/**Marcar fim**/**Limpar
+  seleção**) ou, sem marcação, perguntando endereço inicial/final na hora — **Preencher...** (um valor
+  num intervalo), **Inserir bloco...** (desloca o resto do arquivo pra frente, cresce o arquivo) e
+  **Sobrepor bloco...** (mesmo tamanho, não desloca), ambos podendo trazer os bytes de outro arquivo
+  inteiro ou gerar bytes em branco (quantidade + valor); **Excluir bloco...** desloca de verdade
+  (encolhendo o arquivo) ou só zera o intervalo com `00`, à escolha do usuário.
+- **Bugs corrigidos durante a implementação** (duas rodadas de ajuste pedidas pelo usuário na mesma
+  sessão): campo de status sobrepondo o botão "Fechar"; `Hex(v, #PB_Byte)` deste PureBasic não completa
+  com zero à esquerda — `HexEd_Hex2`/`Hex4`/`Hex6` resolvem com `RSet` para manter largura fixa nos
+  valores hex mostrados; cursor de seleção ganhou borda de destaque visível.
+- **Sem integração com o sistema de projeto** (módulo 13) — deliberado: é uma ferramenta autocontida
+  baseada em arquivo (como o editor de alfabetos Aquarela, módulo 4b), já que o alvo típico (um binário
+  qualquer no disco) não é um tipo de conteúdo do `.msxproject`.
+- **Versão embutida no executável**: `7.7.1`, codinome **"BFG9200"** (BFG9000 do Doom + endereço
+  `9200h`, pedido explícito do usuário — MSX + Doom + heavy metal).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -2037,6 +2162,13 @@ quanto as **configurações** desta IDE.
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-29 — SPEC.md sincronizado com o Editor Hexa**: a sessão de 2026-07-29
+(commit `bdf80af "bgf9200"`) implementou o Editor Hexa genérico (`editor/HexEditorGui.pbi`) e bumpou a
+versão para `7.7.1`/"BFG9200", já documentado no README (seção "O que já temos" + changelog), mas sem
+entrada correspondente no SPEC — mesmo padrão de lacuna já visto na sessão de 2026-07-27/28 (feature
+implementada e commitada, documentação de arquitetura ficando pra trás). Fechada nesta sessão: nova
+linha 17 na tabela de módulos + seção de detalhe "17. Editor Hexa genérico" acima.
 
 **Estado ao fim de 2026-07-28 — documentação posta em dia (README/SPEC/MANUAL/changelog) para o trabalho
 de 2026-07-27 (Nestor BASIC + Ajuda MSX BASIC/MSX2+)**: sessão anterior (2026-07-27) implementou e

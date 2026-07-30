@@ -33,6 +33,11 @@ Declare.s EnsureExtension(Path.s, Ext.s)
 ; antes da definicao mais abaixo) - mesmo motivo das declaracoes acima.
 Declare App_ApplyWindowIcon(WinNum)
 
+; Referenciada pelo botao "Ajuda" do console do openMSX (OpenMSXConsoleGui.pbi,
+; incluido bem antes de OpenMsxHelpGui.pbi, onde a janela de verdade e
+; definida) - mesmo motivo das declaracoes acima.
+Declare OpenMsxHelp_OpenWindow(ParentWindow)
+
 
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
@@ -42,6 +47,8 @@ XIncludeFile "BadigSettings.pbi"
 XIncludeFile "FontDownloader.pbi"
 XIncludeFile "MSXDisk.pbi"
 XIncludeFile "DiskManagerGui.pbi"
+XIncludeFile "OpenMSXBridge.pbi"
+XIncludeFile "OpenMSXConsoleGui.pbi"
 XIncludeFile "ProjectDB.pbi"
 XIncludeFile "SpriteEditorGui.pbi"
 XIncludeFile "CharsetEditorGui.pbi"
@@ -71,6 +78,8 @@ XIncludeFile "MsxBasic2PlusManualData.pbi"
 XIncludeFile "MsxBasicHelpGui.pbi"
 XIncludeFile "BasicDignifiedHelpData.pbi"
 XIncludeFile "BasicDignifiedHelpGui.pbi"
+XIncludeFile "OpenMsxHelpData.pbi"
+XIncludeFile "OpenMsxHelpGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -373,12 +382,14 @@ Enumeration MenuItems
   #Menu_AssembleZ80Rel
   #Menu_LinkZ80
   #Menu_HexEditor
+  #Menu_OpenMSXConsole
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_HelpCommands
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
   #Menu_HelpBasicDignified
+  #Menu_HelpOpenMSX
   #Menu_HelpAbout
 EndEnumeration
 
@@ -1835,19 +1846,27 @@ EndProcedure
 Global App_IconBig.i, App_IconSmall.i, App_IconLoaded.b = #False
 
 Procedure App_ApplyWindowIcon(WinNum)
-  If Not App_IconLoaded
-    App_IconLoaded = #True
-    ExtractIconEx_(ProgramFilename(), 0, @App_IconBig, @App_IconSmall, 1)
-  EndIf
-  If Not IsWindow(WinNum)
-    ProcedureReturn
-  EndIf
-  If App_IconBig
-    SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_BIG, App_IconBig)
-  EndIf
-  If App_IconSmall
-    SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_SMALL, App_IconSmall)
-  EndIf
+  ; ExtractIconEx_/WM_SETICON sao WinAPI puro (achado real compilando no Linux
+  ; via WSL, 2026-07-29, ver CLAUDE.md) - sem equivalente generico aqui pra
+  ; outros OS (Linux nao embute /ICON no binario, ver build.sh), entao esta
+  ; funcao vira no-op fora do Windows. Chamada incondicionalmente de ~25
+  ; lugares (toda janela top-level), por isso o guard fica dentro do corpo em
+  ; vez de nos call sites.
+  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+    If Not App_IconLoaded
+      App_IconLoaded = #True
+      ExtractIconEx_(ProgramFilename(), 0, @App_IconBig, @App_IconSmall, 1)
+    EndIf
+    If Not IsWindow(WinNum)
+      ProcedureReturn
+    EndIf
+    If App_IconBig
+      SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_BIG, App_IconBig)
+    EndIf
+    If App_IconSmall
+      SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_SMALL, App_IconSmall)
+    EndIf
+  CompilerEndIf
 EndProcedure
 
 ; Garante que o projeto ativo sempre tenha um alfabeto marcado com a tag
@@ -2586,8 +2605,13 @@ EndIf
 ; abrir uma janela de console nova e desconectada) - isso faz o Windows
 ; anexar um console automaticamente a QUALQUER execucao, inclusive o uso
 ; normal como editor grafico. FreeConsole_() fecha essa janela de console
-; indesejada antes de abrir a GUI.
-FreeConsole_()
+; indesejada antes de abrir a GUI. WinAPI puro (achado real compilando no
+; Linux via WSL, 2026-07-29, ver CLAUDE.md) - no Linux um binario -cl
+; (--console, ver build.sh) roda direto no terminal que o chamou sem abrir
+; nenhuma janela extra, entao nao ha nada equivalente a desanexar aqui.
+CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+  FreeConsole_()
+CompilerEndIf
 
 ; PNG so decodifica com o codec registrado em runtime - sem isso, LoadImage()
 ; de um .png sempre falha (retorna 0) mesmo com o arquivo certo no caminho certo.
@@ -2662,6 +2686,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario...")
     MenuBar()
     MenuItem(#Menu_HexEditor, "Editor Hexa...")
+    MenuBar()
+    MenuItem(#Menu_OpenMSXConsole, "openMSX (console de comandos)...")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
@@ -2670,6 +2696,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
     MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
     MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
+    MenuItem(#Menu_HelpOpenMSX, "openMSX...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 ; Novo/Fechar aba usam Alt (nao Ctrl) porque Ctrl+N e Ctrl+W tem funcao propria
@@ -2819,6 +2846,9 @@ Repeat
         Case #Menu_HexEditor
           HexEditor_OpenWindow(#MainWindow)
 
+        Case #Menu_OpenMSXConsole
+          OMSXGui_OpenWindow(#MainWindow)
+
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)
 
@@ -2845,6 +2875,9 @@ Repeat
 
         Case #Menu_HelpBasicDignified
           BasicDignifiedHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpOpenMSX
+          OpenMsxHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpAbout
           ShowAboutDialog()

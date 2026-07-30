@@ -28,6 +28,17 @@
 ; ------------------------------------------------------------
 ;
 
+; Guarda de inclusao: BadigEditor.pb inclui este arquivo diretamente E
+; MmlSynth.pbi (tambem incluido por BadigEditor.pb) inclui de novo via
+; XIncludeFile "PsgSynth.pbi" - o pbcompiler do Windows deduplica isso
+; silenciosamente por caminho de arquivo resolvido, mas o pbcompiler Linux
+; (testado com PureBasic real via WSL, 2026-07-29) nao faz essa deduplicacao,
+; causando "Structure already declared: PsgStepData". Guarda explicita para
+; nao depender desse comportamento variar entre plataforma/versao do
+; compilador.
+CompilerIf Not Defined(PSGSYNTH_PBI_INCLUDED, #PB_Constant)
+#PSGSYNTH_PBI_INCLUDED = 1
+
 EnableExplicit
 
 #Psg_ClockHz = 1789772.5   ; clock do PSG no MSX (3.579545 MHz / 2)
@@ -384,3 +395,5 @@ Procedure.s PsgGen_RawBytes(Array Steps.PsgStepData(1), NumSteps.i)
 
   ProcedureReturn Result
 EndProcedure
+
+CompilerEndIf ; PSGSYNTH_PBI_INCLUDED

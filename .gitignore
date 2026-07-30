@@ -31,9 +31,21 @@
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
 
+# Caminho local do pbcompiler (Linux), gravado por build.sh (-C/--compiler) -
+# arquivo separado do build.config.json do Windows de proposito, pra nao um
+# script pisar na config do outro.
+/build.config.linux.json
+
 # Pacote de distribuicao gerado por build.ps1 -D/--distribute (artefato de
 # build, nao fonte).
 /distribute/
+
+# Pacote de distribuicao gerado por build.sh -D/--distribute (Linux).
+/distribute-linux/
+
+# Executavel Linux gerado por build.sh (equivalente ao editor/BadigEditor.exe
+# do Windows, sem extensao).
+/editor/BadigEditor
 
 # Preferencias locais persistidas pelo proprio editor (Configurar -> ...),
 # especificas de cada maquina/usuario.

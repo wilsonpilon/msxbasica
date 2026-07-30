@@ -16,8 +16,50 @@ summary. `docs/MANUAL.md` is the end-user guide (editor keybindings, disk manage
 
 ## Commands
 
-Everything is built and run on **Windows via PowerShell**; there is no Linux build script yet despite
-the eventual cross-platform goal.
+Primary development is on **Windows via PowerShell**; a **Linux build script (`build.sh`)** also exists,
+meant to be run inside **WSL** against the same checkout, using the Linux `pbcompiler` binary (not
+`pbcompiler.exe`) — same spirit as `build.ps1`, own gitignored `build.config.linux.json` for the
+compiler path (kept separate from Windows' `build.config.json` on purpose). Its command-line flags are
+**not** the same as Windows' `/FLAG` style — Linux `pbcompiler` uses hyphenated flags (`-o`/`--output`,
+`-q`/`--quiet`, `-cl`/`--console`, `-co`/`--constant Name=Value`), confirmed 2026-07-29 by running
+`pbcompiler -h` for real inside WSL. No `/ICON` embedding either way (PE-only resource, no Linux
+equivalent). `editor/BadigEditor.pb` likely still has Windows-only API calls (WinAPI `gdi32`/icon
+extraction, etc.) that would need `CompilerIf #PB_Compiler_OS` guards before a Linux build succeeds
+fully end-to-end — not yet audited.
+
+**Real cross-platform bugs found while getting `build.sh` to actually compile (2026-07-29)**:
+- `XIncludeFile` deduplication by resolved file path (documented in module 2b of `docs/SPEC.md` as an
+  established, relied-upon behavior on Windows) is **not guaranteed on the Linux `pbcompiler`** —
+  `editor/BadigEditor.pb` includes `PsgSynth.pbi` directly *and* `editor/MmlSynth.pbi` (also pulled in
+  by `BadigEditor.pb`) includes `PsgSynth.pbi` again; Windows silently deduped this, Linux raised
+  `Structure already declared: PsgStepData`. Fixed at the source with an explicit include-guard idiom in
+  `editor/PsgSynth.pbi` (`CompilerIf Not Defined(PSGSYNTH_PBI_INCLUDED, #PB_Constant)` wrapping the whole
+  file body) instead of relying on implicit compiler dedup — safe regardless of platform/compiler
+  version. If a similar "file A included both directly by `BadigEditor.pb` and indirectly through file
+  B" pattern shows up elsewhere, apply the same guard rather than assuming Windows' dedup behavior
+  holds.
+- `editor/Screen2EditorGui.pbi` had one isolated `GetKeyState_(#VK_CONTROL)` (WinAPI, Windows-only) used
+  during Screen2 TEXTO tool mouse-move to detect Ctrl-held-for-pixel-snap — replaced with
+  `ExamineKeyboard()`/`KeyboardPushed(#PB_Key_LeftControl) Or KeyboardPushed(#PB_Key_RightControl)`
+  (PureBasic's own cross-platform Keyboard library). Compiles clean on Windows; not yet confirmed on
+  Linux.
+- `editor/WordStarKeys.pbi` (WordStar/JOE keybindings) is **structurally** Windows-only in its
+  interception mechanism: it subclasses each `ScintillaGadget`'s raw HWND (`SetWindowLongPtr_`/
+  `CallWindowProc_`/`#WM_KEYDOWN`/`#WM_CHAR`/`#VK_*`) to catch keys *before* Scintilla consumes them —
+  the only way to implement multi-key chords (`^K` then a letter) and swallow/redirect arbitrary keys,
+  since Scintilla's own `SCI_ASSIGNCMDKEY` only remaps single keys to Scintilla's *own* built-in
+  commands, not arbitrary host actions. The command logic itself (mark block, search, cursor movement,
+  paragraph reformat, etc.) is **already portable** — it only talks to Scintilla via
+  `ScintillaSendMessage`, same library on every OS. Fixed for the immediate Linux build error by
+  guarding just the OS-specific subclass/WndProc procedures with
+  `CompilerIf #PB_Compiler_OS = #PB_OS_Windows` (`WS_AttachSubclass` gets a no-op stub on other OSes,
+  since `BadigEditor.pb` calls it unconditionally; `WS_ShowHelp()` shows an explanatory message instead
+  of opening a help screen it couldn't close, since closing it also depended on the same subclass).
+  **Still open**: a real non-Windows equivalent needs low-level per-backend widget hooking (GTK
+  `key-press-event`/`g_signal_connect` on Linux, presumably Cocoa on Mac) — this is real systems
+  programming that cannot be written and validated from here without a live Linux+GTK+PureBasic
+  environment to compile/run against; treat any attempt at it as a draft requiring the user's live
+  WSL testing loop, not a one-shot fix.
 
 ```powershell
 # Compile editor\BadigEditor.pb -> editor\BadigEditor.exe (finds pbcompiler.exe automatically,
@@ -28,6 +70,28 @@ the eventual cross-platform goal.
 .\build.ps1 -Version "5.4.0" -R                       # stamp a version + run
 .\build.ps1 -H                                        # list all flags
 ```
+
+```bash
+# Linux counterpart, run from inside WSL (or any Linux shell) against the same repo checkout
+./build.sh
+./build.sh -C "/home/user/pb/compilers/pbcompiler"   # first time on a new machine
+./build.sh -R                                         # build then run
+./build.sh -H                                         # list all flags
+```
+
+**First-time WSL/Linux setup**: the PureBasic Linux compiler links against GTK3 (its GUI backend) plus
+several libraries unconditionally (OpenGL/X11/OpenSSL) regardless of whether this codebase actually uses
+them — a fresh WSL/Ubuntu install is missing all of these dev packages at link time. Found across two
+rounds of real linker failures (2026-07-29): first `fontconfig`/`cairo`/`gtk+-3.0` not found via
+pkg-config + `-lgmodule-2.0` not found; after installing those, a second round surfaced `-lGLU`/
+`-lXxf86vm`/`-lssl`/`-lcrypto` also not found. Install once per machine (both rounds together, to save a
+second round-trip next time):
+```bash
+sudo apt install libgtk-3-dev libcairo2-dev libfontconfig1-dev libglib2.0-dev \
+                  libglu1-mesa-dev libxxf86vm-dev libssl-dev
+```
+Possibly not exhaustive — if another `-l<name>` shows up at link time, it's the same pattern (system dev
+package missing, not a source bug); map the library name to its Ubuntu `-dev` package and add it here.
 
 There is no automated test runner — verification happens through small standalone console harnesses in
 `editor/tools/` (each is its own `.pb`, compiled separately with `/CONSOLE`, exercising one subsystem

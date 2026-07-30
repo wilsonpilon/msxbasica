@@ -344,9 +344,18 @@ Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecida
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/
 `--align-*`/detecção de sobreposição de segmento/saída Intel HEX no linker, editor de tile (além do
 charset/fonte 8×8), tracker, outros modos de tela além do SCREEN 2 (SCREEN 1/5/7/8) reaproveitando o
-mesmo motor gráfico, saída via `msxbas2rom`, controle do openMSX via socket/XML em
-tempo real (input simulado, detecção de erro com retorno à linha no editor — hoje só "gerar disco e
-abrir o openMSX" está pronto, sem comunicação de volta da emulação para a IDE).
+mesmo motor gráfico, saída via `msxbas2rom`, input simulado durante a execução e detecção de erro com
+retorno à linha no editor (ver "Controle remoto do openMSX" logo abaixo para o que já existe nessa
+frente).
+
+**Controle remoto do openMSX — ⚠ experimental (2026-07-29)**: menu **Executar → openMSX...**
+(`editor/OpenMSXBridge.pbi`/`OpenMSXConsoleGui.pbi`) abre uma instância separada do openMSX com um
+named pipe de comando (mesmo mecanismo do Catapult oficial no Windows) e dá uma janela de console
+(campo de comando + log + botões Reset/Pausar/Continuar/Ligar/Desligar/Ajuda) para controlar essa
+instância manualmente — não mexe no fluxo normal de **Executar → BASIC**. Ainda não validado ponta a
+ponta contra o openMSX de verdade pelo autor; se algum comando não tiver efeito, é um recurso novo e
+pode ter bugs. Detalhes técnicos completos (incluindo duas tentativas de arquitetura e por que a
+primeira não funcionou) em `docs/SPEC.md`, módulo 12.
 
 ## Changelog resumido
 
@@ -1015,6 +1024,26 @@ abrir o openMSX" está pronto, sem comunicação de volta da emulação para a I
   usuário — MSX + Doom + heavy metal: "BFG9200" cruza o BFG9000 (a arma mais brutal do Doom) com o
   `9200h`, o endereço de VRAM que virou praticamente a assinatura desta sessão (base de carga do
   Alfabeto/Layout/Tela do Graphos III, ver galeria de templates do Editor Hexa acima).
+- **2026-07-29 (mesma sessão) — controle remoto do openMSX, ⚠ EXPERIMENTAL**: novo menu **Executar →
+  openMSX...** (`editor/OpenMSXBridge.pbi`/`OpenMSXConsoleGui.pbi`) abre uma instância do openMSX
+  separada do fluxo normal (**Executar → BASIC**/**Nestor Basic** continuam intocados) com uma janela
+  de console — campo de comando, log de respostas, botões Reset/Pausar/Continuar/Ligar/Desligar,
+  "Mostrar janela" (restaura a janela visível do emulador) e "Ajuda" (abre a Ajuda → openMSX ao lado).
+  Primeira tentativa (`-control stdio` + escrita no stdin do processo, seguindo a doc oficial do
+  openMSX à risca) não funcionou — nenhum comando surtia efeito. Investigando o código-fonte de
+  verdade (openMSX + Catapult, a pedido do usuário) descobriu-se que o Catapult oficial **nunca usa
+  `-control stdio` no Windows**: usa um named pipe dedicado (`-control pipe:<nome>`) só para comandos
+  de entrada, mantendo stdout/stderr normais só para respostas — arquitetura reescrita para espelhar
+  exatamente isso. Ainda não validado ponta a ponta contra o openMSX de verdade pelo autor (sem
+  binário disponível no ambiente onde a correção foi escrita) — por isso o rótulo experimental.
+  Detalhes completos em `docs/SPEC.md`, módulo 12.
+- **2026-07-29 (mesma sessão) — Ajuda → openMSX...**: nova janela de referência (mesma UI de
+  busca/árvore/histórico das outras 3 janelas de Ajuda) com os 5 manuais originais do openMSX (Setup
+  Guide, User's Manual, Using Diskmanipulator, Controlling openMSX from External Applications,
+  Console Command Reference), convertidos para o mini-Markdown interno da IDE — mais de 250 tópicos.
+  Também gera `docs/reference/openmsx.md` (`OMSXHelp_ExportMarkdown()`,
+  `editor/tools/OpenMsxHelpExportCli.pb`), mesma ideia do NestorBASIC. Diferente do item acima, este
+  recurso é só consulta de texto (não depende do controle remoto funcionar) e não é experimental.
 
 ## Ferramentas e ambiente
 

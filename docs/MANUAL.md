@@ -1223,6 +1223,39 @@ original.
 
 ![Suporte a NestorBASIC: template gerado por Arquivo → Novo Nestor Basic... ao lado da janela Ajuda → Nestor Basic...](../images/msxbasica-13.png)
 
+## Controle remoto do openMSX (experimental)
+
+> **Recurso experimental.** Diferente do resto da IDE, este controle remoto ainda não foi validado de
+> ponta a ponta contra o openMSX de verdade pelo autor — pode não funcionar de forma confiável em
+> todas as máquinas/versões do emulador. Se algum comando não tiver efeito, avise para investigação.
+
+### Executar → openMSX (console de comandos)
+
+Abre uma instância do openMSX **separada** do fluxo normal de **Executar → BASIC**/**Nestor Basic**
+(aquelas continuam gerando um disco e abrindo o openMSX do jeito de sempre, sem nenhuma mudança) — o
+objetivo aqui é controlar manualmente uma instância já aberta, digitando comandos do próprio openMSX
+(os mesmos que funcionam no console interno dele, F10) direto de uma janela da IDE:
+
+- Campo de comando (Enter ou botão **Enviar**) + log de respostas.
+- Botões rápidos: **Reset**, **Pausar**, **Continuar**, **Ligar**, **Desligar**, **Mostrar janela**
+  (o `-control` do openMSX sobe sem nenhuma janela visível por padrão; este botão manda o comando que
+  restaura isso) e **Ajuda** (abre a Ajuda → openMSX ao lado, para consultar comandos/configurações
+  sem sair do console).
+- Fechar esta janela **não** fecha o openMSX — abrir o menu de novo reconecta na mesma instância.
+
+A comunicação usa um mecanismo próprio do openMSX (`-control`) espelhado no do Catapult (a GUI
+oficial do projeto), documentado com mais detalhe em `docs/SPEC.md`. Configure o caminho do openMSX
+em **Configurar → Basic Dignified... → aba Emulador** antes de usar, se ainda não tiver feito isso
+para o fluxo normal de **Executar → BASIC**.
+
+### Ajuda → openMSX...
+
+Janela de referência não-modal (mesma UI de busca/árvore/histórico das outras janelas de Ajuda) com
+os 5 manuais originais do openMSX — Guia de Configuração, Manual do Usuário, Using Diskmanipulator,
+Controlling openMSX from External Applications e a Referência de Comandos/Configurações completa
+(mais de 250 tópicos). Diferente do console acima, esta janela é só consulta de texto — não depende
+do openMSX estar aberto nem do controle remoto funcionar.
+
 ## Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)
 
 Menu **Ajuda → Basic Dignified...** abre uma janela de referência (mesma UI não-modal de

@@ -31,6 +31,20 @@
 ; editor ainda nao tem um campo de configuracao equivalente.
 #WS_FormatMargin = 72
 
+; VKCode do WS_TryChord/WS_TryDirect abaixo (chamados so pelo subclass Win32
+; guardado la embaixo, ver "Subclass da janela do Scintilla") e sempre um
+; codigo de tecla virtual do Windows (wParam de WM_KEYDOWN) - #WS_Key_Delete
+; existe pra essa unica referencia direta a uma constante VK_* fora da secao
+; ja guardada por CompilerIf #PB_Compiler_OS, sem precisar espalhar guardas
+; dentro do Select de WS_TryChord. Fora do Windows o valor nunca e comparado
+; de verdade (WS_TryChord e inatingivel nesse OS por enquanto), so precisa
+; compilar - achado real via WSL, 2026-07-29, ver CLAUDE.md.
+CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+  #WS_Key_Delete = #VK_DELETE
+CompilerElse
+  #WS_Key_Delete = 0
+CompilerEndIf
+
 ; Ultimo texto buscado (^QF), reaproveitado por ^L (buscar proximo).
 Global WS_LastSearchText.s = ""
 
@@ -624,7 +638,7 @@ Procedure WS_TryChord(Prefix, VKCode)
       Case Asc("E") : WS_CursorToWindowTop()                        ; topo da janela
       Case Asc("X") : WS_CursorToWindowBottom()                     ; fim da janela
       Case Asc("Y") : ScintillaSendMessage(Sci, #SCI_DELLINERIGHT)  ; apaga ate o fim da linha
-      Case #VK_DELETE : ScintillaSendMessage(Sci, #SCI_DELLINELEFT) ; apaga ate o comeco da linha
+      Case #WS_Key_Delete : ScintillaSendMessage(Sci, #SCI_DELLINELEFT) ; apaga ate o comeco da linha
       Case Asc("T") : ScintillaSendMessage(Sci, #SCI_DELWORDRIGHT)  ; apaga ate o fim da palavra
       Case Asc("F") : WS_FindFirst()
       Case Asc("A") : WS_FindReplace()
@@ -636,6 +650,26 @@ EndProcedure
 ;- ------------------------------------------------------------
 ;- Subclass da janela do Scintilla (intercepta WM_KEYDOWN/WM_CHAR)
 ;- ------------------------------------------------------------
+;
+; Esta secao (ate o proximo separador) e a UNICA parte deste arquivo que e
+; especifica do Windows - subclassing cru de HWND (SetWindowLongPtr_/
+; CallWindowProc_/#WM_KEYDOWN/#VK_*). Toda a logica de comando acima (marcar
+; bloco, buscar, mover cursor, reformatar paragrafo etc.) fala so com o
+; Scintilla via ScintillaSendMessage, que e a mesma biblioteca em qualquer OS
+; - ja e portavel como esta.
+;
+; Achado real compilando no Linux via WSL (2026-07-29, ver CLAUDE.md): sem
+; guarda, #WM_KEYDOWN/#VK_CONTROL/SetWindowLongPtr_/etc. nao existem no
+; pbcompiler Linux. Guardado com CompilerIf #PB_Compiler_OS - no Linux,
+; WS_AttachSubclass() vira um no-op (chamado incondicionalmente de
+; BadigEditor.pb) e os atalhos WordStar/JOE ficam temporariamente indisponiveis
+; nesse OS, ate um gancho equivalente (GTK "key-press-event" via
+; g_signal_connect, ou o que for o backend do PureBasic no Linux) ser
+; implementado e testado de verdade contra um ambiente Linux real - trabalho
+; que precisa de iteracao ao vivo (nao da pra escrever/validar bindings GTK as
+; cegas sem um WSL/Linux disponivel pra compilar e rodar).
+
+CompilerIf #PB_Compiler_OS = #PB_OS_Windows
 
 Procedure.b WS_IsModifierKey(VKCode)
   Select VKCode
@@ -713,6 +747,17 @@ Procedure WS_AttachSubclass(Sci)
   Protected OldProc = SetWindowLongPtr_(hWnd, #GWLP_WNDPROC, @WS_SciWndProc())
   SetProp_(hWnd, "WSOldProc", OldProc)
 EndProcedure
+
+CompilerElse
+
+; No-op fora do Windows por enquanto (ver nota acima) - chamado
+; incondicionalmente de BadigEditor.pb, entao precisa existir em todo OS.
+; Atalhos WordStar/JOE ficam sem efeito no Scintilla ate o gancho equivalente
+; de interceptacao de teclado ser implementado pra esse OS.
+Procedure WS_AttachSubclass(Sci)
+EndProcedure
+
+CompilerEndIf ; #PB_Compiler_OS = #PB_OS_Windows (subclass do Scintilla)
 
 ;- ------------------------------------------------------------
 ;- Tela de ajuda (^KH) - como no JOE/WordStar, ocupa o lugar do editor e
@@ -821,6 +866,19 @@ Procedure WS_RenderHelpPage()
 EndProcedure
 
 Procedure WS_ShowHelp()
+  CompilerIf #PB_Compiler_OS <> #PB_OS_Windows
+    ; Sem WS_HelpWndProc (subclass Win32, ver acima) nao ha como fechar essa
+    ; tela com ESC/clique nesse OS ainda - melhor nao abrir do que abrir uma
+    ; tela sem saida. Chamado tanto pelo chord ^K H (inatingivel no Linux, ja
+    ; que depende do mesmo subclass) quanto pelo menu Ajuda -> Comandos
+    ; (WordStar)... (esse sim clicavel em qualquer OS).
+    MessageRequester("Ajuda - teclado WordStar/JOE",
+      "Ainda nao disponivel neste sistema operacional" + #CRLF$ +
+      "(depende do mesmo mecanismo de teclado do Windows).",
+      #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  CompilerEndIf
+
   Protected Sci = ActiveSciGadget()
   If Not Sci Or WS_HelpVisible
     ProcedureReturn
@@ -851,6 +909,11 @@ EndProcedure
 ; Click ou ESC fecha; PageUp/PageDown e as setas esquerda/direita navegam
 ; entre paginas (por isso nao fecha mais com qualquer tecla, como na versao
 ; anterior - precisava de teclas livres para a navegacao).
+;
+; Subclass de HWND igual a WS_SciWndProc acima - especifico do Windows, mesma
+; nota/achado real do 2026-07-29 (ver secao "Subclass da janela do Scintilla").
+CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+
 Procedure WS_HelpWndProc(hWnd, uMsg, wParam, lParam)
   Select uMsg
     Case #WM_LBUTTONDOWN
@@ -879,6 +942,8 @@ Procedure WS_HelpWndProc(hWnd, uMsg, wParam, lParam)
   Protected OldProc = GetProp_(hWnd, "WSOldProc")
   ProcedureReturn CallWindowProc_(OldProc, hWnd, uMsg, wParam, lParam)
 EndProcedure
+
+CompilerEndIf ; #PB_Compiler_OS = #PB_OS_Windows (WS_HelpWndProc)
 
 Procedure WS_SetupHelpStyles()
   Protected *FontName = UTF8(EditorCfg\FontName)
@@ -909,7 +974,9 @@ Procedure WS_CreateHelpGadget()
 
   HideGadget(#HelpGadget, #True)
 
-  Protected hWnd = GadgetID(#HelpGadget)
-  Protected OldProc = SetWindowLongPtr_(hWnd, #GWLP_WNDPROC, @WS_HelpWndProc())
-  SetProp_(hWnd, "WSOldProc", OldProc)
+  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+    Protected hWnd = GadgetID(#HelpGadget)
+    Protected OldProc = SetWindowLongPtr_(hWnd, #GWLP_WNDPROC, @WS_HelpWndProc())
+    SetProp_(hWnd, "WSOldProc", OldProc)
+  CompilerEndIf
 EndProcedure

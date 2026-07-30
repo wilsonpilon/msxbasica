@@ -1098,7 +1098,12 @@ Procedure Screen2Editor_OpenWindow(ParentWindow)
                   ; grid de 8px por padrao (encaixa nos tiles de caractere);
                   ; CTRL segurado = pixel a pixel, pra alinhar fino com outro
                   ; desenho ja feito (mesma tecla usada em WordStarKeys.pbi).
-                  If GetKeyState_(#VK_CONTROL) & $8000
+                  ; ExamineKeyboard()/KeyboardPushed() (biblioteca Keyboard,
+                  ; cross-platform) em vez de GetKeyState_ (WinAPI, so
+                  ; Windows) - achado real compilando no Linux via WSL,
+                  ; 2026-07-29, ver CLAUDE.md.
+                  ExamineKeyboard()
+                  If KeyboardPushed(#PB_Key_LeftControl) Or KeyboardPushed(#PB_Key_RightControl)
                     ; pixel a pixel - PX/PY ja vieram validados no If acima (0..Width/Height-1)
                   Else
                     PX = (PX / 8) * 8 : PY = (PY / 8) * 8
