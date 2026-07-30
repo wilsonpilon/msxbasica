@@ -1223,11 +1223,11 @@ original.
 
 ![Suporte a NestorBASIC: template gerado por Arquivo → Novo Nestor Basic... ao lado da janela Ajuda → Nestor Basic...](../images/msxbasica-13.png)
 
-## Controle remoto do openMSX (experimental)
+## Controle remoto do openMSX
 
-> **Recurso experimental.** Diferente do resto da IDE, este controle remoto ainda não foi validado de
-> ponta a ponta contra o openMSX de verdade pelo autor — pode não funcionar de forma confiável em
-> todas as máquinas/versões do emulador. Se algum comando não tiver efeito, avise para investigação.
+> Validado ao vivo (2026-07-30) contra um openMSX 21.0 real: pipe conecta, o boot automático
+> (`unset renderer`/`set power on`) funciona e comandos manuais recebem resposta. Ver `docs/SPEC.md`,
+> módulo 12, para os detalhes técnicos da validação.
 
 ### Executar → openMSX (console de comandos)
 
@@ -1236,7 +1236,15 @@ Abre uma instância do openMSX **separada** do fluxo normal de **Executar → BA
 objetivo aqui é controlar manualmente uma instância já aberta, digitando comandos do próprio openMSX
 (os mesmos que funcionam no console interno dele, F10) direto de uma janela da IDE:
 
+- **Indicador de estado** no topo ("Ligado/Desligado | Rodando/Pausado") — atualiza sozinho, mesmo se o
+  estado mudar por outro caminho que não um comando mandado por esta janela (ex. você pausando pela
+  janela do próprio openMSX).
 - Campo de comando (Enter ou botão **Enviar**) + log de respostas.
+- **Área de colar/digitar texto** + botão **Inserir no openMSX**: cole ou digite qualquer texto ali
+  (inclusive um listing BASIC inteiro) e clique no botão — o texto é digitado no MSX como se fosse
+  teclado de verdade, quebra de linha vira Enter. Útil pra colar um programa direto na linha de comando
+  do BASIC sem precisar montar um disco. Botão **Limpar** ao lado só esvazia essa área (não afeta o
+  openMSX).
 - Botões rápidos: **Reset**, **Pausar**, **Continuar**, **Ligar**, **Desligar**, **Mostrar janela**
   (o `-control` do openMSX sobe sem nenhuma janela visível por padrão; este botão manda o comando que
   restaura isso) e **Ajuda** (abre a Ajuda → openMSX ao lado, para consultar comandos/configurações
@@ -1247,6 +1255,10 @@ A comunicação usa um mecanismo próprio do openMSX (`-control`) espelhado no d
 oficial do projeto), documentado com mais detalhe em `docs/SPEC.md`. Configure o caminho do openMSX
 em **Configurar → Basic Dignified... → aba Emulador** antes de usar, se ainda não tiver feito isso
 para o fluxo normal de **Executar → BASIC**.
+
+> **Nota**: esta janela controla uma instância própria do openMSX, separada da que **Executar → BASIC**
+> abre para rodar seu programa — não são a mesma sessão a menos que uma tenha sido aberta a partir da
+> outra.
 
 ### Ajuda → openMSX...
 

@@ -47,6 +47,18 @@ Global OMSX_PipeConnected.b = #False
 Global OMSX_PipeThread.i = 0
 Global OMSX_LaunchCounter.i = 0
 
+; Estado ao vivo (Ligado/Pausado) - alimentado por "<update type="setting" ...>", NAO por
+; reply de comando. Ver comentario de OMSX_PipeConnectThread() ("openmsx_update enable
+; setting"): diferente de so ler a resposta do comando que A GENTE mandou (que fica muda
+; se o estado mudar por outro caminho - tecla de pause dentro da janela do openMSX, script
+; Tcl, etc.), isso reflete QUALQUER mudanca de "power"/"pause", nao só a nossa própria.
+; "*Known" comeca #False porque nao sabemos o estado real ate a primeira atualizacao chegar
+; (o boot manda "set power on" mas a confirmacao só vem depois, de forma assíncrona).
+Global OMSX_PowerKnown.b = #False
+Global OMSX_PowerOn.b = #False
+Global OMSX_PausedKnown.b = #False
+Global OMSX_Paused.b = #False
+
 Declare OMSX_SendCommand(Cmd.s)
 Declare OMSX_ShowWindow()
 
@@ -66,6 +78,8 @@ Procedure.b OMSX_IsRunning()
       OMSX_PipeHandle = 0
     EndIf
     OMSX_PipeConnected = #False
+    OMSX_PowerKnown = #False
+    OMSX_PausedKnown = #False
     ProcedureReturn #False
   EndIf
   ProcedureReturn #True
@@ -125,6 +139,17 @@ Procedure OMSX_PipeConnectThread(*Dummy)
   If Ok Or GetLastError_() = 535
     OMSX_PipeConnected = #True
     OMSX_SendRaw("<openmsx-control>" + Chr(10))
+    ; Assina notificacoes de mudanca de qualquer "setting" (comando real do
+    ; openMSX, GlobalCommandController.cc "openmsx_update enable <tipo>")
+    ; ANTES do "set power on" abaixo, de proposito - assim ja capturamos a
+    ; propria transicao de ligar no boot, nao so mudancas futuras. Sem isso,
+    ; o unico jeito de saber se a maquina esta ligada/pausada e o reply
+    ; direto de um comando que A GENTE mandou (fica cego se o estado mudar
+    ; por outro caminho, ex. o usuario apertando pause na janela do proprio
+    ; openMSX). Com a assinatura, toda mudanca de "power"/"pause" (nossa ou
+    ; nao) chega como "<update type="setting" name="...">valor</update>" -
+    ; ver OMSX_Poll()/OMSX_ExtractSettingUpdate().
+    OMSX_SendCommand("openmsx_update enable setting")
     OMSX_SendCommand("unset renderer")
     OMSX_SendCommand("set power on")
   EndIf
@@ -176,10 +201,69 @@ Procedure.b OMSX_Start()
   ProcedureReturn #True
 EndProcedure
 
+; Escapa "&"/"<"/">" como entidades XML antes de embrulhar em "<command>...</command>" -
+; sem isso, um comando (ou texto digitado via OMSX_TypeText()) contendo esses caracteres
+; quebra silenciosamente o parser real do openMSX. Confirmado lendo
+; openmsx/openmsx/src/events/AdhocCliCommParser.cc: e uma maquina de estados byte-a-byte
+; que, dentro de "<command>", trata "<" e "&" como inicio de tag/entidade - um "<" cru
+; NAO seguido por "/command>" (ex. "IF X<10" colado de um listing BASIC) faz o parser
+; voltar pro estado inicial "procurando <command>", **descartando** o resto do comando
+; sem erro nenhum reportado. Mesma logica de escape que o Catapult de verdade usa
+; (openmsx/catapult/src/openMSXController.cpp, WriteCommand(),
+; "xmlEncodeEntitiesReentrant()") antes de mandar qualquer comando pelo pipe.
+Procedure.s OMSX_XmlEscape(Text.s)
+  Protected Escaped.s = Text
+  Escaped = ReplaceString(Escaped, "&", "&amp;")
+  Escaped = ReplaceString(Escaped, "<", "&lt;")
+  Escaped = ReplaceString(Escaped, ">", "&gt;")
+  ProcedureReturn Escaped
+EndProcedure
+
 Procedure OMSX_SendCommand(Cmd.s)
   If OMSX_IsRunning() And OMSX_PipeConnected And Trim(Cmd) <> ""
-    OMSX_SendRaw("<command>" + Cmd + "</command>" + Chr(10))
+    OMSX_SendRaw("<command>" + OMSX_XmlEscape(Cmd) + "</command>" + Chr(10))
   EndIf
+EndProcedure
+
+; Escapa Text pra virar UMA "palavra" Tcl valida (nivel Tcl, ANTES do XML-escape acima,
+; que e nivel transporte - as duas camadas juntas espelham exatamente o Catapult:
+; utils::tclEscapeWord() + xmlEncodeEntitiesReentrant() em WriteCommand()). Preserva o
+; conteudo literal (espacos, quebras de linha, chaves, etc.) escapando o que o parser Tcl
+; do proprio comando (nao o parser XML) trataria como separador/especial dentro de
+; "<command>...</command>". ORDEM IMPORTA: escapar a barra invertida primeiro, senao os
+; escapes inseridos pelos passos seguintes seriam escapados de novo.
+Procedure.s OMSX_TclEscapeWord(Text.s)
+  Protected Escaped.s = Text
+  Escaped = ReplaceString(Escaped, "\", "\\")
+  ; CRLF (EditorGadget no Windows) -> um so marcador antes de virar "\r" (2 chars: barra +
+  ; r) - o Tcl interpreta essa sequencia como um CR de verdade (Enter) ao "digitar",
+  ; equivalente ao "\n" -> "\\r" do Catapult (wxTextCtrl la so usa "\n").
+  Escaped = ReplaceString(Escaped, Chr(13) + Chr(10), Chr(10))
+  Escaped = ReplaceString(Escaped, Chr(10), "\r")
+  Escaped = ReplaceString(Escaped, "$", "\$")
+  Escaped = ReplaceString(Escaped, Chr(34), "\" + Chr(34))
+  Escaped = ReplaceString(Escaped, "[", "\[")
+  Escaped = ReplaceString(Escaped, "]", "\]")
+  Escaped = ReplaceString(Escaped, "}", "\}")
+  Escaped = ReplaceString(Escaped, "{", "\{")
+  Escaped = ReplaceString(Escaped, " ", "\ ")
+  Escaped = ReplaceString(Escaped, ";", "\;")
+  ProcedureReturn Escaped
+EndProcedure
+
+; Digita Text no MSX emulado, como se fosse teclado de verdade - mesmo mecanismo do
+; Catapult (InputPage.cpp, OnTypeText(): "type -- " + tclEscapeWord(texto)). O comando
+; "type" (script Tcl embutido no openMSX, share/scripts/type.tcl) delega por padrao pro
+; comando nativo "type_via_keyboard" (Keyboard.cc, KeyInserter::execute()), que pressiona/
+; solta teclas de verdade na matriz de teclado emulada - "\r" dentro do texto vira Enter.
+; "--" avisa o parser de flags do openMSX (parseTclArgs) que acabaram as opcoes tipo
+; "-freq"/"-release"/"-cancel", entao mesmo um texto comecando com "-" nao e confundido
+; com uma flag.
+Procedure OMSX_TypeText(Text.s)
+  If Trim(Text) = ""
+    ProcedureReturn
+  EndIf
+  OMSX_SendCommand("type -- " + OMSX_TclEscapeWord(Text))
 EndProcedure
 
 ; Atalho pro botao "Mostrar janela" da console (OpenMSXConsoleGui.pbi) -
@@ -204,6 +288,30 @@ EndProcedure
 ; "").replace("</reply>", "")). Suficiente pra um console de comando manual;
 ; se um dia precisar interpretar o resultado (ok/nok) por codigo, ai sim
 ; vale a pena um parser de verdade.
+; Extrai o valor de uma linha crua "<update type="setting" name="X">valor</update>"
+; (ANTES de OMSX_CleanLine(), que mutila as tags) - "" se a linha nao for uma atualizacao
+; de "SettingName". Usado por OMSX_Poll() pra manter OMSX_PowerOn/OMSX_Paused sincronizados
+; com o estado real do openMSX (ver assinatura "openmsx_update enable setting" em
+; OMSX_PipeConnectThread()). Parser simples por substring (mesmo espirito de
+; OMSX_CleanLine() - nao um parser XML de verdade), suficiente porque o formato de
+; "<update>" do proprio openMSX (CliConnection.cc, update()) e sempre essa forma fixa.
+Procedure.s OMSX_ExtractSettingUpdate(RawLine.s, SettingName.s)
+  If FindString(RawLine, "<update type=" + Chr(34) + "setting" + Chr(34)) = 0
+    ProcedureReturn ""
+  EndIf
+  Protected Needle.s = "name=" + Chr(34) + SettingName + Chr(34) + ">"
+  Protected NamePos.i = FindString(RawLine, Needle)
+  If NamePos = 0
+    ProcedureReturn ""
+  EndIf
+  Protected ValueStart.i = NamePos + Len(Needle)
+  Protected ValueEnd.i = FindString(RawLine, "<", ValueStart)
+  If ValueEnd = 0
+    ProcedureReturn ""
+  EndIf
+  ProcedureReturn Mid(RawLine, ValueStart, ValueEnd - ValueStart)
+EndProcedure
+
 Procedure.s OMSX_CleanLine(Line.s)
   Protected Clean.s = Trim(Line)
   Clean = ReplaceString(Clean, "<reply result=" + Chr(34) + "nok" + Chr(34) + ">", "[ERRO] ")
@@ -235,9 +343,25 @@ Procedure.s OMSX_Poll()
 
   Protected Result.s = ""
   Protected Line.s
+  Protected SettingVal.s
   While OMSX_Prog And AvailableProgramOutput(OMSX_Prog)
     Line = ReadProgramString(OMSX_Prog)
     If Line = "" : Break : EndIf
+
+    ; Le o estado ao vivo da linha CRUA, antes de limpar (OMSX_CleanLine() mutila as
+    ; tags) - ver comentario de OMSX_ExtractSettingUpdate() e a assinatura
+    ; "openmsx_update enable setting" em OMSX_PipeConnectThread().
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "power")
+    If SettingVal <> ""
+      OMSX_PowerOn = Bool(SettingVal = "true")
+      OMSX_PowerKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "pause")
+    If SettingVal <> ""
+      OMSX_Paused = Bool(SettingVal = "true")
+      OMSX_PausedKnown = #True
+    EndIf
+
     Line = OMSX_CleanLine(Line)
     If Line <> ""
       Result + Line + Chr(10)
@@ -258,4 +382,23 @@ Procedure.s OMSX_Poll()
   EndIf
 
   ProcedureReturn Result
+EndProcedure
+
+; Texto curto pra um indicador de estado na GUI (OpenMSXConsoleGui.pbi) - "?" enquanto o
+; primeiro "<update type="setting" ...>" ainda nao chegou (ver OMSX_PowerKnown/
+; OMSX_PausedKnown). Chamar so quando OMSX_IsRunning() for #True.
+Procedure.s OMSX_StatusText()
+  Protected Txt.s
+  If OMSX_PowerKnown
+    If OMSX_PowerOn : Txt = "Ligado" : Else : Txt = "Desligado" : EndIf
+  Else
+    Txt = "?"
+  EndIf
+  Txt + "  |  "
+  If OMSX_PausedKnown
+    If OMSX_Paused : Txt + "PAUSADO" : Else : Txt + "Rodando" : EndIf
+  Else
+    Txt + "?"
+  EndIf
+  ProcedureReturn Txt
 EndProcedure

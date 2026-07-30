@@ -19,38 +19,47 @@
 #OMSXGui_PollTimer = 9000
 #OMSXGui_EnterShortcut = 9001
 
-; Acrescenta Text (uma ou mais linhas separadas por Chr(10), "" ignorado) ao
-; final do log, convertendo pra CRLF (EditorGadget nativo) e rolando pro
-; fim.
-Procedure OMSXGui_AppendLog(G_Log, Text.s)
+; Acrescenta Text (uma ou mais linhas separadas por Chr(10), "" ignorado) ao final do log,
+; convertendo pra CRLF (EditorGadget nativo) e rolando pro fim. Recebe/devolve o texto
+; acumulado (Accum) explicitamente, em vez de reler o conteudo atual via GetGadgetText() -
+; relato real de uso (2026-07-30): depois de alguns comandos (ex. consultar "set renderer"),
+; o log "esvaziava" sozinho e so o texto mais novo continuava aparecendo dali pra frente,
+; mesmo o openMSX continuando a responder normalmente por baixo (confirmado nao ser
+; travamento do openMSX nem do pipe/protocolo - ver OpenMSXBridge.pbi). Causa exata dentro
+; do controle nativo nao identificada, mas manter o acumulado so do nosso lado (nunca
+; dependendo do widget "lembrar" o que ja escrevemos) elimina essa classe inteira de bug,
+; nao so o sintoma pontual.
+Procedure.s OMSXGui_AppendLog(G_Log, Accum.s, Text.s)
   If Text = ""
-    ProcedureReturn
+    ProcedureReturn Accum
   EndIf
-  Protected Cur.s = GetGadgetText(G_Log)
   Protected Add.s = ReplaceString(RTrim(Text, Chr(10)), Chr(10), Chr(13) + Chr(10))
   If Add = ""
-    ProcedureReturn
+    ProcedureReturn Accum
   EndIf
-  If Cur <> ""
-    Cur + Chr(13) + Chr(10)
+  If Accum <> ""
+    Accum + Chr(13) + Chr(10)
   EndIf
-  Cur + Add
-  SetGadgetText(G_Log, Cur)
+  Accum + Add
+  SetGadgetText(G_Log, Accum)
   CompilerIf #PB_Compiler_OS = #PB_OS_Windows
     SendMessage_(GadgetID(G_Log), #EM_LINESCROLL, 0, 999999)
   CompilerEndIf
+  ProcedureReturn Accum
 EndProcedure
 
 ; Le o texto do campo de comando, manda pro openMSX e ecoa no log - usado
 ; tanto pelo botao "Enviar" quanto pelo atalho Enter (#OMSXGui_EnterShortcut).
-Procedure OMSXGui_Send(G_Log, G_Input)
+; Mesmo motivo de OMSXGui_AppendLog() acima: recebe/devolve o acumulado.
+Procedure.s OMSXGui_Send(G_Log, G_Input, Accum.s)
   Protected Cmd.s = Trim(GetGadgetText(G_Input))
   If Cmd = ""
-    ProcedureReturn
+    ProcedureReturn Accum
   EndIf
-  OMSXGui_AppendLog(G_Log, "> " + Cmd)
+  Accum = OMSXGui_AppendLog(G_Log, Accum, "> " + Cmd)
   OMSX_SendCommand(Cmd)
   SetGadgetText(G_Input, "")
+  ProcedureReturn Accum
 EndProcedure
 
 Procedure OMSXGui_OpenWindow(ParentWindow)
@@ -69,7 +78,7 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
     ProcedureReturn
   EndIf
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, 900, 420, "openMSX - console de comandos",
+  Protected Win = OpenWindow(#PB_Any, 0, 0, 900, 500, "openMSX - console de comandos",
                               #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
   If Not Win
     ProcedureReturn
@@ -85,17 +94,35 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   ; so a EDICAO fica bloqueada ate fechar este console.
   DisableWindow(ParentWindow, #True)
 
-  Protected G_Log        = EditorGadget(#PB_Any, 10, 10, 880, 300, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
-  Protected G_Input      = StringGadget(#PB_Any, 10, 322, 770, 24, "")
-  Protected G_Send       = ButtonGadget(#PB_Any, 788, 322, 102, 24, "Enviar" + Chr(9) + "Enter")
-  Protected G_Reset      = ButtonGadget(#PB_Any, 10, 356, 95, 28, "Reset")
-  Protected G_Pause      = ButtonGadget(#PB_Any, 112, 356, 95, 28, "Pausar")
-  Protected G_Resume     = ButtonGadget(#PB_Any, 214, 356, 95, 28, "Continuar")
-  Protected G_PowerOn    = ButtonGadget(#PB_Any, 316, 356, 85, 28, "Ligar")
-  Protected G_PowerOff   = ButtonGadget(#PB_Any, 408, 356, 85, 28, "Desligar")
-  Protected G_ShowWindow = ButtonGadget(#PB_Any, 500, 356, 130, 28, "Mostrar janela")
-  Protected G_Help       = ButtonGadget(#PB_Any, 637, 356, 90, 28, "Ajuda")
-  Protected G_Close      = ButtonGadget(#PB_Any, 734, 356, 120, 28, "Fechar janela")
+  ; Indicador de estado (Ligado/Desligado, Rodando/Pausado) - ver OMSX_StatusText() em
+  ; OpenMSXBridge.pbi. Alimentado por "<update type="setting" ...>" (assinado no boot,
+  ; OMSX_PipeConnectThread()), entao reflete o estado real mesmo se ele mudar por outro
+  ; caminho que nao um comando mandado por esta janela (ex. o usuario pausando pela
+  ; propria janela do openMSX).
+  Protected G_Status     = TextGadget(#PB_Any, 10, 10, 880, 20, "Estado: ?  |  ?", #PB_Text_Center)
+  Protected G_Log        = EditorGadget(#PB_Any, 10, 34, 880, 190, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
+
+  ; Area de colar/editar texto pra "digitar" no MSX de verdade (mesmo mecanismo do
+  ; Catapult - InputPage.cpp/OnTypeText() - ver OMSX_TypeText() em OpenMSXBridge.pbi).
+  ; EditorGadget sem #PB_Editor_ReadOnly ja aceita colar (Ctrl+V) nativamente, sem
+  ; codigo extra nenhum.
+  Protected G_PasteLabel = TextGadget(#PB_Any, 10, 230, 880, 18,
+                                       "Colar/editar texto abaixo e clicar em " + Chr(34) + "Inserir no openMSX" + Chr(34) + " pra digitar no MSX:")
+  Protected G_PasteInput = EditorGadget(#PB_Any, 10, 250, 880, 110, #PB_Editor_WordWrap)
+  Protected G_InsertText = ButtonGadget(#PB_Any, 10, 366, 220, 28, "Inserir no openMSX")
+  Protected G_ClearPaste = ButtonGadget(#PB_Any, 236, 366, 100, 28, "Limpar")
+  GadgetToolTip(G_InsertText, "Digita o texto acima no MSX como se fosse teclado (comando " + Chr(34) + "type" + Chr(34) + " do openMSX - mesmo mecanismo do Catapult). Quebras de linha viram Enter.")
+
+  Protected G_Input      = StringGadget(#PB_Any, 10, 404, 770, 24, "")
+  Protected G_Send       = ButtonGadget(#PB_Any, 788, 404, 102, 24, "Enviar" + Chr(9) + "Enter")
+  Protected G_Reset      = ButtonGadget(#PB_Any, 10, 438, 95, 28, "Reset")
+  Protected G_Pause      = ButtonGadget(#PB_Any, 112, 438, 95, 28, "Pausar")
+  Protected G_Resume     = ButtonGadget(#PB_Any, 214, 438, 95, 28, "Continuar")
+  Protected G_PowerOn    = ButtonGadget(#PB_Any, 316, 438, 85, 28, "Ligar")
+  Protected G_PowerOff   = ButtonGadget(#PB_Any, 408, 438, 85, 28, "Desligar")
+  Protected G_ShowWindow = ButtonGadget(#PB_Any, 500, 438, 130, 28, "Mostrar janela")
+  Protected G_Help       = ButtonGadget(#PB_Any, 637, 438, 90, 28, "Ajuda")
+  Protected G_Close      = ButtonGadget(#PB_Any, 734, 438, 120, 28, "Fechar janela")
   GadgetToolTip(G_ShowWindow, "Envia " + Chr(34) + "unset renderer" + Chr(34) + " - o openMSX sobe com -control em modo sem janela (renderer none) ate isso ser enviado")
   GadgetToolTip(G_Help, "Abre a Ajuda -> openMSX (consulta de comandos/configuracoes)")
 
@@ -103,10 +130,15 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   AddWindowTimer(Win, #OMSXGui_PollTimer, 150)
   AddKeyboardShortcut(Win, #PB_Shortcut_Return, #OMSXGui_EnterShortcut)
 
+  If OMSX_IsRunning()
+    SetGadgetText(G_Status, "Estado: " + OMSX_StatusText())
+  EndIf
+
+  Protected LogAccum.s = ""
   If AlreadyRunning
-    OMSXGui_AppendLog(G_Log, "--- reconectado ao openMSX ja aberto (" + BadigCfg\EmulatorPath + ") ---")
+    LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, "--- reconectado ao openMSX ja aberto (" + BadigCfg\EmulatorPath + ") ---")
   Else
-    OMSXGui_AppendLog(G_Log, "--- iniciando openMSX (" + BadigCfg\EmulatorPath + ") ---")
+    LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, "--- iniciando openMSX (" + BadigCfg\EmulatorPath + ") ---")
   EndIf
 
   Protected Event, Quit.b = #False
@@ -115,13 +147,13 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
     Select Event
       Case #PB_Event_Menu
         If EventMenu() = #OMSXGui_EnterShortcut
-          OMSXGui_Send(G_Log, G_Input)
+          LogAccum = OMSXGui_Send(G_Log, G_Input, LogAccum)
         EndIf
 
       Case #PB_Event_Gadget
         Select EventGadget()
           Case G_Send
-            OMSXGui_Send(G_Log, G_Input)
+            LogAccum = OMSXGui_Send(G_Log, G_Input, LogAccum)
 
           Case G_Reset
             OMSX_SendCommand("reset")
@@ -134,8 +166,18 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
           Case G_PowerOff
             OMSX_SendCommand("set power off")
           Case G_ShowWindow
-            OMSXGui_AppendLog(G_Log, "> unset renderer")
+            LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, "> unset renderer")
             OMSX_ShowWindow()
+
+          Case G_InsertText
+            Protected PasteText.s = GetGadgetText(G_PasteInput)
+            If Trim(PasteText) <> ""
+              LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, "> [digitando " + Str(Len(PasteText)) + " caracteres no MSX]")
+              OMSX_TypeText(PasteText)
+            EndIf
+
+          Case G_ClearPaste
+            SetGadgetText(G_PasteInput, "")
 
           Case G_Help
             OpenMsxHelp_OpenWindow(Win)
@@ -147,9 +189,11 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
       Case #PB_Event_Timer
         If EventTimer() = #OMSXGui_PollTimer
           If OMSX_IsRunning()
-            OMSXGui_AppendLog(G_Log, OMSX_Poll())
+            LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, OMSX_Poll())
+            SetGadgetText(G_Status, "Estado: " + OMSX_StatusText())
           Else
-            OMSXGui_AppendLog(G_Log, "--- openMSX foi encerrado ---")
+            LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, "--- openMSX foi encerrado ---")
+            SetGadgetText(G_Status, "Estado: openMSX encerrado")
             DisableGadget(G_Input, #True)
             DisableGadget(G_Send, #True)
             DisableGadget(G_Reset, #True)
@@ -158,6 +202,7 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
             DisableGadget(G_PowerOn, #True)
             DisableGadget(G_PowerOff, #True)
             DisableGadget(G_ShowWindow, #True)
+            DisableGadget(G_InsertText, #True)
             RemoveWindowTimer(Win, #OMSXGui_PollTimer)
           EndIf
         EndIf

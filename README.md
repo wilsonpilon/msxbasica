@@ -348,14 +348,36 @@ mesmo motor gráfico, saída via `msxbas2rom`, input simulado durante a execuç�
 retorno à linha no editor (ver "Controle remoto do openMSX" logo abaixo para o que já existe nessa
 frente).
 
-**Controle remoto do openMSX — ⚠ experimental (2026-07-29)**: menu **Executar → openMSX...**
+**Controle remoto do openMSX — validado e ampliado (2026-07-30)**: menu **Executar → openMSX...**
 (`editor/OpenMSXBridge.pbi`/`OpenMSXConsoleGui.pbi`) abre uma instância separada do openMSX com um
-named pipe de comando (mesmo mecanismo do Catapult oficial no Windows) e dá uma janela de console
-(campo de comando + log + botões Reset/Pausar/Continuar/Ligar/Desligar/Ajuda) para controlar essa
-instância manualmente — não mexe no fluxo normal de **Executar → BASIC**. Ainda não validado ponta a
-ponta contra o openMSX de verdade pelo autor; se algum comando não tiver efeito, é um recurso novo e
-pode ter bugs. Detalhes técnicos completos (incluindo duas tentativas de arquitetura e por que a
-primeira não funcionou) em `docs/SPEC.md`, módulo 12.
+named pipe de comando (mesmo mecanismo do Catapult oficial no Windows) e dá uma janela de console para
+controlar essa instância manualmente — não mexe no fluxo normal de **Executar → BASIC** (são
+instâncias/processos openMSX totalmente separados; a instância aberta por "Executar → BASIC" com o
+programa do usuário não fica sob controle desse console a menos que o console seja aberto a partir
+dela — ver lacuna registrada abaixo). Validado ao vivo contra um openMSX 21.0 real
+(`editor/tools/OpenMsxBridgeTestCli.pb`, harness de linha de comando novo nesta sessão).
+
+A janela ganhou, na mesma sessão de validação:
+- **Indicador de estado** ("Ligado/Desligado | Rodando/Pausado") no topo, alimentado por
+  `openmsx_update enable setting` (assinado no boot) — reflete o estado real mesmo se ele mudar por um
+  caminho que não um comando mandado por esta janela.
+- **Área de colar/digitar texto** + botão **"Inserir no openMSX"**, que digita o conteúdo no MSX como
+  se fosse teclado de verdade (quebras de linha viram Enter) — mesmo mecanismo do Catapult
+  (`InputPage.cpp`/`OnTypeText()`): comando `type -- <texto escapado>`, delegando pro `type_via_keyboard`
+  nativo do openMSX.
+- Correção de um bug real de exibição: o log da janela fazia release/gravação completa do texto
+  (`GetGadgetText`/`SetGadgetText`) a cada 150ms e, depois de alguns comandos, "esvaziava" sozinho
+  mesmo com o openMSX respondendo normalmente por baixo — trocado por um acumulador só do nosso lado,
+  nunca relido do widget.
+- Correção de um bug real de protocolo (achado ao implementar o "Inserir no openMSX", mas que já
+  afetava qualquer comando digitado manualmente): comandos não eram escapados como XML antes de
+  `<command>...</command>` — um `<`/`&` cru (comum em BASIC: `IF X<10`, `A&B`) quebrava o comando
+  silenciosamente no parser real do openMSX, sem erro nenhum. Corrigido com escape XML, igual ao
+  Catapult de verdade.
+
+Detalhes técnicos completos (arquitetura, tentativas anteriores, e as pegadinhas reais encontradas
+durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa frente** está listado em
+`docs/SPEC.md` → [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto).
 
 ## Changelog resumido
 
@@ -1044,6 +1066,54 @@ primeira não funcionou) em `docs/SPEC.md`, módulo 12.
   Também gera `docs/reference/openmsx.md` (`OMSXHelp_ExportMarkdown()`,
   `editor/tools/OpenMsxHelpExportCli.pb`), mesma ideia do NestorBASIC. Diferente do item acima, este
   recurso é só consulta de texto (não depende do controle remoto funcionar) e não é experimental.
+- **2026-07-30 — controle remoto do openMSX validado ao vivo**: novo harness
+  `editor/tools/OpenMsxBridgeTestCli.pb` (mesmo padrão dos outros `*TestCli.pb`) sobe `OpenMSXBridge.pbi`
+  isolado contra um openMSX 21.0 real (`C:\msx\openMSX\openmsx.exe`) sem precisar da GUI do editor. Pipe
+  conecta (~300ms), o boot (`unset renderer`/`set power on`) funciona e comandos manuais recebem replies
+  reais (`set power off`/`on` → `false`/`true`, `openmsx_info platform` → `mingw32`). No caminho, uma
+  primeira rodada de teste (chamada direto de um terminal, sem `FreeConsole_()`) deu 0 bytes de saída
+  capturada em tudo — parecia um bug sério no módulo, mas a causa raiz era outra: `main.cc` do openMSX
+  (`EnableConsoleOutput()`) faz `AttachConsole(ATTACH_PARENT_PROCESS)` + `freopen("CONOUT$", ...)` em
+  `stdout`/`stderr` sempre que o processo que o lança tem um console de verdade anexado, o que **rouba** a
+  saída do pipe que `RunProgram(...#PB_Program_Read|Error)` preparou. O `BadigEditor.exe` real nunca bate
+  nesse caso (já chama `FreeConsole_()` antes de qualquer janela abrir/chamar `OMSX_Start()`), mas o
+  harness de teste precisou do mesmo `FreeConsole_()` pra reproduzir o estado certo — registrado em
+  detalhe no comentário de topo do harness e em `docs/SPEC.md`, módulo 12, pra ninguém cair na mesma
+  pegadinha ao investigar de novo. Rótulo "experimental" removido do menu/documentação.
+- **2026-07-30 (mesma sessão) — indicador de estado, "Inserir no openMSX" e dois bugs reais
+  corrigidos**: a pedido do usuário, ao vivo com um openMSX de verdade aberto:
+  - **Indicador "Ligado/Desligado | Rodando/Pausado"** no topo da janela do console
+    (`OMSX_StatusText()`, `editor/OpenMSXBridge.pbi`). Assina `openmsx_update enable setting` no boot
+    (`GlobalCommandController.cc`) pra receber `<update type="setting" name="power|pause">valor</update>`
+    de qualquer mudança de estado, não só a resposta do comando que a própria janela mandou.
+  - **Bug real relatado pelo usuário**: digitar `set pause on`/`set renderer` e clicar "Enviar" não
+    mostrava feedback nenhum, e nenhum comando seguinte parecia funcionar. Isolado por teste direto do
+    protocolo (`OpenMSXBridge.pbi` sozinho, sem GUI): o pipe/openMSX continuavam respondendo
+    perfeitamente — o bug era só na janela. Causa: `OMSXGui_AppendLog()` fazia `GetGadgetText()`
+    (releitura completa do log) + `SetGadgetText()` (regravação completa) a cada tick do timer (150ms);
+    em algum momento essa releitura passava a devolver vazio, e a próxima gravação então "sumia" com
+    tudo que já estava escrito. Corrigido mantendo o texto acumulado só do nosso lado
+    (`editor/OpenMSXConsoleGui.pbi`), nunca dependendo do widget "lembrar" o que já foi escrito -
+    elimina a classe do bug, não só o sintoma.
+  - **Nova área de colar/digitar texto** + botão **"Inserir no openMSX"** (janela aumentada pra
+    900×500) — digita o conteúdo no MSX como se fosse teclado de verdade (quebra de linha vira Enter),
+    replicando o mecanismo real do Catapult oficial: `openmsx/catapult/src/InputPage.cpp`,
+    `OnTypeText()`, que manda `type -- <texto escapado>` (comando Tcl embutido do openMSX,
+    `share/scripts/type.tcl`, delega pro nativo `type_via_keyboard` em `Keyboard.cc`).
+  - **Segundo bug real, achado no caminho** (`OMSX_XmlEscape()`, novo em `OpenMSXBridge.pbi`): nenhum
+    comando (nem os já existentes, tipo o console manual) escapava `&`/`<`/`>` antes de embrulhar em
+    `<command>...</command>`. Lendo o parser de verdade do openMSX
+    (`openmsx/openmsx/src/events/AdhocCliCommParser.cc`) - uma máquina de estados byte-a-byte -
+    confirmou-se que um `<` cru (comum em BASIC: `IF X<10`) ou um `&` cru fora de uma entidade válida
+    faz o parser voltar pro estado "procurando `<command>`", **descartando o resto do comando sem erro
+    nenhum**. Corrigido escapando `&`/`<`/`>` (nessa ordem) antes de qualquer `<command>`, igual ao que
+    o Catapult de verdade já faz (`openMSXController.cpp`, `WriteCommand()`,
+    `xmlEncodeEntitiesReentrant()`). Duas camadas de escape agora, mesma arquitetura do Catapult:
+    `OMSX_TclEscapeWord()` (nível Tcl, uma "palavra" só) por dentro, `OMSX_XmlEscape()` (nível
+    transporte) por fora.
+  - Validado ao vivo (harness `editor/tools/OpenMsxBridgeTestCli.pb`): texto com `<`, `>`, `&` e aspas
+    sai corretamente escapado nas duas camadas, e o console continua respondendo normalmente depois de
+    digitar esse texto.
 
 ## Ferramentas e ambiente
 

@@ -1276,15 +1276,15 @@ confirmado abrindo sem nenhuma janela de console residual.
 `RunOnOpenMSX()` (F5/"Executar → BASIC") continua sendo "gerar disco e abrir o openMSX já rodando", sem
 `-control`, sem nenhuma comunicação de volta da emulação para a IDE.
 
-**Console de comandos — menu "Executar → openMSX..." (⚠ EXPERIMENTAL, implementado 2026-07-29,
-arquitetura corrigida no mesmo dia)**: `editor/OpenMSXBridge.pbi` (processo/protocolo) +
+**Console de comandos — menu "Executar → openMSX..." (implementado 2026-07-29, arquitetura corrigida no
+mesmo dia, validado ao vivo 2026-07-30)**: `editor/OpenMSXBridge.pbi` (processo/protocolo) +
 `editor/OpenMSXConsoleGui.pbi` (janela) — caminho **separado** de `RunOnOpenMSX()` acima (não mexe
 nele), voltado a controlar manualmente uma instância do openMSX já aberta.
 
-**Status: experimental, não validado ponta a ponta contra o openMSX de verdade** (ver último item
-desta lista) — diferente do resto do projeto, que só é documentado como "implementado" depois de
-verificação real. Documentado como experimental também em `README.md` (seção "Ainda não implementado")
-e `docs/MANUAL.md` (seção "Controle remoto do openMSX (experimental)").
+**Status: validado ao vivo contra o openMSX de verdade (2026-07-30)** — ver "Validação ao vivo" no
+final desta lista. Anteriormente rotulado experimental (ver histórico logo abaixo) porque não havia um
+binário openMSX disponível no ambiente onde a arquitetura foi escrita; confirmado nesta máquina contra
+um openMSX 21.0 real (`C:\msx\openMSX\openmsx.exe`).
 
 - **Primeira tentativa (não funcionou)**: `-control stdio` + `RunProgram(...#PB_Program_Write)`
   escrevendo comandos no stdin do processo, seguindo a doc oficial "Controlling openMSX from External
@@ -1327,10 +1327,127 @@ e `docs/MANUAL.md` (seção "Controle remoto do openMSX (experimental)").
   em relação à janela principal (`DisableWindow`), mesmo motivo de toda outra janela secundária deste app
   (loop de eventos compartilhado — ver módulo do gerenciador de disco acima); fechar o console **não**
   mata o openMSX, só desconecta a janela (reabrir o menu reconecta na mesma instância).
-- **Não verificado ao vivo nesta sessão**: sem um `openmsx.exe` disponível no ambiente onde a correção
-  foi escrita, a nova arquitetura foi validada por partes (API de named pipe testada isoladamente,
-  compilação limpa, app estável) mas não ponta-a-ponta contra o emulador de verdade — fica registrado
-  como lacuna até o usuário confirmar na própria máquina.
+- **Validação ao vivo (2026-07-30)**: novo harness `editor/tools/OpenMsxBridgeTestCli.pb` (mesmo padrão
+  dos outros `editor/tools/*TestCli.pb` — stub mínimo de `BadigCfg` com só os 3 campos que
+  `OpenMSXBridge.pbi` lê, `XIncludeFile` direto do módulo, sem puxar `BadigSettings.pbi`/GUI) sobe
+  `OMSX_Start()` isolado contra `C:\msx\openMSX\openmsx.exe` (openMSX 21.0 real, instalado nesta
+  máquina) e confirma: pipe conecta em ~300ms, o boot automático (`unset renderer` + `set power on`)
+  funciona (janela do emulador aparece com o nome da máquina configurada, não fica em `renderer none`),
+  e comandos manuais recebem replies corretos via `OMSX_Poll()` (`set power off`/`set power on` →
+  `false`/`true`, `openmsx_info platform` → `mingw32`).
+  - **Achado real no caminho, causa raiz documentada pra não repetir a investigação**: a primeira
+    rodada de teste (rodando o harness direto de um terminal, sem cuidado nenhum) devolveu **0 bytes**
+    de saída capturada em absolutamente tudo — nem o `<openmsx-output>` que o protocolo garante logo no
+    handshake. Parecia um bug grave em `OMSX_Poll()`/`RunProgram`, mas não era: lendo
+    `openmsx/openmsx/src/main.cc` (`EnableConsoleOutput()`, chamada logo no início de `main()`) —
+    ```cpp
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        freopen("CONOUT$", "w", stdout);
+        freopen("CONOUT$", "w", stderr);
+    }
+    ```
+    — o openMSX **sempre** tenta anexar ao console do processo pai e, se conseguir, reabre seu próprio
+    `stdout`/`stderr` apontando pro console herdado (`CONOUT$`) — **descartando** o pipe anônimo que
+    `RunProgram(...#PB_Program_Read|Error)` preparou pra capturar a saída. Isso só acontece quando o
+    processo que chama `RunProgram()` (o pai do openMSX) tem um console de verdade anexado. Como o
+    harness de teste, compilado como app normal e rodado direto de um terminal, tinha console,
+    `AttachConsole` teve sucesso e a captura ficou cega. O `BadigEditor.exe` real **nunca** bate nesse
+    caso: já chama `FreeConsole_()` antes de abrir qualquer janela/chamar `OMSX_Start()` (ver seção
+    "CLI de disco embutida" acima) — sem console pra anexar, `AttachConsole` falha, o openMSX mantém os
+    handles herdados via `STARTUPINFO`/`STARTF_USESTDHANDLES` e a captura funciona normal. Corrigido no
+    harness chamando `FreeConsole_()` logo no início (reproduzindo o estado real do editor) e gravando
+    o log num arquivo em vez de `PrintN` (sem console não dá pra imprimir) — com isso, os replies reais
+    apareceram. **Lição pra qualquer ferramenta de teste futura que toque `RunProgram()` +
+    `-control`/leitura de stdout do openMSX**: rodar sem console anexado (`FreeConsole_()` ou similar),
+    senão o resultado "não capturei nada" é um falso negativo do ambiente de teste, não do código.
+
+**Indicador de estado ao vivo (2026-07-30)**: `OMSX_PowerOn`/`OMSX_Paused` (`Global`s em
+`OpenMSXBridge.pbi`) + `OMSX_StatusText()`, exibido no topo da janela do console
+(`OpenMSXConsoleGui.pbi`, `G_Status`) como "Ligado/Desligado | Rodando/Pausado". Alimentado assinando
+`openmsx_update enable setting` (comando real do openMSX, `GlobalCommandController.cc`,
+`UpdateCmd::execute()`) logo no boot, ANTES de `set power on` (pra capturar a própria transição de
+ligar, não só mudanças futuras) — toda mudança de qualquer `Setting` (incluindo `power`/`pause`) dispara
+`Setting::notify()` (`settings/Setting.cc`), que gera
+`<update type="setting" name="X">valor</update>` via `CliConnection::update()`. Diferente de só ler o
+reply do comando que a própria janela mandou (que fica cego se o estado mudar por outro caminho — ex.
+usuário pausando pela janela do próprio openMSX), essa assinatura reflete o estado real
+independentemente de quem mudou. Parseado da linha CRUA (antes de `OMSX_CleanLine()` mutilar as tags)
+por `OMSX_ExtractSettingUpdate()` — parser por substring, não XML de verdade, suficiente porque o
+formato de `<update>` do openMSX é sempre fixo. Validado ao vivo (harness
+`editor/tools/OpenMsxBridgeTestCli.pb`): `set pause on`/`off` e `set power off` refletem corretamente no
+indicador.
+
+**Bug real relatado pelo usuário, corrigido (2026-07-30)**: digitar um comando (ex. `set pause on`,
+`set renderer` sem valor) e clicar "Enviar" não mostrava nenhum feedback, e nenhum comando seguinte
+parecia surtir efeito. Isolado por teste direto do protocolo (`OpenMSXBridge.pbi` sozinho, via harness,
+sem a GUI): a mesma sequência de comandos (incluindo `set renderer` sem valor, seguido de
+`reset`/`set pause on`/`set pause off`/`openmsx_info platform`) recebeu replies corretos o tempo todo —
+o pipe/protocolo nunca quebrou. Confirmado com o usuário: openMSX continuava respondendo normalmente,
+só a JANELA do console é que parava de mostrar qualquer coisa nova. Causa: `OMSXGui_AppendLog()`
+(`OpenMSXConsoleGui.pbi`) fazia `GetGadgetText()` (releitura completa do log) + `SetGadgetText()`
+(regravação completa) a cada tick do timer de poll (150ms) — em algum ponto essa releitura passava a
+devolver vazio (causa exata dentro do controle nativo do Windows não identificada; um teste isolado só
+de `EditorGadget`/`GetGadgetText`/`SetGadgetText` em memória, sem openMSX nenhum, não reproduziu
+truncamento até 120.000 caracteres acumulados, então não é um limite de tamanho simples), e a próxima
+gravação então sobrescrevia tudo com só o texto mais novo. Corrigido trocando a assinatura de
+`OMSXGui_AppendLog()`/`OMSXGui_Send()` pra receber/devolver o texto acumulado explicitamente (parâmetro
+`Accum`/`LogAccum` na `Procedure` que chama `OMSXGui_OpenWindow()`), nunca mais lendo de volta do
+widget — elimina essa classe inteira de bug, não só o sintoma pontual.
+
+**"Inserir no openMSX" — digitar/colar texto no MSX (2026-07-30)**: a pedido do usuário ("crie uma
+outra área de texto, permita colar texto nesta área e ao clicar em um botão inserir o texto no
+openmsx"), replicando o mecanismo real do Catapult: `openmsx/catapult/src/InputPage.cpp`,
+`InputPage::OnTypeText()`:
+```cpp
+wxString text = utils::tclEscapeWord(m_inputtext->GetValue());
+m_controller.WriteCommand(wxT("type -- ") + text);
+```
+- Janela aumentada de 900×420 para 900×500 pra caber a nova área (`OpenMSXConsoleGui.pbi`): log
+  reduzido de 276px pra 190px de altura, nova `EditorGadget` editável (SEM `#PB_Editor_ReadOnly` —
+  aceita colar com Ctrl+V nativamente, nenhum código extra necessário) + botões "Inserir no openMSX" e
+  "Limpar" logo abaixo.
+- `OMSX_TypeText()` (novo, `OpenMSXBridge.pbi`) manda `type -- <texto escapado>` via
+  `OMSX_SendCommand()`. `type` é um script Tcl embutido do openMSX (`share/scripts/type.tcl`), que
+  delega por padrão pro comando nativo `type_via_keyboard` (`src/input/Keyboard.cc`,
+  `KeyInserter::execute()`) — pressiona/solta teclas de verdade na matriz de teclado emulada, então
+  `\r` dentro do texto vira Enter de verdade. `--` avisa o parser de flags do openMSX
+  (`parseTclArgs`) que acabaram as opções tipo `-freq`/`-release`/`-cancel`, pra um texto começando com
+  `-` não ser confundido com uma flag.
+- `OMSX_TclEscapeWord()` (novo) replica `utils::tclEscapeWord()` do Catapult (`utils.cpp`) caractere por
+  caractere, na mesma ordem (backslash primeiro, senão os escapes dos passos seguintes seriam escapados
+  de novo): `\`→`\\`, quebra de linha→`\r` (CRLF do `EditorGadget` no Windows normalizado pra um só
+  marcador antes), `$`→`\$`, `"`→`\"`, `[`→`\[`, `]`→`\]`, `}`→`\}`, `{`→`\{`, espaço→`\ `, `;`→`\;`.
+
+**Segundo bug real, achado ao implementar o item acima (2026-07-30)**: nenhum comando — nem os já
+existentes do console manual, não só o novo "Inserir no openMSX" — escapava `&`/`<`/`>` antes de
+embrulhar em `<command>...</command>` (`OMSX_SendCommand()`). Lendo o parser de verdade do openMSX
+(`openmsx/openmsx/src/events/AdhocCliCommParser.cc`) — uma máquina de estados byte-a-byte que decodifica
+`&lt;`/`&gt;`/`&amp;`/`&quot;`/`&apos;`/`&#NN;` dentro de `<command>...</command>` — confirmou-se que:
+- Um `<` cru (comum em BASIC: `IF X<10`) que não seja seguido exatamente por `/command>` faz o parser
+  voltar pro estado inicial `O0` ("procurando `<command>`"), **descartando o resto do comando sem erro
+  nenhum reportado**.
+- Um `&` cru fora de uma sequência de entidade válida tem o mesmo efeito.
+
+Ou seja, qualquer comando (digitado manualmente ou via `type --`) contendo esses caracteres já quebrava
+silenciosamente, mesmo antes desta sessão — só não tinha sido notado porque nenhum teste anterior
+mandou um comando com `<`/`&`. Corrigido com `OMSX_XmlEscape()` (novo, escapa `&` primeiro, depois `<`,
+depois `>`) aplicado a todo `Cmd` dentro de `OMSX_SendCommand()` — mesma camada que o Catapult de
+verdade já tem (`openMSXController.cpp`, `WriteCommand()`, `xmlEncodeEntitiesReentrant()`). Resultado:
+duas camadas de escape empilhadas, mesma arquitetura do Catapult — `OMSX_TclEscapeWord()` (nível Tcl,
+uma "palavra" só) aplicado primeiro pelo chamador (`OMSX_TypeText()`), `OMSX_XmlEscape()` (nível
+transporte/wire) aplicado por último, sempre, dentro de `OMSX_SendCommand()` (protege até comandos
+digitados manualmente no console, que nunca passam por `OMSX_TclEscapeWord()`).
+
+Validado ao vivo (harness `editor/tools/OpenMsxBridgeTestCli.pb`, entrada
+`10 PRINT "A<B & C>D"` + Enter + `RUN`): `OMSX_TclEscapeWord()` produziu
+`10\ PRINT\ \"A<B\ &\ C>D\"` (espaços/aspas escapados, `<`/`&`/`>` intocados — corretos nesse nível,
+não são especiais pro Tcl); `OMSX_XmlEscape()` sobre esse resultado produziu
+`10\ PRINT\ \"A&lt;B\ &amp;\ C&gt;D\"` (agora sim `<`/`&`/`>` viram entidades). O comando foi aceito sem
+erro pelo openMSX e o console continuou respondendo normalmente a um comando seguinte
+(`openmsx_info platform` → `mingw32`) — confirma que o "bug silencioso" de fato existia e que a correção
+resolve. **Não verificado ao vivo**: leitura visual da tela do MSX confirmando que o texto realmente
+apareceu certo (`A<B & C>D`) após o `RUN` — o bridge não tem mecanismo de leitura de tela (ver
+`OMSX_Poll()`, só lê stdout/replies, não framebuffer); só a camada de protocolo/parser foi confirmada.
 
 ### 12b. Ajuda → openMSX... — implementado (2026-07-29)
 
@@ -2147,12 +2264,17 @@ operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
 - ~~Mapeamento completo de funções/parâmetros NestorBASIC (módulo 9).~~ — **resolvida (2026-07-27)**:
   todas as 87 funções (0-86) mapeadas a partir de `nestor/SRC/NBASIC/nbas111e.txt`, ver seção 9 acima.
 - Lista de comandos suportados/incompatíveis do msxbas2rom (módulo 10), antes de decidir se vale a pena.
-- `badig/msx/openmsx_output.tcl` ainda não foi lido (script que faz a tela do openMSX ecoar para o
-  stdout — necessário para portar o módulo 12 corretamente).
-- Investigar se a leitura de stdout do openMSX (`-control stdio`) funciona de forma não-bloqueante
-  no Windows a partir de PureBasic — a implementação Python original **não suporta** monitoramento
-  de erro em runtime no Windows (só Mac/Linux); não se sabe se é limitação do openMSX/pipes ou só
-  de como o Python original lidava com isso.
+- ~~`badig/msx/openmsx_output.tcl` ainda não foi lido~~ — **obsoleta (2026-07-30)**: o caminho
+  implementado (`OpenMSXBridge.pbi`, módulo 12) não usa `-script openmsx_output.tcl`/convenção
+  `CHR$(7)` nenhuma — foi pelo caminho mais simples (named pipe `-control pipe:`, igual ao Catapult),
+  então esse script Python de referência não é mais necessário pra portar o módulo.
+- ~~Investigar se a leitura de stdout do openMSX funciona de forma não-bloqueante no Windows a partir
+  de PureBasic~~ — **resolvida (2026-07-30)**: confirmado ao vivo que `RunProgram(...#PB_Program_Read)`
+  + `AvailableProgramOutput()`/`ReadProgramString()` funciona normalmente no Windows (não é limitação
+  do openMSX/pipes) **desde que o processo que chama `RunProgram()` não tenha um console de verdade
+  anexado** — ver o achado de `AttachConsole`/`EnableConsoleOutput()` no módulo 12 acima. A limitação
+  Mac/Linux-only da implementação Python original era do jeito que o Python lidava com isso
+  (provavelmente relacionado a esse mesmo comportamento de `main.cc`), não do mecanismo em si.
 - ~~Tabela completa de tokens do MSX-BASIC~~ — **resolvida**: está em
   `badig/msx/msxbatoken/msxbatoken.py` (ver módulo 11 acima).
 - ~~Mapear pré-processador Dignified~~ — **resolvida**: arquitetura completa (Lexer, Parser 5 passes,
@@ -2162,6 +2284,35 @@ operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-07-30 — módulo 12 (controle do openMSX) validado ao vivo e ampliado**: a pedido
+do usuário, revisão + testes ao vivo (harness novo, `editor/tools/OpenMsxBridgeTestCli.pb`) contra um
+openMSX 21.0 real instalado na máquina. Feito: rótulo "experimental" removido (arquitetura validada
+ponta a ponta); indicador de estado Ligado/Pausado ao vivo; área de colar texto + botão "Inserir no
+openMSX" (mesmo mecanismo do Catapult, `type --`); dois bugs reais corrigidos (log da janela do console
+"esvaziando" sozinho; comandos com `<`/`&`/`>` cru quebrando silenciosamente o parser do openMSX). Ver
+detalhe completo no módulo 12 acima. **Em aberto nessa frente, pra decisão/trabalho futuro**:
+- **"Executar → BASIC" (F5) e "Executar → openMSX..." continuam sendo instâncias/processos openMSX
+  totalmente separados**, por decisão deliberada já documentada — rodar um programa com F5 e depois
+  abrir o console não dá controle sobre aquela mesma sessão (abre uma segunda instância vazia). Se o
+  usuário quiser que o console (incluindo o novo "Inserir no openMSX") controle a instância que F5
+  acabou de abrir, isso exige unificar os dois fluxos — pergunta feita ao usuário em 2026-07-30, ainda
+  sem decisão.
+- **Sem parsing estruturado de ok/nok** nas respostas de comando — `OMSX_Poll()` só devolve texto já
+  limpo pra exibir no log; se algum dia for preciso reagir a sucesso/erro por código (não só mostrar pro
+  usuário), vale um parser de verdade (comentário já deixado em `OMSX_CleanLine()`).
+- **"Inserir no openMSX" validado só na camada de protocolo/escape**, não visualmente — confirmado que
+  o texto escapado chega ao openMSX sem erro e que o console continua respondendo depois, mas não há
+  mecanismo de leitura de tela (framebuffer) pra confirmar que o texto digitado aparece certo na tela do
+  MSX após um `RUN`. Precisaria de `screenshot` + comparação de imagem, ou o usuário conferindo ao vivo.
+- **Detecção de erro em runtime com retorno à linha no editor** e **input simulado durante execução
+  automatizada** (não o "Inserir no openMSX" manual, que já cobre o caso manual) continuam não
+  implementados — nenhuma das duas abordagens documentadas no início do módulo 12 (script Tcl +
+  convenção `CHR$(7)`, ou hook de erro via `POKE`+breakpoint) foi implementada.
+- **Sem timeout na thread de `ConnectNamedPipe_()`** (`OMSX_PipeConnectThread()`) — se o openMSX travar/
+  crashar logo após abrir (antes de conectar no pipe), a thread fica bloqueada até `OMSX_IsRunning()`
+  detectar o processo morto e fechar o handle por fora (dispara o desbloqueio); risco baixo na prática,
+  mas sem timeout explícito.
 
 **Estado ao fim de 2026-07-29 — SPEC.md sincronizado com o Editor Hexa**: a sessão de 2026-07-29
 (commit `bdf80af "bgf9200"`) implementou o Editor Hexa genérico (`editor/HexEditorGui.pbi`) e bumpou a
