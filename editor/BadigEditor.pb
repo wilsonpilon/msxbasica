@@ -359,6 +359,7 @@ Enumeration MenuItems
   #Menu_NewAssembly
   #Menu_NewNestorBasic
   #Menu_NewMsxBas2Rom
+  #Menu_NewMD
   #Menu_NewProject
   #Menu_OpenProject
   #Menu_SaveProject
@@ -390,6 +391,8 @@ Enumeration MenuItems
   #Menu_LinkZ80
   #Menu_HexEditor
   #Menu_OpenMSXConsole
+  #Menu_ViewMdTxt
+  #Menu_ViewMdTxtSplit
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
   #Menu_ConfigureMsxBas2Rom
@@ -416,6 +419,12 @@ Enumeration 1
   #Style_Label
   #Style_DignifiedStmt
   #Style_Remtag
+  #Style_MdHeading1
+  #Style_MdHeading2
+  #Style_MdHeading3
+  #Style_MdBold
+  #Style_MdCode
+  #Style_MdLink
 EndEnumeration
 
 #Event_Rehighlight = #PB_Event_FirstCustomValue
@@ -430,10 +439,11 @@ EndEnumeration
 #App_SplashMinMs = 2200
 #File_Pattern     = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
 #File_Pattern_ASM = "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
+#File_Pattern_MD  = "Markdown (*.md)|*.md|Todos os arquivos (*.*)|*.*"
 #File_Pattern_Project = "Projeto MSX (*.msxproject)|*.msxproject|Todos os arquivos (*.*)|*.*"
-#File_Pattern_Open = "Todos os suportados (*.dmx;*.amx;*.asm)|*.dmx;*.amx;*.asm|" +
+#File_Pattern_Open = "Todos os suportados (*.dmx;*.amx;*.asm;*.md)|*.dmx;*.amx;*.asm;*.md|" +
                      "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|" +
-                     "Z80 Assembly (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
+                     "Z80 Assembly (*.asm)|*.asm|Markdown (*.md)|*.md|Todos os arquivos (*.*)|*.*"
 
 ; Versao/build normalmente injetadas via build.ps1 (/CONSTANT App_Version=...,
 ; -Version/-BuildDate) - fallback aqui so para compilar direto pela IDE do
@@ -620,6 +630,8 @@ Declare.b IsWordChar(C.s)
 Declare   HighlightDocument(Sci)
 Declare   HighlightDignifiedText(Sci, Text.s, IsMsxBas2Rom.b = #False)
 Declare   HighlightZ80Text(Sci, Text.s)
+Declare   HighlightMarkdownInline(Sci, LineText.s, BaseStyle)
+Declare   HighlightMarkdownText(Sci, Text.s)
 Declare   SetupEditorStyles(Sci)
 Declare   UpdateLineNumberMargin(Sci)
 Declare   ActiveSciGadget()
@@ -630,6 +642,8 @@ Declare   WS_SetupIndicator(Sci)
 Declare   WS_CreateHelpGadget()
 Declare   WS_SetupHelpStyles()
 Declare   WS_ShowHelp()
+Declare   MdView_OpenSingle(ParentWindow)  ; MdViewerGui.pbi (incluido no fim do arquivo)
+Declare   MdView_OpenSplit(ParentWindow)
 Declare.s ComputeTabCaption(Position)
 Declare   RedrawTabBar()
 Declare   RedrawRuler()
@@ -795,6 +809,8 @@ Procedure HighlightDocument(Sci)
 
   If Mode = "ASM"
     HighlightZ80Text(Sci, Text)
+  ElseIf Mode = "MD"
+    HighlightMarkdownText(Sci, Text)
   Else
     HighlightDignifiedText(Sci, Text, Bool(Mode = "BAS"))
   EndIf
@@ -1340,6 +1356,133 @@ Procedure HighlightZ80Text(Sci, Text.s)
   Wend
 EndProcedure
 
+; Varre uma unica linha (sem CR/LF) de markdown "corpo" (nao titulo, nao dentro
+; de bloco de codigo) procurando **negrito**, `codigo` e [texto](url) - os
+; marcadores continuam no texto (isto e edicao, nao renderizacao: o buffer nao
+; pode virar outra coisa do que o usuario digitou), so ganham estilo junto do
+; conteudo que delimitam. BaseStyle e o estilo de fundo do texto corrido (fora
+; de qualquer marcador).
+Procedure HighlightMarkdownInline(Sci, LineText.s, BaseStyle)
+  Protected LineLen = Len(LineText)
+  Protected Pos = 1, Buf.s = "", CurStyle = BaseStyle
+  Protected InBold.b = #False, InCode.b = #False
+  Protected LinkTextEnd, LinkUrlEnd
+
+  While Pos <= LineLen
+    If Mid(LineText, Pos, 1) = "[" And Not InCode
+      LinkTextEnd = FindString(LineText, "]", Pos + 1)
+      If LinkTextEnd > 0 And Mid(LineText, LinkTextEnd + 1, 1) = "("
+        LinkUrlEnd = FindString(LineText, ")", LinkTextEnd + 2)
+        If LinkUrlEnd > 0
+          If Buf <> "" : EmitRun(Sci, Buf, CurStyle) : Buf = "" : EndIf
+          EmitRun(Sci, Mid(LineText, Pos, LinkUrlEnd - Pos + 1), #Style_MdLink)
+          Pos = LinkUrlEnd + 1
+          Continue
+        EndIf
+      EndIf
+    EndIf
+
+    If Mid(LineText, Pos, 2) = "**"
+      If Buf <> "" : EmitRun(Sci, Buf, CurStyle) : Buf = "" : EndIf
+      EmitRun(Sci, "**", #Style_MdBold)
+      If InBold : InBold = #False : Else : InBold = #True : EndIf
+      If InBold : CurStyle = #Style_MdBold : Else : CurStyle = BaseStyle : EndIf
+      Pos + 2
+      Continue
+    ElseIf Mid(LineText, Pos, 1) = "`"
+      If Buf <> "" : EmitRun(Sci, Buf, CurStyle) : Buf = "" : EndIf
+      EmitRun(Sci, "`", #Style_MdCode)
+      If InCode : InCode = #False : Else : InCode = #True : EndIf
+      If InCode : CurStyle = #Style_MdCode : Else : CurStyle = BaseStyle : EndIf
+      Pos + 1
+      Continue
+    EndIf
+
+    Buf + Mid(LineText, Pos, 1)
+    Pos + 1
+  Wend
+
+  If Buf <> ""
+    EmitRun(Sci, Buf, CurStyle)
+  EndIf
+EndProcedure
+
+; Realce de Markdown para o modo de edicao ("MD") - titulos #/##/###
+; (linha inteira vira #Style_MdHeadingN, sem varredura inline, mesma regra de
+; GenMdHelp_RenderMarkdown), blocos ``` (linhas de abre/fecha e conteudo viram
+; #Style_MdCode) e, no corpo comum, **negrito**/`codigo`/[texto](url) via
+; HighlightMarkdownInline(). Ao contrario do renderizador de visualizacao
+; (GenMdHelp_RenderMarkdown), aqui o texto do buffer nunca e reescrito - so
+; estilo e aplicado por cima do que o usuario digitou.
+Procedure HighlightMarkdownText(Sci, Text.s)
+  Protected TextLen = Len(Text)
+  Protected I = 1
+  Protected AtLineStart.b = #True
+  Protected InCodeBlock.b = #False
+  Protected C.s, PeekEnd, LineRest.s, LineTrim.s
+
+  ScintillaSendMessage(Sci, #SCI_STARTSTYLING, 0, 0)
+
+  While I <= TextLen
+    C = Mid(Text, I, 1)
+
+    If C = Chr(13) Or C = Chr(10)
+      EmitRun(Sci, C, #Style_Default)
+      I + 1
+      AtLineStart = #True
+      Continue
+    EndIf
+
+    If AtLineStart
+      PeekEnd = I
+      While PeekEnd <= TextLen And Mid(Text, PeekEnd, 1) <> Chr(13) And Mid(Text, PeekEnd, 1) <> Chr(10)
+        PeekEnd + 1
+      Wend
+      LineRest = Mid(Text, I, PeekEnd - I)
+      LineTrim = Trim(LineRest)
+
+      If Left(LineTrim, 3) = "```"
+        EmitRun(Sci, LineRest, #Style_MdCode)
+        If InCodeBlock : InCodeBlock = #False : Else : InCodeBlock = #True : EndIf
+        I = PeekEnd
+        AtLineStart = #False
+        Continue
+      ElseIf InCodeBlock
+        EmitRun(Sci, LineRest, #Style_MdCode)
+        I = PeekEnd
+        AtLineStart = #False
+        Continue
+      ElseIf Left(LineTrim, 4) = "### "
+        EmitRun(Sci, LineRest, #Style_MdHeading3)
+        I = PeekEnd
+        AtLineStart = #False
+        Continue
+      ElseIf Left(LineTrim, 3) = "## "
+        EmitRun(Sci, LineRest, #Style_MdHeading2)
+        I = PeekEnd
+        AtLineStart = #False
+        Continue
+      ElseIf Left(LineTrim, 2) = "# "
+        EmitRun(Sci, LineRest, #Style_MdHeading1)
+        I = PeekEnd
+        AtLineStart = #False
+        Continue
+      EndIf
+
+      HighlightMarkdownInline(Sci, LineRest, #Style_Default)
+      I = PeekEnd
+      AtLineStart = #False
+      Continue
+    EndIf
+
+    ; Nao deveria chegar aqui (todo caractere fora de EOL e consumido pelo
+    ; bloco AtLineStart acima, que sempre avanca ate o fim da linha) - mantido
+    ; so como rede de seguranca contra I nao avancar.
+    EmitRun(Sci, C, #Style_Default)
+    I + 1
+  Wend
+EndProcedure
+
 ;- ------------------------------------------------------------
 ;- Aparencia do ScintillaGadget (fonte/tema conforme EditorCfg - ver
 ;- ApplyTheme() e EditorSettings.pbi)
@@ -1347,6 +1490,7 @@ EndProcedure
 
 Procedure SetupEditorStyles(Sci)
   Protected *FontName
+  Protected *MonoFont
 
   ScintillaSendMessage(Sci, #SCI_SETCODEPAGE, #SC_CP_UTF8)
 
@@ -1373,6 +1517,26 @@ Procedure SetupEditorStyles(Sci)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_DignifiedStmt, #True)
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Remtag, Color_Syntax_Remtag)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_Remtag, #True)
+
+  ; Estilos do modo "MD" (HighlightMarkdownText) - reaproveita as mesmas cores
+  ; do tema em vez de criar uma paleta Color_Syntax_Md* propria, mesma logica
+  ; visual do renderizador de visualizacao (GenMdHelp_SetupStyles).
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_MdHeading1, Color_Syntax_Function)
+  ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_MdHeading1, #True)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #Style_MdHeading1, EditorCfg\FontSize + 6)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_MdHeading2, Color_Syntax_Function)
+  ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_MdHeading2, #True)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #Style_MdHeading2, EditorCfg\FontSize + 3)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_MdHeading3, Color_Syntax_Function)
+  ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_MdHeading3, #True)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #Style_MdHeading3, EditorCfg\FontSize + 1)
+  ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_MdBold, #True)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_MdCode, Color_Syntax_Number)
+  *MonoFont = UTF8("Consolas")
+  ScintillaSendMessage(Sci, #SCI_STYLESETFONT, #Style_MdCode, *MonoFont)
+  FreeMemory(*MonoFont)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_MdLink, Color_Accent)
+  ScintillaSendMessage(Sci, #SCI_STYLESETUNDERLINE, #Style_MdLink, #True)
 
   ScintillaSendMessage(Sci, #SCI_SETCARETFORE, Color_Caret)
   ScintillaSendMessage(Sci, #SCI_SETSELBACK, 1, Color_SelBack)
@@ -1499,6 +1663,8 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
         DocMode = "ASM"
       Case "bas"
         DocMode = "BAS" ; MSX-BASIC classico "padrao" (msxbas2rom etc) - ver MsxBas2RomSupport.pbi
+      Case "md"
+        DocMode = "MD"  ; manuais/artigos - ver HighlightMarkdownText/MdViewerGui.pbi
       Default
         DocMode = "DMX"
     EndSelect
@@ -1518,6 +1684,8 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
       UntitledExt = ".asm"
     ElseIf DocMode = "BAS"
       UntitledExt = ".bas"
+    ElseIf DocMode = "MD"
+      UntitledExt = ".md"
     EndIf
     If UntitledBase = "noname"
       UntitledCount + 1
@@ -1787,6 +1955,8 @@ Procedure.b SaveDocument(SaveAs.b = #False)
   Protected Pattern.s = #File_Pattern
   If Docs()\Mode = "ASM"
     Pattern = #File_Pattern_ASM
+  ElseIf Docs()\Mode = "MD"
+    Pattern = #File_Pattern_MD
   EndIf
 
   If SaveAs Or Path = ""
@@ -2887,6 +3057,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
     MenuItem(#Menu_NewNestorBasic, "Novo Nestor Basic...")
     MenuItem(#Menu_NewMsxBas2Rom, "Novo MSXBas2Rom...")
+    MenuItem(#Menu_NewMD, "Novo MD...")
     MenuItem(#Menu_NewProject, "Novo projeto...")
     MenuItem(#Menu_OpenProject, "Abrir projeto...")
     MenuItem(#Menu_SaveProject, "Salvar projeto")
@@ -2929,6 +3100,9 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HexEditor, "Editor Hexa...")
     MenuBar()
     MenuItem(#Menu_OpenMSXConsole, "openMSX (console de comandos)...")
+    MenuBar()
+    MenuItem(#Menu_ViewMdTxt, "Ver MD/TXT...")
+    MenuItem(#Menu_ViewMdTxtSplit, "Ver MD+TXT...")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
@@ -2990,6 +3164,9 @@ Repeat
 
         Case #Menu_NewMsxBas2Rom
           AddDocumentTab("", MsxBas2RomTemplateText(), "BAS", "msxbas2rom")
+
+        Case #Menu_NewMD
+          AddDocumentTab("", "", "MD")
 
         Case #Menu_NewProject
           If OfferSaveProject()
@@ -3102,6 +3279,12 @@ Repeat
 
         Case #Menu_OpenMSXConsole
           OMSXGui_OpenWindow(#MainWindow)
+
+        Case #Menu_ViewMdTxt
+          MdView_OpenSingle(#MainWindow)
+
+        Case #Menu_ViewMdTxtSplit
+          MdView_OpenSplit(#MainWindow)
 
         Case #Menu_ConfigureBadig
           BadigCfg_OpenSettingsWindow(#MainWindow)
@@ -3272,6 +3455,13 @@ Until Quit = 1
 
 ProjectDB::Close()
 End
+
+; Mesmo motivo do XIncludeFile "WordStarKeys.pbi" logo abaixo: usa
+; Docs()/ActiveTabPosition/ReadSciText/WriteSciText/HighlightMarkdownText/
+; SetupEditorStyles, todos definidos ao longo deste arquivo - ver Declare de
+; MdView_OpenSingle/MdView_OpenSplit perto do topo para a chamada em
+; #Menu_ViewMdTxt/#Menu_ViewMdTxtSplit, que vem antes textualmente.
+XIncludeFile "MdViewerGui.pbi"
 
 ; Incluido so aqui no fim (nao junto com os demais XIncludeFile no topo) porque
 ; usa Docs()/SaveDocument()/OpenDocumentDialog()/CloseTab()/Color_Accent, todos
