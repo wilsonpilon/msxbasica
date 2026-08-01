@@ -325,6 +325,19 @@ com: (1) renomeação dos 3 itens para deixar a entrada esperada explícita no t
 (2) uma checagem heurística em `SaveAsTokenizedNative()` que detecta se a primeira linha não começa
 com número e mostra uma mensagem apontando para o menu correto em vez do erro cru do tokenizer.
 
+**Gap encontrado e corrigido (2026-08-01)**: a heurística acima só cobria o menu manual de tokenizar;
+os fluxos "Executar -> BASIC" (F5) e "Executar -> Nestor Basic" chamavam `RunDignifiedPreprocessor()`
+incondicionalmente (só checavam `Docs()\Mode = "ASM"`), então abrir um `.amx`/programa MSX-BASIC
+clássico já numerado (com `GOTO`/`GOSUB` para número de linha, sem labels Dignified) e apertar F5
+rodava o texto pelo pré-processador Dignified mesmo assim — que não reconhece números de linha como
+já resolvidos e trata cada linha como se fosse texto Dignified sem label, prefixando sua própria
+numeração na frente da numeração original (`"10 PRINT..."` virava `"20 10 PRINT..."`), quebrando o
+programa. A checagem heurística de `SaveAsTokenizedNative()` foi extraída para
+`LooksLikeClassicAscii()` e reusada em `RunBasicFromActiveTab()`/`RunNestorBasicFromActiveTab()`: se a
+aba já contém ASCII clássico, o pré-processador é pulado e o texto vai direto para `Tok_Tokenize()`,
+mesmo caminho que o `msxbatoken.py`/tokenizador original sempre suportou (aceita ASCII clássico puro,
+com ou sem o restante do Basic Dignified Suite — ver `-asc` em `BATOKEN.md`).
+
 ### 3b. FUNC/RET (proto-funções) — implementado (2026-07-13)
 
 Portado por completo: `func .nome(p1, p2=default, ...)` ... `ret [e1, e2, ...]`, chamadas
@@ -1095,6 +1108,14 @@ highlighting dedicado — os wrappers já ficam visíveis como `func`/`ret` norm
 - Prioridade: **baixa** — usuário confirmou "só se valer a pena", manter como back-end opcional
   desacoplado, não bloquear o resto do projeto por causa dele.
 
+- **Status (2026-08-01): integração leve implementada** (pedido explícito do usuário) - bem mais simples
+  que o pipeline "editores gráficos → dialeto msxbas2rom" desenhado acima (que segue não implementado,
+  prioridade baixa como já estava): **Arquivo → Novo MSXBas2Rom...** (`MsxBas2RomTemplateText()`, ASCII
+  clássico numerado - é o formato que o `msxbas2rom` real espera, não Dignified) e **Configurar →
+  MSXBas2Rom...** (baixa o binário mais recente do GitHub + gera `Ajuda → MSXBas2Rom...`). Ver módulo 18
+  para os detalhes (motor de download/Ajuda compartilhado com o N80/LinkStor80/LibStor80, achados sobre
+  `-doc` não ser o que parecia, etc.) - não duplicado aqui de propósito.
+
 ### 11. Saída tokenizada
 - Formato `.bas` tokenizado documentado (mesmo do `SAVE` sem `,A`): por linha — ponteiro para próxima
   linha, número da linha (2 bytes), bytes tokenizados, terminador `0x00`; fim de programa marcado com
@@ -1144,6 +1165,85 @@ highlighting dedicado — os wrappers já ficam visíveis como `func`/`ret` norm
   - O item de menu antigo "Gerar tokenizado MSX (.bmx)..." (que chama `python badig.py` via
     subprocess) continua existindo para o fluxo Dignified→tokenizado, que ainda depende do
     pré-processador Python até o módulo 3 ser portado. Os dois convivem por enquanto.
+
+- **Renumeração nativa + "criar .BAS" — implementado (2026-08-01)**, pedido explícito do usuário: dado
+  ASCII clássico já numerado (mesma entrada de `SaveAsTokenizedNative()`), gerar um `.BAS` "padrão"
+  MSX-DOS renumerado o mais compacto possível — sem simplesmente *adicionar* uma segunda numeração por
+  cima da original (isso é o mesmo bug de duplicar números da correção anterior desta seção, "Gap
+  encontrado e corrigido (2026-08-01)"), mas *substituindo* de fato os números e corrigindo todos os
+  alvos de `GOTO`/`GOSUB`/`THEN`/`ELSE`/`RESTORE`/`RESUME`/`RETURN`/`RUN` (inclusive listas
+  `ON...GOTO`/`ON...GOSUB` separadas por vírgula, com posições vazias `,,` preservadas) para apontar
+  para a linha renumerada certa. Novas funções em `editor/MsxTokenizer.pbi`:
+  - `Tok_RenumberAscii(SourceText, NewStart=1, NewStep=1)`: passe 1 mapeia número-antigo→número-novo na
+    ordem do arquivo (números baixos tokenizam em menos bytes — `1..9` cabem em 1 byte contra 2-4 de
+    números maiores, ver `isShortInt` em `Tok_ScanNumber` — por isso o padrão aqui é `1,1`, mais
+    compacto que o `LineStart`/`LineStep` `10,10` do pré-processador Dignified, que existe pra
+    numeração ser legível por humano, não é o objetivo aqui); passe 2 reconstrói cada linha via
+    `Tok_RenumberLineBody()`.
+  - `Tok_RenumberLineBody()`: **deliberadamente espelha o mesmo fluxo de controle de
+    `Tok_TokenizeLineBody`** (casamento de comando por comando na ordem da tabela `Tok_Cmd`/reuso do
+    `Tok_JumpSet` já existente, tratamento de literais `DATA`/`REM`/`'`/`CALL`/`_`, o mesmo "quirk" de
+    identificador com prefixo de palavra-chave embutido tipo `TOTAL` → tokeniza como `TO`+`TAL`, mesmo
+    texto na saída de qualquer forma) em vez de reimplementar um parser do zero — decisão deliberada:
+    uma reimplementação simplificada arriscaria não reconhecer um `GOTO` de verdade (deixando o alvo
+    velho intacto) ou, pior, reescrever um número que não é um alvo de jump (ex.: um literal dentro de
+    `DATA`). Só o "emit" muda (texto em vez de hex) e a substituição do número em si.
+  - **Bug real encontrado testando contra `sample/teste.dmx`** (mesmo suite de regressão do módulo 3a):
+    `ON ERROR GOTO 0` é um idioma documentado do MSX-BASIC onde `0` é sentinela de "desliga tratamento
+    de erro", não uma referência de linha real — a primeira versão falhava com "GOTO para linha
+    inexistente: 0". Corrigido tratando alvo `0` como sempre passthrough (nunca remapeado, nunca erro)
+    para os comandos remapeáveis; nunca colide com um número remapeado de verdade já que `NewStart`
+    mínimo é 1.
+  - Comandos do `Tok_JumpSet` que **não** são efetivamente remapeados (`AUTO`, `RENUM`, `DELETE`,
+    `LIST`, `LLIST`, `ERL`): ficam de fora do subconjunto `Tok_IsRenumberTargetCmd()` de propósito —
+    `RENUM`/`AUTO` têm o primeiro argumento como um número *novo* de destino (não uma referência
+    existente) e os outros raramente aparecem embutidos na lógica de um programa (são comandos de modo
+    direto); o número segue sendo consumido pela mesma sintaxe de jump (pra não confundir o resto do
+    scanner) mas copiado sem alteração.
+  - **Verificado** com um harness fora do projeto: casos sintéticos (GOTO/GOSUB básico, espaços
+    redundantes colapsados, `ON X GOTO 10,,30` com posição vazia preservada, alvo inexistente rejeitado
+    com erro claro, `REM`/`DATA` contendo texto parecido com `GOTO` intocado, variável `TOTAL`
+    preservada) e, mais importante, o arquivo de produção real de ~900 linhas
+    (`sample/teste.dmx` → ASCII clássico → renumerado): reduziu de 18241 para 18179 bytes tokenizados
+    (números mais baixos = menos bytes) e batendo manualmente 4 referências cruzadas
+    (`ON STOP GOSUB`/`RESUME`) contra a posição real de cada linha-alvo no arquivo.
+  - Integrado em `editor/BadigEditor.pb` via novo item de menu **"ASCII clássico já aberto → renumerar
+    e criar .BAS..."** (`SaveAsRenumberedBas()`), reaproveitando a mesma heurística de detecção de
+    ASCII clássico de `SaveAsTokenizedNative()` (extraída para `LooksLikeClassicAscii()` na correção
+    anterior desta seção). O diálogo de salvar aceita `.bas` (ASCII, extensão padrão MSX-DOS/MSX-BASIC,
+    diferente da convenção interna deste projeto `.dmx`/`.amx`/`.bmx`), `.amx` (ASCII, convenção
+    interna) ou `.bmx` (encadeia com `Tok_Tokenize()` sobre o resultado já renumerado).
+
+- **"Executar → Renumerar..." — implementado (2026-08-01), pedido explícito do usuário**: equivalente
+  nativo do comando `RENUM` real do MSX-BASIC (`RENUM [nova linha][,[linha antiga][,incremento]]`),
+  diferente de `SaveAsRenumberedBas()` (sempre renumera o programa inteiro pra numeração mais compacta
+  e exporta pra um arquivo novo) — este renumera o programa **digitado na aba, no lugar** (como o
+  `RENUM` real faz ao vivo na máquina), com os mesmos 3 parâmetros do comando original coletados via 3
+  `InputRequester()` sequenciais (mesmo padrão já usado em `WordStarKeys.pbi` pro "Ir para linha"):
+  nova linha inicial (default `10`), incremento (default `10`), linha antiga a partir de qual renumerar
+  (em branco = programa inteiro, igual ao `oldline` omitido no `RENUM` real).
+  - `Tok_RenumberAscii()` ganhou um 4º parâmetro `OldLineFrom.i = 0`: linhas com número antigo menor
+    que `OldLineFrom` mantêm o número **original intocado** (só entram no mapa `OldToNew` como
+    identidade, pra remapeamento de `GOTO`/`GOSUB` que apontam pra elas continuar correto) — mesma
+    semântica do "linhas antes de `oldline` não são renumeradas" do `RENUM` real. Validação nova: se a
+    nova numeração escolhida fosse ficar menor ou igual ao maior número já preservado (colidindo com a
+    ordem do programa), falha com erro claro em vez de gerar um programa com linhas fora de ordem —
+    mesma recusa que o `RENUM` real faz.
+  - **Já não precisou de nenhuma mudança no motor de resolução de jumps** (`Tok_RenumberLineBody()`) —
+    o pedido do usuário de "usar mais de um passo pra renumerar corretamente GOTO/GOSUB/RESTORE/
+    ON X GOTO/GOSUB/IF...THEN GOTO" já estava coberto pelo desenho de duas passadas da correção
+    anterior desta seção (passe 1 mapeia número-antigo→novo percorrendo o arquivo inteiro antes de
+    reescrever qualquer linha; passe 2 resolve cada alvo contra esse mapa já completo) — é exatamente o
+    que permite um `GOTO` que aponta **para a frente** no arquivo (referencia uma linha que só vai
+    aparecer/ser numerada depois) resolver corretamente, confirmado no teste sintético abaixo.
+  - **Verificado** com harness fora do projeto: `RENUM` completo (`1000,,100`) com referência pra frente
+    e pra trás, ambas resolvidas certas; `RENUM` parcial (`500,100,10`) preservando linhas antes da
+    linha-antiga-100 com seus números originais E as referências que apontam pra elas; e o caso de
+    colisão (nova numeração pequena demais esbarrando na faixa preservada) rejeitado com erro claro.
+  - Escreve o resultado direto no `ScintillaGadget` da aba (`WriteSciText()`, sem
+    `SuppressModifiedTracking` — a edição fica no histórico de undo normal do Scintilla e marca a aba
+    como modificada pelo fluxo já existente de `#Event_Rehighlight`), não salva em disco sozinho -
+    usuário revisa e salva com Ctrl+K D/Ctrl+Shift+S como qualquer outra edição.
 
 ### 12. Controle do openMSX via socket
 - Protocolo: comandos XML no canal (pipe/socket via `-control stdio`), `<command>texto</command>` →
@@ -2243,6 +2343,135 @@ operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
 - **Versão embutida no executável**: `7.7.1`, codinome **"BFG9200"** (BFG9000 do Doom + endereço
   `9200h`, pedido explícito do usuário — MSX + Doom + heavy metal).
 
+### 18. Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 — implementado (2026-08-01)
+
+Pedido explícito do usuário: integrar duas toolchains de terceiros com um fluxo "baixar do GitHub →
+gerar Ajuda a partir do que foi baixado" — **MSXBas2Rom** (compilador MSX-BASIC→ROM de terceiro,
+`amaurycarvalho/msxbas2rom`) e **N80/LinkStor80/LibStor80** (assembler/linker/gerenciador de biblioteca
+Z80 de terceiro, `Konamiman/Nestor80` — mesmo autor do NestorBASIC já suportado, módulo 9). **Não deve
+ser confundido com o assembler/linker/biblioteca Z80 *nativo* do projeto** (`Z80Asm.pbi`/`Z80Link.pbi`/
+`Z80Lib.pbi`, "Fase B" do módulo 2b, já implementado do zero antes desta sessão) — N80/LinkStor80/
+LibStor80 são um caminho *externo* alternativo, não uma dependência do motor nativo nem uma substituição
+dele; convivem lado a lado.
+
+**Achados de pesquisa que mudaram o que foi pedido literalmente** (via `gh`/`curl` direto contra a API
+pública do GitHub, sem autenticação — funciona sem header especial, confirmado):
+- `msxbas2rom -D`/`--doc` **não despeja documentação** — só imprime um ponteiro pra wiki
+  (`github.com/amaurycarvalho/msxbas2rom/wiki/...`). A wiki de verdade é buscável direto via
+  `raw.githubusercontent.com/wiki/<owner>/<repo>/<Página>.md` (markdown limpo, com tabelas/links) e é
+  de lá que vem o conteúdo de Ajuda, não do "-doc".
+- **LinkStor80 e LibStor80 não são repositórios separados** — vivem dentro do próprio
+  `Konamiman/Nestor80`, em **release tags diferentes** do mesmo repo (`n80-v1.3.5` pro N80 mais recente,
+  `n80-v1.3.3-lk80-v1.1` pro LinkStor80 mais recente, `lb80-v1.0` pro LibStor80). `GET /releases/latest`
+  só devolve a release mais recente (N80) — achar LK80/LB80 exige varrer `GET /releases?per_page=100`
+  (uma página cobre o histórico inteiro desde a v1.0) procurando o asset `LK80_*`/`LB80_*` mais recente.
+- O manual "M80L80" pedido é `docs/MACRO-80.txt` no repositório do Nestor80 ("Microsoft M80 DOC" —
+  MACRO-80 Assembler + CREF-80 + LINK-80 + LIB-80, 2675 linhas). Existe também `docs/asmlnk.txt` no
+  mesmo repo mas é o manual do ASxxxx/ASLINK do SDCC, sem relação — não foi baixado.
+
+**Motor de Ajuda compartilhado, orientado a pasta** (`editor/GenericMdHelpGui.pbi`) — decisão de design
+confirmada com o usuário (`AskUserQuestion`): ao contrário dos helps existentes (NestorBASIC/MSX BASIC/
+Basic Dignified/openMSX, módulos 9/15/16 — conteúdo fixo, escrito à mão em `*HelpData.pbi`, compilado no
+`.exe`), o conteúdo dos dois novos helps é **baixado e renderizado ao vivo**: o downloader salva `.md`
+numa pasta (`tools/<ferramenta>/help/`) mais um manifesto `_index.json` (array `{file,title,group}`,
+lido/escrito por `GenMdHelp_LoadIndex()`/`GenMdHelp_SaveIndex()`), e a janela de Ajuda (`GenMdHelp_
+OpenWindow()`, mesmo layout busca+árvore+conteúdo+Voltar dos helps existentes) lê isso em tempo de
+execução — clicar em "Baixar" de novo no futuro atualiza a Ajuda sozinho, sem precisar de uma nova
+versão do `.exe`. Renderizador (`GenMdHelp_RenderMarkdown()`) é um "melhor esforço" mais rico que o
+mini-renderer original (`NBHelpGui_RenderMarkdown()`, só `##`/`**bold**`/`` `code` ``): acrescenta
+títulos `#`/`##`/`###` (3 estilos), blocos ` ``` ` (monoespaçado, não processa `**`/`` ` `` por dentro) e
+`[texto](url)` como **link clicável de verdade** (pedido explícito do usuário, "com links e tudo mais")
+via `SCI_STYLESETHOTSPOT` — cada link ganha um número de estilo dedicado (10..254, reciclado a cada
+troca de tópico) mapeado pra URL em `GenMdHelp_LinkUrls()` (chave `"gadget_estilo"`, precisa ser por
+gadget porque duas janelas de Ajuda abertas ao mesmo tempo reciclam os mesmos números de estilo pra
+URLs diferentes); clique dispara `SCN_HOTSPOTCLICK` no callback do próprio gadget
+(`GenMdHelp_ScintillaCallback`, mesmo padrão de `ScintillaCallBack()` em `BadigEditor.pb`), resolve a
+URL nesse mapa e abre com `explorer.exe`/`xdg-open` (`CompilerIf #PB_Compiler_OS`). Tabelas/listas
+markdown ficam como texto corrido — fora do escopo do "melhor esforço" pedido.
+
+**Downloader compartilhado** (`editor/ExternalToolDownload.pbi`) — reaproveita infraestrutura já
+existente sem reimplementar: `ReceiveHTTPMemory`/`ReceiveHTTPFile` (`UseNetworkTLS()` já chamado
+globalmente em `BadigSettings.pbi`), `BadigCfg_ExtractZip()` (mesmo arquivo — já lida corretamente com
+zip sem pasta-wrapper, que é o caso do msxbas2rom/N80: executável direto na raiz do zip), padrão de
+progresso `TextGadget` de status + bombear a fila de eventos entre chamadas bloqueantes (mesmo truque de
+`FontDownloader_FlushEvents()`, generalizado aqui como `ExtTool_SetStatus()`/`ExtTool_FlushEvents()`).
+- **Bug real encontrado testando contra um caminho de pasta genuinamente novo** (`tools/msxbas2rom/`,
+  `tools/n80/` — dois níveis que nunca existiam antes da primeira execução): `CreateDirectory()` nativo
+  do PureBasic **não cria pastas intermediárias que ainda não existem** (confirmado com teste isolado:
+  falha silenciosa contra um caminho de 2+ níveis novo). `BadigCfg_ExtractZip()` nunca precisou disso
+  porque seus alvos existentes já tinham a pasta-pai pronta. Corrigido com um helper novo,
+  `ExtTool_CreateDirectoryRecursive()` (recursão simples: garante o pai antes do próprio diretório),
+  chamado antes de `BadigCfg_ExtractZip()` — sem mexer em `BadigCfg_ExtractZip()` em si, que continua
+  igual pros chamadores que já tinham a pasta-pai pronta (evita qualquer risco de regressão no fluxo já
+  existente de download do Basic Dignified Suite).
+- `ExtTool_RunCaptureOutput()`: `RunProgram(...#PB_Program_Open|Read|Error)` + laço `ReadProgramString()`
+  (checa `AvailableProgramOutput()` antes, senão bloqueia) + `ReadProgramError()` (não-bloqueante por
+  conta própria) — usado pra capturar `-h`/`--help` de cada binário recém-baixado e virar tópico de
+  Ajuda, mesmo padrão de captura de saída de processo já usado em `OpenMSXBridge.pbi`.
+
+**MSXBas2Rom** (`editor/MsxBas2RomSupport.pbi`):
+- **Arquivo → Novo MSXBas2Rom...**: `MsxBas2RomTemplateText()` gera um `.bas` ASCII clássico numerado
+  (`10 REM.../60 SCREEN 0/70 PRINT "HELLO, MSX!"/80 END`, mesmo espírito do hello-world oficial da wiki,
+  `Gettingstarted.md`) — **não** Dignified, é o formato que o `msxbas2rom` real espera direto. Novo modo
+  de documento `"BAS"` em `AddDocumentTab()`/`BadigEditor.pb` (extensão padrão `.bas` pra abas sem
+  arquivo ainda, e detecção automática ao abrir um `.bas` existente) — se comporta como "não ASM" no
+  resto do código (só precisava disso, os únicos `Docs()\Mode = "ASM"` existentes continuam corretos sem
+  mudança), e já funciona com tudo que foi construído para ASCII clássico nas duas tarefas anteriores
+  desta sessão (Renumerar/RENUM, tokenizar nativo) sem nenhuma mudança adicional — `LooksLikeClassicAscii()`
+  detecta por conteúdo, não por extensão/modo.
+- **Configurar → MSXBas2Rom...**: baixa o asset da release mais recente (`GET .../releases/latest`,
+  filtro `-windows-x64-bin.zip`/`-linux-x64-bin.zip` via `CompilerIf #PB_Compiler_OS`), roda `-h` e busca
+  10 páginas da wiki oficial (`Home`, `Install`, `Gettingstarted`, `Usage`, `Documentation`,
+  `Compiling-Code`, `Resource-Directives`, `Extended-Commands`, `Extended-Functions`, `Getting-Help`).
+  Configurações em `msxbas2rom_settings.json` (mesmo padrão de `editor_settings.json`).
+- **Ajuda → MSXBas2Rom...**: `GenMdHelp_OpenWindow(..., MsxBas2Rom_HelpDir())`.
+
+**Destaque de sintaxe (2026-08-01, mesmo dia, pedido explícito do usuário em seguida)**: até aqui
+`HighlightDocument()`/`BadigEditor.pb` só distinguia `"ASM"` de tudo mais — abas em modo `"BAS"` caíam
+no mesmo `HighlightDignifiedText()` do Dignified clássico, sem reconhecer nenhum dos comandos/funções
+estendidos do MSXBAS2ROM (`CMD TURBO`, `SCREEN LOAD`, `SET TILE PATTERN`, `HEAP()`, `COLLISION()`,
+`FILE`/`TEXT` etc. — extraídos do conteúdo real já baixado em `tools/msxbas2rom/help/extended-
+commands.md`/`extended-functions.md`, mais `Music-Support` buscado à parte pros comandos `CMD PLY*`).
+Resolvido com 3 mapas novos (`KwMsxBas2RomDirective`/`KwMsxBas2RomStatement`/
+`KwMsxBas2RomFunctionPlain`) só consultados quando `IsMsxBas2Rom` (`Mode = "BAS"`) — decisão deliberada:
+um programa Dignified comum pode ter uma variável chamada `TURBO` ou `COLLISION` sem que isso deva virar
+destaque de palavra-chave, então a extensão fica isolada por modo, não misturada nas tabelas globais
+existentes (`KwStatement`/`KwFunctionPlain`). Palavras com papel duplo (ex.: `TILE`/`TURBO`, usadas tanto
+como parte de comando — `PUT TILE`, `CMD TURBO` — quanto como função — `TILE(x,y)`, `TURBO()`) só entram
+no mapa de função: o lexer não olha à frente pra saber se vem um `(` depois, então só um dos dois estilos
+vence, e função foi a escolha consistente. `IDATA` dispara o mesmo modo de literal do `DATA` clássico
+(`InDataLiteral`). Verificado com harness de console isolado (cópia fiel de `HighlightDignifiedText()`
+sem depender de Scintilla real, `EmitRun()` só grava texto+estilo numa lista) — 11 casos, incluindo dois
+de isolamento negativo confirmando que `TURBO`/`COLLISION` como variável comum em modo `"BAS" = #False`
+continuam caindo no estilo padrão de identificador, não no de palavra-chave.
+
+**N80/LinkStor80/LibStor80/M80L80** (`editor/N80Support.pbi`):
+- **Configurar → N80...**: `N80_ResolveAllAssets()` varre o histórico completo de releases numa única
+  chamada e acha, pra cada um dos 3 prefixos de asset (`N80_`/`LK80_`/`LB80_`), o primeiro (= mais
+  recente, a API já devolve nessa ordem) que bater com o padrão `..._SelfContained_<RID>.zip` do SO
+  atual. Baixa os 3 binários standalone pra `tools/n80/`, roda `--help` de cada um, busca
+  `docs/LanguageReference.md` e `docs/WritingRelocatableCode.md` do N80, e baixa+normaliza
+  `docs/MACRO-80.txt` (manual M80L80) — normalização "melhor esforço" (`N80_NormalizeMacro80Text()`):
+  texto de largura fixa sem estrutura Markdown nenhuma, então só linhas com pelo menos 1 letra e **sem
+  nenhuma letra minúscula** viram título `## ` (pega `CHAPTER 1`, `NOTE`, `2.1  RUNNING MACRO-80`...); o
+  resto fica intocado, preservando alinhamento de colunas dos exemplos de código. Efeito colateral
+  conhecido e aceito: nomes de pseudo-op em CAIXA ALTA dentro do sumário (`ASEG`, `END`...) também viram
+  "título" — ruído cosmético, não corrompe conteúdo, e o texto explica a heurística usada no topo do
+  próprio tópico gerado. Configurações em `n80_settings.json`.
+- **Ajuda → N80...**: `GenMdHelp_OpenWindow(..., N80_HelpDir())`, 4 grupos na árvore: **N80** (linha de
+  comando + referência de linguagem + código relocável), **LinkStor80** (linha de comando),
+  **LibStor80** (linha de comando), **M80L80** (o manual).
+
+**Verificado**: compilado com sucesso (`build.ps1`) a cada etapa. Pipeline de download validado **de
+ponta a ponta** com harnesses de console fora do projeto (mesma filosofia dos `editor/tools/*TestCli.pb`
+já usados no projeto) — baixou/extraiu de verdade contra o GitHub real: MSXBas2Rom v1.2.1.0 (11 tópicos
+de Ajuda gerados), N80 1.3.5 + LinkStor80 1.1.0 + LibStor80 1.0 (6 tópicos, incluindo o manual M80L80 de
+91KB) — batendo exatamente as versões achadas manualmente durante a pesquisa. `GenMdHelp_RenderMarkdown()`
+testado contra **todo** o conteúdo real baixado (17 arquivos, incluindo a referência de linguagem do N80
+de 109KB) sem nenhum crash, maior arquivo renderizado em 185ms. Link clicável e aparência visual (cores/
+tamanhos de título) **não verificados visualmente** (app GUI nativo, sem ferramenta de screenshot
+disponível nesta sessão) — pendente de conferência ao vivo pelo usuário.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -2263,7 +2492,9 @@ operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
   MML confirmado por pesquisa direta, não pela conversa perdida) — ver seção 8 acima.
 - ~~Mapeamento completo de funções/parâmetros NestorBASIC (módulo 9).~~ — **resolvida (2026-07-27)**:
   todas as 87 funções (0-86) mapeadas a partir de `nestor/SRC/NBASIC/nbas111e.txt`, ver seção 9 acima.
-- Lista de comandos suportados/incompatíveis do msxbas2rom (módulo 10), antes de decidir se vale a pena.
+- Lista de comandos suportados/incompatíveis do msxbas2rom (módulo 10) — segue em aberto **só** pro
+  pipeline pesado original (editores gráficos → dialeto msxbas2rom); a integração leve pedida em
+  2026-08-01 (arquivo novo + download + Ajuda, ver módulo 18) não depende dessa lista.
 - ~~`badig/msx/openmsx_output.tcl` ainda não foi lido~~ — **obsoleta (2026-07-30)**: o caminho
   implementado (`OpenMSXBridge.pbi`, módulo 12) não usa `-script openmsx_output.tcl`/convenção
   `CHR$(7)` nenhuma — foi pelo caminho mais simples (named pipe `-control pipe:`, igual ao Catapult),

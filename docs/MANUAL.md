@@ -267,14 +267,20 @@ que fica sem destaque.
 
 Esses comandos também estão disponíveis pelo menu **Arquivo**.
 
-**Tipos de arquivo**: o menu **Arquivo** tem dois comandos de "criar novo" — **Novo** (`Ctrl+N`) cria
-uma aba MSX-BASIC/Dignified (`.dmx`), **Novo Assembly** (`Ctrl+Shift+N`) cria uma aba Z80 Assembly
-(`.asm`). Cada aba lembra seu próprio tipo (detectado automaticamente pela extensão ao abrir um
-arquivo existente — `.asm`/`.z80`/`.mac` viram Assembly, o resto vira Dignified) e aplica o destaque
-de sintaxe certo: o dialeto Dignified numa aba `.dmx`, ou o vocabulário do assembler
-**N80/Nestor80** (mnemônicos, registradores, diretivas, literais numéricos em qualquer radix) numa
-aba `.asm`. O motor que monta `.asm` em binário Z80 ainda não existe — por enquanto a aba `.asm` é só
-edição com destaque de sintaxe, ver [`SPEC.md`](SPEC.md#2-assembler-z80).
+**Tipos de arquivo**: o menu **Arquivo** tem três comandos de "criar novo" que definem o tipo da aba —
+**Novo** (`Ctrl+N`, MSX-BASIC/Dignified, `.dmx`), **Novo Assembly** (`Ctrl+Shift+N`, Z80 Assembly,
+`.asm`) e **Novo MSXBas2Rom...** (ASCII clássico numerado, `.bas` — ver [Suporte a
+MSXBAS2ROM](#suporte-a-msxbas2rom)). Cada aba lembra seu próprio tipo (detectado automaticamente pela
+extensão ao abrir um arquivo existente — `.asm`/`.z80`/`.mac` viram Assembly, `.bas` vira MSXBas2Rom, o
+resto vira Dignified) e aplica o destaque de sintaxe certo: o dialeto Dignified numa aba `.dmx`
+(estendido com os comandos/funções do MSXBAS2ROM — `CMD TURBO`, `SCREEN LOAD`, `HEAP()`,
+`COLLISION()` etc. — só numa aba `.bas`, pra não confundir uma variável comum chamada `TURBO` num
+programa Dignified qualquer), ou o vocabulário do assembler **N80/Nestor80** (mnemônicos, registradores,
+diretivas, literais numéricos em qualquer radix) numa aba `.asm`. O motor que monta `.asm` em binário
+Z80 é nativo desta IDE (compatível M80/L80) — ver [Assembler Z80](#assembler-z80). A IDE também consegue
+baixar o **N80/LinkStor80/LibStor80** de terceiro (mesmo dialeto, mesmo autor do NestorBASIC) pra uso
+via linha de comando fora da IDE — ver [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80); ainda
+não há um botão que monte usando esses binários em vez do motor nativo.
 
 ### Desfazer / refazer
 
@@ -311,6 +317,53 @@ Fica para uma próxima etapa (o JOE tem bem mais comandos que isso — veja a re
 - Salvar bloco marcado direto num arquivo (`Ctrl+K W`)
 - Menu de opções do editor (`Ctrl+O`, no JOE — não confundir com o `Ctrl+O` de "Abrir" já
   usado pelo menu **Arquivo** desta IDE)
+
+---
+
+## MSX-BASIC clássico: converter, tokenizar e renumerar
+
+Além do fluxo principal (Dignified → ASCII → tokenizado, disparado por **Executar → BASIC**/`F5`, ver
+[Execução](#execução)), o menu **Arquivo** tem quatro comandos pra gerar/editar diretamente os formatos
+intermediários — úteis pra inspecionar o resultado, gerar um `.bmx`/`.amx` sem abrir o openMSX, ou
+trabalhar com um listing MSX-BASIC clássico (numerado, sem Dignified) que já existia antes, vindo de
+uma revista/outro editor:
+
+- **Dignified → ASCII nativo (.amx)...** — roda só o pré-processador (resolve labels/loops/`DEFINE`/
+  `DECLARE`/`INCLUDE`/remtags) e salva o resultado como ASCII clássico numerado, sem tokenizar.
+- **Dignified → tokenizado nativo (.bmx)...** — encadeia pré-processador + tokenizador nativo, gera o
+  binário `.bmx` direto a partir do Dignified da aba atual.
+- **ASCII clássico já aberto → tokenizado nativo (.bmx)...** — para quando a aba **já é** ASCII clássico
+  (não Dignified): tokeniza direto, sem passar pelo pré-processador. Se a aba parecer Dignified (não
+  começa com número), avisa e sugere o comando acima no lugar.
+- **ASCII clássico já aberto → renumerar e criar .BAS...** — pega o mesmo tipo de aba e **renumera** as
+  linhas para a sequência mais compacta possível (`1,2,3...` — números baixos ocupam menos bytes no
+  `.bmx` final), corrigindo automaticamente todo `GOTO`/`GOSUB`/`THEN`/`ELSE`/`RESTORE`/`RESUME`/
+  `RETURN`/`RUN` (inclusive listas `ON...GOTO`/`ON...GOSUB`) para apontar pra linha renumerada certa, e
+  removendo espaços redundantes. Deixa salvar como `.bas` (extensão padrão que o MSX-DOS/MSX-BASIC
+  reconhece), `.amx` (convenção interna desta IDE) ou, encadeando com o tokenizador, `.bmx`.
+
+**Detecção automática**: os dois últimos comandos (e o F5 normal) reconhecem sozinhos se a aba é ASCII
+clássico — a primeira linha com conteúdo começa com um número. Um `.bas` do MSXBAS2ROM (ver [Suporte a
+MSXBAS2ROM](#suporte-a-msxbas2rom)) já é reconhecido assim, sem precisar de nenhum comando especial.
+
+### Executar → Renumerar...
+
+Equivalente nativo do comando `RENUM` real do MSX-BASIC — ao contrário dos comandos de **Arquivo**
+acima (que sempre exportam pra um arquivo novo), este **renumera o programa digitado na própria aba, no
+lugar**, exatamente como o `RENUM` faz ao vivo na máquina. Pede os mesmos 3 parâmetros do comando
+original, um de cada vez:
+
+1. **Nova linha inicial** (padrão `10`)
+2. **Incremento entre as linhas** (padrão `10`)
+3. **Renumerar a partir de qual linha** (número antigo — deixe em branco pra renumerar o programa
+   inteiro)
+
+Linhas antes da "linha a partir de qual renumerar" mantêm o número **original**, mas continuam entrando
+na resolução de `GOTO`/`GOSUB` — uma referência que aponte pra uma dessas linhas preservadas continua
+correta. Se a nova numeração escolhida for colidir com a faixa preservada (ficar fora de ordem), o
+comando recusa com um erro em vez de gerar um programa quebrado — mesma recusa que o `RENUM` real faz.
+O resultado fica no editor normalmente (desfazer com `Ctrl+U` funciona, e a aba é marcada como
+modificada) — não salva sozinho, revise e salve como de costume.
 
 ---
 

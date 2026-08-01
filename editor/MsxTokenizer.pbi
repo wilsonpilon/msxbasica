@@ -772,3 +772,383 @@ Procedure.b Tok_SaveHexAsBinary(HexStr.s, Path.s)
 
   ProcedureReturn #True
 EndProcedure
+
+;- ------------------------------------------------------------
+;- Renumeracao de ASCII classico ("Criar arquivo .BAS")
+;- ------------------------------------------------------------
+;- Comandos cujo numero de linha alvo e de fato uma referencia para outra
+;- linha do PROPRIO programa (por isso seguro remapear via OldToNew) -
+;- subconjunto de Tok_JumpSet: RENUM/AUTO tem o 1o argumento como um numero
+;- NOVO de destino (nao uma referencia existente) e DELETE/LIST/LLIST raramente
+;- aparecem embutidos na logica de um programa (sao comandos de modo direto);
+;- por seguranca esses ficam de fora do remapeamento (o numero e copiado como
+;- esta) para nao arriscar reescrever um argumento que nao e uma referencia.
+Procedure.b Tok_IsRenumberTargetCmd(Cmd.s)
+  ProcedureReturn Bool(Cmd = "GOTO" Or Cmd = "GOSUB" Or Cmd = "THEN" Or Cmd = "ELSE" Or
+                        Cmd = "RESTORE" Or Cmd = "RESUME" Or Cmd = "RETURN" Or Cmd = "RUN")
+EndProcedure
+
+; Reconstroi uma linha de ASCII classico (sem numero de linha) trocando os
+; numeros-alvo de GOTO/GOSUB/THEN/ELSE/RESTORE/RESUME/RETURN/RUN (e as listas
+; separadas por virgula de ON...GOTO/ON...GOSUB) pelo novo numero mapeado em
+; OldToNew(), e colapsando espacos redundantes fora de literais. Espelha
+; deliberadamente o mesmo fluxo de casamento de comandos/literais/numeros de
+; Tok_TokenizeLineBody (incluindo o "quirk" de identificadores que comecam com
+; prefixo de palavra-chave, tipo TOTAL -> TO + TAL) para que a decisao de "isto
+; e um alvo de jump" seja identica a que o tokenizador vai tomar depois -
+; reimplementar essa deteccao do zero arriscaria remapear o numero errado ou
+; deixar um GOTO sem corrigir.
+Procedure.s Tok_RenumberLineBody(Body.s, LineNum.i, Map OldToNew.i())
+  Protected out.s, pos.i = 1, remaining.s, upperRemaining.s
+  Protected matched.b, ti.i, cmd.s, cmdLen.i
+  Protected c.s, c2.s
+
+  While pos <= Len(Body)
+    remaining = Mid(Body, pos, Len(Body) - pos + 1)
+    upperRemaining = UCase(remaining)
+    matched = #False
+
+    If Mid(Body, pos, 1) = " "
+      While pos <= Len(Body) And Mid(Body, pos, 1) = " "
+        pos + 1
+      Wend
+      out + " "
+      Continue
+    EndIf
+
+    For ti = 0 To Tok_Count - 1
+      cmd = Tok_Cmd(ti)
+      cmdLen = Len(cmd)
+      If cmdLen <= Len(upperRemaining) And Left(upperRemaining, cmdLen) = cmd
+        out + cmd
+        pos + cmdLen
+        matched = #True
+
+        If cmd = "AS"
+          ; numero de arquivo (1-2 digitos) apos AS permanece literal
+          Protected asStart.i = pos, asSpaces.i = 0, asDigits.s = ""
+          While pos <= Len(Body) And Mid(Body, pos, 1) = " "
+            asSpaces + 1
+            pos + 1
+          Wend
+          While pos <= Len(Body) And Tok_IsDigit(Mid(Body, pos, 1)) And Len(asDigits) < 2
+            asDigits + Mid(Body, pos, 1)
+            pos + 1
+          Wend
+          If asDigits <> ""
+            If asSpaces > 0 : out + " " : EndIf
+            out + asDigits
+          Else
+            pos = asStart
+          EndIf
+        EndIf
+
+        If FindMapElement(Tok_JumpSet(), cmd)
+          Repeat
+            Protected jSpaces.i = 0, jStart.i = pos
+            While pos <= Len(Body) And Mid(Body, pos, 1) = " "
+              jSpaces + 1
+              pos + 1
+            Wend
+            If pos <= Len(Body) And Tok_IsDigit(Mid(Body, pos, 1))
+              Protected jDigits.s = ""
+              While pos <= Len(Body) And Tok_IsDigit(Mid(Body, pos, 1))
+                jDigits + Mid(Body, pos, 1)
+                pos + 1
+              Wend
+              If jSpaces > 0 : out + " " : EndIf
+              If Tok_IsRenumberTargetCmd(cmd) And Val(jDigits) <> 0
+                ; 0 nao e remapeado: e o sentinela de "ON ERROR GOTO 0"/
+                ; "ON ERROR GOSUB 0" (desliga o tratamento de erro), nao uma
+                ; referencia a uma linha real - confirmado contra caso real em
+                ; sample/teste.dmx ("on error goto 0"). Nunca colide com um
+                ; numero remapeado de verdade (NewStart minimo e 1).
+                Protected key.s = Str(Val(jDigits))
+                If Not FindMapElement(OldToNew(), key)
+                  Tok_Fail(LineNum, cmd + " para linha inexistente: " + jDigits)
+                  ProcedureReturn ""
+                EndIf
+                out + Str(OldToNew())
+              Else
+                out + jDigits
+              EndIf
+            ElseIf pos <= Len(Body) And Mid(Body, pos, 1) = ","
+              Protected commaCount.i = 0
+              While pos <= Len(Body) And Mid(Body, pos, 1) = ","
+                commaCount + 1
+                pos + 1
+              Wend
+              If jSpaces > 0 : out + " " : EndIf
+              Protected csi.i
+              For csi = 1 To commaCount
+                out + ","
+              Next
+            Else
+              pos = jStart
+              Break
+            EndIf
+          ForEver
+        EndIf
+
+        If cmd = "DATA" Or cmd = "REM" Or cmd = "'" Or cmd = "CALL" Or cmd = "_"
+          Protected litChar.s
+          Repeat
+            If pos > Len(Body)
+              Break
+            EndIf
+            litChar = Mid(Body, pos, 1)
+            If cmd = "CALL" Or cmd = "_"
+              litChar = UCase(litChar)
+            EndIf
+            out + litChar
+            pos + 1
+
+            Protected stopLiteral.b = Bool(pos > Len(Body) Or (cmd = "DATA" And Mid(Body, pos, 1) = ":") Or (cmd = "_" And (Mid(Body, pos, 1) = ":" Or Mid(Body, pos, 1) = "(")) Or (cmd = "CALL" And (Mid(Body, pos, 1) = ":" Or Mid(Body, pos, 1) = "(")))
+            If stopLiteral
+              Break
+            EndIf
+          ForEver
+        EndIf
+
+        Break
+      EndIf
+    Next ti
+
+    If Tok_HasError
+      ProcedureReturn ""
+    EndIf
+
+    If matched
+      Continue
+    EndIf
+
+    c = Mid(Body, pos, 1)
+
+    If Tok_IsDigit(c) Or (c = "." And Tok_IsDigit(Mid(Body, pos + 1, 1)))
+      Protected consumed.i
+      Tok_ScanNumber(Mid(Body, pos, Len(Body) - pos + 1), LineNum, @consumed)
+      If Tok_HasError
+        ProcedureReturn ""
+      EndIf
+      out + Mid(Body, pos, consumed)
+      pos + consumed
+      Continue
+    EndIf
+
+    If c = "&"
+      c2 = UCase(Mid(Body, pos + 1, 1))
+      If c2 = "H"
+        Protected hStart.i = pos + 2
+        While hStart <= Len(Body) And ((Mid(Body, hStart, 1) >= "0" And Mid(Body, hStart, 1) <= "9") Or (LCase(Mid(Body, hStart, 1)) >= "a" And LCase(Mid(Body, hStart, 1)) <= "f"))
+          hStart + 1
+        Wend
+        out + Mid(Body, pos, hStart - pos)
+        pos = hStart
+        Continue
+      ElseIf c2 = "O"
+        Protected oStart.i = pos + 2
+        While oStart <= Len(Body) And Mid(Body, oStart, 1) >= "0" And Mid(Body, oStart, 1) <= "7"
+          oStart + 1
+        Wend
+        out + Mid(Body, pos, oStart - pos)
+        pos = oStart
+        Continue
+      ElseIf c2 = "B"
+        Protected bStart.i = pos + 2
+        While bStart <= Len(Body) And (Mid(Body, bStart, 1) = "0" Or Mid(Body, bStart, 1) = "1")
+          bStart + 1
+        Wend
+        out + Mid(Body, pos, bStart - pos)
+        pos = bStart
+        Continue
+      Else
+        out + "&"
+        pos + 1
+        Continue
+      EndIf
+    EndIf
+
+    If c = Chr(34) ; aspas
+      Protected numQuotes.i = 0
+      Repeat
+        out + Mid(Body, pos, 1)
+        If Mid(Body, pos, 1) = Chr(34)
+          numQuotes + 1
+        EndIf
+        pos + 1
+        If numQuotes > 1 Or pos > Len(Body)
+          Break
+        EndIf
+      ForEver
+      Continue
+    EndIf
+
+    If Asc(c) >= 65 And Asc(c) <= 90 Or Tok_IsUpperAlpha(UCase(c))
+      Protected isVar.b = #True
+      Repeat
+        c = UCase(Mid(Body, pos, 1))
+        For ti = 0 To Tok_Count - 1
+          cmd = Tok_Cmd(ti)
+          cmdLen = Len(cmd)
+          If cmdLen <= (Len(Body) - pos + 1) And UCase(Mid(Body, pos, cmdLen)) = cmd
+            isVar = #False
+          EndIf
+        Next ti
+
+        If (Asc(c) < 48 Or Asc(c) > 57) And (Asc(c) < 65 Or Asc(c) > 90) Or Not isVar
+          isVar = #False
+          Break
+        EndIf
+        out + c
+        pos + 1
+      ForEver
+      Continue
+    EndIf
+
+    out + UCase(c)
+    pos + 1
+  Wend
+
+  ProcedureReturn out
+EndProcedure
+
+; Renumera um programa ASCII classico (com numeros de linha reais, nao
+; Dignified), corrigindo todos os alvos de GOTO/GOSUB/THEN/ELSE/RESTORE/
+; RESUME/RETURN/RUN (inclusive listas ON...GOTO/ON...GOSUB) para apontar para
+; os numeros novos. Mesma semantica do comando RENUM real do MSX-BASIC:
+; `RENUM [newline][,[oldline][,increment]]`
+;   NewStart (newline): numero da nova primeira linha renumerada. Default 1
+;     (ao contrario do RENUM real, cujo default e 10 - aqui o padrao segue
+;     compacto/orientado a maquina, ver nota abaixo; quem quer o default
+;     classico passa NewStart=10).
+;   OldLineFrom (oldline): a partir de qual linha ANTIGA comeca a renumeracao
+;     - linhas com numero menor que OldLineFrom ficam com o numero ORIGINAL
+;     intocado (mapeadas na identidade, old=new, so para o remapeamento de
+;     GOTO/GOSUB continuar correto). 0 (default) = renumera o programa
+;     inteiro, igual ao "oldline" omitido no RENUM real (usa a primeira linha
+;     do programa).
+;   NewStep (increment): passo entre os numeros novos. Default 1 (RENUM real
+;     usa 10; numeros baixos tokenizam em menos bytes - 0-9 cabem em 1 byte
+;     contra 2-4 de numeros maiores, ver Tok_ScanNumber/isShortInt - por isso
+;     o padrao aqui e mais compacto que o do RENUM real, que preserva espaco
+;     pra inserir linhas manualmente depois, algo que nao faz sentido aqui
+;     onde o alvo primario e o .bmx final, nao edicao ao vivo na maquina).
+; Retorna "" e preenche Tok_HasError/Tok_ErrorMsg/Tok_ErrorLine em caso de
+; erro (mesma convencao de Tok_Tokenize) - inclusive se OldLineFrom cair no
+; meio das linhas ja renumeradas de forma a colidir com a numeracao antiga
+; preservada (teria que reordenar o programa, RENUM real tambem recusa isso).
+Procedure.s Tok_RenumberAscii(SourceText.s, NewStart.i = 1, NewStep.i = 1, OldLineFrom.i = 0)
+  Protected text.s, lineCount.i, li.i
+  Protected raw.s, trimmed.s, lineNumStr.s, body.s, bodyOut.s
+  Protected digEnd.i, lineNumber.i, lineOrder.i = 0
+  Protected newNum.i = NewStart
+  Protected lastUnrenumbered.i = -1
+  Protected renumbering.b = Bool(OldLineFrom <= 0)
+  Protected out.s = ""
+  NewMap OldToNew.i()
+
+  Tok_InitTables()
+  Tok_HasError = #False
+  Tok_ErrorMsg = ""
+  Tok_ErrorLine = 0
+
+  text = ReplaceString(SourceText, Chr(13) + Chr(10), Chr(10))
+  text = ReplaceString(text, Chr(13), Chr(10))
+  text = ReplaceString(text, Chr(9), "    ")
+  lineCount = CountString(text, Chr(10)) + 1
+
+  ; passe 1: mapeia numero antigo -> novo numero, na ordem do arquivo. Linhas
+  ; antes de OldLineFrom (quando informado) mantem seu proprio numero, so
+  ; entram no mapa como identidade para o passe 2 conseguir resolver
+  ; referencias que apontam pra elas.
+  For li = 1 To lineCount
+    raw = StringField(text, li, Chr(10))
+    trimmed = Trim(raw)
+    If trimmed = ""
+      Continue
+    EndIf
+    If Trim(RemoveString(trimmed, " ")) <> "" And Len(RemoveString(trimmed, "0123456789")) = 0
+      Continue
+    EndIf
+    If Not Tok_IsDigit(Left(trimmed, 1))
+      If Asc(Left(trimmed, 1)) = 26
+        Continue
+      EndIf
+      Tok_Fail(li, "Line not starting with number.")
+      ProcedureReturn ""
+    EndIf
+
+    digEnd = 1
+    While digEnd <= Len(trimmed) And Tok_IsDigit(Mid(trimmed, digEnd, 1))
+      digEnd + 1
+    Wend
+    lineNumStr = Left(trimmed, digEnd - 1)
+    lineNumber = Val(lineNumStr)
+
+    If lineNumber <= lineOrder
+      Tok_Fail(li, "Line number out of order: " + lineNumStr)
+      ProcedureReturn ""
+    EndIf
+    If lineNumber > 65529
+      Tok_Fail(li, "Line number too high: " + lineNumStr)
+      ProcedureReturn ""
+    EndIf
+    lineOrder = lineNumber
+
+    If Not renumbering And lineNumber >= OldLineFrom
+      renumbering = #True
+      If newNum <= lastUnrenumbered
+        Tok_Fail(li, "Nova numeracao (" + Str(newNum) + ") colide com a numeracao original preservada (ate " + Str(lastUnrenumbered) + ") - use uma linha inicial maior.")
+        ProcedureReturn ""
+      EndIf
+    EndIf
+
+    If renumbering
+      If newNum > 65529
+        Tok_Fail(li, "Renumeracao ultrapassa 65529 - use um passo/inicio menor.")
+        ProcedureReturn ""
+      EndIf
+      OldToNew(Str(lineNumber)) = newNum
+      newNum + NewStep
+    Else
+      OldToNew(Str(lineNumber)) = lineNumber
+      lastUnrenumbered = lineNumber
+    EndIf
+  Next li
+
+  ; passe 2: reescreve o programa com os novos numeros e os alvos corrigidos
+  For li = 1 To lineCount
+    raw = StringField(text, li, Chr(10))
+    trimmed = Trim(raw)
+    If trimmed = ""
+      Continue
+    EndIf
+    If Trim(RemoveString(trimmed, " ")) <> "" And Len(RemoveString(trimmed, "0123456789")) = 0
+      Continue
+    EndIf
+    If Asc(Left(trimmed, 1)) = 26
+      Continue
+    EndIf
+
+    digEnd = 1
+    While digEnd <= Len(trimmed) And Tok_IsDigit(Mid(trimmed, digEnd, 1))
+      digEnd + 1
+    Wend
+    lineNumStr = Left(trimmed, digEnd - 1)
+    lineNumber = Val(lineNumStr)
+
+    body = Mid(trimmed, digEnd, Len(trimmed) - digEnd + 1)
+    While Left(body, 1) = " "
+      body = Mid(body, 2)
+    Wend
+
+    bodyOut = Tok_RenumberLineBody(body, li, OldToNew())
+    If Tok_HasError
+      ProcedureReturn ""
+    EndIf
+
+    out + Str(OldToNew(Str(lineNumber))) + " " + Trim(bodyOut) + Chr(13) + Chr(10)
+  Next li
+
+  ProcedureReturn out
+EndProcedure

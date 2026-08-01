@@ -80,6 +80,10 @@ XIncludeFile "BasicDignifiedHelpData.pbi"
 XIncludeFile "BasicDignifiedHelpGui.pbi"
 XIncludeFile "OpenMsxHelpData.pbi"
 XIncludeFile "OpenMsxHelpGui.pbi"
+XIncludeFile "GenericMdHelpGui.pbi"
+XIncludeFile "ExternalToolDownload.pbi"
+XIncludeFile "MsxBas2RomSupport.pbi"
+XIncludeFile "N80Support.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -354,6 +358,7 @@ Enumeration MenuItems
   #Menu_New
   #Menu_NewAssembly
   #Menu_NewNestorBasic
+  #Menu_NewMsxBas2Rom
   #Menu_NewProject
   #Menu_OpenProject
   #Menu_SaveProject
@@ -362,6 +367,7 @@ Enumeration MenuItems
   #Menu_Save
   #Menu_SaveAs
   #Menu_TokenizeNative
+  #Menu_RenumberToBas
   #Menu_DignifiedToAscii
   #Menu_DignifiedToTokenized
   #Menu_CloseTab
@@ -378,6 +384,7 @@ Enumeration MenuItems
   #Menu_CreateGraphosScreen
   #Menu_RunBasic
   #Menu_RunNestorBasic
+  #Menu_RenumberBasic
   #Menu_AssembleZ80
   #Menu_AssembleZ80Rel
   #Menu_LinkZ80
@@ -385,11 +392,15 @@ Enumeration MenuItems
   #Menu_OpenMSXConsole
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
+  #Menu_ConfigureMsxBas2Rom
+  #Menu_ConfigureN80
   #Menu_HelpCommands
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
   #Menu_HelpBasicDignified
   #Menu_HelpOpenMSX
+  #Menu_HelpMsxBas2Rom
+  #Menu_HelpN80
   #Menu_HelpAbout
 EndEnumeration
 
@@ -429,9 +440,12 @@ EndEnumeration
 ; PureBasic (F5), fora do build.ps1.
 ; 7.7.1 = codinome "BFG9200" (pedido explicito do usuario) - BFG9000 do Doom
 ; cruzado com 9200h, o endereco de VRAM (Alfabeto/Layout/Tela do Graphos III)
-; que virou a assinatura desta sessao (galeria de templates do Editor Hexa).
+; que virou a assinatura daquela sessao (galeria de templates do Editor Hexa).
+; 7.9.1 = bump pedido explicitamente pelo usuario ao fechar Renumerar (RENUM),
+; integracao MSXBas2Rom/N80-LinkStor80-LibStor80 e destaque de sintaxe do
+; MSXBas2Rom - sem codinome novo desta vez.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.7.1"
+  #App_Version = "7.9.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -574,6 +588,18 @@ Global NewMap KwOperatorWord.b()
 Global NewMap KwDignifiedStmt.b()
 Global NewMap KwBoolean.b()
 
+; Extensoes de vocabulario do MSXBAS2ROM (github.com/amaurycarvalho/msxbas2rom
+; - ver editor/MsxBas2RomSupport.pbi), so usadas quando o documento esta em
+; modo "BAS" (ver HighlightDocument/HighlightDignifiedText) - um programa
+; Dignified/.dmx comum pode perfeitamente ter uma variavel chamada TURBO ou
+; COLLISION, entao essas palavras so viram destaque de palavra-chave nos
+; arquivos que sao de fato projetos MSXBAS2ROM. Lista extraida do conteudo
+; real baixado em "Configurar -> MSXBas2Rom... -> Baixar"
+; (tools/msxbas2rom/help/extended-commands.md e extended-functions.md).
+Global NewMap KwMsxBas2RomDirective.b()
+Global NewMap KwMsxBas2RomStatement.b()
+Global NewMap KwMsxBas2RomFunctionPlain.b()
+
 ; Vocabulario do lexer de Z80 Assembly (modo "ASM" dos documentos) mora em
 ; Z80Asm.pbi (Z80Asm::IsMnemonic()/IsRegister()/IsDirective()/IsOperatorWord(),
 ; Z80Asm::InitKeywordMaps()) - fonte unica compartilhada com o motor do
@@ -592,7 +618,7 @@ Declare.b IsAlphaChar(C.s)
 Declare.b IsDigitChar(C.s)
 Declare.b IsWordChar(C.s)
 Declare   HighlightDocument(Sci)
-Declare   HighlightDignifiedText(Sci, Text.s)
+Declare   HighlightDignifiedText(Sci, Text.s, IsMsxBas2Rom.b = #False)
 Declare   HighlightZ80Text(Sci, Text.s)
 Declare   SetupEditorStyles(Sci)
 Declare   UpdateLineNumberMargin(Sci)
@@ -671,6 +697,29 @@ Procedure InitKeywordMaps()
 
   ; Booleanos do Basic Dignified
   FillKeywordMap(KwBoolean(), "TRUE FALSE")
+
+  ; MSXBAS2ROM - diretivas de recurso (compile-time, mesmo estilo visual das
+  ; diretivas Dignified - INCLUDE ja e compartilhado com KwDignifiedStmt)
+  FillKeywordMap(KwMsxBas2RomDirective(), "FILE TEXT")
+
+  ; MSXBAS2ROM - comandos estendidos (sub-comandos de CMD, palavras de
+  ; comandos compostos tipo "SET TILE PATTERN"/"SCREEN PASTE FROM", e
+  ; instrucoes novas tipo IDATA/IREAD/IRESTORE/IPOKE)
+  FillKeywordMap(KwMsxBas2RomStatement(),
+    "KEYCLKOFF CLRKEY RUNASM RUNBAS MUTE RAMTOVRAM VRAMTORAM RAMTORAM RSCTORAM " +
+    "DISSCR ENASCR PAGE CLRSCR SETFNT UPDFNTCLR CLIP WRTVRAM WRTFNT WRTCHR " +
+    "WRTCLR WRTSCR WRTSPR WRTSPRPAT WRTSPRCLR WRTSPRATR PLYLOAD PLYSONG " +
+    "PLYPLAY PLYMUTE PLYSOUND PLYLOOP PLYREPLAY IPOKE " +
+    "FROM SCROLL FONT PATTERN FLIP ROTATE DATE " +
+    "IRESTORE IREAD IDATA")
+
+  ; MSXBAS2ROM - funcoes estendidas (HEAP()/MSX()/COLLISION() etc; TILE()/
+  ; TURBO() tambem aparecem como parte de comandos tipo "PUT TILE"/"CMD
+  ; TURBO" mas ficam so aqui - o lexer nao olha a frente pra saber se vem um
+  ; "(" depois, entao um so dos dois estilos vence; funcao foi a escolha)
+  FillKeywordMap(KwMsxBas2RomFunctionPlain(),
+    "HEAP MSX NTSC TURBO MAKER IPEEK PSG COLLISION RESOURCE RESOURCESIZE " +
+    "PLYSTATUS TILE USR0 USR1 USR2 USR3")
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -747,11 +796,11 @@ Procedure HighlightDocument(Sci)
   If Mode = "ASM"
     HighlightZ80Text(Sci, Text)
   Else
-    HighlightDignifiedText(Sci, Text)
+    HighlightDignifiedText(Sci, Text, Bool(Mode = "BAS"))
   EndIf
 EndProcedure
 
-Procedure HighlightDignifiedText(Sci, Text.s)
+Procedure HighlightDignifiedText(Sci, Text.s, IsMsxBas2Rom.b = #False)
   Protected TextLen = Len(Text)
   Protected I = 1
   Protected AtLineStart.b = #True
@@ -938,7 +987,19 @@ Procedure HighlightDignifiedText(Sci, Text.s)
           InDataLiteral = #True
         EndIf
         Continue
+      ElseIf IsMsxBas2Rom And FindMapElement(KwMsxBas2RomDirective(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_DignifiedStmt)
+        Continue
+      ElseIf IsMsxBas2Rom And FindMapElement(KwMsxBas2RomStatement(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Statement)
+        If Word = "IDATA"
+          InDataLiteral = #True
+        EndIf
+        Continue
       ElseIf FindMapElement(KwFunctionPlain(), Word)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Function)
+        Continue
+      ElseIf IsMsxBas2Rom And FindMapElement(KwMsxBas2RomFunctionPlain(), Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Function)
         Continue
       ElseIf FindMapElement(KwOperatorWord(), Word)
@@ -1436,6 +1497,8 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
     Select LCase(GetExtensionPart(Path))
       Case "asm", "z80", "mac"
         DocMode = "ASM"
+      Case "bas"
+        DocMode = "BAS" ; MSX-BASIC classico "padrao" (msxbas2rom etc) - ver MsxBas2RomSupport.pbi
       Default
         DocMode = "DMX"
     EndSelect
@@ -1453,6 +1516,8 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
     Protected UntitledExt.s = ".dmx"
     If DocMode = "ASM"
       UntitledExt = ".asm"
+    ElseIf DocMode = "BAS"
+      UntitledExt = ".bas"
     EndIf
     If UntitledBase = "noname"
       UntitledCount + 1
@@ -2004,6 +2069,26 @@ Procedure CloseTab(Position)
   SetActiveTab(NewActive)
 EndProcedure
 
+; Deteccao simples de ASCII classico (linhas ja numeradas, sem Dignified):
+; a primeira linha com conteudo comeca com um digito. Usada tanto pelo menu
+; de tokenizacao manual (SaveAsTokenizedNative) quanto pelos fluxos
+; "Executar" (RunBasicFromActiveTab/RunNestorBasicFromActiveTab) para decidir
+; se pulam o pre-processador Dignified e tokenizam a aba direto.
+Procedure.b LooksLikeClassicAscii(SourceText.s)
+  Protected FirstContentLine.s = ""
+  Protected LineIdx
+  For LineIdx = 0 To CountString(SourceText, Chr(10))
+    FirstContentLine = Trim(StringField(ReplaceString(SourceText, Chr(13), ""), LineIdx + 1, Chr(10)))
+    If FirstContentLine <> ""
+      Break
+    EndIf
+  Next
+  If FirstContentLine = ""
+    ProcedureReturn #False
+  EndIf
+  ProcedureReturn Bool(Asc(FirstContentLine) >= 48 And Asc(FirstContentLine) <= 57)
+EndProcedure
+
 ; Tokeniza o conteudo da aba atual (MSX-BASIC ASCII classico, com numeros de
 ; linha) usando o tokenizador nativo (MsxTokenizer.pbi) e salva o binario
 ; resultante como .bmx. Nao depende de Python nem do toolchain badig/.
@@ -2015,19 +2100,9 @@ Procedure SaveAsTokenizedNative()
 
   Protected SourceText.s = ReadSciText(Docs()\SciGadget)
 
-  ; Este menu espera ASCII classico (linhas ja numeradas), nao Dignified.
-  ; Deteccao simples: se a primeira linha com conteudo nao comeca com um
-  ; numero, o arquivo provavelmente ainda e Dignified - avisa em vez de
-  ; deixar o erro criptico do tokenizador confundir o usuario.
-  Protected FirstContentLine.s = ""
-  Protected LineIdx
-  For LineIdx = 0 To CountString(SourceText, Chr(10))
-    FirstContentLine = Trim(StringField(ReplaceString(SourceText, Chr(13), ""), LineIdx + 1, Chr(10)))
-    If FirstContentLine <> ""
-      Break
-    EndIf
-  Next
-  If FirstContentLine <> "" And Not (Asc(FirstContentLine) >= 48 And Asc(FirstContentLine) <= 57)
+  ; Este menu espera ASCII classico (linhas ja numeradas), nao Dignified -
+  ; avisa em vez de deixar o erro criptico do tokenizador confundir o usuario.
+  If Not LooksLikeClassicAscii(SourceText)
     MessageRequester("Arquivo nao parece ser ASCII classico",
                      "Este menu tokeniza MSX-BASIC classico (linhas ja numeradas)." + Chr(10) +
                      "Este arquivo parece ser codigo Dignified (nao comeca com numero)." + Chr(10) + Chr(10) +
@@ -2065,6 +2140,151 @@ Procedure SaveAsTokenizedNative()
 
   MessageRequester("Tokenizado gerado", "Salvo em:" + Chr(10) + SavePath,
                    #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+EndProcedure
+
+; Renumera o ASCII classico da aba atual (Tok_RenumberAscii, MsxTokenizer.pbi)
+; para a numeracao mais compacta (1,2,3...), corrigindo GOTO/GOSUB/THEN/ELSE/
+; RESTORE/RESUME/RETURN/RUN pros novos numeros, e deixa salvar o resultado como
+; .bas (ASCII "padrao" MSX-DOS), .amx (convencao interna deste projeto) ou,
+; encadeando com o tokenizador nativo, direto como .bmx.
+Procedure SaveAsRenumberedBas()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  Protected SourceText.s = ReadSciText(Docs()\SciGadget)
+
+  If Not LooksLikeClassicAscii(SourceText)
+    MessageRequester("Arquivo nao parece ser ASCII classico",
+                     "Este menu renumera MSX-BASIC classico (linhas ja numeradas)." + Chr(10) +
+                     "Este arquivo parece ser codigo Dignified (nao comeca com numero)." + Chr(10) + Chr(10) +
+                     "Use 'Dignified -> ASCII nativo (.amx)...' em vez disso.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected RenumberedAscii.s = Tok_RenumberAscii(SourceText)
+  If Tok_HasError
+    MessageRequester("Erro ao renumerar",
+                     "Linha " + Str(Tok_ErrorLine) + ": " + Tok_ErrorMsg,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bas"
+
+  Protected SavePath.s = SaveFileRequester("Salvar como MSX-BASIC renumerado", Suggestion,
+                                           "MSX-BASIC padrao (*.bas)|*.bas|MSX Basic ASCII (*.amx)|*.amx|" +
+                                           "MSX Basic tokenizado (*.bmx)|*.bmx|Todos os arquivos (*.*)|*.*", 0)
+  If SavePath = ""
+    ProcedureReturn
+  EndIf
+
+  If LCase(GetExtensionPart(SavePath)) = "bmx"
+    Protected HexOut.s = Tok_Tokenize(RenumberedAscii)
+    If Tok_HasError
+      MessageRequester("Erro ao tokenizar",
+                       "Linha " + Str(Tok_ErrorLine) + ": " + Tok_ErrorMsg,
+                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+      ProcedureReturn
+    EndIf
+    If Not Tok_SaveHexAsBinary(HexOut, SavePath)
+      MessageRequester("Erro", "Nao foi possivel salvar o arquivo:" + Chr(10) + SavePath,
+                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+      ProcedureReturn
+    EndIf
+  Else
+    Protected FileNum = CreateFile(#PB_Any, SavePath)
+    If Not FileNum
+      MessageRequester("Erro", "Nao foi possivel salvar o arquivo:" + Chr(10) + SavePath,
+                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+      ProcedureReturn
+    EndIf
+    WriteString(FileNum, RenumberedAscii)
+    CloseFile(FileNum)
+  EndIf
+
+  MessageRequester("Renumerado gerado", "Salvo em:" + Chr(10) + SavePath,
+                   #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+EndProcedure
+
+; Menu "Executar -> Renumerar...": equivalente nativo do comando RENUM do
+; MSX-BASIC. Ao contrario de SaveAsRenumberedBas() (sempre renumera o
+; programa inteiro pra numeracao mais compacta e exporta pra um arquivo
+; novo), este renumera o programa DIGITADO na aba, no lugar (como o RENUM
+; real faz na maquina), aceitando os mesmos 3 parametros do comando original:
+; `RENUM [nova linha inicial][,[linha a partir da qual renumerar][,incremento]]`.
+; Linhas antes da "linha a partir da qual renumerar" mantem seu numero
+; original (Tok_RenumberAscii() ja trata isso via OldLineFrom). O motor
+; (Tok_RenumberAscii/Tok_RenumberLineBody, MsxTokenizer.pbi) resolve GOTO/
+; GOSUB/THEN/ELSE/RESTORE/RESUME/RETURN/RUN (incl. ON...GOTO/ON...GOSUB e
+; IF...THEN GOTO) em duas passadas: a 1a mapeia numero-antigo -> numero-novo
+; percorrendo o programa inteiro, a 2a reescreve cada linha resolvendo os
+; alvos contra esse mapa - so assim um GOTO que aponta pra FRENTE no programa
+; (referencia uma linha que so vai ser numerada depois, no arquivo) resolve
+; corretamente.
+Procedure RenumberActiveTabInPlace()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  Protected SourceText.s = ReadSciText(Docs()\SciGadget)
+
+  If Not LooksLikeClassicAscii(SourceText)
+    MessageRequester("Arquivo nao parece ser ASCII classico",
+                     "Renumerar (RENUM) so funciona com MSX-BASIC classico (linhas ja numeradas)." + Chr(10) +
+                     "Este arquivo parece ser codigo Dignified (nao comeca com numero).",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected Answer.s = InputRequester("Renumerar (RENUM)", "Nova linha inicial:", "10", 0, WindowID(#MainWindow))
+  If Answer = ""
+    ProcedureReturn
+  EndIf
+  Protected NewStart.i = Val(Answer)
+  If NewStart < 1
+    MessageRequester("Renumerar (RENUM)", "A nova linha inicial deve ser 1 ou maior.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Answer = InputRequester("Renumerar (RENUM)", "Incremento entre as linhas:", "10", 0, WindowID(#MainWindow))
+  If Answer = ""
+    ProcedureReturn
+  EndIf
+  Protected NewStep.i = Val(Answer)
+  If NewStep < 1
+    MessageRequester("Renumerar (RENUM)", "O incremento deve ser 1 ou maior.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Answer = InputRequester("Renumerar (RENUM)",
+                          "Renumerar a partir de qual linha (numero antigo)?" + Chr(10) +
+                          "Deixe em branco para renumerar o programa inteiro.", "", 0, WindowID(#MainWindow))
+  Protected OldLineFrom.i = Val(Answer) ; "" -> 0 -> Tok_RenumberAscii trata como "programa inteiro"
+  If OldLineFrom < 0
+    MessageRequester("Renumerar (RENUM)", "A linha inicial deve ser 0 ou maior.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  Protected RenumberedAscii.s = Tok_RenumberAscii(SourceText, NewStart, NewStep, OldLineFrom)
+  If Tok_HasError
+    MessageRequester("Erro ao renumerar",
+                     "Linha " + Str(Tok_ErrorLine) + ": " + Tok_ErrorMsg,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProcedureReturn
+  EndIf
+
+  WriteSciText(Docs()\SciGadget, RenumberedAscii)
 EndProcedure
 
 ; Copia as configuracoes da tela "Configurar -> Basic Dignified..." (BadigCfg,
@@ -2205,6 +2425,10 @@ EndProcedure
 ; SaveAsTokenizedFromDignified() quando "Abrir o openMSX e rodar o codigo
 ; apos gerar" esta marcado, so que aqui e sempre (acao explicita de "rodar",
 ; sem depender do checkbox EmRun nem passar pelo dialogo de Salvar Como).
+; Se a aba ja contem ASCII classico (linhas numeradas - ver
+; LooksLikeClassicAscii), pula o pre-processador Dignified e tokeniza a aba
+; direto, senao o pre-processador mangla os numeros de linha originais
+; tratando-os como texto comum em vez de reconhecer o arquivo como ja pronto.
 Procedure RunBasicFromActiveTab()
   Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
@@ -2219,9 +2443,14 @@ Procedure RunBasicFromActiveTab()
     ProcedureReturn
   EndIf
 
-  Protected AsciiOut.s = RunDignifiedPreprocessor()
-  If AsciiOut = ""
-    ProcedureReturn
+  Protected AsciiOut.s
+  If LooksLikeClassicAscii(ReadSciText(Docs()\SciGadget))
+    AsciiOut = ReadSciText(Docs()\SciGadget)
+  Else
+    AsciiOut = RunDignifiedPreprocessor()
+    If AsciiOut = ""
+      ProcedureReturn
+    EndIf
   EndIf
 
   Protected HexOut.s = Tok_Tokenize(AsciiOut)
@@ -2244,7 +2473,9 @@ EndProcedure
 
 ; Menu "Executar -> Nestor Basic": identico a RunBasicFromActiveTab(), so que
 ; manda IncludeNestorBasic=#True pra RunOnOpenMSX() copiar NBASIC.BIN/
-; NBASIC.DAT (de res/) pro disco antes de montar o run.dsk e rodar.
+; NBASIC.DAT (de res/) pro disco antes de montar o run.dsk e rodar. Mesma
+; deteccao de ASCII classico (pula o pre-processador Dignified quando a aba
+; ja tem linhas numeradas) - ver RunBasicFromActiveTab().
 Procedure RunNestorBasicFromActiveTab()
   Protected Position = ActiveTabPosition
   If Position < 0 Or Not SelectElement(Docs(), Position)
@@ -2259,9 +2490,14 @@ Procedure RunNestorBasicFromActiveTab()
     ProcedureReturn
   EndIf
 
-  Protected AsciiOut.s = RunDignifiedPreprocessor()
-  If AsciiOut = ""
-    ProcedureReturn
+  Protected AsciiOut.s
+  If LooksLikeClassicAscii(ReadSciText(Docs()\SciGadget))
+    AsciiOut = ReadSciText(Docs()\SciGadget)
+  Else
+    AsciiOut = RunDignifiedPreprocessor()
+    If AsciiOut = ""
+      ProcedureReturn
+    EndIf
   EndIf
 
   Protected HexOut.s = Tok_Tokenize(AsciiOut)
@@ -2650,6 +2886,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_New,      "Novo" + Chr(9) + "Alt+N")
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
     MenuItem(#Menu_NewNestorBasic, "Novo Nestor Basic...")
+    MenuItem(#Menu_NewMsxBas2Rom, "Novo MSXBas2Rom...")
     MenuItem(#Menu_NewProject, "Novo projeto...")
     MenuItem(#Menu_OpenProject, "Abrir projeto...")
     MenuItem(#Menu_SaveProject, "Salvar projeto")
@@ -2663,6 +2900,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_DignifiedToTokenized, "Dignified -> tokenizado nativo (.bmx)...")
     MenuBar()
     MenuItem(#Menu_TokenizeNative, "ASCII classico ja aberto -> tokenizado nativo (.bmx)...")
+    MenuItem(#Menu_RenumberToBas, "ASCII classico ja aberto -> renumerar e criar .BAS...")
     MenuBar()
     MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Alt+W")
     MenuBar()
@@ -2681,6 +2919,9 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
     MenuItem(#Menu_RunNestorBasic, "Nestor Basic")
+    MenuBar()
+    MenuItem(#Menu_RenumberBasic, "Renumerar...")
+    MenuBar()
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
     MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)...")
     MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario...")
@@ -2691,12 +2932,16 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
+    MenuItem(#Menu_ConfigureMsxBas2Rom, "MSXBas2Rom...")
+    MenuItem(#Menu_ConfigureN80, "N80...")
   MenuTitle("Ajuda")
     MenuItem(#Menu_HelpCommands, "Comandos..." + Chr(9) + "Ctrl+K H")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
     MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
     MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
     MenuItem(#Menu_HelpOpenMSX, "openMSX...")
+    MenuItem(#Menu_HelpMsxBas2Rom, "MSXBas2Rom...")
+    MenuItem(#Menu_HelpN80, "N80...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 ; Novo/Fechar aba usam Alt (nao Ctrl) porque Ctrl+N e Ctrl+W tem funcao propria
@@ -2743,6 +2988,9 @@ Repeat
         Case #Menu_NewNestorBasic
           AddDocumentTab("", NestorBasicTemplateText(), "DMX", "nbasic")
 
+        Case #Menu_NewMsxBas2Rom
+          AddDocumentTab("", MsxBas2RomTemplateText(), "BAS", "msxbas2rom")
+
         Case #Menu_NewProject
           If OfferSaveProject()
             Define NewProjectPath.s = SaveFileRequester("Novo projeto MSX", "", #File_Pattern_Project, 0)
@@ -2785,6 +3033,9 @@ Repeat
 
         Case #Menu_TokenizeNative
           SaveAsTokenizedNative()
+
+        Case #Menu_RenumberToBas
+          SaveAsRenumberedBas()
 
         Case #Menu_DignifiedToAscii
           SaveAsAsciiFromDignified()
@@ -2834,6 +3085,9 @@ Repeat
         Case #Menu_RunNestorBasic
           RunNestorBasicFromActiveTab()
 
+        Case #Menu_RenumberBasic
+          RenumberActiveTabInPlace()
+
         Case #Menu_AssembleZ80
           AssembleZ80FromActiveTab()
 
@@ -2864,6 +3118,12 @@ Repeat
             ResizeInterface()
           EndIf
 
+        Case #Menu_ConfigureMsxBas2Rom
+          MsxBas2RomSettings_OpenWindow(#MainWindow)
+
+        Case #Menu_ConfigureN80
+          N80Settings_OpenWindow(#MainWindow)
+
         Case #Menu_HelpCommands
           WS_ShowHelp()
 
@@ -2878,6 +3138,12 @@ Repeat
 
         Case #Menu_HelpOpenMSX
           OpenMsxHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpMsxBas2Rom
+          GenMdHelp_OpenWindow(#MainWindow, "Ajuda - MSXBas2Rom", MsxBas2Rom_HelpDir())
+
+        Case #Menu_HelpN80
+          GenMdHelp_OpenWindow(#MainWindow, "Ajuda - N80 / LinkStor80 / LibStor80 / M80L80", N80_HelpDir())
 
         Case #Menu_HelpAbout
           ShowAboutDialog()

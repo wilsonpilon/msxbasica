@@ -1,0 +1,57 @@
+[
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Linha de comando (-h)",
+    "file" : "cli-help.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Visao geral",
+    "file" : "home.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Instalacao",
+    "file" : "install.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Primeiros passos",
+    "file" : "gettingstarted.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Uso e opcoes de linha de comando",
+    "file" : "usage.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Indice da documentacao",
+    "file" : "documentation.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Limitacoes e diferencas ao compilar",
+    "file" : "compiling-code.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Diretivas de recursos (assets)",
+    "file" : "resource-directives.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Comandos estendidos",
+    "file" : "extended-commands.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Funcoes estendidas",
+    "file" : "extended-functions.md"
+  },
+  {
+    "group": "MSXBAS2ROM",
+    "title": "Como obter ajuda",
+    "file" : "getting-help.md"
+  }
+]

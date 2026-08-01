@@ -69,7 +69,8 @@
       "Bash(xxd \"c:/temp/user/claude/E--msxbasica/f7ee86a4-b264-4b2d-9047-f013e425fcb2/scratchpad/relmin.rel\")",
       "Bash(C:\\\\Basic\\\\Compilers\\\\pbcompiler.exe *)",
       "Bash(python3 -c ' *)",
-      "Bash(powershell -NoProfile -Command \"\\(Get-Content -Raw 'E:\\\\msxbasica\\\\docs\\\\manual_msx2fm_acvs.pdf' | Select-String -Pattern '/N \\(\\\\d+\\)'\\).Matches\")"
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content -Raw 'E:\\\\msxbasica\\\\docs\\\\manual_msx2fm_acvs.pdf' | Select-String -Pattern '/N \\(\\\\d+\\)'\\).Matches\")",
+      "Bash(./editor/tools/DigTestCli.exe *)"
     ]
   }
 }

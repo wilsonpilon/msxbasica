@@ -1,0 +1,8 @@
+10 print "Teste"
+20 a$=input$(1)
+30 goto 200
+40 end
+200 if a$="s" then gosub 1000
+210 goto 40
+1000 print "XXX"
+1010 return
