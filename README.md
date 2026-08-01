@@ -1205,6 +1205,15 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   pode ter uma variável chamada `TURBO`, então a extensão não entra nas tabelas globais existentes.
   Validado com harness de console isolado (11 casos, incluindo dois confirmando que essas palavras
   continuam identificador comum fora do modo MSXBas2Rom).
+- **2026-08-01 (mesma sessão) — bump de versão para `7.9.1`**: pedido explícito do usuário, fechando
+  a sequência de features desta sessão (Renumerar/`RENUM`, integração MSXBas2Rom + N80/LinkStor80/
+  LibStor80 com download e Ajuda, destaque de sintaxe estendido) e uma passada de organização na
+  documentação — `docs/MANUAL.md` ganhou as seções que faltavam pra essas features (nenhuma delas
+  tinha guia de uso até então: pipeline nativo de conversão/tokenização de ASCII clássico, Renumerar,
+  Suporte a MSXBAS2ROM, N80/LinkStor80/LibStor80), e um trecho desatualizado (dizia que o motor do
+  assembler Z80 "ainda não existe", quando na verdade o resto do próprio manual já documentava o
+  assembler nativo em detalhe) foi corrigido. `build.ps1` (`$Version`) e `#App_Version`
+  (`editor/BadigEditor.pb`) atualizados juntos, sem codinome novo desta vez.
 
 ## Ferramentas e ambiente
 

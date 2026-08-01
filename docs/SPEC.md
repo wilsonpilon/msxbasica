@@ -2472,6 +2472,14 @@ de 109KB) sem nenhum crash, maior arquivo renderizado em 185ms. Link clicável e
 tamanhos de título) **não verificados visualmente** (app GUI nativo, sem ferramenta de screenshot
 disponível nesta sessão) — pendente de conferência ao vivo pelo usuário.
 
+**Documentação e versão (2026-08-01, pedido explícito do usuário)**: `docs/MANUAL.md` ganhou as seções
+de uso que faltavam pra tudo isso (Renumerar/`RENUM` + pipeline nativo ASCII clássico, Suporte a
+MSXBAS2ROM, N80/LinkStor80/LibStor80) — nenhuma dessas features tinha guia de usuário até então, só a
+entrada técnica aqui no SPEC. De caminho, corrigido um trecho desatualizado do próprio `MANUAL.md` que
+dizia que o motor do assembler Z80 "ainda não existe", contradizendo a seção "Assembler Z80" do mesmo
+arquivo (módulo 2b/2c, já implementado há várias sessões). Versão embutida no executável (`build.ps1`/
+`#App_Version` em `editor/BadigEditor.pb`) atualizada para **7.9.1**, sem codinome novo.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
