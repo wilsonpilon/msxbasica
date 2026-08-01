@@ -7,10 +7,12 @@
 > veja [`SPEC.md`](SPEC.md).
 >
 > Documento vivo — cresce conforme novas partes da IDE (editores visuais, etc.) forem ficando
-> prontas. Hoje cobre o editor de texto, o gerenciador de disco, o editor de sprites, o editor
-> de alfabetos (Graphos III e Aquarela), o editor de som, o editor de música, o editor de DRAW
-> Screen 2, o assembler Z80, o sistema de projeto, a ajuda embutida de MSX BASIC/MSX2+, o
-> suporte a NestorBASIC, o editor hexadecimal e o processo de build.
+> prontas. Hoje cobre o editor de texto, o pipeline de conversão/tokenização/renumeração de
+> MSX-BASIC clássico, o gerenciador de disco, o editor de sprites, o editor de alfabetos
+> (Graphos III e Aquarela), o editor de som, o editor de música, o editor de DRAW Screen 2, o
+> assembler Z80 (nativo e a integração com N80/LinkStor80/LibStor80), o sistema de projeto, a
+> ajuda embutida de MSX BASIC/MSX2+, o suporte a NestorBASIC e a MSXBAS2ROM, o editor
+> hexadecimal e o processo de build.
 
 ---
 
@@ -28,21 +30,23 @@
    - [Ajuda embutida (Ctrl+K H)](#ajuda-embutida-ctrlk-h)
    - [Barra de status](#barra-de-status)
    - [O que ainda não está implementado](#o-que-ainda-não-está-implementado)
-4. [Telas de configuração](#telas-de-configuração)
-5. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
+4. [MSX-BASIC clássico: converter, tokenizar e renumerar](#msx-basic-clássico-converter-tokenizar-e-renumerar)
+   - [Executar → Renumerar...](#executar--renumerar)
+5. [Telas de configuração](#telas-de-configuração)
+6. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
    - [Menu Criar → Disco... (gerenciador gráfico)](#menu-criar--disco-gerenciador-gráfico)
    - [Linha de comando (`--diskmanipulator`)](#linha-de-comando---diskmanipulator)
-6. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
+7. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
    - [Projeto implícito "noname"](#projeto-implícito-noname)
    - [Menu Arquivo → Novo projeto... / Abrir projeto...](#menu-arquivo--novo-projeto--abrir-projeto)
    - [Menu Arquivo → Salvar projeto / Salvar projeto como...](#menu-arquivo--salvar-projeto--salvar-projeto-como)
    - [Cópia das abas de texto e diretório de trabalho](#cópia-das-abas-de-texto-e-diretório-de-trabalho)
    - [Ao sair](#ao-sair)
-7. [Editor de sprites](#editor-de-sprites)
+8. [Editor de sprites](#editor-de-sprites)
    - [Grade, tamanho e modo de cor](#grade-tamanho-e-modo-de-cor)
    - [Ferramentas de desenho](#ferramentas-de-desenho)
    - [Barra de projeto (registrar, navegar, copiar/colar)](#barra-de-projeto-registrar-navegar-copiarcolar)
-8. [Editor de alfabetos](#editor-de-alfabetos)
+9. [Editor de alfabetos](#editor-de-alfabetos)
    - [Tabela de caracteres e grade de edição](#tabela-de-caracteres-e-grade-de-edição)
    - [Marcar bloco (aplicar um efeito num intervalo de caracteres de uma vez)](#marcar-bloco-aplicar-um-efeito-num-intervalo-de-caracteres-de-uma-vez)
    - [Desfazer / refazer](#desfazer--refazer-1)
@@ -50,22 +54,22 @@
    - [Copiar/colar um alfabeto inteiro](#copiarcolar-um-alfabeto-inteiro)
    - [Arquivo .ALF (Graphos III)](#arquivo-alf-graphos-iii)
    - [Barra de projeto e o alfabeto padrão ("projeto 0")](#barra-de-projeto-e-o-alfabeto-padrão-projeto-0)
-9. [Editor de som (PSG)](#editor-de-som-psg)
-   - [Canais A/B/C, ruído e envelope](#canais-abc-ruído-e-envelope)
-   - [Sequência de passos](#sequência-de-passos)
-   - [Tocar / Parar](#tocar--parar)
-   - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor)
-   - [Barra de projeto](#barra-de-projeto)
-10. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
+10. [Editor de som (PSG)](#editor-de-som-psg)
+    - [Canais A/B/C, ruído e envelope](#canais-abc-ruído-e-envelope)
+    - [Sequência de passos](#sequência-de-passos)
+    - [Tocar / Parar](#tocar--parar)
+    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor)
+    - [Barra de projeto](#barra-de-projeto)
+11. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
     - [Montando uma linha](#montando-uma-linha)
     - [Lista de linhas por canal](#lista-de-linhas-por-canal)
     - [Tocar / Parar](#tocar--parar-1)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-1)
     - [Barra de projeto](#barra-de-projeto-1)
-11. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
+12. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
     - [Tabela de 46 caracteres e grade 16x16](#tabela-de-46-caracteres-e-grade-16x16)
     - [Arquivo .FNT](#arquivo-fnt)
-12. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
+13. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
     - [Canvas, paleta e cor de tinta/fundo](#canvas-paleta-e-cor-de-tintafundo)
     - [Ferramentas de desenho](#ferramentas-de-desenho-1)
     - [Parâmetros STEP e LINE -(x,y)](#parâmetros-step-e-line--xy)
@@ -73,10 +77,10 @@
     - [Lista de comandos e mini buffers](#lista-de-comandos-e-mini-buffers)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-2)
     - [Barra de projeto](#barra-de-projeto-2)
-13. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
+14. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
     - [Canvas e color clash](#canvas-e-color-clash)
     - [Paleta INK/PAPER e ferramentas](#paleta-inkpaper-e-ferramentas)
-14. [Assembler Z80](#assembler-z80)
+15. [Assembler Z80](#assembler-z80)
     - [Aba Assembly (.asm)](#aba-assembly-asm)
     - [Montar (Ctrl+F5)](#montar-ctrlf5)
     - [O que já é suportado](#o-que-já-é-suportado)
@@ -85,16 +89,23 @@
     - [Biblioteca Z80 (.LIB)](#biblioteca-z80-lib)
     - [Assembly Sub Project (Makefile primitivo)](#assembly-sub-project-makefile-primitivo)
     - [O que ainda não é suportado](#o-que-ainda-não-é-suportado)
-15. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
+16. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
     - [Abrindo e navegando](#abrindo-e-navegando)
     - [O que está coberto](#o-que-está-coberto)
-16. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
+17. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
     - [Arquivo → Novo Nestor Basic...](#arquivo--novo-nestor-basic)
     - [Executar → Nestor Basic](#executar--nestor-basic)
     - [Ajuda → Nestor Basic...](#ajuda--nestor-basic)
-17. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
+18. [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)
+    - [Arquivo → Novo MSXBas2Rom...](#arquivo--novo-msxbas2rom)
+    - [Configurar → MSXBas2Rom...](#configurar--msxbas2rom)
+    - [Ajuda → MSXBas2Rom...](#ajuda--msxbas2rom)
+19. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
+    - [Configurar → N80...](#configurar--n80)
+    - [Ajuda → N80...](#ajuda--n80)
+20. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
     - [O que está coberto](#o-que-está-coberto-1)
-18. [Editor Hexa](#editor-hexa)
+21. [Editor Hexa](#editor-hexa)
     - [Abrir/Salvar e a grade hex/ASCII](#abrirsalvar-e-a-grade-hexascii)
     - [Reconhecimento de formato](#reconhecimento-de-formato)
     - [Galeria de templates](#galeria-de-templates)
@@ -383,6 +394,12 @@ modificada) — não salva sozinho, revise e salve como de costume.
     **Arquivo → Dignified → tokenizado nativo (.bmx)...** passa a montar um disquete com o programa
     gerado (mais um `AUTOEXEC.BAS` para rodar automaticamente) e abrir o openMSX direto nele, já
     com a máquina/extensão escolhidas.
+- **Configurar → MSXBas2Rom...** — baixa a versão mais recente do compilador de terceiro
+  [MSXBAS2ROM](https://github.com/amaurycarvalho/msxbas2rom) e gera a Ajuda a partir do que foi
+  baixado (ver [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)).
+- **Configurar → N80...** — baixa as versões mais recentes do N80/LinkStor80/LibStor80 de terceiro
+  (e o manual M80L80) e gera a Ajuda a partir do que foi baixado (ver [N80, LinkStor80 e
+  LibStor80](#n80-linkstor80-e-libstor80)).
 - **Ajuda → Sobre...** — versão, build e data de compilação (ver
   [Versão e build](#versão-e-build)).
 
@@ -1275,6 +1292,95 @@ entrada e saída — útil para conferir rapidamente a assinatura de uma funçã
 original.
 
 ![Suporte a NestorBASIC: template gerado por Arquivo → Novo Nestor Basic... ao lado da janela Ajuda → Nestor Basic...](../images/msxbasica-13.png)
+
+---
+
+## Suporte a MSXBAS2ROM
+
+Integração com o [**MSXBAS2ROM**](https://github.com/amaurycarvalho/msxbas2rom) (Amaury Carvalho) — um
+compilador de terceiro que transforma um programa **MSX-BASIC clássico** (`.bas`, numerado, sem
+Dignified) direto num arquivo **`.rom`**, sem precisar do interpretador BASIC da máquina. A IDE não
+embute o compilador — ela baixa a versão oficial mais recente e usa o conteúdo baixado pra gerar a
+Ajuda; compilar o `.rom` em si ainda é feito rodando o `msxbas2rom` baixado pela linha de comando (fora
+da IDE).
+
+### Arquivo → Novo MSXBas2Rom...
+
+Cria uma aba nova já em modo `.bas` (ASCII clássico numerado — ver [MSX-BASIC clássico: converter,
+tokenizar e renumerar](#msx-basic-clássico-converter-tokenizar-e-renumerar)) com um esqueleto mínimo
+pronto pra compilar:
+
+```basic
+10 REM ------------------------------------------------------------
+20 REM  Projeto MSXBAS2ROM
+30 REM  Compile com: msxbas2rom NOMEDOARQUIVO.BAS
+40 REM  https://github.com/amaurycarvalho/msxbas2rom
+50 REM ------------------------------------------------------------
+60 SCREEN 0
+70 PRINT "HELLO, MSX!"
+80 END
+```
+
+O destaque de sintaxe numa aba `.bas` reconhece, além do MSX-BASIC clássico, os comandos e funções
+**estendidos** do MSXBAS2ROM — `CMD TURBO`, `SCREEN LOAD`, `SET TILE PATTERN`, `HEAP()`, `MSX()`,
+`COLLISION()`, `RESOURCE()`, as diretivas de recurso `FILE`/`TEXT` e por aí vai — sem misturar essas
+palavras-chave nas abas Dignified comuns (onde `TURBO`, por exemplo, pode perfeitamente ser o nome de
+uma variável).
+
+### Configurar → MSXBas2Rom...
+
+Único botão por enquanto: **Baixar versão mais recente**, que:
+
+1. Consulta o GitHub e baixa o binário certo pro seu sistema operacional (Windows ou Linux);
+2. Roda `msxbas2rom -h` e busca as páginas principais da wiki oficial (instalação, primeiros passos,
+   uso, comandos/funções estendidos, diretivas de recurso...);
+3. Monta a Ajuda a partir disso (ver abaixo).
+
+Os arquivos baixados ficam em `tools/msxbas2rom/` (pasta irmã de `editor/BadigEditor.exe`) — o binário
+em si e a pasta `help/` com o conteúdo já convertido. Clicar em "Baixar" de novo no futuro atualiza os
+dois.
+
+### Ajuda → MSXBas2Rom...
+
+Mesmo layout de busca/árvore/conteúdo dos outros helps da IDE, mas com uma diferença importante: o
+conteúdo **não vem fixo dentro do `.exe`** — é lido ao vivo da pasta `tools/msxbas2rom/help/` baixada
+acima. Sem nada baixado ainda, o menu avisa e pede pra usar **Configurar → MSXBas2Rom... → Baixar**
+primeiro. O renderizador de Markdown reconhece títulos, blocos de código e **links clicáveis**
+(`[texto](url)` abre no navegador padrão).
+
+---
+
+## N80, LinkStor80 e LibStor80
+
+Downloads de terceiro do [**Nestor80**](https://github.com/Konamiman/Nestor80) (Konamiman/Nestor
+Soriano — mesmo autor do NestorBASIC, ver seção acima): **N80** (assembler Z80/R800/Z280 compatível com
+MACRO-80), **LinkStor80** (`LK80`, substituto do `LINK-80`) e **LibStor80** (`LB80`, substituto do
+`LIB-80`). É o mesmo dialeto que o [assembler Z80 nativo desta IDE](#assembler-z80) porta o
+comportamento de — os dois convivem lado a lado, o N80/LinkStor80/LibStor80 baixado aqui **não**
+substitui o motor nativo (`Ctrl+F5`), é uma opção pra quem quiser rodá-los direto por fora, por
+linha de comando.
+
+### Configurar → N80...
+
+Único botão: **Baixar versões mais recentes**. Diferente do MSXBas2Rom (uma release só), N80/LinkStor80/
+LibStor80 vivem no mesmo repositório mas em **releases separadas** — o download resolve as 3 mais
+recentes automaticamente (uma consulta só ao histórico de releases do GitHub) e baixa os 3 binários
+standalone pra `tools/n80/`. Também baixa e monta a Ajuda:
+
+- Saída de `--help` de cada um dos 3 programas;
+- A referência de linguagem e o guia de código relocável do N80;
+- O **manual M80L80** (`docs/MACRO-80.txt` do próprio repositório do Nestor80 — o manual original da
+  Microsoft pro MACRO-80/LINK-80/CREF-80/LIB-80), convertido com uma normalização leve (linhas em CAIXA
+  ALTA viram título; o resto do texto de largura fixa fica como está, pra não bagunçar o alinhamento
+  dos exemplos de código).
+
+### Ajuda → N80...
+
+Mesmo motor de Ajuda do MSXBas2Rom (conteúdo lido ao vivo de `tools/n80/help/`, links clicáveis,
+"Baixar" de novo atualiza sozinho), com 4 grupos na árvore: **N80**, **LinkStor80**, **LibStor80** e
+**M80L80** (o manual completo).
+
+---
 
 ## Controle remoto do openMSX
 
