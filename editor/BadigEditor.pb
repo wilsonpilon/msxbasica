@@ -2080,13 +2080,233 @@ EndProcedure
 ; nova via WM_SETICON.
 Global App_IconBig.i, App_IconSmall.i, App_IconLoaded.b = #False
 
+; Fonte de UI moderna (Segoe UI) aplicada a todos os controles nativos das
+; janelas secundarias (dialogos de configuracao, gerenciador de disco, etc.)
+; no lugar da fonte padrao do sistema - carregada uma unica vez, mesma
+; logica de cache do icone acima. O #MainWindow fica de fora (ver
+; App_ApplyWindowIcon abaixo): sua tab bar/regua/editor ja tem tipografia
+; propria, cuidadosamente ajustada por SetupEditorStyles().
+Global App_UIFont.i = 0, App_UIFontLoaded.b = #False
+
+CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+  ; DwmSetWindowAttribute nao vem pre-declarada pelo PureBasic (ao contrario
+  ; de SendMessage_/GetWindowLong_/etc, que fazem parte do conjunto de APIs
+  ; que o compilador conhece nativamente) - precisa de Import explicito
+  ; contra Dwmapi.lib. So usada pra pintar a barra de titulo escura no tema
+  ; Dark (DWMWA_USE_IMMERSIVE_DARK_MODE), puramente cosmetico.
+  Import "Dwmapi.lib"
+    DwmSetWindowAttribute(hWnd.i, dwAttribute.l, *pvAttribute, cbAttribute.l)
+  EndImport
+CompilerEndIf
+
+; ------------------------------------------------------------
+; Dark mode nativo dos controles (Windows 10 1809+ / 11)
+; ------------------------------------------------------------
+; Fundo realmente escuro em botoes/checkboxes/combos/campos de texto, nao so
+; a cor de fundo da janela por tras deles (o que o resto de App_ApplyWindowIcon
+; ja fazia). Usa as APIs nao documentadas da uxtheme.dll que o Explorer, o
+; Windows Terminal, o VS Code etc. usam pra isso - nao existe API publica pra
+; "modo escuro de verdade" em controles Win32 nativos. Referencia:
+; github.com/ysc3839/win32-darkmode (conferido em 2026-08-02).
+;
+; Ordinais confirmados nesse projeto de referencia (numero, nao nome - GetProcAddress
+; por ordinal, ver App_GetProcAddressOrdinal abaixo):
+;   104 RefreshImmersiveColorPolicyState()
+;   133 AllowDarkModeForWindow(HWND, BOOL) - liga/desliga por janela
+;   135 SetPreferredAppMode(PreferredAppMode) - build >= 18362 (1903); em
+;       builds mais antigas (1809) o mesmo ordinal e AllowDarkModeForApp(BOOL)
+;   136 FlushMenuThemes()
+; Como sao ordinais, o numero pode em teoria apontar pra outra funcao numa
+; build futura do Windows - por isso so ativa depois de confirmar
+; build >= 17763 (1809, primeira com essas APIs) via RtlGetNtVersionNumbers
+; (ntdll - tambem nao documentada, mas usada ha mais de uma decada por
+; incontaveis apps pra saber a build real sem o teto que GetVersion() aplica
+; sem manifesto de compatibilidade) e todo GetProcAddress e checado antes de
+; usar. Se qualquer passo falhar (Windows mais antigo, ordinal ausente...),
+; App_DarkModeSupported fica #False e a janela so fica com o fundo escuro já
+; aplicado acima - nunca pior do que sem essa funcionalidade.
+CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+
+  Enumeration
+    #App_AppMode_Default
+    #App_AppMode_AllowDark
+  EndEnumeration
+
+  Prototype.l Proto_SetPreferredAppMode(Mode.l)
+  Prototype.l Proto_AllowDarkModeForWindow(hWnd.i, Allow.l)
+  Prototype   Proto_FlushMenuThemes()
+  Prototype   Proto_RefreshImmersiveColorPolicyState()
+  Prototype   Proto_RtlGetNtVersionNumbers(*Major.Long, *Minor.Long, *Build.Long)
+
+  ; Import proprio de GetProcAddress (em vez do GetProcAddress_ que o PB ja
+  ; conhece nativamente) com o 2o parametro tipado como Long em vez de
+  ; string: por ordinal, o valor passado e o proprio numero (equivalente ao
+  ; macro C MAKEINTRESOURCE), nao um ponteiro pra string - declarar como
+  ; Long deixa isso explicito e evita qualquer ambiguidade de tipo na
+  ; chamada (GetProcAddress_ nativo do PB espera uma string no 2o parametro).
+  Import "Kernel32.lib"
+    App_GetProcAddressOrdinal(hModule.i, Ordinal.l) As "GetProcAddress"
+  EndImport
+
+  Global App_pSetPreferredAppMode.Proto_SetPreferredAppMode
+  Global App_pAllowDarkModeForWindow.Proto_AllowDarkModeForWindow
+  Global App_pFlushMenuThemes.Proto_FlushMenuThemes
+  Global App_pRefreshImmersiveColorPolicyState.Proto_RefreshImmersiveColorPolicyState
+  Global App_DarkModeInitDone.b = #False
+  Global App_DarkModeSupported.b = #False
+
+  Procedure App_InitDarkMode()
+    App_DarkModeInitDone = #True
+
+    ; GetFunction() (o wrapper de alto nivel do PB pra OpenLibrary/GetProcAddress,
+    ; ja usado em EdAddFontResourceEx acima em EditorSettings.pbi) em vez de
+    ; GetModuleHandle_/GetProcAddress_ crus: a assinatura WinAPI real de
+    ; GetProcAddress espera SEMPRE uma string ANSI pro nome da funcao (nao
+    ; existe variante "W"), mas a ligacao generica GetProcAddress_ do PB
+    ; marshala a string literal como Unicode neste projeto (compilado em
+    ; Unicode) - o nome chega corrompido e a busca falha sempre (confirmado
+    ; via log: GetProcAddress_ nunca encontrava RtlGetNtVersionNumbers,
+    ; deixando App_DarkModeSupported permanentemente #False). GetFunction faz
+    ; essa conversao corretamente por dentro.
+    Protected hNtdll = OpenLibrary(#PB_Any, "ntdll.dll")
+    If Not hNtdll : ProcedureReturn : EndIf
+    Protected *pRtlGetNtVersionNumbers = GetFunction(hNtdll, "RtlGetNtVersionNumbers")
+    If Not *pRtlGetNtVersionNumbers : ProcedureReturn : EndIf
+
+    Protected pVersionFn.Proto_RtlGetNtVersionNumbers = *pRtlGetNtVersionNumbers
+    Protected Major.l, Minor.l, Build.l
+    pVersionFn(@Major, @Minor, @Build)
+    Build & $0FFFFFFF   ; os 4 bits mais altos sao flags internas, nao fazem parte do numero da build
+
+    If Build < 17763    ; Windows 10 1809 - primeira build com essas APIs
+      ProcedureReturn
+    EndIf
+
+    Protected hUxtheme = LoadLibrary_("uxtheme.dll")
+    If Not hUxtheme : ProcedureReturn : EndIf
+
+    App_pSetPreferredAppMode = App_GetProcAddressOrdinal(hUxtheme, 135)
+    App_pAllowDarkModeForWindow = App_GetProcAddressOrdinal(hUxtheme, 133)
+    App_pFlushMenuThemes = App_GetProcAddressOrdinal(hUxtheme, 136)
+    App_pRefreshImmersiveColorPolicyState = App_GetProcAddressOrdinal(hUxtheme, 104)
+
+    If App_pSetPreferredAppMode = 0 Or App_pAllowDarkModeForWindow = 0 Or App_pFlushMenuThemes = 0
+      ProcedureReturn
+    EndIf
+
+    App_pSetPreferredAppMode(#App_AppMode_AllowDark)
+    If App_pRefreshImmersiveColorPolicyState
+      App_pRefreshImmersiveColorPolicyState()
+    EndIf
+    App_pFlushMenuThemes()
+    App_DarkModeSupported = #True
+  EndProcedure
+
+  ; Callback de EnumChildWindows_ que aplica o "estilo moderno" (fonte +
+  ; tema) a cada controle filho de uma janela - fonte Segoe UI sempre, tema
+  ; "DarkMode_Explorer" so quando App_DarkModeSupported. So e disparado de
+  ; forma preguicosa, na primeira mensagem que a janela recebe depois de
+  ; entrar no loop de eventos (ver App_DarkModeWindowProc abaixo) - NUNCA
+  ; direto de dentro de App_ApplyWindowIcon: la ele roda logo apos
+  ; OpenWindow(), mas ANTES de qualquer TextGadget/ButtonGadget/etc ser
+  ; criado em cada um dos ~25 dialogos (todos seguem o padrao OpenWindow ->
+  ; App_ApplyWindowIcon -> criacao dos gadgets) - EnumChildWindows_ chamado
+  ; naquele momento nao encontra filho nenhum. Bug real, descoberto so
+  ; depois de tirar um screenshot de verdade da janela (PrintWindow, ver
+  ; SPEC/CLAUDE.md) e ver rotulos com fundo claro/texto marrom, destoando do
+  ; resto ja escuro - nao daria pra pegar isso so lendo o codigo.
+  ;
+  ; Nota: tentativa de tambem forcar a cor de rotulos (TextGadget) via
+  ; SetGadgetColor(GetDlgCtrlID_(hWnd), ...) foi abandonada - GetDlgCtrlID_
+  ; NAO devolve o numero do gadget PB neste caso (os valores batidos, ~96
+  ; bytes um do outro, sao claramente enderecos de alguma struct interna do
+  ; PB, nao IDs de controle) e a chamada nunca acertava um gadget de
+  ; verdade. A cor marrom do texto dos rotulos se mostrou independente de
+  ; qualquer coisa neste arquivo (persiste igual com SetWindowColor
+  ; desligado e com App_DarkModeSupported nos dois estados) - parece ser o
+  ; render padrao do TextGadget do PB nesta versao/maquina, nao uma
+  ; regressao introduzida aqui. Corrigir isso direito exigiria colorir cada
+  ; rotulo no proprio arquivo de cada dialogo (onde o numero do gadget e
+  ; conhecido de verdade), um trabalho maior, dialogo por dialogo.
+  Procedure App_StyleChildCallback(hWnd, lParam)
+    If App_UIFont
+      SendMessage_(hWnd, #WM_SETFONT, FontID(App_UIFont), #True)
+    EndIf
+
+    If App_DarkModeSupported
+      If EditorCfg\Theme = "Dark"
+        SetWindowTheme_(hWnd, @"DarkMode_Explorer", #Null)
+      Else
+        SetWindowTheme_(hWnd, #Null, #Null)
+      EndIf
+    EndIf
+    ProcedureReturn #True
+  EndProcedure
+
+  ; Uma entrada por HWND, nunca limpa - cada dialogo abre com uma janela
+  ; nova (HWND novo) por sessao de uso, o custo de memoria de HWNDs antigos
+  ; acumulados ao longo de uma sessao longa e desprezivel.
+  Global NewMap App_StyledWindows.b()
+
+  ; Pincel cacheado (evita vazar um HBRUSH a cada repintura) pro fundo dos
+  ; campos de texto/combo via WM_CTLCOLOREDIT/LISTBOX - continua util como
+  ; reforco do que o SetGadgetColor acima ja faz (mesma cor, mesmo
+  ; resultado), mas e o unico jeito de tambem colorir o dropdown do combo,
+  ; que SetGadgetColor nao alcanca.
+  Procedure App_EditorBgBrush()
+    Static Cached.i, CachedRGB.i = -1
+    If CachedRGB <> Color_EditorBg
+      If Cached : DeleteObject_(Cached) : EndIf
+      Cached = CreateSolidBrush_(Color_EditorBg)
+      CachedRGB = Color_EditorBg
+    EndIf
+    ProcedureReturn Cached
+  EndProcedure
+
+  Procedure App_DarkModeWindowProc(hWnd, uMsg, wParam, lParam)
+    ; So prime em WM_PAINT (nao na primeira mensagem qualquer): mensagens
+    ; como WM_PARENTNOTIFY chegam SINCRONAMENTE durante a criacao de cada
+    ; gadget (no meio das chamadas TextGadget()/ButtonGadget()/etc, uma por
+    ; controle), entao "a primeira mensagem que a janela recebe" podia pegar
+    ; o dialogo com 1 controle so (ou nenhum) - confirmado com log real
+    ; (Static, ctrlid=-1, nem gadget de verdade ainda). WM_PAINT so acontece
+    ; quando a fila de mensagens fica ociosa, ou seja, depois que TODO o
+    ; codigo sincrono de criacao de gadgets do procedimento ja rodou.
+    If uMsg = #WM_PAINT
+      Protected Key.s = Str(hWnd)
+      If Not App_StyledWindows(Key)
+        App_StyledWindows(Key) = #True
+        EnumChildWindows_(hWnd, @App_StyleChildCallback(), 0)
+      EndIf
+    EndIf
+
+    If App_DarkModeSupported And EditorCfg\Theme = "Dark"
+      Select uMsg
+        Case #WM_CTLCOLOREDIT, #WM_CTLCOLORLISTBOX
+          SetTextColor_(wParam, Color_TextActive)
+          SetBkColor_(wParam, Color_EditorBg)
+          ProcedureReturn App_EditorBgBrush()
+      EndSelect
+    EndIf
+    ProcedureReturn #PB_ProcessPureBasicEvents
+  EndProcedure
+
+CompilerEndIf
+
 Procedure App_ApplyWindowIcon(WinNum)
   ; ExtractIconEx_/WM_SETICON sao WinAPI puro (achado real compilando no Linux
   ; via WSL, 2026-07-29, ver CLAUDE.md) - sem equivalente generico aqui pra
   ; outros OS (Linux nao embute /ICON no binario, ver build.sh), entao esta
   ; funcao vira no-op fora do Windows. Chamada incondicionalmente de ~25
   ; lugares (toda janela top-level), por isso o guard fica dentro do corpo em
-  ; vez de nos call sites.
+  ; vez de nos call sites. Alem do icone, agora tambem centraliza o "toque
+  ; moderno" comum a toda janela top-level: fonte Segoe UI nos controles
+  ; nativos, fundo alinhado ao tema (Color_AppBg, ver ApplyTheme()), barra
+  ; de titulo escura no tema Dark e, quando App_DarkModeSupported (ver
+  ; App_InitDarkMode acima), controles nativos (botoes/combos/campos de
+  ; texto) com fundo escuro de verdade - tirar a cara "Windows 95" dos
+  ; dialogos, sem mexer no editor principal (ja tem tipografia/tema
+  ; proprios) nem arriscar reescrever cada janela individualmente.
   CompilerIf #PB_Compiler_OS = #PB_OS_Windows
     If Not App_IconLoaded
       App_IconLoaded = #True
@@ -2100,6 +2320,49 @@ Procedure App_ApplyWindowIcon(WinNum)
     EndIf
     If App_IconSmall
       SendMessage_(WindowID(WinNum), #WM_SETICON, #ICON_SMALL, App_IconSmall)
+    EndIf
+
+    If Not App_UIFontLoaded
+      App_UIFontLoaded = #True
+      App_UIFont = LoadFont(#PB_Any, "Segoe UI", 9)
+    EndIf
+
+    If Not App_DarkModeInitDone
+      App_InitDarkMode()
+    EndIf
+
+    ; AllowDarkModeForWindow tambem no #MainWindow (nao so nos dialogos
+    ; secundarios abaixo): ele proprio nao usa o resto deste bloco (tab
+    ; bar/regua/editor tem tema proprio, ver ApplyTheme()), mas seus filhos
+    ; nativos novos - toolbar, status bar - se beneficiam do mesmo sinal
+    ; "esta janela permite controles escuros" que comctl32 consulta na
+    ; ancestral ao pintar esses controles.
+    If App_DarkModeSupported
+      App_pAllowDarkModeForWindow(WindowID(WinNum), Bool(EditorCfg\Theme = "Dark"))
+    EndIf
+
+    If WinNum <> #MainWindow
+      SetWindowColor(WinNum, Color_AppBg)
+      ; So registra o callback (fonte/cor dos filhos, ver App_StyleChildCallback
+      ; acima) - nao chama EnumChildWindows_ aqui: os gadgets do dialogo ainda
+      ; nao existem neste ponto (App_ApplyWindowIcon roda logo apos OpenWindow,
+      ; antes de qualquer TextGadget/ButtonGadget/etc), so a primeira mensagem
+      ; recebida ja dentro do loop de eventos garante isso.
+      SetWindowCallback(@App_DarkModeWindowProc(), WinNum)
+    EndIf
+
+    Protected DarkModeFlag.l
+    If EditorCfg\Theme = "Dark"
+      DarkModeFlag = #True
+    Else
+      DarkModeFlag = #False
+    EndIf
+    ; 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1+/11); builds mais
+    ; antigos (1809-1903) usavam o valor 19 pro mesmo atributo - tenta os
+    ; dois, sem erro se nenhum existir (versoes ainda mais antigas do Windows
+    ; simplesmente ficam com a barra de titulo padrao).
+    If DwmSetWindowAttribute(WindowID(WinNum), 20, @DarkModeFlag, SizeOf(Long))
+      DwmSetWindowAttribute(WindowID(WinNum), 19, @DarkModeFlag, SizeOf(Long))
     EndIf
   CompilerEndIf
 EndProcedure

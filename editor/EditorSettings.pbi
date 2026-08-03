@@ -283,7 +283,13 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
-  Protected WinW = 560, WinH = 300
+  ; Grade de layout com margens/espacamentos generosos (24px nas bordas,
+  ; ~26-30px entre grupos, 8px entre um rotulo e o campo logo abaixo dele) -
+  ; ao inves dos ~15px colados uns nos outros que a janela tinha antes
+  ; (pedido explicito do usuario pra tirar a cara "Windows 95" compacta dos
+  ; dialogos). Todo campo/combo/botao usa a mesma altura (24px, 32px so nos
+  ; botoes principais Salvar/Cancelar) para o alinhamento ficar consistente.
+  Protected WinW = 620, WinH = 420
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do Editor",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -293,8 +299,8 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
 
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 15, 150, 20, "Fonte (monoespacada)")
-  Protected G_Font = ComboBoxGadget(#PB_Any, 170, 12, 260, 22)
+  TextGadget(#PB_Any, 24, 24, 180, 20, "Fonte (monoespacada)")
+  Protected G_Font = ComboBoxGadget(#PB_Any, 214, 21, 270, 24)
 
   Protected NewList Fonts.s()
   EditorCfg_EnumMonospaceFonts(Fonts())
@@ -312,35 +318,35 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
   EndIf
   SetGadgetState(G_Font, FontIndex)
 
-  TextGadget(#PB_Any, 440, 15, 40, 20, "Tam.")
-  Protected G_FontSize = StringGadget(#PB_Any, 480, 12, 50, 22, Str(EditorCfg\FontSize))
+  TextGadget(#PB_Any, 500, 24, 40, 20, "Tam.")
+  Protected G_FontSize = StringGadget(#PB_Any, 548, 21, 48, 24, Str(EditorCfg\FontSize))
 
-  TextGadget(#PB_Any, 15, 55, 400, 20, "Pasta de fontes customizadas (opcional)")
-  Protected G_FontFolder = StringGadget(#PB_Any, 15, 75, 460, 22, EditorCfg\FontFolder)
-  Protected G_FontFolderBrowse = ButtonGadget(#PB_Any, 485, 75, 45, 22, "...")
-  Protected G_FontDownload = ButtonGadget(#PB_Any, 15, 100, 250, 22, "Baixar fontes (Nerd Fonts)...")
+  TextGadget(#PB_Any, 24, 72, 400, 20, "Pasta de fontes customizadas (opcional)")
+  Protected G_FontFolder = StringGadget(#PB_Any, 24, 100, 512, 24, EditorCfg\FontFolder)
+  Protected G_FontFolderBrowse = ButtonGadget(#PB_Any, 546, 100, 50, 24, "...")
+  Protected G_FontDownload = ButtonGadget(#PB_Any, 24, 140, 300, 24, "Baixar fontes (Nerd Fonts)...")
 
-  TextGadget(#PB_Any, 15, 155, 400, 20, "Caminho de instalacao do editor")
-  Protected G_EditorPath = StringGadget(#PB_Any, 15, 175, 460, 22, EditorCfg\EditorPath)
-  Protected G_EditorPathBrowse = ButtonGadget(#PB_Any, 485, 175, 45, 22, "...")
-  TextGadget(#PB_Any, 15, 200, 515, 32,
+  TextGadget(#PB_Any, 24, 190, 400, 20, "Caminho de instalacao do editor")
+  Protected G_EditorPath = StringGadget(#PB_Any, 24, 218, 512, 24, EditorCfg\EditorPath)
+  Protected G_EditorPathBrowse = ButtonGadget(#PB_Any, 546, 218, 50, 24, "...")
+  TextGadget(#PB_Any, 24, 254, 572, 36,
     "Usado como base do diretorio padrao do Basic Dignified Suite - util para manter" + Chr(10) +
     "instalacoes separadas do editor (ex.: estavel e beta).")
 
-  TextGadget(#PB_Any, 15, 245, 100, 20, "Tema")
-  Protected G_Theme = ComboBoxGadget(#PB_Any, 90, 242, 130, 22)
+  TextGadget(#PB_Any, 24, 314, 70, 20, "Tema")
+  Protected G_Theme = ComboBoxGadget(#PB_Any, 108, 311, 160, 24)
   AddGadgetItem(G_Theme, -1, "Escuro")
   AddGadgetItem(G_Theme, -1, "Claro")
   SetGadgetState(G_Theme, Bool(EditorCfg\Theme = "Light"))
 
-  TextGadget(#PB_Any, 300, 245, 100, 20, "Estilo de abas")
-  Protected G_Style = ComboBoxGadget(#PB_Any, 400, 242, 130, 22)
+  TextGadget(#PB_Any, 320, 314, 110, 20, "Estilo de abas")
+  Protected G_Style = ComboBoxGadget(#PB_Any, 444, 311, 152, 24)
   AddGadgetItem(G_Style, -1, "Moderno")
   AddGadgetItem(G_Style, -1, "Classico")
   SetGadgetState(G_Style, Bool(EditorCfg\Style = "Classic"))
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 220, WinH - 40, 100, 28, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 110, WinH - 40, 100, 28, "Cancelar")
+  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
+  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
 
   Protected Event, Quit = #False, Saved = #False, Pick.s
 
