@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Teclas de edicao estilo WordStar/JOE (jstar)
 ;  Editor baseado no JOE (https://joe-editor.sourceforge.io/), que reproduz o

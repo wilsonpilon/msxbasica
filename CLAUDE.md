@@ -61,6 +61,36 @@ fully end-to-end — not yet audited.
   environment to compile/run against; treat any attempt at it as a draft requiring the user's live
   WSL testing loop, not a one-shot fix.
 
+**Real bugs found on Windows with the currently-installed `pbcompiler.exe` (PureBasic 6.40, 2026-08-04)**
+— neither is cross-platform, both are worth knowing before assuming a fresh compile "just works":
+- **`CopyMap()` crashes (access violation) when the source map is empty and its element type is
+  byte/word-sized (`.b()`/`.w()`)** — confirmed with an isolated repro outside this project; `.i()`/
+  `.s()` maps don't have the problem even empty. `Dig_Keeps()` (toggle-rem tracking,
+  `DignifiedPreprocessor.pbi`) is exactly such a map and starts empty on the common path (any file with
+  no `#toggle` marker), so this crashed `editor/tools/DigTestCli.exe` and would have crashed
+  `RunOnOpenMSX()` on almost any real conversion — found only because `DigTestCli.exe` was actually
+  recompiled and run this session, not just read; the version already committed in the repo predates
+  this regression (built with a different PureBasic version/install, presumably). Fix in
+  `Dig_ProcessSource`: only call `CopyMap()` when the source map's `MapSize()` is nonzero; `ClearMap()`
+  on the destination already produces the same result an empty-source `CopyMap()` should. If you hit a
+  mysterious access violation touching `CopyMap()` anywhere else in this codebase, check for the same
+  empty-small-element-map shape before assuming it's a logic bug.
+- **`pbcompiler.exe` decodes an `XIncludeFile`'d `.pbi` as Latin-1/CP1252 instead of UTF-8 if that
+  specific file has no UTF-8 BOM** — confirmed the encoding is detected **per included file**, not once
+  for the whole compilation unit: `editor/BadigEditor.pb` (the root file passed to the compiler) has a
+  BOM, but that alone did **not** protect a BOM-less `XIncludeFile`'d `.pbi` from corruption. Any
+  non-ASCII string *literal* (not comments — those get discarded either way, harmless) in a BOM-less
+  `.pbi` gets mis-decoded: e.g. `Ç` (UTF-8 bytes `C3 87`) turns into two garbage characters (`Ã` +
+  something), silently, with no compiler error. This had already corrupted real content before anyone
+  noticed: 121 `→` navigation arrows across `OpenMsxHelpData.pbi`'s prose (openMSX help text) and
+  box-drawing examples in `BasicDignifiedHelpData.pbi`, plus `Dig_TransOriginal`
+  (`DignifiedPreprocessor.pbi`, the 128-char `-tr` translation table) itself. Fixed by prepending the
+  3-byte UTF-8 BOM (`EF BB BF`) to every affected file — pure metadata, doesn't change content. **Any
+  new `.pbi` file that gets a non-ASCII string literal needs a UTF-8 BOM** (most text editors add one
+  automatically when you explicitly save as "UTF-8 with BOM"/"UTF-8 with signature" — plain "UTF-8"
+  often does not); files with only ASCII content are unaffected either way, so adding a BOM defensively
+  never hurts.
+
 ```powershell
 # Compile editor\BadigEditor.pb -> editor\BadigEditor.exe (finds pbcompiler.exe automatically,
 # or pass -C once and it's remembered in build.config.json, gitignored/machine-local)

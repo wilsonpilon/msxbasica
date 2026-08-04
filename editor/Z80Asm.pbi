@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Z80Asm.pbi - assembler Z80 nativo, compativel M80/L80 (dialeto N80/
 ;  Nestor80 de Konamiman, https://github.com/Konamiman/Nestor80 - clone de

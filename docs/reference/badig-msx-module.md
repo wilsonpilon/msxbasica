@@ -22,12 +22,23 @@ re-levantar isso do zero; comparar com a tabela `TOKENS` de `msxbatoken.py` docu
   consistência entre os dois componentes originais.
 - `c_operat` (linha 59): `AND MOD NOT OR XOR`.
 - `c_symbol` (linha 62): símbolos de operador/pontuação.
-- **Tabelas de tradução Unicode→ASCII MSX** (linha 66-85): `c_replacements` (bloco gráfico
-  desenhado à mão, ex. `☺`→`A`) e o par `c_original`/`c_translat` (mapeamento posicional completo
-  para a faixa alta `0x80-0xFF` da ASCII MSX — é a tabela citada em `BASIC_DIGNIFIED.md` seção
-  *"Classic Basic ASCII characters"*). Usada por `trans_char()` (linha 560) via `str.maketrans`.
-  **Para o port**: essa é uma tabela de dados pura (~128 pares de caractere), portável 1:1 para um
-  array/tabela em PureBasic.
+- **Tabelas de tradução Unicode→ASCII MSX** (linha 66-85): `c_replacements` (31 símbolos gráficos tipo
+  CP437 — carinhas/naipes de baralho/linhas de caixa, código `1-31` do MSX) e o par `c_original`/
+  `c_translat` (mapeamento posicional completo dos 128 caracteres pra faixa alta `0x80-0xFF` da ASCII
+  MSX — é a tabela citada em `BASIC_DIGNIFIED.md` seção *"Classic Basic ASCII characters"*, 159
+  caracteres suportados no total). Usada por `trans_char()` (linha 560) via `str.maketrans`.
+  **Para o port**: essa é uma tabela de dados pura, portável 1:1 para um array/tabela em PureBasic — mas
+  **atenção ao valor de `c_replacements`, não só a chave**: cada entrada NÃO mapeia pra uma letra pura
+  (ex. `☺`→`A`) como pareceria numa leitura rápida do dict — o valor real é `'\x01A'` (`Chr(1)` +
+  letra), confirmado byte a byte (o `\x01` é um caractere de controle invisível, some ao ler o arquivo
+  num visualizador de texto normal, só aparece inspecionando os bytes crus). `Chr(1)` é o prefixo de
+  escape que o driver de tela do MSX usa pra imprimir um dos 31 gráficos especiais sem colidir com os
+  códigos de controle de verdade (posicionar cursor etc.) que ocupam a mesma faixa `1-31` — a letra que
+  segue seleciona qual dos 31. **Isso já mordeu o port uma vez** (2026-08-04): a primeira versão de
+  `Dig_TransReplacement`/`DignifiedPreprocessor.pbi` só copiou a letra, sem o `Chr(1)`, fazendo `-tr`
+  gerar `"A"` em vez do gráfico de verdade pra esses 31 caracteres — corrigido comparando a saída real
+  do `badig.py` de referência (presente no repo em `basic-dignified/`) byte a byte, não só lendo o
+  código-fonte. Ver `docs/SPEC.md`, módulo 3h, item 3, para o detalhe completo da correção.
 
 ## Variáveis: nomes longos → curtos (`process_variable`, linha 516)
 

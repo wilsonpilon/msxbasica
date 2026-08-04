@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Ajuda -> MSX BASIC...: extensao do dicionario (MsxBasicDictData.pbi)
 ;  com os comandos do "Manual MSX 2+ FM" (Ademir Carchano / Flavio Monaco,

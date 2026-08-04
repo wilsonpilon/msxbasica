@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Z80RelFormat.pbi - so as definicoes de TIPO (Structure/Enumeration)
 ;  compartilhadas entre o assembler (Z80Asm.pbi) e o futuro linker

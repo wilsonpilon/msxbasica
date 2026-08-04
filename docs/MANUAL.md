@@ -111,6 +111,9 @@
     - [Galeria de templates](#galeria-de-templates)
     - [Intervalo marcado e operações de bloco](#intervalo-marcado-e-operações-de-bloco)
     - [Barra de rolagem](#barra-de-rolagem)
+22. [Inserir → Caractere Especial](#inserir--caractere-especial)
+    - [A grade e a prévia](#a-grade-e-a-prévia)
+    - [Campo acumulador e o botão Inserir](#campo-acumulador-e-o-botão-inserir)
 
 ---
 
@@ -1547,5 +1550,46 @@ configuração renderizava enorme/esticado e com os botões trocados — esquerd
 descendo): uma seta tradicional no topo, outra na base, e uma trilha no meio desenhando um "thumb"
 proporcional ao trecho do arquivo visível na grade no momento — clicar na trilha pula direto pra
 posição proporcional clicada. A grade também rola pela roda do mouse.
+
+## Inserir → Caractere Especial
+
+Menu **Inserir → Caractere Especial...** abre um mapa de caracteres parecido com o "Mapa de
+Caracteres" do Windows (`charmap.exe`), pros **159 caracteres especiais** que a opção **Traduzir
+caracteres Unicode** (`-tr`, ver [Telas de configuração](#telas-de-configuração)) traduz pra ASCII
+nativo MSX ao converter — acentos, letras gregas, símbolos gráficos, e (a partir desta versão) também
+carinhas/naipes de baralho/linhas de caixa estilo CP437. Sem precisar decorar nem copiar/colar esses
+caracteres de outro lugar: escreva o código Dignified normalmente usando os próprios símbolos Unicode
+(ex. `print "café ☺"`) e ative `-tr` na conversão — esta janela só ajuda a **digitar** os símbolos que
+não têm tecla direta no teclado.
+
+### A grade e a prévia
+
+A grade (16 colunas × 10 linhas, a última célula fica vazia) mostra todos os 159 caracteres. Clicar
+numa célula **seleciona** (contorno vermelho) e atualiza o painel à direita: o caractere numa fonte
+grande, a posição na tabela (`N/159`), o código MSX (`Codigo MSX: 80h`...`FFh` pros 128 primeiros;
+`Grafico MSX: CHR$(1);CHR$(N)` pros 31 últimos — esses usam um escape de 2 bytes, não um código único,
+ver nota abaixo) e o codepoint Unicode. Duplo clique numa célula **seleciona e já adiciona** o
+caractere ao campo acumulador (ver próxima seção), sem precisar do botão "Adicionar" separado.
+
+> Os 31 últimos caracteres da tabela (carinhas, naipes de baralho, linhas de caixa) são especiais: no
+> MSX real eles não têm um único código de 0x80 a 0xFF como os demais — são impressos com uma sequência
+> de dois bytes, `CHR$(1)` seguido de uma letra, que sinaliza pro driver de tela "desenhe um dos 31
+> gráficos especiais" sem colidir com os códigos de controle de verdade (posicionar cursor etc.) que
+> ocupam a mesma faixa. Isso é feito automaticamente pelo conversor quando `-tr` está ativo — não muda
+> nada no jeito de usar esta janela, só explica por que o painel de prévia mostra um formato diferente
+> pra esses 31 caracteres.
+
+### Campo acumulador e o botão Inserir
+
+Abaixo da grade fica um campo de texto (até **80 caracteres**) onde os caracteres escolhidos vão se
+acumulando — pode digitar/editar nele normalmente também, não só clicar na grade. Botões:
+
+- **Adicionar** — acrescenta o caractere selecionado no momento ao campo (mesmo efeito do duplo clique
+  na grade).
+- **Remover último** — apaga o último caractere do campo.
+- **Limpar** — esvazia o campo inteiro.
+- **Inserir** — copia o conteúdo do campo pra posição do cursor na aba de texto ativa, e fecha a
+  janela. Se o campo estiver vazio, só fecha sem inserir nada.
+- **Fechar** — fecha a janela sem inserir nada, mesmo se o campo tiver conteúdo.
 
 ![Editor Hexa reconhecendo um alfabeto Graphos III (galeria de templates) — grade hex/ASCII, painel de tipo de arquivo, barra de operações de bloco e barra de rolagem customizada](../images/msxbasica-14.png)

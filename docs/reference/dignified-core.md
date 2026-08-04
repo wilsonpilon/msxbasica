@@ -125,6 +125,21 @@ produz `tok_list_out`. Structure confirmada por `NEW_MODULES.md` e pelo código:
   `strip_spaces` ativo, senão `' '`.
 - Delega ao módulo clássico (`self.clc.generate()`) ajustes finos por caractere (no MSX: separar
   `X`/`OR` para não virar `XOR`, separar hex de letras `A-F` adjacentes).
+- **Nota pro port (revisada 2026-08-04)**: o port nativo (`Dig_StripSpaces_Piece`,
+  `DignifiedPreprocessor.pbi`) **não** implementa esse algoritmo literalmente (montagem token a token
+  com `c_symb_comp` durante a geração) — é uma reinterpretação pragmática que roda como um passo
+  separado sobre o texto já montado, removendo espaço entre dois átomos-palavra adjacentes exceto
+  quando (a) ambos são numéricos (evita colar `1 2`→`12`) ou (b) colar os dois faz nascer uma
+  palavra-chave diferente na fronteira (equivalente prático ao par `X`/`OR` citado acima, mas
+  generalizado contra toda a lista de palavras reservadas, não só esse caso específico — ver
+  `docs/SPEC.md`, módulo 3h, item 1). `PRINT A`→`PRINTA` é **permitido** pelo port (confirmado seguro:
+  o tokenizador nativo casa palavras-chave em qualquer posição, sem exigir fronteira), diferente do que
+  a frase "para não gerar `PRINTA`" acima sugere sobre o Python original — não fica claro só pela
+  leitura do código Python se essa proteção é estritamente necessária lá também ou só uma cautela
+  extra; o port optou por confiar no comportamento real do próprio tokenizador nativo em vez de
+  replicar a cautela. Separação de hex de letras `A-F` (mencionada no `generate()` clássico acima)
+  **não** foi portada — não verificado a fundo se o tokenizador nativo precisa dela, risco baixo aceito
+  por ora.
 - Verifica tamanho de linha (**limite de 256 caracteres**, erro se exceder — limite real do MSX
   BASIC clássico).
 - Anexa relatório de labels no fim da linha como comentário, se `-lbr` ativo.

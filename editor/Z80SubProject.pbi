@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Z80SubProject.pbi - motor (sem GUI) do "subprojeto de Assembly" (Criar ->
 ;  Assembly Sub Project..., ver Z80SubProjectGui.pbi): um "Makefile

@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Criar -> Sprite...: editor grafico basico de sprites MSX
 ;  Grade clicavel 8x8 ou 16x16 (os dois tamanhos de sprite suportados pelo

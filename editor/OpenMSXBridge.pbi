@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  OpenMSXBridge.pbi - ponte com o openMSX pra controle externo (menu
 ;  "Executar -> openMSX", janela em OpenMSXConsoleGui.pbi).

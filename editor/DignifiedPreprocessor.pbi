@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Basic Dignified - pre-processador nativo
 ;  Converte codigo no dialeto "Dignified" (labels, defines,
@@ -1972,8 +1972,69 @@ Procedure.s Dig_CapitalizeAll_Piece(Piece.s, LineNum.i)
   ProcedureReturn UCase(Piece)
 EndProcedure
 
-; Remove espacos "cosmeticos" de um trecho CODE, preservando exatamente um
-; espaco entre duas palavras adjacentes (senao "PRINT A" viraria "PRINTA").
+; Atomo WORD e "puramente numerico" (so digitos)? Usado por Dig_StripSpaces_Piece
+; para distinguir "SCREEN" (letras) de "2" (numero): um digito nunca estende o
+; casamento de uma palavra-chave classica (o tokenizador para em "SCREEN" e
+; retoma o numero em seguida), entao "SCREEN 2"/"STEP 10" podem virar
+; "SCREEN2"/"STEP10" sem ambiguidade - so identificador-identificador
+; ("PRINT A") e numero-numero (colariam num unico literal) precisam do espaco.
+Procedure.b Dig_AtomIsNumeric(A.s)
+  Protected i.i
+  If Len(A) = 0
+    ProcedureReturn #False
+  EndIf
+  For i = 1 To Len(A)
+    If Not Dig_IsDigit(Mid(A, i, 1))
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+; O tokenizador (Tok_TokenizeLineBody/MsxTokenizer.pbi) casa palavras-chave por
+; "maior prefixo primeiro" em QUALQUER posicao, sem exigir fronteira de palavra
+; (e por isso "FORI=1TO10" tokeniza igual a "FOR I=1 TO 10" no MSX real, e
+; "PRINT"+"A" vira PRINT+A normalmente) - entao colar dois atomos de letras nao
+; e perigoso por si so. O perigo real e mais estreito: durante a varredura de
+; identificador, o tokenizador para assim que o restante do texto casar com
+; QUALQUER palavra-chave (ver loop "isVar" em Tok_TokenizeLineBody) - entao um
+; espaco so precisa sobreviver quando colar os dois atomos faz uma
+; palavra-chave nascer exatamente na fronteira (ex.: "X"+"OR"->"XOR", ou
+; "ERR"+"OR"->"ERROR", que e ELA MESMA uma palavra-chave distinta e mais longa
+; que "ERR"). Varre todo inicio dentro de Left cujo casamento avanca alem do
+; fim de Left (ou seja, so dispara quando o match cruza para dentro de Right -
+; uma palavra-chave inteiramente contida em Left, sem cruzar a fronteira, ja
+; teria o mesmo problema mesmo sem remover o espaco, entao nao e desta funcao).
+#Dig_MaxReservedWordLen = 10
+
+Procedure.b Dig_BoundaryFormsKeyword(Left.s, Right.s)
+  Protected merged.s = UCase(Left) + UCase(Right)
+  Protected leftLen.i = Len(Left)
+  Protected totalLen.i = Len(merged)
+  Protected p.i, l.i, endPos.i
+
+  For p = 1 To leftLen
+    For l = 1 To #Dig_MaxReservedWordLen
+      endPos = p + l - 1
+      If endPos > totalLen
+        Break
+      EndIf
+      If endPos > leftLen And Dig_IsReservedWord(Mid(merged, p, l))
+        ProcedureReturn #True
+      EndIf
+    Next l
+  Next p
+
+  ProcedureReturn #False
+EndProcedure
+
+; Remove espacos "cosmeticos" de um trecho CODE, preservando o espaco entre
+; duas palavras adjacentes numericas (senao "1" " " "2" colaria em "12") ou
+; entre duas palavras de letras quando colar cria uma palavra-chave na
+; fronteira (ver Dig_BoundaryFormsKeyword); palavra-chave junto de numero
+; ("SCREEN 2", "STEP 10") ou duas palavras de letras "seguras" ("FOR ZZ",
+; "GOTO 100" nao se aplica aqui pois 100 e numero, mas "FOR ZZ"->"FORZZ" sim)
+; perdem o espaco.
 ; Reinterpretacao pragmatica do -ss original (que remove espacos token a
 ; token no nivel do lexer) - nao e garantido byte-a-byte identico.
 Procedure.s Dig_StripSpaces_Piece(Piece.s, LineNum.i)
@@ -2001,11 +2062,17 @@ Procedure.s Dig_StripSpaces_Piece(Piece.s, LineNum.i)
     idx + 1
   Next
 
-  Protected out.s = "", i.i
+  Protected out.s = "", i.i, leftNumeric.b, rightNumeric.b
   For i = 0 To n - 1
     If K(i) = "SPACE"
       If i > 0 And K(i - 1) = "WORD" And i < n - 1 And K(i + 1) = "WORD"
-        out + " "
+        leftNumeric = Dig_AtomIsNumeric(A(i - 1))
+        rightNumeric = Dig_AtomIsNumeric(A(i + 1))
+        If leftNumeric And rightNumeric
+          out + " "
+        ElseIf Not leftNumeric And Not rightNumeric And Dig_BoundaryFormsKeyword(A(i - 1), A(i + 1))
+          out + " "
+        EndIf
       EndIf
     Else
       out + A(i)
@@ -2025,39 +2092,67 @@ EndProcedure
 
 Global Dig_TransOriginal.s = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»ÃãĨĩÕõŨũĲĳ¾∽◇‰¶§▂▚▆▔◾▇▎▞▊▕▉▨▧▼▲▶◀⧗⧓▘▗▝▖▒Δǂω█▄▌▐▀αβΓπΣσμτΦθΩδ∞φ∈∩≡±≥≤⌠⌡÷≈°∙‐√ⁿ²❚■"
 
+; Mesma ordem/simbolos das 31 chaves do dict c_replacements de badig_msx.py
+; (ordem de Dig_TransReplacement abaixo) - reaproveitada por CharMapGui.pbi
+; pra nao retranscrever a lista uma segunda vez.
+Global Dig_TransReplacementOrder.s = "☺☻♥♦♣♠·◘○◙♂♀♪♬☼┿┴┬┤├┼│─┌┐└┘╳╱╲╂"
+
+; c_replacements de badig_msx.py: cada um destes 31 simbolos (carinhas/naipes/
+; linhas tipo CP437, os "graficos" MSX de codigo 1-31) vira, no ASCII gerado,
+; a sequencia de DOIS bytes Chr(1) + <letra> - NAO o simbolo em si nem so a
+; letra. Chr(1) e o prefixo de escape que o driver de tela do MSX usa pra
+; imprimir um dos 31 "graficos" especiais sem colidir com os codigos de
+; controle de verdade (cursor etc.) que ocupam a mesma faixa 1-31; a letra
+; que segue seleciona QUAL grafico - NAO é simplesmente "A + (posicao-1)":
+; confirmado byte a byte contra c_replacements no Python de referencia
+; (basic-dignified/msx/badig_msx.py) que as ultimas entradas nao seguem a
+; sequencia alfabetica estrita (╳ -> "]" e ╱ -> "\" estao trocados em relacao
+; a ordem alfabetica "esperada"), entao cada letra fica hardcoded abaixo
+; exatamente como no original, em vez de calculada por formula.
+;
+; Confirmado rodando o badig.py de referencia de verdade (nao so lendo o
+; fonte): "☺" converte pra bytes 01 41 ("\x01A"), nao pro byte 0x01 sozinho
+; nem pra letra "A" sozinha. BUG HISTORICO deste port: a versao anterior
+; desta funcao so devolvia a letra (ex. "A"), sem o Chr(1) na frente - Chr(1)
+; e um caractere de controle invisivel, entao sumia sem deixar rastro visual
+; tanto no source Python quanto neste arquivo .pbi ao serem lidos num
+; visualizador de texto normal, so aparecendo numa inspecao dos BYTES crus
+; dos dois arquivos lado a lado - foi assim que a discrepancia foi achada.
+; Sem esse Chr(1), o -tr desses 31 simbolos gerava so a letra pura, nunca o
+; grafico MSX de verdade.
 Procedure.s Dig_TransReplacement(C.s)
   Select C
-    Case "☺" : ProcedureReturn "A"
-    Case "☻" : ProcedureReturn "B"
-    Case "♥" : ProcedureReturn "C"
-    Case "♦" : ProcedureReturn "D"
-    Case "♣" : ProcedureReturn "E"
-    Case "♠" : ProcedureReturn "F"
-    Case "·" : ProcedureReturn "G"
-    Case "◘" : ProcedureReturn "H"
-    Case "○" : ProcedureReturn "I"
-    Case "◙" : ProcedureReturn "J"
-    Case "♂" : ProcedureReturn "K"
-    Case "♀" : ProcedureReturn "L"
-    Case "♪" : ProcedureReturn "M"
-    Case "♬" : ProcedureReturn "N"
-    Case "☼" : ProcedureReturn "O"
-    Case "┿" : ProcedureReturn "P"
-    Case "┴" : ProcedureReturn "Q"
-    Case "┬" : ProcedureReturn "R"
-    Case "┤" : ProcedureReturn "S"
-    Case "├" : ProcedureReturn "T"
-    Case "┼" : ProcedureReturn "U"
-    Case "│" : ProcedureReturn "V"
-    Case "─" : ProcedureReturn "W"
-    Case "┌" : ProcedureReturn "X"
-    Case "┐" : ProcedureReturn "Y"
-    Case "└" : ProcedureReturn "Z"
-    Case "┘" : ProcedureReturn "["
-    Case "╳" : ProcedureReturn "]"
-    Case "╱" : ProcedureReturn "\"
-    Case "╲" : ProcedureReturn "^"
-    Case "╂" : ProcedureReturn "_"
+    Case "☺" : ProcedureReturn Chr(1) + "A"
+    Case "☻" : ProcedureReturn Chr(1) + "B"
+    Case "♥" : ProcedureReturn Chr(1) + "C"
+    Case "♦" : ProcedureReturn Chr(1) + "D"
+    Case "♣" : ProcedureReturn Chr(1) + "E"
+    Case "♠" : ProcedureReturn Chr(1) + "F"
+    Case "·" : ProcedureReturn Chr(1) + "G"
+    Case "◘" : ProcedureReturn Chr(1) + "H"
+    Case "○" : ProcedureReturn Chr(1) + "I"
+    Case "◙" : ProcedureReturn Chr(1) + "J"
+    Case "♂" : ProcedureReturn Chr(1) + "K"
+    Case "♀" : ProcedureReturn Chr(1) + "L"
+    Case "♪" : ProcedureReturn Chr(1) + "M"
+    Case "♬" : ProcedureReturn Chr(1) + "N"
+    Case "☼" : ProcedureReturn Chr(1) + "O"
+    Case "┿" : ProcedureReturn Chr(1) + "P"
+    Case "┴" : ProcedureReturn Chr(1) + "Q"
+    Case "┬" : ProcedureReturn Chr(1) + "R"
+    Case "┤" : ProcedureReturn Chr(1) + "S"
+    Case "├" : ProcedureReturn Chr(1) + "T"
+    Case "┼" : ProcedureReturn Chr(1) + "U"
+    Case "│" : ProcedureReturn Chr(1) + "V"
+    Case "─" : ProcedureReturn Chr(1) + "W"
+    Case "┌" : ProcedureReturn Chr(1) + "X"
+    Case "┐" : ProcedureReturn Chr(1) + "Y"
+    Case "└" : ProcedureReturn Chr(1) + "Z"
+    Case "┘" : ProcedureReturn Chr(1) + "["
+    Case "╳" : ProcedureReturn Chr(1) + "]"
+    Case "╱" : ProcedureReturn Chr(1) + "\"
+    Case "╲" : ProcedureReturn Chr(1) + "^"
+    Case "╂" : ProcedureReturn Chr(1) + "_"
   EndSelect
   ProcedureReturn C
 EndProcedure
@@ -2131,8 +2226,16 @@ Procedure Dig_ProcessSource(SourceText.s, Prefix.s, OwnBasePath.s, IsMainFile.b,
   CopyMap(Dig_Defines(), savedDefines())
   ClearMap(Dig_Defines())
 
+  ; CopyMap() com mapa de origem VAZIO e elemento de 1-2 bytes (.b()/.w()/.a())
+  ; trava (read error at address 0) no PureBasic 6.40 instalado - confirmado via
+  ; repro isolado fora deste arquivo (mapas .i()/.s() nao sao afetados). Dig_Keeps
+  ; comeca vazio sempre que o arquivo nao usa nenhum toggle rem (#nome), ou seja,
+  ; no caminho comum. Contorno: so chamar CopyMap quando ha algo a copiar; source
+  ; vazio so precisa que o destino fique vazio, que e o que ClearMap ja faz.
   Protected NewMap savedKeeps.b()
-  CopyMap(Dig_Keeps(), savedKeeps())
+  If MapSize(Dig_Keeps())
+    CopyMap(Dig_Keeps(), savedKeeps())
+  EndIf
   Protected savedKeepAll.b = Dig_KeepAll
   Protected savedKeepNone.b = Dig_KeepNone
   ClearMap(Dig_Keeps())
@@ -2383,7 +2486,13 @@ Procedure Dig_ProcessSource(SourceText.s, Prefix.s, OwnBasePath.s, IsMainFile.b,
 
   ; restaura o estado isolado deste arquivo antes de devolver ao chamador
   CopyMap(savedDefines(), Dig_Defines())
-  CopyMap(savedKeeps(), Dig_Keeps())
+  ; mesmo contorno do CopyMap(Dig_Keeps()...) no topo desta Procedure - ver
+  ; comentario la (mapa .b() de origem vazia trava o CopyMap no PB 6.40 instalado)
+  If MapSize(savedKeeps())
+    CopyMap(savedKeeps(), Dig_Keeps())
+  Else
+    ClearMap(Dig_Keeps())
+  EndIf
   Dig_KeepAll = savedKeepAll
   Dig_KeepNone = savedKeepNone
   CopyMap(savedFuncParams(), Dig_FuncParams())

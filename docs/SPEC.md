@@ -56,6 +56,8 @@ servir de especificação byte-a-byte ao port nativo:
 | 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
 | 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
 | 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. Ver seção 17 |
+| 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. Ver seção 18 |
+| 19 | Inserir → Caractere Especial (mapa de caracteres MSX) | baixo | **Implementado (2026-08-04)** — `editor/CharMapGui.pbi`, novo menu de topo **Inserir**. Grade estilo "Mapa de Caracteres" do Windows com os 159 caracteres que `-tr` traduz pra ASCII nativo MSX. Ver seção 19 |
 
 ## Decisões fechadas
 
@@ -450,10 +452,13 @@ por `SaveTokenized()` no lugar dos flags fixos que tinha antes (ambos removidos 
 de opções — a tela "Configurar → Basic Dignified..." agora vale tanto para o caminho Python quanto para
 o nativo. Nessa mesma sessão o pré-processador nativo ganhou os passos finais que faltavam (equivalentes
 ao `pass_5`/`generate()` do `badig_msx.py` original): conversão `?`/`PRINT` (`-cp`), strip
-`THEN`/`GOTO` (`-tg`), tradução Unicode→ASCII nativo MSX (`-tr`, tabela completa validada contra o
-original), maiusculização geral (`-ca`) e tamanho de TAB configurável. `strip_spaces` (`-ss`) foi
-reinterpretado de forma pragmática (preserva um espaço entre palavras) — não é garantido byte-a-byte
-idêntico ao Python original.
+`THEN`/`GOTO` (`-tg`), tradução Unicode→ASCII nativo MSX (`-tr`), maiusculização geral (`-ca`) e
+tamanho de TAB configurável. `strip_spaces` (`-ss`) foi reinterpretado de forma pragmática — **revisado
+2026-08-04, ver módulo 3h**: a versão original desta reinterpretação preservava um espaço entre
+*qualquer* par de palavras adjacentes (conservador demais, deixava `SCREEN 2`/`FOR ZZ` intocados); a
+versão atual só preserva o espaço quando removê-lo colaria dois números adjacentes ou faria nascer uma
+palavra-chave diferente na fronteira (ex. `X`+`OR`→`XOR`) — continua não sendo garantido byte-a-byte
+idêntico ao Python original, mas remove bem mais espaços cosméticos que antes.
 
 ### 3f. Configurações do Editor e instalação do Basic Dignified Suite (2026-07-15)
 
@@ -551,6 +556,74 @@ regra de `badig_settings.py`: `read_remtags_from_code(self.args.input)`). Comand
 - `HELP`: reconhecido (não gera erro de "remtag desconhecido"), mas sem efeito prático — o original
   imprime a lista de remtags disponíveis e sai do processo, o que não faz sentido dentro do fluxo do
   editor GUI.
+
+### 3h. Bugs reais achados/corrigidos em `DignifiedPreprocessor.pbi` (2026-08-04)
+
+Sessão motivada por um bug reportado pelo usuário (`-ss` deixava `for linha=0 to 191 step 10` como
+`forzz=0to191step10` esperado virar, mas o pipeline gerava com espaços sobrando) que puxou o fio de
+mais dois bugs reais e não relacionados entre si, achados investigando o primeiro.
+
+**1. `Dig_StripSpaces_Piece` conservador demais (o bug original reportado)**: a reinterpretação
+pragmática do `-ss` (ver módulo 3f) preservava um espaço entre *qualquer* par de átomos-palavra
+adjacentes, achando (errado) que isso era necessário pra não gerar `PRINTA` a partir de `PRINT A`.
+Rastreando o tokenizador de verdade (`Tok_TokenizeLineBody`/`MsxTokenizer.pbi`) até o fim: ele casa
+palavras-chave por "maior prefixo primeiro" em **qualquer posição**, sem exigir fronteira de palavra —
+exatamente por isso o truque clássico `FORI=1TO10` funciona no MSX real, e `PRINTA` tokeniza
+corretamente como `PRINT`+`A`. O risco real é bem mais estreito: só quando colar dois átomos faz nascer
+uma palavra-chave **diferente** bem na fronteira (ex. `X`+`OR`→`XOR`, ou `ERR`+`OR`→`ERROR`, que é ela
+mesma uma palavra-chave distinta e mais longa que `ERR`). `Dig_BoundaryFormsKeyword()` (nova) varre essa
+fronteira contra a lista de palavras reservadas (`Dig_IsReservedWord`, já existente) e só aí mantém o
+espaço; caso contrário remove. Números adjacentes (`1 2`→`12`) continuam protegidos (`Dig_AtomIsNumeric`,
+já existente) — só a regra letra-letra ficou mais permissiva.
+
+**2. `CopyMap()` trava com mapa de origem vazio e elemento de 1-2 bytes (bug do PureBasic 6.40
+instalado, não do código-fonte)**: confirmado com um repro isolado fora do projeto — `CopyMap()` num
+mapa `.b()`/`.w()` (byte/word) **vazio** causa "Invalid memory access" no compilador 6.40 instalado
+nesta máquina; mapas `.i()`/`.s()` vazios não têm o problema. `Dig_Keeps()` (toggle-rem, ver módulo 3)
+é exatamente um mapa `.b()` que começa vazio sempre que o arquivo não usa nenhum `#toggle` — ou seja, no
+caminho comum, batendo `DigTestCli.exe`/o próprio `RunOnOpenMSX()` em quase qualquer conversão real.
+Sintoma: crash silencioso (access violation) ao converter, sem nenhuma mensagem de erro do pré-
+processador. Contorno em `Dig_ProcessSource` (ambas as direções, salvar e restaurar): só chama
+`CopyMap()` quando `MapSize()` do lado de origem é maior que zero; caso contrário `ClearMap()` no
+destino já produz o mesmo resultado que um `CopyMap()` de origem vazia deveria produzir. Achado só
+porque `DigTestCli.exe` foi recompilado e rodado de verdade nesta sessão (não só lido/inspecionado) —
+o `.exe` já commitado no repo tinha sido compilado antes dessa regressão do compilador aparecer (versão
+de PureBasic diferente na máquina que o gerou, provavelmente).
+
+**3. `Dig_TransReplacement` sem o byte de escape `Chr(1)` (bug histórico real do port, não do
+PureBasic)**: os 31 símbolos extras traduzíveis por `-tr` (carinhas/naipes/linhas tipo CP437, ver
+`docs/reference/badig-msx-module.md`) viravam só uma letra solta (`"☺"` → `"A"`) em vez do escape de
+dois bytes que o driver de tela do MSX espera (`Chr(1)` + letra — `Chr(1)` sinaliza "o próximo byte
+escolhe um dos 31 gráficos especiais", evitando colisão com os códigos de controle de verdade que
+ocupam a mesma faixa 1-31). Confirmado rodando o `badig.py` de referência de verdade (presente no repo
+em `basic-dignified/`, não só lendo o código): `"☺"` converte pra bytes `01 41`, não pro byte `01`
+sozinho nem pra letra `"A"` sozinha. A causa raiz do gap no port: `Chr(1)` é um caractere de controle
+invisível, então sumia sem deixar rastro visual tanto no `c_replacements` do Python original quanto
+neste `.pbi`, ao serem lidos num visualizador de texto normal — só apareceu inspecionando os bytes crus
+dos dois arquivos lado a lado. Corrigido devolvendo `Chr(1) + <letra>` (letra hardcoded por símbolo,
+igual ao original — a atribuição de letras **não** segue estritamente `"A" + (posição-1)`: as duas
+últimas entradas, `╳`→`]` e `╱`→`\`, estão fora de ordem alfabética em relação às demais, confirmado
+byte a byte contra o Python, então não dá pra calcular por fórmula). `Dig_TransReplacementOrder` (nova
+global, os 31 símbolos na mesma ordem) foi extraída pra reaproveitar em `CharMapGui.pbi` (módulo 19) sem
+retranscrever a lista uma segunda vez.
+
+**4. Vários arquivos `.pbi` sem BOM UTF-8 (achado enquanto investigava o bug 3, bug de *ambiente*, não
+do código-fonte em si)**: `editor/BadigEditor.pb` (arquivo raiz passado ao `pbcompiler.exe`) tem BOM;
+14 arquivos `.pbi` incluídos via `XIncludeFile` e que contêm literais de string não-ASCII **não**
+tinham — o `pbcompiler.exe` 6.40 instalado detecta a codificação **por arquivo incluído**, não por
+unidade de compilação inteira, então sem BOM ele decodifica UTF-8 como Latin-1/CP1252, corrompendo
+qualquer literal não-ASCII (foi assim que o bug 3 acima foi originalmente descoberto — o grid de
+`CharMapGui.pbi` mostrava lixo em vez da tabela certa). Isso também corrompia **texto de ajuda visível
+pro usuário**: 121 ocorrências da seta `→` (navegação de menu) em `OpenMsxHelpData.pbi` e exemplos com
+linhas de caixa em `BasicDignifiedHelpData.pbi`. Corrigido adicionando BOM UTF-8 (só metadado, byte a
+byte sem mudança de conteúdo) aos 14 arquivos: `BasicDignifiedHelpData.pbi`, `CharMapGui.pbi`,
+`DignifiedPreprocessor.pbi`, `GraphosScreenGui.pbi`, `MmlSynth.pbi`, `MsxBasic2PlusDictData.pbi`,
+`MsxBasicManualData.pbi`, `OpenMSXBridge.pbi`, `OpenMsxHelpData.pbi`, `SpriteEditorGui.pbi`,
+`WordStarKeys.pbi`, `Z80Asm.pbi`, `Z80RelFormat.pbi`, `Z80RelFormatLink.pbi`, `Z80SubProject.pbi`. Nota
+pra manutenção futura: qualquer novo `.pbi` que ganhe um literal de string não-ASCII precisa de BOM
+UTF-8 (a maioria dos editores de texto adiciona automaticamente ao salvar como UTF-8 "com assinatura"/
+"with BOM"; arquivos sem nenhum caractere não-ASCII não precisam, mas ganhar BOM de qualquer forma não
+tem custo).
 
 ### 4. Editor sprite/char — sprite e alfabeto (charset) implementados (2026-07-19)
 
@@ -2479,6 +2552,41 @@ entrada técnica aqui no SPEC. De caminho, corrigido um trecho desatualizado do 
 dizia que o motor do assembler Z80 "ainda não existe", contradizendo a seção "Assembler Z80" do mesmo
 arquivo (módulo 2b/2c, já implementado há várias sessões). Versão embutida no executável (`build.ps1`/
 `#App_Version` em `editor/BadigEditor.pb`) atualizada para **7.9.1**, sem codinome novo.
+
+### 19. Inserir → Caractere Especial (mapa de caracteres MSX) — implementado (2026-08-04)
+
+Pedido explícito do usuário: um mapa de caracteres estilo Windows (`charmap.exe`) pros 159 caracteres
+especiais que `-tr` traduz pra ASCII nativo MSX (ver módulo 3h, itens 3 e 4, pra correções feitas no
+próprio `-tr` durante esta sessão).
+
+- **Novo menu de topo "Inserir"** (`editor/BadigEditor.pb`), entre **Criar** e **Executar** — único
+  item por enquanto: **Caractere Especial...**.
+- **Janela** (`editor/CharMapGui.pbi`, `CharMap_OpenWindow()`) — mesmo padrão modal-com-`DisableWindow`
+  de todo outro diálogo secundário da IDE:
+  - Grade 16×10 (160 células, a última fica vazia — 159 caracteres reais) desenhada num `CanvasGadget`
+    próprio (`StartDrawing`/`DrawingFont`, não uma tabela de controles nativos — o mesmo motivo do
+    editor de alfabetos, módulo 4: `App_StyleChildCallback` força fonte 9pt em todo controle nativo
+    filho da janela, o que anularia uma fonte grande escolhida a mão). Clique seleciona (contorno
+    vermelho); duplo clique adiciona direto ao campo abaixo.
+  - **Painel de prévia** — outro `CanvasGadget` (mesmo motivo acima) com o caractere selecionado numa
+    fonte grande, mais um texto com posição na tabela (`N/159`), a tradução MSX (`Codigo MSX: XXh` pros
+    128 primeiros, `Grafico MSX: CHR$(1);CHR$(N)` pros 31 últimos — a última chamando
+    `Dig_TransReplacement()` de verdade em vez de recalcular, pra nunca dessincronizar da tradução real)
+    e o codepoint Unicode.
+  - **Campo acumulador** (`StringGadget`, editável, até 80 caracteres) — botões **Adicionar**/**Remover
+    último**/**Limpar**; **Inserir** copia o conteúdo do campo pra posição do cursor da aba ativa
+    (`InjectTextAtCursor()`, já existente — usada também pelo botão "Injetar" do editor de sprites) e
+    fecha a janela; **Fechar** só fecha, sem inserir nada.
+- **Fonte dos dados**: a grade reaproveita `Dig_TransOriginal`/`Dig_TransReplacementOrder`
+  (`DignifiedPreprocessor.pbi`) diretamente em vez de retranscrever a lista de 159 caracteres uma
+  segunda vez — evita um segundo ponto de erro de transcrição (o `tradutor.txt`/
+  `basic-dignified/documentation/BASIC_DIGNIFIED.md`, seção "Classic Basic ASCII characters", foi usado
+  só pra *conferir* a contagem final de 159, não como fonte primária dos dados).
+- **Verificado visualmente** — screenshot real da janela rodando (`PrintWindow`, mesma técnica de
+  outras sessões, ver `docs/SPEC.md`/memória do projeto) confirmou os 159 caracteres corretos na grade,
+  incluindo a linha 9/10 com os 31 símbolos extras (carinhas/naipes/linhas tipo CP437) só depois da
+  correção do bug 3h-3 — a primeira versão desta feature só tinha 128 células e mostrava lixo antes da
+  correção do bug 3h-4 (BOM).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

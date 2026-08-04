@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Z80RelFormatLink.pbi - copia de Z80RelFormat.pbi dedicada ao Module
 ;  Z80Link (mesmo conteudo, arquivo diferente de proposito).

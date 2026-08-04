@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Ajuda -> openMSX...: base de dados dos topicos de ajuda, gerada a partir
 ;  dos 5 manuais originais do openMSX (docs/openmsx-*.html - Setup Guide,

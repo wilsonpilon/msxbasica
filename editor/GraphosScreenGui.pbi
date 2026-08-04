@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Criar -> Graphos III Screen 2...: primeiro editor da familia "Graphos
 ;  III" nesta IDE (ver graphos/graphos.txt, manual original do programa,

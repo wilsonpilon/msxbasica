@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Motor de compilacao/sintese de MML (Music Macro Language) do comando PLAY
 ;  do MSX-BASIC. Sem nenhuma dependencia de GUI - incluido tanto pela janela

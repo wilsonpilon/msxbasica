@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Ajuda -> Basic Dignified...: base de dados dos topicos de ajuda,
 ;  compilada a partir da documentacao original do Basic Dignified Suite

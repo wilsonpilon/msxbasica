@@ -1,4 +1,4 @@
-;
+﻿;
 ; ------------------------------------------------------------
 ;  Ajuda -> MSX BASIC...: base de dados complementar ao Dicionario das
 ;  Palavras Reservadas (MsxBasicDictData.pbi), cobrindo o restante do

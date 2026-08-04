@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.7.1** ("`BFG9200`") — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.9.1** — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -339,6 +339,14 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   enorme e com os botões trocados nesta configuração) mais rolagem pela roda do mouse.
 
   ![Editor Hexa (Executar → Editor Hexa...) reconhecendo um alfabeto Graphos III via galeria de templates](images/msxbasica-14.png)
+- **Inserir → Caractere Especial...** (`editor/CharMapGui.pbi`, novo menu de topo **Inserir**) — mapa
+  de caracteres estilo Windows (`charmap.exe`) com os **159 caracteres** que a opção `-tr` traduz pra
+  ASCII nativo MSX (acentos/gregas/gráficos + carinhas/naipes/linhas tipo CP437): grade 16×10 clicável
+  com prévia ampliada e código MSX/Unicode do caractere selecionado, campo acumulador (até 80
+  caracteres, botões Adicionar/Remover último/Limpar) e botão **Inserir** que copia o texto acumulado
+  na posição do cursor da aba ativa. Motivou a correção de dois bugs reais de tradução em
+  `DignifiedPreprocessor.pbi` que já afetavam `-tr` antes desta feature existir — ver Changelog e
+  `docs/SPEC.md`, módulo 3h.
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/
@@ -1214,6 +1222,42 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   assembler Z80 "ainda não existe", quando na verdade o resto do próprio manual já documentava o
   assembler nativo em detalhe) foi corrigido. `build.ps1` (`$Version`) e `#App_Version`
   (`editor/BadigEditor.pb`) atualizados juntos, sem codinome novo desta vez.
+
+- **2026-08-04 — `-ss` (strip spaces) removendo bem menos espaços do que deveria**: bug reportado pelo
+  usuário — `for linha=0 to 191 step 10` ficava com espaços sobrando em vez de virar
+  `forzz=0to191step10`. A reinterpretação pragmática do `-ss` nativo (ver changelog 2026-07-14)
+  preservava um espaço entre *qualquer* par de palavras adjacentes, por achar (errado) que era
+  necessário pra não gerar `PRINTA` a partir de `PRINT A`. Rastreando o tokenizador de verdade até o
+  fim: ele casa palavras-chave em qualquer posição sem exigir fronteira, então `PRINTA` já tokeniza
+  certo como `PRINT`+`A` (mesmo truque clássico de `FORI=1TO10` no MSX real) — o risco de verdade é só
+  quando colar dois átomos nasce uma palavra-chave **diferente** na fronteira (`X`+`OR`→`XOR`). Corrigido
+  com uma checagem de fronteira contra a lista de palavras reservadas, mantendo o espaço só nesse caso.
+  Detalhe técnico completo em `docs/SPEC.md`, módulo 3h.
+- **2026-08-04 (mesma sessão) — bug real do PureBasic 6.40 instalado, achado verificando a correção
+  acima**: `editor/tools/DigTestCli.exe` (harness de regressão) travava (access violation) ao rodar
+  contra **qualquer** entrada real, inclusive `sample/teste.dmx` sem tocar em nada — `CopyMap()` num
+  mapa vazio de elemento pequeno (`.b()`/`.w()`) trava nesse compilador especificamente; mapas `.i()`/
+  `.s()` vazios não têm o problema. `Dig_Keeps()` (controle de toggle-rem) é exatamente esse tipo de
+  mapa e começa vazio sempre que o arquivo não usa nenhum `#toggle` — ou seja, o caminho comum. Corrigido
+  em `Dig_ProcessSource` só chamando `CopyMap()` quando o mapa de origem não está vazio. Detalhe em
+  `docs/SPEC.md`, módulo 3h.
+- **2026-08-04 (mesma sessão) — novo menu Inserir → Caractere Especial...**: pedido explícito do
+  usuário, um mapa de caracteres estilo Windows pros 159 caracteres que `-tr` traduz pra ASCII nativo
+  MSX (`editor/CharMapGui.pbi`, ver "O que já temos" acima para a descrição completa da UI). Construir
+  essa feature revelou dois bugs reais e não relacionados entre si em `DignifiedPreprocessor.pbi`,
+  ambos afetando `-tr` mesmo sem essa feature nova:
+  - **31 símbolos extras (carinhas/naipes/linhas tipo CP437) traduzindo errado**: viravam só uma letra
+    solta (`"☺"` → `"A"`) em vez do escape de 2 bytes que o driver de tela do MSX espera (`Chr(1)` +
+    letra). Achado comparando byte a byte contra o `badig.py` de referência de verdade (presente no
+    repo em `basic-dignified/`) — a causa raiz é que `Chr(1)` é um caractere de controle invisível,
+    então sumia sem deixar rastro tanto no Python original quanto neste port, ao serem lidos num
+    visualizador de texto normal.
+  - **Vários `.pbi` sem BOM UTF-8**: o `pbcompiler.exe` 6.40 instalado detecta a codificação por
+    arquivo incluído (não por unidade de compilação inteira) — sem BOM ele decodifica UTF-8 como
+    Latin-1, corrompendo qualquer literal não-ASCII. Isso já corrompia **texto de ajuda visível pro
+    usuário** antes desta sessão: 121 setas de navegação (`→`) na Ajuda do openMSX e exemplos com
+    linhas de caixa na Ajuda do Basic Dignified. Corrigido adicionando BOM a 14 arquivos.
+  Detalhe técnico completo (incluindo a lista dos 14 arquivos) em `docs/SPEC.md`, módulo 3h/19.
 
 ## Ferramentas e ambiente
 

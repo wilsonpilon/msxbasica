@@ -45,6 +45,7 @@ XIncludeFile "Z80Asm.pbi"
 XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
 XIncludeFile "FontDownloader.pbi"
+XIncludeFile "CharMapGui.pbi"
 XIncludeFile "MSXDisk.pbi"
 XIncludeFile "DiskManagerGui.pbi"
 XIncludeFile "OpenMSXBridge.pbi"
@@ -383,6 +384,7 @@ Enumeration MenuItems
   #Menu_CreateZ80Lib
   #Menu_CreateAsmSubProject
   #Menu_CreateGraphosScreen
+  #Menu_InsertSpecialChar
   #Menu_RunBasic
   #Menu_RunNestorBasic
   #Menu_RenumberBasic
@@ -3350,6 +3352,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateGraphosScreen, "Graphos III Screen 2...")
     MenuItem(#Menu_CreateZ80Lib, "Biblioteca Z80 (.LIB)...")
     MenuItem(#Menu_CreateAsmSubProject, "Assembly Sub Project...")
+  MenuTitle("Inserir")
+    MenuItem(#Menu_InsertSpecialChar, "Caractere Especial...")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
     MenuItem(#Menu_RunNestorBasic, "Nestor Basic")
@@ -3518,6 +3522,9 @@ Repeat
 
         Case #Menu_CreateAsmSubProject
           Z80SubProjectGui_OpenWindow(#MainWindow)
+
+        Case #Menu_InsertSpecialChar
+          CharMap_OpenWindow(#MainWindow)
 
         Case #Menu_RunBasic
           RunBasicFromActiveTab()
