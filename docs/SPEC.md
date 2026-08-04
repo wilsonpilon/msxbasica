@@ -58,6 +58,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. Ver seção 17 |
 | 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. Ver seção 18 |
 | 19 | Inserir → Caractere Especial (mapa de caracteres MSX) | baixo | **Implementado (2026-08-04)** — `editor/CharMapGui.pbi`, novo menu de topo **Inserir**. Grade estilo "Mapa de Caracteres" do Windows com os 159 caracteres que `-tr` traduz pra ASCII nativo MSX. Ver seção 19 |
+| 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família planejada (SCREEN 1/2 ainda não iniciados, ver seção 20 e Próximos passos) |
 
 ## Decisões fechadas
 
@@ -2587,6 +2588,149 @@ próprio `-tr` durante esta sessão).
   incluindo a linha 9/10 com os 31 símbolos extras (carinhas/naipes/linhas tipo CP437) só depois da
   correção do bug 3h-3 — a primeira versão desta feature só tinha 128 células e mostrava lixo antes da
   correção do bug 3h-4 (BOM).
+
+### 20. Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) — implementado (2026-08-04)
+
+Pedido explícito do usuário: um editor gráfico de telas de texto MSX **SCREEN 0**, no espírito dos
+clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw) — primeira de uma família
+planejada (SCREEN 1 e SCREEN 2 ficam pra sessões futuras). Duas decisões de design foram confirmadas
+com o usuário antes de implementar (`AskUserQuestion`), porque SCREEN 0 real do MSX1 **não** tem cor
+por célula como um editor ANSI de PC:
+
+- **Cor fiel ao hardware**: uma única cor de tinta e uma de fundo pra tela INTEIRA (equivalente a
+  `COLOR fg,bg`), não por caractere — 2 seletores de paleta MSX1 (INK/PAPER) globais por tela.
+- **Largura escolhível por tela**: 40 ou 80 colunas (`WIDTH 40`/`WIDTH 80`), escolhida ao criar cada
+  tela nova e gravada junto com ela.
+
+**Janela** (`editor/Screen0EditorGui.pbi`, `Screen0Editor_OpenWindow()`):
+
+- **Barra de projeto** — mesmo padrão número/tag/navegação (primeiro/anterior/próximo/último)/Novo/
+  Registrar dos demais editores, ícones reaproveitados de `CharsetEditorGui.pbi`
+  (`CharEd_CreateNavIcon`/`CreateNewIcon`/`CreateRegisterIcon`). **Novo** pergunta a largura (janela
+  auxiliar de 2 opções, `Scr0Ed_AskWidth()`) antes de zerar a grade.
+- **Canvas** — largura fixa na tela (~640px); o **zoom se ajusta à largura escolhida** (2x/célula 16×16
+  pra 40 colunas, 1x/célula 8×8 pra 80 colunas — `Scr0Ed_ZoomForWidth()`), o que também combina com o
+  próprio hardware real (MSX2+ usa fonte fisicamente menor em `WIDTH` acima de 40). Cada célula é
+  desenhada pixel a pixel a partir do bitmap 8×8 real da fonte ativa quando disponível (ASCII normal e
+  os 128 caracteres de `Dig_TransOriginal`, byte MSX = `$80+índice`); os 31 caracteres de
+  `Dig_TransReplacementOrder` (box-drawing/naipes, sem bitmap próprio neste codebase — só existem via
+  escape de impressão `CHR$(1)+CHR$(n)`) caem numa aproximação visual com a fonte do sistema, mesma
+  técnica do preview de `CharMapGui.pbi`.
+- **Fonte** — combo "Padrão" (alfabeto embutido, `ProjectDB::FetchDefaultAlphabet`) + `#N` de cada
+  alfabeto já cadastrado no banco do projeto (`ProjectDB::ListAlphabetNumbers`/`FetchAlphabet`), mesmo
+  mecanismo já usado pela ferramenta TEXTO do editor **Draw Screen 2...** (`Screen2EditorGui.pbi`).
+- **Paleta** — dois `CanvasGadget` (Tinta/Fundo) reaproveitando `SpriteEd_FillPalette` (16 cores MSX1) e
+  `Scr2Ed_RedrawMiniPalette`/constantes de grade (`Screen2EditorGui.pbi`) tal como estão, duplicados
+  pra INK e PAPER.
+- **Seis ferramentas** (uma aba por ferramenta, `PanelGadget`):
+  - **Texto** — digita numa `StringGadget`, clique no canvas posiciona horizontalmente a partir da
+    célula clicada (corta no fim da linha, sem quebra automática).
+  - **Caractere** — a própria grade de 159 caracteres de `Inserir → Caractere Especial...` embutida tal
+    como está (`CharMap_Redraw`/`CharMap_CharAt`, `CharMapGui.pbi`, incluído antes deste arquivo); clique
+    escolhe, clique/arraste no canvas estampa.
+  - **Quadro** — 2 cliques (cantos opostos) desenham uma moldura com linhas simples
+    (`Scr0Ed_DrawBox`), unindo automaticamente com quadros já existentes que uma borda nova encoste
+    (formando T/cruz) via um **bitmask de 4 direções** (`Scr0Ed_BoxMaskToChar`/`BoxCharToMask` — bit0
+    cima/bit1 baixo/bit2 esquerda/bit3 direita, 11 combinações cobrindo exatamente o conjunto de
+    caracteres disponível: `─│┌┐└┘├┤┬┴┼`).
+  - **Sombra** — 2 cliques estampam uma faixa do bloco de sombra médio `▒` deslocada uma célula
+    pra baixo/direita ao longo das bordas direita e inferior do retângulo marcado (`Scr0Ed_ApplyShadow`)
+    — padrão clássico de sombra de editor ANSI (não existe `░`/`▓` no conjunto de caracteres deste
+    codebase, só `▒`).
+  - **Bloco** — 2 cliques preenchem um retângulo com o "caractere atual" (`Scr0Ed_FillRect`).
+  - **Borracha** — clique/arraste estampa espaço.
+  - Ferramentas de 1 clique-arraste (Caractere/Borracha) reaproveitam o mesmo padrão de
+    `#PB_EventType_MouseMove` + checagem de `#PB_Canvas_Buttons & #PB_Canvas_LeftButton` já usado pelo
+    lápis/borracha do editor de sprites (`SpriteEditorGui.pbi`).
+- **Geração de código** (`Scr0Ed_BuildCode`) — **Injetar no cursor**/**Copiar** emitem `SCREEN 0`/
+  `WIDTH`/`COLOR`/uma sequência de `LOCATE 0,linha:PRINT "...";` com os **glifos Unicode literais** de
+  cada célula (linhas em branco viram nenhum `PRINT`, não uma linha vazia). A tradução `-tr` do próprio
+  pipeline Dignified (já validada, mesmo mecanismo que motivou `CharMapGui.pbi`) resolve pro byte/escape
+  nativo MSX na hora de tokenizar — o editor não precisa calcular nenhum endereço de VRAM pro texto em
+  si. Quando uma fonte customizada (não-padrão) está escolhida, um carregador `DATA`+`VPOKE` é
+  prefixado, carregando os 2048 bytes do alfabeto na **Pattern Generator Table do SCREEN 0, `&H0800`**
+  — endereço de hardware **diferente** do `&H0000` usado por SCREEN 1/2 (`CharsetEditorGui.pbi`'s
+  `CharEd_ScreenPgtAddress()` simplifica pra `&H0000` "pra todos os modos", o que é certo pra SCREEN
+  1/2 mas não pra SCREEN 0 — não foi alterado, só usado o endereço correto aqui). Nenhum endereço de
+  VRAM do SCREEN 0 estava documentado neste repo antes desta sessão.
+
+**Armazenamento** (`ProjectDB.pbi`, tabela `screen0_screens`) — desvio real de design em relação ao
+`grid_data` como bytes crus originalmente cogitado: a grade guarda o **codepoint Unicode** de cada
+célula (4 dígitos hex, `Array GridCodes.u(1)`), não um byte MSX 0-255, porque os 31 caracteres de
+`Dig_TransReplacementOrder` (necessários pra ferramenta Quadro) não cabem num único byte — só existem
+via o escape de impressão de 2 bytes. Mesmo padrão de `StoreAlphabet`/`FetchAlphabet` (DELETE+INSERT,
+tag truncada a 16 chars, valores extras via getters `Last*`), com `width`/`ink_color`/`paper_color`/
+`alphabet_number` (-1 = fonte padrão) gravados junto.
+
+**Verificado**: harness de auto-teste temporário (flag `--scr0test`, removido após uso) confirmou a
+lógica pura — roundtrip completo do bitmask de moldura (todas as 11 combinações), uma moldura 5×3 real
+gerando os caracteres certos em cada posição, sombra deslocada e corretamente cortada na borda da
+largura, texto estampado na posição certa, geração de código pulando linhas em branco. Layout
+verificado por screenshot real (`PrintWindow` + `RedrawWindow` antes de capturar, ver memória do
+projeto) das abas Texto e Caractere — grade de 159 caracteres, paletas e barra de projeto sem
+sobreposição/corte. Testes interativos de clique no canvas (desenhar de fato com o mouse) ficam pro
+usuário confirmar ao vivo — automatizar clique num `CanvasGadget` a partir de fora do processo exigiria
+mensagens de baixo nível num controle sem API pública de hit-testing, mesma cautela já registrada em
+`CLAUDE.md` sobre `SendMessage` cross-process em controles customizados.
+
+#### 20b. WIDTH 80: segunda cor de texto (estática ou piscante) — implementado (2026-08-04, mesma sessão)
+
+O usuário pediu (e já suspeitava corretamente) que o modo de 80 colunas do MSX2+ permite 2 cores de
+texto fixas na tela, travando o mecanismo de pisca-pisca. **Pesquisado a fundo antes de escrever
+qualquer código** (Konamiman MSX2 Technical Handbook + MSX Wiki via `WebSearch`/`WebFetch`, cruzando
+duas fontes independentes) em vez de confiar de memória em detalhe de registrador de VDP — o risco de
+gerar `VDP`/`VPOKE` errados e o código não funcionar em hardware/openMSX real era alto demais pra
+arriscar. Confirmado, não é gambiarra:
+
+- **VDP R#12** = segundo par tinta/fundo ("Cor 2") — em BASIC, `VDP(13) = tinta2*16+fundo2` (o offset
+  de +1 entre número de registrador e índice de `VDP()` já estava documentado no próprio dicionário
+  desta IDE, `editor/MsxBasic2PlusDictData.pbi`, verbete "VDP (MSX2+)": registradores 8-23 mapeiam pra
+  `VDP(9)` a `VDP(24)`).
+- **VDP R#13** = duração de cada fase do pisca-pisca — `VDP(14) = duraçãoNormal*16+duraçãoCor2`, nibble
+  alto = tempo mostrando a cor normal (R#7), nibble baixo = tempo mostrando a Cor 2 (R#12), cada unidade
+  = 1/6 segundo (faixa 0-15, até 2.5s por fase). **`duraçãoNormal=0` trava a célula marcada
+  permanentemente na Cor 2** (nunca gasta tempo na fase normal) — o "pisca travado" que o usuário
+  descreveu, comportamento documentado de verdade, não suposição.
+- **Tabela de "pisca"** (reaproveita o mecanismo físico da Color Table de SCREEN 1) — 1 bit por
+  caractere, 240 bytes (80×24÷8), endereço padrão `&H0800` no modo WIDTH 80.
+- **Achado real**: o mapa de VRAM padrão do modo WIDTH 80 é diferente do modo de 40 colunas — Name
+  Table `&H0000` (igual), tabela de pisca `&H0800`, mas a **Pattern Generator Table fica em `&H1000`**,
+  não `&H0800` como em 40 colunas (esse endereço fica ocupado pela tabela de pisca nesse modo). Isso
+  expôs um **bug real já existente** no carregador de fonte customizada (`Scr0Ed_BuildCode`, escrito na
+  sessão anterior): sempre usava `&H0800` fixo, certo só pra 40 colunas — corrigido calculando o
+  endereço certo por largura.
+
+**Ferramenta nova "Atributo"** (7ª aba) — clique/arraste liga, botão direito (clique ou arraste) desliga
+o atributo de Cor 2 numa célula, sem tocar no caractere - uma "camada" independente aplicável depois de
+já ter desenhado texto/quadro/etc, mesmo espírito de clique/arraste já usado por Caractere/Borracha
+(`#PB_EventType_MouseMove` + `#PB_Canvas_Buttons`). Barra de opções ganhou duas paletas "Cor 2"
+(Tinta2/Fundo2, reaproveitando `Scr2Ed_RedrawMiniPalette` tal como as paletas Tinta/Fundo já existentes)
+e dois campos de duração (0-15, clampados no `#PB_EventType_Change`) — todos desabilitados
+automaticamente (`DisableGadget`) quando a tela é de 40 colunas, já que o hardware não tem esse recurso
+nesse modo (a ferramenta Atributo também ignora clique se `Width<>80`, defesa em profundidade além do
+`DisableGadget`). O canvas mostra uma **prévia estática** da Cor 2 nas células marcadas (não anima o
+pisca-pisca de verdade — ver Lacunas abaixo).
+
+**Armazenamento** (`ProjectDB.pbi`, `screen0_screens`) — 5 colunas novas: `ink2_color`/`paper2_color`/
+`blink_on_period`/`blink_off_period` (INTEGER, defaults 15/1/8/8) e `attr_data` (TEXT, mesmo padrão hex
+2-dígitos/célula de `grid_data`, mas guardando 0/1 por célula em vez de bit-packing de verdade —
+simplicidade > espaço, consistente com o resto do arquivo). `StoreScreen0`/`FetchScreen0` ganharam os
+parâmetros correspondentes + `Array GridAttrs.a(1)`; sem migração porque a tabela só existe desde a
+sessão anterior, ainda não distribuída.
+
+**Verificado**: harness de auto-teste temporário (flag `--scr0test2`, removido após uso) confirmou:
+regressão de 40 colunas (nenhum bloco de Cor 2/VDP aparece), endereço da PGT saindo `&H1000` pra 80
+colunas com fonte customizada, nenhum bloco de Cor 2 quando nenhuma célula está marcada, e — com 3
+células marcadas — `VDP(13)`/`VDP(14)` com os valores exatos esperados e os bytes da tabela de pisca
+empacotados bit a bit corretos (`&HC0,&H80,...`, conferido MSB-primeiro). Layout verificado por
+screenshot real das duas paletas "Cor 2" novas com a seleção certa, campos de duração desabilitados
+numa tela de 40 colunas, e as 7 abas de ferramenta (incluindo "Atributo") sem sobreposição/corte.
+
+**Fora do v1, decisão de escopo deliberada** (não implementado agora): o canvas do editor não anima o
+pisca-pisca de verdade durante a edição, só mostra a Cor 2 estaticamente nas células marcadas —
+animação ao vivo exigiria um `AddWindowTimer` redesenhando o canvas periodicamente; a duração
+configurada só afeta o código gerado (`VDP(14)`), não a prévia. Fica como incremento futuro se o
+usuário quiser.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

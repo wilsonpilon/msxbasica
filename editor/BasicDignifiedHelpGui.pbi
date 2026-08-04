@@ -119,7 +119,7 @@ Procedure BasicDignifiedHelp_OpenWindow(ParentWindow)
 
   BDHelpGui_BuildRows()
 
-  Protected WinW = 900, WinH = 600
+  Protected WinW = 940, WinH = 620
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ajuda - Basic Dignified",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -128,23 +128,23 @@ Procedure BasicDignifiedHelp_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   BDHelpGui_WinID = Win
 
-  Protected TopY = 15
-  TextGadget(#PB_Any, 15, TopY + 4, 55, 20, "Buscar:")
-  Protected G_Search = StringGadget(#PB_Any, 75, TopY, 300, 24, "")
+  Protected TopY = 24
+  TextGadget(#PB_Any, 24, TopY + 4, 55, 20, "Buscar:")
+  Protected G_Search = StringGadget(#PB_Any, 87, TopY, 300, 24, "")
   GadgetToolTip(G_Search, "Filtra por titulo ou grupo")
-  Protected G_ClearSearch = ButtonGadget(#PB_Any, 380, TopY, 80, 24, "Limpar")
-  Protected G_Status = TextGadget(#PB_Any, 470, TopY + 4, WinW - 490, 20, "")
+  Protected G_ClearSearch = ButtonGadget(#PB_Any, 399, TopY, 80, 24, "Limpar")
+  Protected G_Status = TextGadget(#PB_Any, 495, TopY + 4, WinW - 519, 20, "")
 
-  Protected BottomBarH = 40
-  Protected TreeY = TopY + 34
-  Protected TreeH = WinH - TreeY - BottomBarH - 15
-  Protected TreeW = 280
-  Protected G_Tree = TreeGadget(#PB_Any, 15, TreeY, TreeW, TreeH)
-  Protected G_Content = ScintillaGadget(#PB_Any, 15 + TreeW + 15, TreeY, WinW - TreeW - 45, TreeH, 0)
+  Protected ButtonY = WinH - 56
+  Protected TreeY = TopY + 24 + 16
+  Protected TreeH = ButtonY - 16 - TreeY
+  Protected TreeW = 300
+  Protected G_Tree = TreeGadget(#PB_Any, 24, TreeY, TreeW, TreeH)
+  Protected G_Content = ScintillaGadget(#PB_Any, 24 + TreeW + 24, TreeY, WinW - TreeW - 72, TreeH, 0)
   NBHelpGui_SetupStyles(G_Content)
 
-  Protected G_Back = ButtonGadget(#PB_Any, 15, WinH - BottomBarH, 160, 28, "<- Voltar (Alt+Esquerda)")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 115, WinH - BottomBarH, 100, 28, "Fechar")
+  Protected G_Back = ButtonGadget(#PB_Any, 24, ButtonY, 180, 32, "<- Voltar (Alt+Esquerda)")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
 
   BDHelpGui_PopulateTree(G_Tree)
   AddKeyboardShortcut(Win, #PB_Shortcut_Alt | #PB_Shortcut_Left, #BDHelpGui_ShortcutBack)

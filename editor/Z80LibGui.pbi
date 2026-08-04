@@ -39,7 +39,7 @@ Procedure Z80LibGui_Refresh(ListGadget, StatusGadget, LibPath.s)
 EndProcedure
 
 Procedure Z80LibGui_OpenWindow(ParentWindow)
-  Protected WinW = 620, WinH = 420
+  Protected WinW = 660, WinH = 470
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Biblioteca Z80 (.LIB)",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -48,23 +48,23 @@ Procedure Z80LibGui_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 16, 80, 20, "Biblioteca:")
-  Protected G_LibPathText = StringGadget(#PB_Any, 100, 14, WinW - 15 - 190 - 10 - 100, 24, "", #PB_String_ReadOnly)
-  Protected G_New  = ButtonGadget(#PB_Any, WinW - 15 - 190, 13, 90, 26, "Nova...")
-  Protected G_Open = ButtonGadget(#PB_Any, WinW - 15 - 95, 13, 95, 26, "Abrir...")
+  TextGadget(#PB_Any, 24, 24, 80, 20, "Biblioteca:")
+  Protected G_LibPathText = StringGadget(#PB_Any, 112, 22, 323, 24, "", #PB_String_ReadOnly)
+  Protected G_New  = ButtonGadget(#PB_Any, 443, 21, 90, 28, "Nova...")
+  Protected G_Open = ButtonGadget(#PB_Any, 541, 21, 95, 28, "Abrir...")
 
-  Protected G_List = ListIconGadget(#PB_Any, 15, 50, WinW - 30, 220, "Programa", 150,
+  Protected G_List = ListIconGadget(#PB_Any, 24, 64, WinW - 48, 220, "Programa", 150,
                                     #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
   AddGadgetColumn(G_List, 1, "Tamanho", 90)
-  AddGadgetColumn(G_List, 2, "Simbolos publicos", WinW - 30 - 150 - 90 - 20)
+  AddGadgetColumn(G_List, 2, "Simbolos publicos", WinW - 48 - 150 - 90 - 20)
 
-  Protected G_Status = TextGadget(#PB_Any, 15, 278, WinW - 30, 40, "Use 'Nova...' ou 'Abrir...' para escolher uma biblioteca.")
+  Protected G_Status = TextGadget(#PB_Any, 24, 304, WinW - 48, 40, "Use 'Nova...' ou 'Abrir...' para escolher uma biblioteca.")
 
-  Protected G_Add    = ButtonGadget(#PB_Any, 15, 322, 160, 30, "Adicionar .REL...")
-  Protected G_Remove = ButtonGadget(#PB_Any, 185, 322, 160, 30, "Remover selecionado")
+  Protected G_Add    = ButtonGadget(#PB_Any, 24, 364, 160, 30, "Adicionar .REL...")
+  Protected G_Remove = ButtonGadget(#PB_Any, 200, 364, 160, 30, "Remover selecionado")
 
-  Protected ButtonY = WinH - 45
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 15 - 100, ButtonY, 100, 30, "Fechar")
+  Protected ButtonY = WinH - 56
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
 
   Protected LibPath.s = ""
   Protected Event, Quit = #False, Sel

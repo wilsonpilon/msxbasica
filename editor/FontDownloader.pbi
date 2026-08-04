@@ -197,7 +197,7 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
     DefaultDir = Left(DefaultDir, Len(DefaultDir) - 1)
   EndIf
 
-  Protected WinW = 540, WinH = 470
+  Protected WinW = 600, WinH = 558
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Baixar Fontes (Nerd Fonts)",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -207,27 +207,27 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
 
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 15, 510, 48,
+  TextGadget(#PB_Any, 24, 24, WinW - 48, 48,
     "Baixa fontes da colecao Nerd Fonts (nerdfonts.com), extraindo automaticamente" + Chr(10) +
     "os arquivos .ttf/.otf na pasta abaixo. Selecione as fontes desejadas ou use" + Chr(10) +
     "'Baixar todas' para a colecao inteira (atencao: dezenas de arquivos grandes).")
 
-  TextGadget(#PB_Any, 15, 68, 300, 20, "Pasta de destino")
-  Protected G_TargetDir = StringGadget(#PB_Any, 15, 88, 430, 22, DefaultDir)
-  Protected G_TargetDirBrowse = ButtonGadget(#PB_Any, 450, 88, 75, 22, "...")
+  TextGadget(#PB_Any, 24, 88, 300, 20, "Pasta de destino")
+  Protected G_TargetDir = StringGadget(#PB_Any, 24, 116, 464, 24, DefaultDir)
+  Protected G_TargetDirBrowse = ButtonGadget(#PB_Any, 496, 116, 80, 24, "...")
 
-  Protected G_List = ListIconGadget(#PB_Any, 15, 118, 510, 250, "Fonte", 490,
+  Protected G_List = ListIconGadget(#PB_Any, 24, 156, WinW - 48, 250, "Fonte", WinW - 68,
                                      #PB_ListIcon_CheckBoxes | #PB_ListIcon_GridLines | #PB_ListIcon_FullRowSelect)
 
-  Protected G_Status = TextGadget(#PB_Any, 15, 374, 510, 20, "Carregando lista de fontes...")
+  Protected G_Status = TextGadget(#PB_Any, 24, 422, WinW - 48, 20, "Carregando lista de fontes...")
 
-  Protected G_SelectAll = ButtonGadget(#PB_Any, 15, 398, 120, 24, "Selecionar todas")
-  Protected G_SelectNone = ButtonGadget(#PB_Any, 140, 398, 120, 24, "Limpar selecao")
-  Protected G_Reload = ButtonGadget(#PB_Any, 265, 398, 100, 24, "Recarregar lista")
+  Protected G_SelectAll = ButtonGadget(#PB_Any, 24, 458, 140, 28, "Selecionar todas")
+  Protected G_SelectNone = ButtonGadget(#PB_Any, 176, 458, 140, 28, "Limpar selecao")
+  Protected G_Reload = ButtonGadget(#PB_Any, 328, 458, 110, 28, "Recarregar lista")
 
-  Protected G_DownloadSelected = ButtonGadget(#PB_Any, 15, 432, 160, 28, "Baixar selecionadas")
-  Protected G_DownloadAll = ButtonGadget(#PB_Any, 180, 432, 120, 28, "Baixar todas")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 110, 432, 95, 28, "Fechar")
+  Protected G_DownloadSelected = ButtonGadget(#PB_Any, 24, 502, 180, 32, "Baixar selecionadas")
+  Protected G_DownloadAll = ButtonGadget(#PB_Any, 216, 502, 130, 32, "Baixar todas")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 100, 502, 100, 32, "Fechar")
 
   FontDownloader_FlushEvents()
   If FontDownloader_FetchList()

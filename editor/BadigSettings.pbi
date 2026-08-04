@@ -462,7 +462,7 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
     ProcedureReturn ""
   EndIf
 
-  Protected WinW = 380, WinH = 420
+  Protected WinW = 420, WinH = 460
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, Title,
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -471,7 +471,7 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  Protected G_List = ListViewGadget(#PB_Any, 15, 15, WinW - 30, WinH - 70)
+  Protected G_List = ListViewGadget(#PB_Any, 24, 24, WinW - 48, WinH - 96)
   Protected SelectIndex = -1, i.i = 0
   ForEach Names()
     AddGadgetItem(G_List, -1, Names())
@@ -484,8 +484,8 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
     SetGadgetState(G_List, SelectIndex)
   EndIf
 
-  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 220, WinH - 40, 100, 28, "OK")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 110, WinH - 40, 100, 28, "Cancelar")
+  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "OK")
+  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
 
   Protected Event, Quit = #False, Result.s = "", Sel.i
 
@@ -537,7 +537,10 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
-  Protected WinW = 640, WinH = 600
+  ; Mesma grade de layout de EditorCfg_OpenSettingsWindow() (EditorSettings.pbi):
+  ; 24px de margem externa, 24px de altura de campo, 8px entre um rotulo e o
+  ; campo logo abaixo dele, ~26-30px entre grupos distintos.
+  Protected WinW = 680, WinH = 744
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do Basic Dignified",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -547,44 +550,48 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
 
   DisableWindow(ParentWindow, #True)
 
-  Protected Panel = PanelGadget(#PB_Any, 10, 10, WinW - 20, WinH - 60)
+  Protected Panel = PanelGadget(#PB_Any, 24, 24, WinW - 48, 640)
 
   ;- Pagina 1: Basic Dignified ------------------------------------------------
   AddGadgetItem(Panel, -1, "Basic Dignified")
 
-  TextGadget(#PB_Any, 15, 15, 130, 20, "Linha inicial")
-  Protected G_LineStart = StringGadget(#PB_Any, 150, 12, 60, 22, Str(BadigCfg\LineStart))
+  TextGadget(#PB_Any, 24, 24, 160, 20, "Linha inicial")
+  TextGadget(#PB_Any, 234, 24, 160, 20, "Passo de linha")
+  TextGadget(#PB_Any, 444, 24, 160, 20, "Tamanho do TAB")
+  Protected G_LineStart = StringGadget(#PB_Any, 24, 52, 90, 24, Str(BadigCfg\LineStart))
+  Protected G_LineStep = StringGadget(#PB_Any, 234, 52, 90, 24, Str(BadigCfg\LineStep))
+  Protected G_TabLenght = StringGadget(#PB_Any, 444, 52, 90, 24, Str(BadigCfg\TabLenght))
 
-  TextGadget(#PB_Any, 230, 15, 110, 20, "Passo de linha")
-  Protected G_LineStep = StringGadget(#PB_Any, 345, 12, 60, 22, Str(BadigCfg\LineStep))
+  TextGadget(#PB_Any, 24, 102, 200, 20, "Verbosidade (0-4)")
+  Protected G_VerboseLevel = StringGadget(#PB_Any, 24, 130, 90, 24, Str(BadigCfg\VerboseLevel))
 
-  TextGadget(#PB_Any, 425, 15, 110, 20, "Tamanho do TAB")
-  Protected G_TabLenght = StringGadget(#PB_Any, 540, 12, 50, 22, Str(BadigCfg\TabLenght))
+  ; Nota: coordenadas de gadgets criados dentro de um PanelGadget sao
+  ; relativas a LARGURA DO PANEL (632px, WinW - 48), nao a largura da janela -
+  ; a borda direita utilizavel e portanto 632 - 24 (margem direita) = 608, nao
+  ; WinW - 24. Bug real encontrado por screenshot nesta sessao: uma primeira
+  ; passada desta grade usava a margem da JANELA para a coluna direita e para
+  ; os botoes "...", cortando texto/botoes pela borda do panel.
+  TextGadget(#PB_Any, 24, 184, 300, 20, "Opcoes gerais")
+  Protected G_RemHeader = CheckBoxGadget(#PB_Any, 24, 212, 280, 22, "Incluir cabecalho REM")
+  Protected G_StripSpaces = CheckBoxGadget(#PB_Any, 328, 212, 280, 22, "Remover todos os espacos")
+  Protected G_CapitalizeAll = CheckBoxGadget(#PB_Any, 24, 242, 280, 22, "Converter tudo para maiusculas")
+  Protected G_Translate = CheckBoxGadget(#PB_Any, 328, 242, 280, 40, "Traduzir caracteres Unicode especiais para nativos MSX")
 
-  TextGadget(#PB_Any, 15, 47, 150, 20, "Verbosidade (0-4)")
-  Protected G_VerboseLevel = StringGadget(#PB_Any, 170, 44, 50, 22, Str(BadigCfg\VerboseLevel))
+  TextGadget(#PB_Any, 24, 312, 320, 20, "Relatorios (salvar/exibir)")
+  Protected G_PrintReport = CheckBoxGadget(#PB_Any, 24, 340, 280, 22, "Exibir relatorios em vez de salvar")
+  Protected G_LabelReport = CheckBoxGadget(#PB_Any, 328, 340, 280, 22, "Rotulos como REM no codigo convertido")
+  Protected G_LineReport = CheckBoxGadget(#PB_Any, 24, 370, 280, 22, "Correspondencia de linhas")
+  Protected G_VarReport = CheckBoxGadget(#PB_Any, 328, 370, 280, 22, "Substituicao de variaveis")
+  Protected G_LexerReport = CheckBoxGadget(#PB_Any, 24, 400, 280, 22, "Saida do lexer (tokens)")
+  Protected G_ParserReport = CheckBoxGadget(#PB_Any, 328, 400, 280, 22, "Saida do parser (tokens)")
 
-  TextGadget(#PB_Any, 15, 85, 300, 20, "Opcoes gerais")
-  Protected G_RemHeader = CheckBoxGadget(#PB_Any, 15, 110, 290, 22, "Incluir cabecalho REM")
-  Protected G_StripSpaces = CheckBoxGadget(#PB_Any, 320, 110, 290, 22, "Remover todos os espacos")
-  Protected G_CapitalizeAll = CheckBoxGadget(#PB_Any, 15, 138, 290, 22, "Converter tudo para maiusculas")
-  Protected G_Translate = CheckBoxGadget(#PB_Any, 320, 138, 290, 40, "Traduzir caracteres Unicode especiais para nativos MSX")
+  TextGadget(#PB_Any, 24, 452, 500, 20, "Diretorio de instalacao do Basic Dignified Suite")
+  Protected G_InstallDir = StringGadget(#PB_Any, 24, 480, 512, 24, BadigCfg\InstallDir)
+  Protected G_InstallDirBrowse = ButtonGadget(#PB_Any, 544, 480, 64, 24, "...")
 
-  TextGadget(#PB_Any, 15, 190, 300, 20, "Relatorios (salvar/exibir)")
-  Protected G_PrintReport = CheckBoxGadget(#PB_Any, 15, 215, 290, 22, "Exibir relatorios em vez de salvar")
-  Protected G_LabelReport = CheckBoxGadget(#PB_Any, 320, 215, 290, 22, "Rotulos como REM no codigo convertido")
-  Protected G_LineReport = CheckBoxGadget(#PB_Any, 15, 243, 290, 22, "Correspondencia de linhas")
-  Protected G_VarReport = CheckBoxGadget(#PB_Any, 320, 243, 290, 22, "Substituicao de variaveis")
-  Protected G_LexerReport = CheckBoxGadget(#PB_Any, 15, 271, 290, 22, "Saida do lexer (tokens)")
-  Protected G_ParserReport = CheckBoxGadget(#PB_Any, 320, 271, 290, 22, "Saida do parser (tokens)")
-
-  TextGadget(#PB_Any, 15, 313, 400, 20, "Diretorio de instalacao do Basic Dignified Suite")
-  Protected G_InstallDir = StringGadget(#PB_Any, 15, 333, 460, 22, BadigCfg\InstallDir)
-  Protected G_InstallDirBrowse = ButtonGadget(#PB_Any, 485, 333, 45, 22, "...")
-
-  Protected G_DownloadSuite = ButtonGadget(#PB_Any, 15, 365, 260, 26, "Baixar Basic Dignified Suite...")
-  TextGadget(#PB_Any, 285, 368, 260, 40, "Clona com Git ou baixa um .zip do GitHub e descompacta no diretorio acima.")
-  TextGadget(#PB_Any, 15, 400, 555, 40,
+  Protected G_DownloadSuite = ButtonGadget(#PB_Any, 24, 520, 280, 28, "Baixar Basic Dignified Suite...")
+  TextGadget(#PB_Any, 328, 520, 280, 40, "Clona com Git ou baixa um .zip do GitHub e descompacta no diretorio acima.")
+  TextGadget(#PB_Any, 24, 576, 584, 40,
     "Opcional: o editor ja tem pre-processador e tokenizador nativos (menu Arquivo), nao precisa " +
     "deste diretorio pra funcionar. So baixe/instale se quiser rodar o Basic Dignified Suite " +
     "original em Python separadamente.")
@@ -592,55 +599,55 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   ;- Pagina 2: MSX -------------------------------------------------------------
   AddGadgetItem(Panel, -1, "MSX")
 
-  TextGadget(#PB_Any, 15, 15, 160, 20, "Converter ? / PRINT")
-  Protected G_ConvertPrint = ComboBoxGadget(#PB_Any, 180, 12, 220, 22)
+  TextGadget(#PB_Any, 24, 24, 200, 20, "Converter ? / PRINT")
+  Protected G_ConvertPrint = ComboBoxGadget(#PB_Any, 24, 52, 260, 24)
   AddGadgetItem(G_ConvertPrint, -1, "Nao converter")
   AddGadgetItem(G_ConvertPrint, -1, "? -> PRINT")
   AddGadgetItem(G_ConvertPrint, -1, "PRINT -> ?")
 
-  TextGadget(#PB_Any, 15, 50, 200, 20, "Remover THEN/ELSE ou GOTO")
-  Protected G_StripThenGoto = ComboBoxGadget(#PB_Any, 220, 47, 260, 22)
+  TextGadget(#PB_Any, 24, 106, 260, 20, "Remover THEN/ELSE ou GOTO")
+  Protected G_StripThenGoto = ComboBoxGadget(#PB_Any, 24, 134, 300, 24)
   AddGadgetItem(G_StripThenGoto, -1, "Nao remover")
   AddGadgetItem(G_StripThenGoto, -1, "THEN/ELSE (apos IF)")
   AddGadgetItem(G_StripThenGoto, -1, "GOTO (apos THEN/ELSE)")
 
-  TextGadget(#PB_Any, 15, 95, 300, 20, "Tokenizador (msxbatoken)")
-  Protected G_TkList = CheckBoxGadget(#PB_Any, 15, 120, 220, 22, "Gerar arquivo de listagem")
-  TextGadget(#PB_Any, 250, 120, 110, 20, "Colunas (1-32)")
-  Protected G_TkListWidth = StringGadget(#PB_Any, 365, 118, 50, 22, Str(BadigCfg\TkListWidth))
+  TextGadget(#PB_Any, 24, 188, 300, 20, "Tokenizador (msxbatoken)")
+  Protected G_TkList = CheckBoxGadget(#PB_Any, 24, 216, 280, 22, "Gerar arquivo de listagem")
+  TextGadget(#PB_Any, 320, 218, 110, 20, "Colunas (1-32)")
+  Protected G_TkListWidth = StringGadget(#PB_Any, 440, 214, 60, 24, Str(BadigCfg\TkListWidth))
 
-  Protected G_TkDelAscii = CheckBoxGadget(#PB_Any, 15, 155, 320, 22, "Apagar o ASCII apos tokenizar")
+  Protected G_TkDelAscii = CheckBoxGadget(#PB_Any, 24, 270, 340, 22, "Apagar o ASCII apos tokenizar")
 
-  TextGadget(#PB_Any, 15, 195, 380, 20, "Verbosidade do tokenizador (0-5, vazio = padrao)")
-  Protected G_TkVerbose = StringGadget(#PB_Any, 15, 215, 60, 22, "")
+  TextGadget(#PB_Any, 24, 322, 420, 20, "Verbosidade do tokenizador (0-5, vazio = padrao)")
+  Protected G_TkVerbose = StringGadget(#PB_Any, 24, 350, 70, 24, "")
   If BadigCfg\TkVerbose >= 0 : SetGadgetText(G_TkVerbose, Str(BadigCfg\TkVerbose)) : EndIf
 
   ;- Pagina 3: Emulador --------------------------------------------------------
   AddGadgetItem(Panel, -1, "Emulador")
 
-  Protected G_EmRun = CheckBoxGadget(#PB_Any, 15, 15, 420, 22, "Abrir o openMSX e rodar o codigo apos gerar")
-  Protected G_EmMonitor = CheckBoxGadget(#PB_Any, 15, 43, 420, 22, "Monitorar execucao (detectar erros em runtime)")
-  Protected G_EmNoThrottle = CheckBoxGadget(#PB_Any, 15, 71, 420, 22, "Rodar sem limitador de velocidade (nothrottle)")
+  Protected G_EmRun = CheckBoxGadget(#PB_Any, 24, 24, 460, 22, "Abrir o openMSX e rodar o codigo apos gerar")
+  Protected G_EmMonitor = CheckBoxGadget(#PB_Any, 24, 54, 460, 22, "Monitorar execucao (detectar erros em runtime)")
+  Protected G_EmNoThrottle = CheckBoxGadget(#PB_Any, 24, 84, 460, 22, "Rodar sem limitador de velocidade (nothrottle)")
 
-  TextGadget(#PB_Any, 15, 108, 300, 20, "Arquivo de configuracao (setting)")
-  Protected G_EmSetting = StringGadget(#PB_Any, 15, 128, 480, 22, BadigCfg\EmSetting)
-  Protected G_EmSettingBrowse = ButtonGadget(#PB_Any, 505, 128, 40, 22, "...")
+  TextGadget(#PB_Any, 24, 136, 320, 20, "Arquivo de configuracao (setting)")
+  Protected G_EmSetting = StringGadget(#PB_Any, 24, 164, 512, 24, BadigCfg\EmSetting)
+  Protected G_EmSettingBrowse = ButtonGadget(#PB_Any, 544, 164, 64, 24, "...")
 
-  TextGadget(#PB_Any, 15, 160, 300, 20, "Maquina (machine)")
-  Protected G_EmMachine = StringGadget(#PB_Any, 15, 180, 480, 22, BadigCfg\EmMachine)
-  Protected G_EmMachineBrowse = ButtonGadget(#PB_Any, 505, 180, 40, 22, "...")
+  TextGadget(#PB_Any, 24, 214, 320, 20, "Maquina (machine)")
+  Protected G_EmMachine = StringGadget(#PB_Any, 24, 242, 512, 24, BadigCfg\EmMachine)
+  Protected G_EmMachineBrowse = ButtonGadget(#PB_Any, 544, 242, 64, 24, "...")
 
-  TextGadget(#PB_Any, 15, 212, 400, 20, "Extensao de disco (extension), formato Nome:slot")
-  Protected G_EmExtension = StringGadget(#PB_Any, 15, 232, 480, 22, BadigCfg\EmExtension)
-  Protected G_EmExtensionBrowse = ButtonGadget(#PB_Any, 505, 232, 40, 22, "...")
+  TextGadget(#PB_Any, 24, 292, 420, 20, "Extensao de disco (extension), formato Nome:slot")
+  Protected G_EmExtension = StringGadget(#PB_Any, 24, 320, 512, 24, BadigCfg\EmExtension)
+  Protected G_EmExtensionBrowse = ButtonGadget(#PB_Any, 544, 320, 64, 24, "...")
 
-  TextGadget(#PB_Any, 15, 264, 380, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
-  Protected G_EmVerbose = StringGadget(#PB_Any, 15, 284, 60, 22, "")
+  TextGadget(#PB_Any, 24, 370, 420, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
+  Protected G_EmVerbose = StringGadget(#PB_Any, 24, 398, 70, 24, "")
   If BadigCfg\EmVerbose >= 0 : SetGadgetText(G_EmVerbose, Str(BadigCfg\EmVerbose)) : EndIf
 
-  TextGadget(#PB_Any, 15, 316, 500, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
-  Protected G_EmulatorPath = StringGadget(#PB_Any, 15, 336, 480, 22, BadigCfg\EmulatorPath)
-  Protected G_EmulatorPathBrowse = ButtonGadget(#PB_Any, 505, 336, 40, 22, "...")
+  TextGadget(#PB_Any, 24, 448, 560, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
+  Protected G_EmulatorPath = StringGadget(#PB_Any, 24, 476, 512, 24, BadigCfg\EmulatorPath)
+  Protected G_EmulatorPathBrowse = ButtonGadget(#PB_Any, 544, 476, 64, 24, "...")
 
   CloseGadgetList()
 
@@ -678,8 +685,8 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   SetGadgetState(G_EmMonitor, BadigCfg\EmMonitor)
   SetGadgetState(G_EmNoThrottle, BadigCfg\EmNoThrottle)
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 220, WinH - 40, 100, 28, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 110, WinH - 40, 100, 28, "Cancelar")
+  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
+  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
 
   Protected Event, Quit = #False, Saved = #False
 

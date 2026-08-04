@@ -78,7 +78,8 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
     ProcedureReturn
   EndIf
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, 900, 500, "openMSX - console de comandos",
+  Protected WinW = 940, WinH = 556
+  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "openMSX - console de comandos",
                               #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
   If Not Win
     ProcedureReturn
@@ -99,30 +100,30 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   ; OMSX_PipeConnectThread()), entao reflete o estado real mesmo se ele mudar por outro
   ; caminho que nao um comando mandado por esta janela (ex. o usuario pausando pela
   ; propria janela do openMSX).
-  Protected G_Status     = TextGadget(#PB_Any, 10, 10, 880, 20, "Estado: ?  |  ?", #PB_Text_Center)
-  Protected G_Log        = EditorGadget(#PB_Any, 10, 34, 880, 190, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
+  Protected G_Status     = TextGadget(#PB_Any, 24, 24, WinW - 48, 20, "Estado: ?  |  ?", #PB_Text_Center)
+  Protected G_Log        = EditorGadget(#PB_Any, 24, 60, WinW - 48, 190, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
 
   ; Area de colar/editar texto pra "digitar" no MSX de verdade (mesmo mecanismo do
   ; Catapult - InputPage.cpp/OnTypeText() - ver OMSX_TypeText() em OpenMSXBridge.pbi).
   ; EditorGadget sem #PB_Editor_ReadOnly ja aceita colar (Ctrl+V) nativamente, sem
   ; codigo extra nenhum.
-  Protected G_PasteLabel = TextGadget(#PB_Any, 10, 230, 880, 18,
+  Protected G_PasteLabel = TextGadget(#PB_Any, 24, 266, WinW - 48, 18,
                                        "Colar/editar texto abaixo e clicar em " + Chr(34) + "Inserir no openMSX" + Chr(34) + " pra digitar no MSX:")
-  Protected G_PasteInput = EditorGadget(#PB_Any, 10, 250, 880, 110, #PB_Editor_WordWrap)
-  Protected G_InsertText = ButtonGadget(#PB_Any, 10, 366, 220, 28, "Inserir no openMSX")
-  Protected G_ClearPaste = ButtonGadget(#PB_Any, 236, 366, 100, 28, "Limpar")
+  Protected G_PasteInput = EditorGadget(#PB_Any, 24, 292, WinW - 48, 110, #PB_Editor_WordWrap)
+  Protected G_InsertText = ButtonGadget(#PB_Any, 24, 418, 220, 28, "Inserir no openMSX")
+  Protected G_ClearPaste = ButtonGadget(#PB_Any, 256, 418, 100, 28, "Limpar")
   GadgetToolTip(G_InsertText, "Digita o texto acima no MSX como se fosse teclado (comando " + Chr(34) + "type" + Chr(34) + " do openMSX - mesmo mecanismo do Catapult). Quebras de linha viram Enter.")
 
-  Protected G_Input      = StringGadget(#PB_Any, 10, 404, 770, 24, "")
-  Protected G_Send       = ButtonGadget(#PB_Any, 788, 404, 102, 24, "Enviar" + Chr(9) + "Enter")
-  Protected G_Reset      = ButtonGadget(#PB_Any, 10, 438, 95, 28, "Reset")
-  Protected G_Pause      = ButtonGadget(#PB_Any, 112, 438, 95, 28, "Pausar")
-  Protected G_Resume     = ButtonGadget(#PB_Any, 214, 438, 95, 28, "Continuar")
-  Protected G_PowerOn    = ButtonGadget(#PB_Any, 316, 438, 85, 28, "Ligar")
-  Protected G_PowerOff   = ButtonGadget(#PB_Any, 408, 438, 85, 28, "Desligar")
-  Protected G_ShowWindow = ButtonGadget(#PB_Any, 500, 438, 130, 28, "Mostrar janela")
-  Protected G_Help       = ButtonGadget(#PB_Any, 637, 438, 90, 28, "Ajuda")
-  Protected G_Close      = ButtonGadget(#PB_Any, 734, 438, 120, 28, "Fechar janela")
+  Protected G_Input      = StringGadget(#PB_Any, 24, 462, 782, 24, "")
+  Protected G_Send       = ButtonGadget(#PB_Any, 814, 462, 102, 24, "Enviar" + Chr(9) + "Enter")
+  Protected G_Reset      = ButtonGadget(#PB_Any, 24, 502, 95, 28, "Reset")
+  Protected G_Pause      = ButtonGadget(#PB_Any, 133, 502, 95, 28, "Pausar")
+  Protected G_Resume     = ButtonGadget(#PB_Any, 242, 502, 95, 28, "Continuar")
+  Protected G_PowerOn    = ButtonGadget(#PB_Any, 351, 502, 85, 28, "Ligar")
+  Protected G_PowerOff   = ButtonGadget(#PB_Any, 450, 502, 85, 28, "Desligar")
+  Protected G_ShowWindow = ButtonGadget(#PB_Any, 549, 502, 130, 28, "Mostrar janela")
+  Protected G_Help       = ButtonGadget(#PB_Any, 693, 502, 90, 28, "Ajuda")
+  Protected G_Close      = ButtonGadget(#PB_Any, 797, 502, 119, 28, "Fechar janela")
   GadgetToolTip(G_ShowWindow, "Envia " + Chr(34) + "unset renderer" + Chr(34) + " - o openMSX sobe com -control em modo sem janela (renderer none) ate isso ser enviado")
   GadgetToolTip(G_Help, "Abre a Ajuda -> openMSX (consulta de comandos/configuracoes)")
 

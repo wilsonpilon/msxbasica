@@ -255,7 +255,7 @@ EndProcedure
 Procedure MsxBas2RomSettings_OpenWindow(ParentWindow)
   MsxBas2RomCfg_Load()
 
-  Protected WinW = 560, WinH = 220
+  Protected WinW = 580, WinH = 304
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configurar - MSXBas2Rom",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -264,21 +264,21 @@ Procedure MsxBas2RomSettings_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 15, WinW - 30, 40,
+  TextGadget(#PB_Any, 24, 24, WinW - 48, 40,
             "MSXBAS2ROM compila programas MSX-BASIC classicos (.bas) direto em ROM." + Chr(10) +
             "github.com/amaurycarvalho/msxbas2rom")
 
-  Protected G_Installed = TextGadget(#PB_Any, 15, 65, WinW - 30, 20, "")
+  Protected G_Installed = TextGadget(#PB_Any, 24, 80, WinW - 48, 20, "")
   If MsxBas2RomCfg\ExePath <> "" And FileSize(MsxBas2RomCfg\ExePath) > 0
     SetGadgetText(G_Installed, "Instalado: " + MsxBas2RomCfg\Version + " (" + MsxBas2RomCfg\ExePath + ")")
   Else
     SetGadgetText(G_Installed, "Nao instalado ainda.")
   EndIf
 
-  Protected G_Download = ButtonGadget(#PB_Any, 15, 100, 260, 30, "Baixar versao mais recente")
-  Protected G_Status = TextGadget(#PB_Any, 15, 140, WinW - 30, 40, "")
+  Protected G_Download = ButtonGadget(#PB_Any, 24, 120, 280, 28, "Baixar versao mais recente")
+  Protected G_Status = TextGadget(#PB_Any, 24, 176, WinW - 48, 40, "")
 
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 115, WinH - 45, 100, 30, "Fechar")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, WinH - 56, 110, 32, "Fechar")
 
   Protected Event, Quit = #False
   Repeat

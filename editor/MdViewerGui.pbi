@@ -75,13 +75,13 @@ Procedure MdView_OpenSingle(ParentWindow)
   EndIf
   App_ApplyWindowIcon(Win)
 
-  Protected TopY = 15
-  Protected G_BtnTxt = ButtonGadget(#PB_Any, 15, TopY, 90, 26, "TXT")
-  Protected G_BtnMd  = ButtonGadget(#PB_Any, 110, TopY, 90, 26, "MD")
-  Protected G_Close  = ButtonGadget(#PB_Any, WinW - 115, TopY, 100, 26, "Fechar")
+  Protected TopY = 24
+  Protected G_BtnTxt = ButtonGadget(#PB_Any, 24, TopY, 90, 28, "TXT")
+  Protected G_BtnMd  = ButtonGadget(#PB_Any, 126, TopY, 90, 28, "MD")
+  Protected G_Close  = ButtonGadget(#PB_Any, WinW - 24 - 100, TopY, 100, 28, "Fechar")
 
-  Protected ContentY = TopY + 36
-  Protected G_Content = ScintillaGadget(#PB_Any, 15, ContentY, WinW - 30, WinH - ContentY - 15, 0)
+  Protected ContentY = TopY + 28 + 16
+  Protected G_Content = ScintillaGadget(#PB_Any, 24, ContentY, WinW - 48, WinH - ContentY - 24, 0)
   ScintillaSendMessage(G_Content, #SCI_SETMOUSEDOWNCAPTURES, 1, 0)
 
   GenMdHelp_SetupStyles(G_Content)
@@ -144,16 +144,17 @@ Procedure MdView_OpenSplit(ParentWindow)
   EndIf
   App_ApplyWindowIcon(Win)
 
-  Protected TopY = 15
-  Protected HalfW = (WinW - 45) / 2
-  TextGadget(#PB_Any, 15, TopY, HalfW, 20, "TXT (editavel)")
-  TextGadget(#PB_Any, 15 + HalfW + 15, TopY, HalfW, 20, "MD (previa)")
+  Protected TopY = 24
+  Protected HalfW = (WinW - 72) / 2
+  TextGadget(#PB_Any, 24, TopY, HalfW, 20, "TXT (editavel)")
+  TextGadget(#PB_Any, 24 + HalfW + 24, TopY, HalfW, 20, "MD (previa)")
 
-  Protected ContentY = TopY + 24
-  Protected ContentH = WinH - ContentY - 55
-  Protected G_Left  = ScintillaGadget(#PB_Any, 15, ContentY, HalfW, ContentH, @MdView_HybridScintillaCallback())
-  Protected G_Right = ScintillaGadget(#PB_Any, 15 + HalfW + 15, ContentY, HalfW, ContentH, 0)
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 115, WinH - 40, 100, 28, "Fechar")
+  Protected ButtonY = WinH - 56
+  Protected ContentY = TopY + 20 + 8
+  Protected ContentH = ButtonY - 16 - ContentY
+  Protected G_Left  = ScintillaGadget(#PB_Any, 24, ContentY, HalfW, ContentH, @MdView_HybridScintillaCallback())
+  Protected G_Right = ScintillaGadget(#PB_Any, 24 + HalfW + 24, ContentY, HalfW, ContentH, 0)
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
 
   MdView_HybridWin = Win
   MdView_HybridTargetSci = TargetSci

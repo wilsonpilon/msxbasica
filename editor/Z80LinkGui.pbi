@@ -34,7 +34,7 @@ Procedure.s Z80LinkGui_JoinPaths(List Paths.s())
 EndProcedure
 
 Procedure Z80LinkGui_OpenWindow(ParentWindow)
-  Protected WinW = 620, WinH = 400
+  Protected WinW = 660, WinH = 460
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Linkar (.REL) -> binario",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -43,25 +43,25 @@ Procedure Z80LinkGui_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 12, 400, 20, "Arquivos .REL (na ordem de link):")
-  Protected G_List = ListIconGadget(#PB_Any, 15, 34, 450, 170, "Arquivo", 440,
+  TextGadget(#PB_Any, 24, 24, 400, 20, "Arquivos .REL (na ordem de link):")
+  Protected G_List = ListIconGadget(#PB_Any, 24, 52, 460, 180, "Arquivo", 450,
                                     #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
 
-  Protected BtnX = 475
-  Protected G_Add    = ButtonGadget(#PB_Any, BtnX, 34, 130, 28, "Adicionar...")
-  Protected G_Remove = ButtonGadget(#PB_Any, BtnX, 66, 130, 28, "Remover")
-  Protected G_Up     = ButtonGadget(#PB_Any, BtnX, 98, 130, 28, "Subir")
-  Protected G_Down   = ButtonGadget(#PB_Any, BtnX, 130, 130, 28, "Descer")
+  Protected BtnX = 508
+  Protected G_Add    = ButtonGadget(#PB_Any, BtnX, 52, 130, 28, "Adicionar...")
+  Protected G_Remove = ButtonGadget(#PB_Any, BtnX, 88, 130, 28, "Remover")
+  Protected G_Up     = ButtonGadget(#PB_Any, BtnX, 124, 130, 28, "Subir")
+  Protected G_Down   = ButtonGadget(#PB_Any, BtnX, 160, 130, 28, "Descer")
 
-  TextGadget(#PB_Any, 15, 216, 350, 20, "Pasta de biblioteca (.REQUEST, opcional):")
-  Protected G_LibDir = StringGadget(#PB_Any, 15, 238, 505, 24, "", #PB_String_ReadOnly)
-  Protected G_LibBrowse = ButtonGadget(#PB_Any, 525, 237, 80, 26, "...")
+  TextGadget(#PB_Any, 24, 258, 380, 20, "Pasta de biblioteca (.REQUEST, opcional):")
+  Protected G_LibDir = StringGadget(#PB_Any, 24, 286, 524, 24, "", #PB_String_ReadOnly)
+  Protected G_LibBrowse = ButtonGadget(#PB_Any, 556, 286, 80, 24, "...")
 
-  Protected G_Status = TextGadget(#PB_Any, 15, 272, WinW - 30, 50, "")
+  Protected G_Status = TextGadget(#PB_Any, 24, 330, WinW - 48, 50, "")
 
-  Protected ButtonY = WinH - 45
-  Protected G_LinkBtn = ButtonGadget(#PB_Any, 15, ButtonY, 150, 30, "Linkar...")
-  Protected G_Close   = ButtonGadget(#PB_Any, WinW - 15 - 100, ButtonY, 100, 30, "Fechar")
+  Protected ButtonY = WinH - 56
+  Protected G_LinkBtn = ButtonGadget(#PB_Any, 24, ButtonY, 150, 32, "Linkar...")
+  Protected G_Close   = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
 
   Protected NewList RelPaths.s()
 

@@ -146,7 +146,10 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure DiskMgr_OpenWindow(ParentWindow)
-  Protected WinW = 900, WinH = 560
+  ; Mesma grade de layout dos demais dialogos (EditorSettings.pbi/BadigSettings.pbi):
+  ; 24px de margem externa, ~26-30px entre grupos - janela alargada (900->956)
+  ; pra compensar a margem maior sem espremer os dois paineis de lista.
+  Protected WinW = 956, WinH = 596
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar disco MSX",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -155,16 +158,16 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  Protected LeftW = 380, MidW = 110, RightW = 350
-  Protected LeftX = 15, MidX = LeftX + LeftW + 15, RightX = MidX + MidW + 15
-  Protected PanelY = 75, PanelH = WinH - 75 - 60 - 55
+  Protected LeftW = 380, MidW = 110, RightW = 366
+  Protected LeftX = 24, MidX = LeftX + LeftW + 24, RightX = MidX + MidW + 24
+  Protected PanelY = 96, PanelH = WinH - PanelY - 64 - 64
 
-  TextGadget(#PB_Any, 15, 18, 140, 20, "Arquivo do disco:")
-  Protected G_DiskPathText = StringGadget(#PB_Any, 160, 15, WinW - 15 - 90 - 10 - 160, 24, "", #PB_String_ReadOnly)
-  Protected G_Browse = ButtonGadget(#PB_Any, WinW - 15 - 90, 14, 90, 26, "...")
+  TextGadget(#PB_Any, 24, 24, 140, 20, "Arquivo do disco:")
+  Protected G_DiskPathText = StringGadget(#PB_Any, 172, 21, WinW - 24 - 90 - 8 - 172, 24, "", #PB_String_ReadOnly)
+  Protected G_Browse = ButtonGadget(#PB_Any, WinW - 24 - 90, 21, 90, 24, "...")
 
-  Protected G_LeftPathText = TextGadget(#PB_Any, LeftX, 48, LeftW, 20, "")
-  Protected G_DiskStatusText = TextGadget(#PB_Any, RightX, 48, RightW, 20, "Nenhum disco selecionado")
+  Protected G_LeftPathText = TextGadget(#PB_Any, LeftX, 64, LeftW, 20, "")
+  Protected G_DiskStatusText = TextGadget(#PB_Any, RightX, 64, RightW, 20, "Nenhum disco selecionado")
 
   Protected G_LeftList = ListIconGadget(#PB_Any, LeftX, PanelY, LeftW, PanelH, "Nome", 260,
                                         #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
@@ -181,15 +184,15 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   AddGadgetColumn(G_DiskList, 1, "Tamanho", 90)
   AddGadgetColumn(G_DiskList, 2, "Data", 100)
 
-  Protected G_Status = TextGadget(#PB_Any, 15, PanelY + PanelH + 10, WinW - 30, 40,
+  Protected G_Status = TextGadget(#PB_Any, 24, PanelY + PanelH + 16, WinW - 48, 40,
                                   "Use '...' para escolher um disco existente ou criar um novo.")
 
-  Protected ButtonY = WinH - 45
-  Protected G_Save      = ButtonGadget(#PB_Any, 265, ButtonY, 100, 30, "Salvar")
-  Protected G_SaveAs    = ButtonGadget(#PB_Any, 375, ButtonY, 130, 30, "Salvar como...")
-  Protected G_Duplicate = ButtonGadget(#PB_Any, 515, ButtonY, 110, 30, "Duplicar...")
-  Protected G_DeleteDisk = ButtonGadget(#PB_Any, 635, ButtonY, 140, 30, "Excluir disco...")
-  Protected G_Cancel    = ButtonGadget(#PB_Any, 775, ButtonY, 100, 30, "Cancelar")
+  Protected ButtonY = WinH - 56
+  Protected G_Save      = ButtonGadget(#PB_Any, 272, ButtonY, 100, 32, "Salvar")
+  Protected G_SaveAs    = ButtonGadget(#PB_Any, 384, ButtonY, 130, 32, "Salvar como...")
+  Protected G_Duplicate = ButtonGadget(#PB_Any, 526, ButtonY, 110, 32, "Duplicar...")
+  Protected G_DeleteDisk = ButtonGadget(#PB_Any, 648, ButtonY, 140, 32, "Excluir disco...")
+  Protected G_Cancel    = ButtonGadget(#PB_Any, 800, ButtonY, 132, 32, "Cancelar")
 
   Protected NewList LeftEntries.DiskMgrEntry()
   Protected LeftDir.s = DiskMgr_EnsureTrailingSep(GetCurrentDirectory())

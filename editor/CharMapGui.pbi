@@ -150,7 +150,7 @@ EndProcedure
 Procedure CharMap_OpenWindow(ParentWindow)
   CharMap_EnsureFonts()
 
-  Protected WinW = 750, WinH = 500
+  Protected WinW = 780, WinH = 536
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Inserir Caractere Especial",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -159,26 +159,26 @@ Procedure CharMap_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 15, WinW - 30, 20,
+  TextGadget(#PB_Any, 24, 24, WinW - 48, 20,
     "Clique para selecionar um caractere, duplo clique (ou 'Adicionar') para colocar no campo abaixo.")
 
-  Protected G_Grid = CanvasGadget(#PB_Any, 15, 40, #CharMap_GridW, #CharMap_GridH)
+  Protected G_Grid = CanvasGadget(#PB_Any, 24, 60, #CharMap_GridW, #CharMap_GridH)
 
-  Protected PreviewX = 15 + #CharMap_GridW + 15
-  Protected PreviewW = WinW - PreviewX - 15
-  Protected G_Preview = CanvasGadget(#PB_Any, PreviewX, 40, PreviewW, 150)
-  Protected G_Info = TextGadget(#PB_Any, PreviewX, 195, PreviewW, 70, "", #PB_Text_Center)
+  Protected PreviewX = 24 + #CharMap_GridW + 24
+  Protected PreviewW = WinW - PreviewX - 24
+  Protected G_Preview = CanvasGadget(#PB_Any, PreviewX, 60, PreviewW, 150)
+  Protected G_Info = TextGadget(#PB_Any, PreviewX, 226, PreviewW, 70, "", #PB_Text_Center)
 
-  TextGadget(#PB_Any, 15, 40 + #CharMap_GridH + 12, 400, 20, "Caracteres a inserir (max " + Str(#CharMap_MaxChars) + "):")
-  Protected FieldY = 40 + #CharMap_GridH + 34
-  Protected G_Field = StringGadget(#PB_Any, 15, FieldY, WinW - 30, 24, "")
+  TextGadget(#PB_Any, 24, 60 + #CharMap_GridH + 16, 400, 20, "Caracteres a inserir (max " + Str(#CharMap_MaxChars) + "):")
+  Protected FieldY = 60 + #CharMap_GridH + 44
+  Protected G_Field = StringGadget(#PB_Any, 24, FieldY, WinW - 48, 24, "")
 
-  Protected BtnY = FieldY + 34
-  Protected G_Add = ButtonGadget(#PB_Any, 15, BtnY, 110, 28, "Adicionar")
-  Protected G_RemoveLast = ButtonGadget(#PB_Any, 135, BtnY, 130, 28, "Remover ultimo")
-  Protected G_Clear = ButtonGadget(#PB_Any, 275, BtnY, 90, 28, "Limpar")
-  Protected G_Insert = ButtonGadget(#PB_Any, WinW - 215, BtnY, 100, 28, "Inserir")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 105, BtnY, 90, 28, "Fechar")
+  Protected BtnY = FieldY + 40
+  Protected G_Add = ButtonGadget(#PB_Any, 24, BtnY, 110, 28, "Adicionar")
+  Protected G_RemoveLast = ButtonGadget(#PB_Any, 146, BtnY, 130, 28, "Remover ultimo")
+  Protected G_Clear = ButtonGadget(#PB_Any, 288, BtnY, 90, 28, "Limpar")
+  Protected G_Insert = ButtonGadget(#PB_Any, WinW - 24 - 90 - 12 - 100, BtnY, 100, 28, "Inserir")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 90, BtnY, 90, 28, "Fechar")
 
   Protected Selected.i = 0
   CharMap_Redraw(G_Grid, Selected)

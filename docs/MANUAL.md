@@ -114,6 +114,11 @@
 22. [Inserir → Caractere Especial](#inserir--caractere-especial)
     - [A grade e a prévia](#a-grade-e-a-prévia)
     - [Campo acumulador e o botão Inserir](#campo-acumulador-e-o-botão-inserir)
+23. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
+    - [Largura, fonte e cor (INK/PAPER único pra tela inteira)](#largura-fonte-e-cor-inkpaper-único-pra-tela-inteira)
+    - [Ferramentas](#ferramentas)
+    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-3)
+    - [Barra de projeto](#barra-de-projeto-3)
 
 ---
 
@@ -1593,3 +1598,83 @@ acumulando — pode digitar/editar nele normalmente também, não só clicar na 
 - **Fechar** — fecha a janela sem inserir nada, mesmo se o campo tiver conteúdo.
 
 ![Editor Hexa reconhecendo um alfabeto Graphos III (galeria de templates) — grade hex/ASCII, painel de tipo de arquivo, barra de operações de bloco e barra de rolagem customizada](../images/msxbasica-14.png)
+
+## Editor de tela SCREEN 0
+
+Menu **Criar → Screen 0...** abre um editor gráfico de telas de texto do modo **SCREEN 0** do MSX, no
+espírito dos clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw) — mas fiel ao
+hardware MSX de verdade: uma tela SCREEN 0 real não tem cor por caractere como um editor ANSI de PC,
+só **uma** cor de tinta e **uma** de fundo pra tela inteira (o mesmo que o comando `COLOR` faz).
+
+### Largura, fonte e cor (INK/PAPER único pra tela inteira)
+
+- **Largura** — escolhida ao criar uma tela nova (botão "Novo" na barra de projeto, pergunta 40 ou 80
+  colunas): 40 é o padrão do MSX1; 80 precisa de MSX2+. Cada tela grava sua própria largura; trocar a
+  largura de uma tela já em edição não é possível neste editor (crie uma tela nova).
+- **Fonte** — combo "Fonte:" no canto superior direito: **Padrão** usa o alfabeto embutido do MSX, ou
+  escolha qualquer alfabeto já cadastrado no banco do projeto (**Criar → Alfabeto Graphos III...**,
+  aparece na lista como `#N`). A fonte escolhida só afeta a **prévia** no canvas e, se não-padrão, gera
+  um carregador de fonte junto do código (ver abaixo) — o texto em si não depende do bitmap da fonte
+  pra funcionar certo.
+- **Tinta / Fundo** — duas paletas de 16 cores do MSX1 (mesma paleta dos demais editores gráficos desta
+  IDE), aplicadas à tela inteira, não célula por célula.
+- **Cor 2 (Tinta2/Fundo2) e Pisca-pisca** — **só tem efeito em telas de 80 colunas**: o MSX2+ tem um
+  recurso real de hardware (modo T2 do VDP) que permite um SEGUNDO par de tinta/fundo por caractere,
+  marcado com a ferramenta **Atributo** (ver abaixo). Duas paletas extras "Cor 2" escolhem essa segunda
+  cor; dois campos "Normal"/"Cor 2" (0-15) controlam quanto tempo cada fase fica visível (cada unidade
+  ≈ 1/6 segundo, até 2.5s por fase) — **deixando "Normal" em 0, as células marcadas ficam travadas
+  permanentemente na Cor 2, sem piscar**, dando efetivamente 2 cores de texto fixas na tela (coisa que
+  40 colunas não tem). Esses controles ficam desabilitados automaticamente numa tela de 40 colunas.
+- **Caractere atual** — campo de 1 caractere ao lado da paleta: digite qualquer letra/símbolo ali pra
+  usar como "caractere de estampar" nas ferramentas Bloco e Borracha (a ferramenta Caractere também
+  atualiza este campo quando você escolhe um glifo na grade dela).
+
+### Ferramentas
+
+Sete abas, uma por ferramenta:
+
+- **Texto** — digite numa caixa de texto e clique no canvas: o texto é posicionado horizontalmente a
+  partir da célula clicada (corta se passar do fim da linha, sem quebra automática).
+- **Caractere** — a mesma grade de 159 caracteres especiais de **Inserir → Caractere Especial...**
+  (acentos, gregas, box-drawing, naipes/carinhas) embutida na aba: clique num caractere pra escolher,
+  clique ou arraste no canvas pra estampar.
+- **Quadro** — dois cliques (cantos opostos) desenham uma moldura com linhas simples. Se a nova borda
+  encostar num quadro já desenhado, a junção vira automaticamente um T ou uma cruz, em vez de sobrepor
+  as linhas de qualquer jeito. Botão direito do mouse cancela uma marcação pendente (primeiro clique já
+  feito, aguardando o segundo).
+- **Sombra** — dois cliques (cantos opostos, tipicamente o mesmo retângulo de um quadro já desenhado)
+  estampam uma faixa de sombra deslocada uma célula pra baixo e pra direita, ao longo das bordas direita
+  e inferior — o efeito clássico de "sombra" de editor de tela ANSI.
+- **Bloco** — dois cliques (cantos opostos) preenchem o retângulo inteiro com o "caractere atual" (campo
+  ao lado da paleta, ou escolhido na aba Caractere). Útil pra texturas, fundos ou apagar uma área maior
+  de uma vez só.
+- **Borracha** — clique ou arraste no canvas apaga (estampa espaço).
+- **Atributo** — clique ou arraste liga, botão direito (clique ou arraste) desliga o uso da Cor 2 numa
+  célula, sem mexer no caractere que já está lá — funciona como uma "camada" independente, aplicável
+  depois de já ter escrito o texto/desenhado o quadro. **Só tem efeito em telas de 80 colunas.** O
+  canvas mostra uma prévia estática de "como ficaria a Cor 2" nas células marcadas (o editor não anima
+  o pisca-pisca de verdade durante a edição, só no código gerado).
+
+### Gerar código e injetar no editor
+
+Os botões **Injetar no cursor**/**Copiar** (rodapé da janela) montam o código na hora, cada vez que são
+clicados — não precisa de um botão "Gerar" separado. O código sempre inclui `SCREEN 0`, `WIDTH` (a
+largura da tela), `COLOR tinta,fundo` e um `LOCATE`+`PRINT` por linha não-vazia da tela (linhas
+totalmente em branco não geram `PRINT` nenhum). Se uma fonte customizada (não-padrão) estiver escolhida,
+um carregador `DATA`+`VPOKE` é adicionado, carregando os 2048 bytes da fonte na posição certa da memória
+de vídeo (o endereço muda conforme a largura — o modo de 80 colunas usa parte da memória padrão pra
+outra coisa, ver abaixo). Se alguma célula estiver marcada com o atributo de Cor 2 (só em 80 colunas), o
+código também inclui `VDP(13)`/`VDP(14)` (cor 2 e duração do pisca-pisca) e o carregador da tabela que
+diz ao MSX quais células usam esse recurso.
+
+Os caracteres especiais (acentos, box-drawing etc.) entram no código como o próprio símbolo Unicode —
+a opção **Traduzir caracteres Unicode** (`-tr`, ver [Telas de configuração](#telas-de-configuração))
+converte pro código nativo MSX automaticamente ao tokenizar, exatamente como qualquer outro texto
+digitado com esses símbolos no editor (ver [Inserir → Caractere Especial](#inserir--caractere-especial)).
+
+### Barra de projeto
+
+Mesmo padrão dos demais editores gráficos desta IDE: número da tela, navegação
+(primeiro/anterior/próximo/último), campo de tag (até 16 caracteres), **Novo** (pergunta a largura,
+numera automaticamente, começa em branco) e **Registrar** (grava a tela atual no projeto). Trocar de
+tela ou criar uma nova sem ter registrado avisa antes de descartar as alterações pendentes.

@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.9.1** — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.11.0** — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -347,14 +347,38 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   na posição do cursor da aba ativa. Motivou a correção de dois bugs reais de tradução em
   `DignifiedPreprocessor.pbi` que já afetavam `-tr` antes desta feature existir — ver Changelog e
   `docs/SPEC.md`, módulo 3h.
+- **Criar → Screen 0...** (`editor/Screen0EditorGui.pbi`) — editor de telas de **texto MSX SCREEN 0**,
+  no espírito dos clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw), mas fiel ao
+  hardware MSX real: grade fixa de **40 ou 80 colunas × 24 linhas** (largura escolhida ao criar cada
+  tela) com **uma única cor de tinta/fundo pra tela inteira** (equivalente a `COLOR fg,bg` — SCREEN 0
+  de verdade não tem cor por célula, diferente de um editor ANSI de PC), usando a fonte padrão do MSX
+  ou uma fonte customizada já cadastrada no banco de alfabetos do projeto (**Criar → Alfabeto Graphos
+  III...**). Seis ferramentas por aba: **Texto** (digita e clica pra posicionar horizontalmente),
+  **Caractere** (grade com os 159 caracteres especiais de `Inserir → Caractere Especial...` — clique/
+  arraste estampa), **Quadro** (2 cliques desenham uma moldura com linhas simples, unindo
+  automaticamente em T/cruz onde encostar num quadro já existente), **Sombra** (2 cliques estampam uma
+  faixa `▒` deslocada, no estilo clássico de sombra de editor ANSI), **Bloco** (2 cliques preenchem um
+  retângulo com o caractere atual) e **Borracha**. **Gerar código**/**Injetar no cursor**/**Copiar**
+  emitem `SCREEN 0`/`WIDTH`/`COLOR`/`LOCATE`+`PRINT` com os glifos Unicode literais — a tradução `-tr`
+  do próprio pipeline Dignified resolve pro byte/escape nativo MSX na hora de tokenizar, sem o editor
+  precisar calcular nenhum endereço de VRAM pro texto em si (só o carregador de fonte customizada, que
+  usa o endereço real da Pattern Generator Table do SCREEN 0 — `&H0800` em 40 colunas, `&H1000` em 80).
+  Integrado ao sistema de projeto, mesma barra de número/tag/navegação/Novo/Registrar dos demais
+  editores. **Em telas de 80 colunas, uma sétima ferramenta ("Atributo") liga o recurso real de
+  segunda cor do MSX2+** (modo T2 do VDP): cada caractere pode usar um segundo par de tinta/fundo
+  (paletas "Cor 2" próprias), piscando com a cor normal num ritmo configurável (0-15, ~1/6s por fase,
+  até 2.5s) ou **travado permanentemente na Cor 2** (zerando a duração "normal") — dando, na prática,
+  texto com 2 cores fixas em 80 colunas, algo que 40 colunas não tem. Gera `VDP(13)`/`VDP(14)` (cor 2 e
+  duração) mais o carregador da tabela de "pisca" (1 bit/caractere, `&H0800` nesse modo) junto do resto
+  do código.
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/
 `--align-*`/detecção de sobreposição de segmento/saída Intel HEX no linker, editor de tile (além do
-charset/fonte 8×8), tracker, outros modos de tela além do SCREEN 2 (SCREEN 1/5/7/8) reaproveitando o
-mesmo motor gráfico, saída via `msxbas2rom`, input simulado durante a execução e detecção de erro com
-retorno à linha no editor (ver "Controle remoto do openMSX" logo abaixo para o que já existe nessa
-frente).
+charset/fonte 8×8), tracker, editores de tela SCREEN 1 e SCREEN 2 no mesmo espírito "estilo ANSI" do
+SCREEN 0 (o editor **Draw Screen 2...** já existente é um editor gráfico de pixels, não de caracteres),
+saída via `msxbas2rom`, input simulado durante a execução e detecção de erro com retorno à linha no
+editor (ver "Controle remoto do openMSX" logo abaixo para o que já existe nessa frente).
 
 **Controle remoto do openMSX — validado e ampliado (2026-07-30)**: menu **Executar → openMSX...**
 (`editor/OpenMSXBridge.pbi`/`OpenMSXConsoleGui.pbi`) abre uma instância separada do openMSX com um
@@ -1258,6 +1282,84 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
     usuário** antes desta sessão: 121 setas de navegação (`→`) na Ajuda do openMSX e exemplos com
     linhas de caixa na Ajuda do Basic Dignified. Corrigido adicionando BOM a 14 arquivos.
   Detalhe técnico completo (incluindo a lista dos 14 arquivos) em `docs/SPEC.md`, módulo 3h/19.
+- **2026-08-04 (sessão seguinte) — continuação da modernização visual ("menos cara de Windows 95")**:
+  varredura de padding aplicando a mesma grade de `EditorSettings.pbi` (24px de margem externa, 24px de
+  altura de campo, 8px rótulo→campo, ~16-30px entre grupos) a praticamente todos os diálogos restantes
+  do editor — `BadigSettings.pbi` (3 abas + diálogo de escolha de máquina/extensão),
+  `DiskManagerGui.pbi`, `FontDownloader.pbi`, `N80Support.pbi`, `MsxBas2RomSupport.pbi`,
+  `Z80SubProjectGui.pbi`, `Z80OutputGui.pbi`, `Z80LinkGui.pbi`, `Z80LibGui.pbi`,
+  `OpenMSXConsoleGui.pbi`, `CharMapGui.pbi`, `MdViewerGui.pbi` e as 5 janelas de Ajuda em árvore
+  (Basic Dignified/openMSX/NestorBASIC/MSX BASIC/genérica MD). Ficam de fora, de propósito, os 8
+  editores gráficos de canvas (Sprite/Graphos/Screen2/Charset/Aquarela/PSG/MML/Hex) — layout
+  fundamentalmente diferente de um formulário, mudança maior e mais arriscada que um ajuste de margem.
+  Dois bugs reais encontrados e corrigidos durante a varredura: coordenadas de gadgets dentro de um
+  `PanelGadget` são relativas à largura do PRÓPRIO painel, não da janela (um diálogo com abas cortou
+  ~40-50px do conteúdo mais à direita até ser corrigido); e um artefato de temporização na técnica de
+  screenshot da sessão anterior (`PrintWindow` logo após abrir um diálogo às vezes captura trechos
+  inteiros em branco, mesmo com o app renderizando certo por baixo) — corrigido forçando um repaint
+  (`RedrawWindow`) antes de capturar.
+- **2026-08-04 (mesma sessão) — novo editor de tela Criar → Screen 0...**: pedido explícito do usuário,
+  inspirado nos clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw) mas adaptado à
+  realidade do hardware MSX (`editor/Screen0EditorGui.pbi`, ver "O que já temos" acima pra descrição
+  completa). Decisões de design confirmadas com o usuário antes de implementar: cor fiel ao hardware
+  (INK/PAPER único pra tela inteira, não por célula) e largura escolhível por tela (40 ou 80 colunas).
+  Nova tabela `screen0_screens` em `ProjectDB.pbi`, mesmo padrão de `alphabets`/`screens` já existentes
+  — com uma diferença de design real descoberta durante a implementação: a grade guarda o **codepoint
+  Unicode** de cada célula (não um byte MSX cru), porque 31 dos 159 caracteres especiais do pipeline
+  Dignified (`Dig_TransReplacementOrder` — box-drawing/naipes) só existem via escape de impressão
+  `CHR$(1)+CHR$(n)`, não cabem num único byte 0-255 como os outros 128. "Gerar código" emite `PRINT`
+  com os glifos Unicode literais direto, deixando a tradução `-tr` já validada resolver pro byte/escape
+  nativo MSX na hora de tokenizar — evita ter que calcular endereço de VRAM pro texto em si; só o
+  carregador de fonte customizada (quando uma não-padrão é escolhida) precisa do endereço real da
+  Pattern Generator Table do SCREEN 0 (`&H0800`, diferente da PGT de SCREEN 1/2 em `&H0000`, endereço de
+  hardware não documentado neste repo antes desta sessão). Validado por um harness de auto-teste
+  temporário (lógica de moldura/junção via bitmask de 4 direções, sombra, texto, geração de código —
+  todos batendo com o esperado) mais screenshot real da janela (grade de caracteres embutida de
+  `CharMapGui.pbi`, paletas, abas de ferramenta, sem sobreposição/corte). Versão embutida no executável
+  atualizada para `7.10.0`.
+- **2026-08-04 (mesma sessão) — Screen 0 WIDTH 80: segunda cor de texto (estática ou piscante),
+  ferramenta "Atributo"**: pedido explícito do usuário, que já suspeitava (corretamente) que travar o
+  pisca-pisca do modo 80 colunas do MSX2+ dava pra ter 2 cores de texto fixas na tela. Pesquisado a
+  fundo antes de implementar (Konamiman MSX2 Technical Handbook + MSX Wiki, ambas já usadas/confiáveis
+  neste projeto) em vez de confiar de memória em detalhe de registrador de VDP — confirmado, não é
+  folclore: VDP R#12 é um segundo par de cor (BASIC: `VDP(13)=tinta2*16+fundo2`), R#13 controla a
+  duração de cada fase do pisca-pisca (BASIC: `VDP(14)=duraçãoNormal*16+duraçãoCor2`, cada unidade
+  ~1/6s, até 2.5s por fase — "normal"=0 trava permanentemente na Cor 2), e uma tabela de 240 bytes
+  (1 bit/caractere, endereço padrão `&H0800` nesse modo) marca quais células usam o mecanismo. Isso
+  revelou um bug real já existente no carregador de fonte customizada: ele sempre usava `&H0800` pra
+  Pattern Generator Table, certo só pra 40 colunas — em 80 colunas a PGT padrão é `&H1000` (o `&H0800`
+  fica ocupado pela tabela de pisca nesse modo) — corrigido junto. Nova ferramenta **Atributo** (aba a
+  mais no editor, 7 no total): clique/arraste liga, botão direito/arraste desliga o atributo de Cor 2
+  numa célula, sem mexer no caractere — funciona como uma camada independente. Duas paletas "Cor 2"
+  (Tinta2/Fundo2) e dois campos de duração (0-15) somam-se à barra de opções, desabilitados
+  automaticamente em telas de 40 colunas (o hardware não tem esse recurso nesse modo). `screen0_screens`
+  ganhou 5 colunas novas (`ink2_color`/`paper2_color`/`blink_on_period`/`blink_off_period`/`attr_data`).
+  Validado por autoteste temporário (empacotamento de bits do atributo conferido byte a byte contra um
+  caso conhecido, valores de `VDP(13)`/`VDP(14)` batendo com o esperado, endereço da PGT saindo certo
+  pros dois modos — inclusive a regressão de 40 colunas) mais screenshot real da janela. Versão embutida
+  no executável atualizada para `7.11.0`.
+- **2026-08-04 (mesma sessão) — reorganização do layout do editor Screen 0**: pedido explícito do
+  usuário — a área de edição estava pequena, com todos os controles empilhados numa coluna direita alta
+  e um espaço enorme sobrando embaixo do canvas. Canvas dobrado de tamanho (zoom 2→4 em 40 colunas,
+  1→2 em 80 — `Scr0Ed_ZoomForWidth`), ferramentas e botões **Injetar/Copiar/Fechar** migraram pra baixo
+  do canvas (reaproveitando o espaço que sobrava); só as paletas de cor (Tinta/Fundo/Cor 2) e os campos
+  de pisca-pisca continuam na coluna direita, agora bem mais compacta. Verificado por screenshot real.
+- **2026-08-04 (mesma sessão) — segundo ajuste de layout do Screen 0: painel de abas menor, grade de
+  caractere na coluna direita**: a primeira reorganização deixou o painel de abas (que embutia a grade
+  de 159 caracteres da ferramenta Caractere, 544×340px) alto demais, saindo da tela verticalmente.
+  Corrigido movendo a grade de caractere pra coluna direita (abaixo da paleta/Cor 2, sempre visível,
+  não mais escondida numa aba) — desenhada com célula própria menor (20px, não os 34px originais de
+  `CharMapGui.pbi`, `Scr0Ed_DrawCharPicker`) pra caber sem alargar a janela. Sem a grade grande, o
+  painel de abas (agora só com texto explicativo em cada aba) encolheu de 420px pra 160px de altura.
+  Verificado por screenshot real.
+- **2026-08-04 (mesma sessão) — terceiro ajuste de layout do Screen 0: cabe com folga em 1920×1080**:
+  usuário reportou que ainda quase não cabia na resolução mínima aceita do projeto (1920×1080). Duas
+  mudanças sugeridas pelo próprio usuário: a barra de projeto (número/navegação/tag/Novo/Registrar), que
+  ficava acima do canvas, migrou pra baixo da grade de caractere na coluna direita (2 linhas compactas);
+  os botões **Injetar no cursor**/**Copiar**/**Fechar**, que ficavam abaixo do painel de abas, migraram
+  pro lado dele (empilhados verticalmente à direita, mesma faixa de altura). As duas mudanças juntas
+  tiraram a barra de projeto inteira (antes ocupando uma faixa própria no topo) e a faixa de botões
+  (antes abaixo do painel) da pilha vertical. Verificado por screenshot real.
 
 ## Ferramentas e ambiente
 

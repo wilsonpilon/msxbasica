@@ -330,7 +330,7 @@ EndProcedure
 Procedure N80Settings_OpenWindow(ParentWindow)
   N80Cfg_Load()
 
-  Protected WinW = 620, WinH = 260
+  Protected WinW = 640, WinH = 336
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configurar - N80",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -339,11 +339,11 @@ Procedure N80Settings_OpenWindow(ParentWindow)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  TextGadget(#PB_Any, 15, 15, WinW - 30, 40,
+  TextGadget(#PB_Any, 24, 24, WinW - 48, 40,
             "N80 (Nestor80), LinkStor80 e LibStor80 - assembler/linker/biblioteca Z80" + Chr(10) +
             "compativeis com MACRO-80/LINK-80/LIB-80. github.com/Konamiman/Nestor80")
 
-  Protected G_Installed = TextGadget(#PB_Any, 15, 65, WinW - 30, 40, "")
+  Protected G_Installed = TextGadget(#PB_Any, 24, 80, WinW - 48, 40, "")
   If N80Cfg\N80Path <> "" And FileSize(N80Cfg\N80Path) > 0
     SetGadgetText(G_Installed,
                  "N80 " + N80Cfg\N80Version + " / LinkStor80 " + N80Cfg\LK80Version +
@@ -352,10 +352,10 @@ Procedure N80Settings_OpenWindow(ParentWindow)
     SetGadgetText(G_Installed, "Nao instalado ainda.")
   EndIf
 
-  Protected G_Download = ButtonGadget(#PB_Any, 15, 115, 260, 30, "Baixar versoes mais recentes")
-  Protected G_Status = TextGadget(#PB_Any, 15, 155, WinW - 30, 60, "")
+  Protected G_Download = ButtonGadget(#PB_Any, 24, 140, 280, 28, "Baixar versoes mais recentes")
+  Protected G_Status = TextGadget(#PB_Any, 24, 188, WinW - 48, 60, "")
 
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 115, WinH - 45, 100, 30, "Fechar")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, WinH - 56, 110, 32, "Fechar")
 
   Protected Event, Quit = #False
   Repeat

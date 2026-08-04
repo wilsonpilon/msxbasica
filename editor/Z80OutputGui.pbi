@@ -245,7 +245,8 @@ EndProcedure
 Procedure Z80Out_ShowListing(Array Bytes.a(1), NBytes.i, StartAddr.u, ParentWindow.i)
   Protected ListingText.s = Z80Gen_BasicLoader(Bytes(), NBytes, StartAddr)
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, 520, 420, "Listing BASIC (DATA/POKE)",
+  Protected WinW = 580, WinH = 460
+  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Listing BASIC (DATA/POKE)",
                               #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
   If Not Win
     ProcedureReturn
@@ -253,11 +254,11 @@ Procedure Z80Out_ShowListing(Array Bytes.a(1), NBytes.i, StartAddr.u, ParentWind
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
-  Protected G_Text = EditorGadget(#PB_Any, 10, 10, 500, 350)
+  Protected G_Text = EditorGadget(#PB_Any, 24, 24, WinW - 48, 364)
   SetGadgetText(G_Text, ListingText)
-  Protected G_Copy = ButtonGadget(#PB_Any, 10, 372, 100, 30, "Copiar")
-  Protected G_Inject = ButtonGadget(#PB_Any, 120, 372, 150, 30, "Injetar no cursor")
-  Protected G_Close = ButtonGadget(#PB_Any, 410, 372, 100, 30, "Fechar")
+  Protected G_Copy = ButtonGadget(#PB_Any, 24, 404, 100, 32, "Copiar")
+  Protected G_Inject = ButtonGadget(#PB_Any, 136, 404, 150, 32, "Injetar no cursor")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, 404, 110, 32, "Fechar")
 
   Protected Event, Quit = #False
   Repeat
@@ -292,7 +293,8 @@ EndProcedure
 ; verdade (bin/com/disco) - "" desliga o registro (usado quando nao ha uma
 ; chave estavel, ex. aba ainda sem salvar).
 Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, StartAddr.u, EndAddr.u, SourceKey.s, BuildKind.s, ParentWindow.i)
-  Protected Win = OpenWindow(#PB_Any, 0, 0, 360, 234, "Saida da montagem",
+  Protected WinW = 400, WinH = 276
+  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Saida da montagem",
                               #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
@@ -301,13 +303,13 @@ Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, 
   DisableWindow(ParentWindow, #True)
 
   Protected InfoTxt.s = Str(NBytes) + " bytes, endereco " + Hex(StartAddr, #PB_Word) + "h-" + Hex(EndAddr, #PB_Word) + "h."
-  TextGadget(#PB_Any, 15, 14, 330, 20, InfoTxt)
+  TextGadget(#PB_Any, 24, 24, WinW - 48, 20, InfoTxt)
 
-  Protected G_Bin    = ButtonGadget(#PB_Any, 15, 44, 330, 30, "Salvar .bin no PC...")
-  Protected G_Com    = ButtonGadget(#PB_Any, 15, 78, 330, 30, "Gerar .COM (MSX-DOS, independente do BASIC)...")
-  Protected G_Dsk    = ButtonGadget(#PB_Any, 15, 112, 330, 30, "Gravar disco MSX (.dsk, BLOAD)...")
-  Protected G_List   = ButtonGadget(#PB_Any, 15, 146, 330, 30, "Gerar listing BASIC (DATA/POKE)...")
-  Protected G_Cancel = ButtonGadget(#PB_Any, 15, 184, 330, 28, "Cancelar")
+  Protected G_Bin    = ButtonGadget(#PB_Any, 24, 60, WinW - 48, 32, "Salvar .bin no PC...")
+  Protected G_Com    = ButtonGadget(#PB_Any, 24, 100, WinW - 48, 32, "Gerar .COM (MSX-DOS, independente do BASIC)...")
+  Protected G_Dsk    = ButtonGadget(#PB_Any, 24, 140, WinW - 48, 32, "Gravar disco MSX (.dsk, BLOAD)...")
+  Protected G_List   = ButtonGadget(#PB_Any, 24, 180, WinW - 48, 32, "Gerar listing BASIC (DATA/POKE)...")
+  Protected G_Cancel = ButtonGadget(#PB_Any, 24, 220, WinW - 48, 32, "Cancelar")
 
   Protected Event, Quit = #False
   Repeat

@@ -101,6 +101,44 @@ DeclareModule ProjectDB
   Declare.i HasScreen(Number.i)
   Declare ListScreenNumbers(List Numbers.i())
 
+  ; Screen0EditorGui.pbi ("Criar -> Screen 0...") - editor de tela de texto
+  ; estilo TheDraw/AcidDraw, fiel ao hardware MSX: uma grade fixa Width x 24
+  ; de CARACTERES UNICODE (nao bytes MSX crus - ver comentario grande no topo
+  ; de Screen0EditorGui.pbi: 31 dos 159 caracteres especiais do -tr precisam
+  ; do escape de impressao CHR$(1)+CHR$(n), nao cabem num unico byte 0-255,
+  ; entao o grid grava o CODEPOINT Unicode de cada celula, 4 digitos hex
+  ; cada - "Gerar codigo" deixa a traducao -tr resolver pro byte/escape MSX
+  ; na hora de tokenizar). INK/PAPER (Ink/Paper) sao globais pra tela inteira,
+  ; fieis ao SCREEN 0 classico (40 colunas). Em telas de 80 colunas (WIDTH 80,
+  ; modo T2 do VDP) o hardware real tem um SEGUNDO par de cor (Ink2/Paper2,
+  ; VDP R#12) que cada caractere pode usar, piscando com o par normal num
+  ; ritmo configuravel (BlinkOnPeriod/BlinkOffPeriod, VDP R#13, nibbles 0-15
+  ; = unidades de 1/6s cada) ou travado permanentemente na cor2 (zerando
+  ; BlinkOnPeriod) - GridAttrs marca, 1 byte (0 ou 1) por celula, quais
+  ; celulas usam esse mecanismo (tabela de piscar de verdade do VDP, 1 bit
+  ; por celula la, mas guardada aqui 1 byte por celula pelo mesmo motivo de
+  ; GridCodes: simplicidade > espaco, SQLite TEXT nao liga). Sem efeito em
+  ; telas de 40 colunas (o hardware nao tem esse recurso nesse modo).
+  ; AlphabetNumber = -1 significa fonte padrao (nao referencia nenhum
+  ; alfabeto do banco); qualquer outro valor e o numero de um alfabeto ja
+  ; registrado em "alphabets" (usado so pra PREVIEW do editor e pro
+  ; carregador de fonte gerado - o texto em si nao depende do bitmap da
+  ; fonte pra ser correto).
+  Declare.i StoreScreen0(Number.i, Tag.s, Width.i, Ink.i, Paper.i, AlphabetNumber.i,
+                         Ink2.i, Paper2.i, BlinkOn.i, BlinkOff.i, Array GridCodes.u(1), Array GridAttrs.a(1))
+  Declare.i FetchScreen0(Number.i, Array GridCodes.u(1), Array GridAttrs.a(1))
+  Declare.s LastScreen0Tag()
+  Declare.i LastScreen0Width()
+  Declare.i LastScreen0Ink()
+  Declare.i LastScreen0Paper()
+  Declare.i LastScreen0AlphabetNumber()
+  Declare.i LastScreen0Ink2()
+  Declare.i LastScreen0Paper2()
+  Declare.i LastScreen0BlinkOn()
+  Declare.i LastScreen0BlinkOff()
+  Declare.i HasScreen0(Number.i)
+  Declare ListScreen0Numbers(List Numbers.i())
+
   ; Graphos III (modulo 14, GraphosScreenGui.pbi) guarda 3 tipos de conteudo,
   ; cada um um FRAMEBUFFER puro (nao lista de comandos como "screens" acima,
   ; que pertence ao editor "Draw Screen 2..." do modulo 5 - tabelas
@@ -217,6 +255,15 @@ Module ProjectDB
   Global FetchedSongTag.s = ""
   Global FetchedScreenTag.s = ""
   Global FetchedScreenCommandsText.s = ""
+  Global FetchedScreen0Tag.s = ""
+  Global FetchedScreen0Width.i = 0
+  Global FetchedScreen0Ink.i = 0
+  Global FetchedScreen0Paper.i = 0
+  Global FetchedScreen0AlphabetNumber.i = -1
+  Global FetchedScreen0Ink2.i = 15
+  Global FetchedScreen0Paper2.i = 1
+  Global FetchedScreen0BlinkOn.i = 8
+  Global FetchedScreen0BlinkOff.i = 8
   Global FetchedGraphosScreenTag.s = ""
   Global FetchedGraphosLayoutTag.s = ""
   Global FetchedGraphosShapeTag.s = ""
@@ -271,6 +318,20 @@ Module ProjectDB
                          "screen_number INTEGER PRIMARY KEY, " +
                          "tag TEXT, " +
                          "commands_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS screen0_screens (" +
+                         "screen0_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "width INTEGER NOT NULL, " +
+                         "ink_color INTEGER NOT NULL, " +
+                         "paper_color INTEGER NOT NULL, " +
+                         "alphabet_number INTEGER NOT NULL, " +
+                         "grid_data TEXT NOT NULL, " +
+                         "ink2_color INTEGER NOT NULL DEFAULT 15, " +
+                         "paper2_color INTEGER NOT NULL DEFAULT 1, " +
+                         "blink_on_period INTEGER NOT NULL DEFAULT 8, " +
+                         "blink_off_period INTEGER NOT NULL DEFAULT 8, " +
+                         "attr_data TEXT NOT NULL DEFAULT '', " +
                          "updated_at TEXT)")
     DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS graphos_screens (" +
                          "screen_number INTEGER PRIMARY KEY, " +
@@ -1024,6 +1085,142 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT screen_number FROM screens ORDER BY screen_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; --- Screen0EditorGui.pbi ("Criar -> Screen 0...") - grid de bytes de
+  ; caractere (Width x 24), hex-codificado 2 digitos/byte igual a
+  ; StoreAlphabet acima. Width/Ink/Paper/AlphabetNumber saem via getters
+  ; "Last*" (mesmo padrao out-param de LastScreenTag/LastGridSize etc.).
+  Procedure.i StoreScreen0(Number.i, Tag.s, Width.i, Ink.i, Paper.i, AlphabetNumber.i,
+                           Ink2.i, Paper2.i, BlinkOn.i, BlinkOff.i, Array GridCodes.u(1), Array GridAttrs.a(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    Protected HexData.s = "", AttrHex.s = ""
+    Protected Idx
+    For Idx = 0 To Width * 24 - 1
+      HexData = HexData + RSet(Hex(GridCodes(Idx)), 4, "0")
+      AttrHex = AttrHex + RSet(Hex(GridAttrs(Idx)), 2, "0")
+    Next
+
+    DatabaseUpdate(#DB, "DELETE FROM screen0_screens WHERE screen0_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO screen0_screens " +
+                       "(screen0_number, tag, width, ink_color, paper_color, alphabet_number, grid_data, " +
+                       "ink2_color, paper2_color, blink_on_period, blink_off_period, attr_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', " + Str(Width) + ", " + Str(Ink) + ", " + Str(Paper) + ", " +
+                       Str(AlphabetNumber) + ", '" + HexData + "', " +
+                       Str(Ink2) + ", " + Str(Paper2) + ", " + Str(BlinkOn) + ", " + Str(BlinkOff) + ", " +
+                       "'" + AttrHex + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  ; GridCodes/GridAttrs devem vir pre-alocados pelo chamador com pelo menos
+  ; 80*24 elementos (a maior largura suportada) - mesmo padrao de FetchSprite
+  ; acima (que assume Grid() ja alocado 16x16, o maior GridSize possivel,
+  ; mesmo quando o sprite de verdade e 8x8): so os primeiros Width*24
+  ; elementos sao preenchidos, o resto fica com o que ja estava la.
+  Procedure.i FetchScreen0(Number.i, Array GridCodes.u(1), Array GridAttrs.a(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, width, ink_color, paper_color, alphabet_number, grid_data, " +
+                          "ink2_color, paper2_color, blink_on_period, blink_off_period, attr_data " +
+                          "FROM screen0_screens WHERE screen0_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedScreen0Tag = GetDatabaseString(#DB, 0)
+        FetchedScreen0Width = Val(GetDatabaseString(#DB, 1))
+        FetchedScreen0Ink = Val(GetDatabaseString(#DB, 2))
+        FetchedScreen0Paper = Val(GetDatabaseString(#DB, 3))
+        FetchedScreen0AlphabetNumber = Val(GetDatabaseString(#DB, 4))
+        FetchedScreen0Ink2 = Val(GetDatabaseString(#DB, 6))
+        FetchedScreen0Paper2 = Val(GetDatabaseString(#DB, 7))
+        FetchedScreen0BlinkOn = Val(GetDatabaseString(#DB, 8))
+        FetchedScreen0BlinkOff = Val(GetDatabaseString(#DB, 9))
+
+        Protected HexData.s = GetDatabaseString(#DB, 5)
+        Protected AttrHex.s = GetDatabaseString(#DB, 10)
+        Protected Idx
+        For Idx = 0 To FetchedScreen0Width * 24 - 1
+          GridCodes(Idx) = Val("$" + Mid(HexData, Idx * 4 + 1, 4))
+          If Idx * 2 + 2 <= Len(AttrHex)
+            GridAttrs(Idx) = Val("$" + Mid(AttrHex, Idx * 2 + 1, 2))
+          Else
+            GridAttrs(Idx) = 0
+          EndIf
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastScreen0Tag()
+    ProcedureReturn FetchedScreen0Tag
+  EndProcedure
+
+  Procedure.i LastScreen0Width()
+    ProcedureReturn FetchedScreen0Width
+  EndProcedure
+
+  Procedure.i LastScreen0Ink()
+    ProcedureReturn FetchedScreen0Ink
+  EndProcedure
+
+  Procedure.i LastScreen0Paper()
+    ProcedureReturn FetchedScreen0Paper
+  EndProcedure
+
+  Procedure.i LastScreen0AlphabetNumber()
+    ProcedureReturn FetchedScreen0AlphabetNumber
+  EndProcedure
+
+  Procedure.i LastScreen0Ink2()
+    ProcedureReturn FetchedScreen0Ink2
+  EndProcedure
+
+  Procedure.i LastScreen0Paper2()
+    ProcedureReturn FetchedScreen0Paper2
+  EndProcedure
+
+  Procedure.i LastScreen0BlinkOn()
+    ProcedureReturn FetchedScreen0BlinkOn
+  EndProcedure
+
+  Procedure.i LastScreen0BlinkOff()
+    ProcedureReturn FetchedScreen0BlinkOff
+  EndProcedure
+
+  Procedure.i HasScreen0(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM screen0_screens WHERE screen0_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListScreen0Numbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT screen0_number FROM screen0_screens ORDER BY screen0_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))

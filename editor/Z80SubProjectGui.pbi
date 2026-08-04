@@ -92,13 +92,16 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
   GadgetToolTip(G_Register, "Registrar: grava este subprojeto no banco do projeto")
 
   ; --- Lista de .ASM (esquerda) ---
-  Protected ListY = 56, ListH = 260
-  Protected AsmX = 15, AsmW = 400
+  ; Barra de projeto acima fica no padrao compacto de toolbar (igual aos
+  ; demais editores Sprite/Alfabeto/Som/Musica/Tela) - so o conteudo abaixo
+  ; dela ganha a margem/respiro de 24px dos dialogos de formulario.
+  Protected ListY = 64, ListH = 260
+  Protected AsmX = 24, AsmW = 400
   TextGadget(#PB_Any, AsmX, ListY, AsmW, 20, "Arquivos .ASM (ordem de link):")
   Protected G_AsmList = ListIconGadget(#PB_Any, AsmX, ListY + 22, AsmW, ListH, "Arquivo", AsmW - 20,
                                        #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
 
-  Protected AsmBtnY = ListY + 22 + ListH + 6
+  Protected AsmBtnY = ListY + 22 + ListH + 10
   Protected G_AsmAdd    = ButtonGadget(#PB_Any, AsmX, AsmBtnY, 95, 26, "Adicionar...")
   Protected G_AsmRemove = ButtonGadget(#PB_Any, AsmX + 100, AsmBtnY, 95, 26, "Remover")
   Protected G_AsmUp     = ButtonGadget(#PB_Any, AsmX + 200, AsmBtnY, 95, 26, "Subir")
@@ -108,7 +111,7 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
   GadgetToolTip(G_GenLib, "Sem nada marcado na lista acima, usa TODOS os .asm do subprojeto")
 
   ; --- Lista de bibliotecas (direita) ---
-  Protected LibX = AsmX + AsmW + 20, LibW = WinW - LibX - 15
+  Protected LibX = AsmX + AsmW + 24, LibW = WinW - LibX - 24
   TextGadget(#PB_Any, LibX, ListY, LibW, 20, "Bibliotecas (.REQUEST):")
   Protected G_LibList = ListIconGadget(#PB_Any, LibX, ListY + 22, LibW, ListH, "Arquivo", LibW - 20,
                                        #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
@@ -121,12 +124,12 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
              "Cada .REQUEST no .asm precisa bater com o nome do arquivo (sem extensao) de uma biblioteca desta lista.")
 
   ; --- Status + Montar tudo ---
-  Protected StatusY = AsmBtnY + 32 + 28 + 16
-  Protected G_Status = TextGadget(#PB_Any, 15, StatusY, WinW - 30, 40, "")
+  Protected StatusY = AsmBtnY + 32 + 28 + 20
+  Protected G_Status = TextGadget(#PB_Any, 24, StatusY, WinW - 48, 40, "")
 
-  Protected ButtonY = WinH - 45
-  Protected G_Build = ButtonGadget(#PB_Any, 15, ButtonY, 220, 30, "Montar tudo (Build)...")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 15 - 100, ButtonY, 100, 30, "Fechar")
+  Protected ButtonY = WinH - 56
+  Protected G_Build = ButtonGadget(#PB_Any, 24, ButtonY, 220, 32, "Montar tudo (Build)...")
+  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
 
   ; --- Estado ---
   Protected SubProjNumber.i = 1
