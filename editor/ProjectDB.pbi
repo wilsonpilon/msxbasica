@@ -139,6 +139,38 @@ DeclareModule ProjectDB
   Declare.i HasScreen0(Number.i)
   Declare ListScreen0Numbers(List Numbers.i())
 
+  ; Screen1EditorGui.pbi ("Criar -> Screen 1...") - grade FIXA 32x24 (768
+  ; celulas) de bytes MSX crus 0-255 (nao Unicode como screen0_screens acima -
+  ; SCREEN 1 nao tem os 31 caracteres de escape sem byte proprio que motivaram
+  ; guardar Unicode no screen0; aqui cada celula JA E o byte final, hex-
+  ; codificado 2 digitos). octet_data guarda os 32 pares Tinta/Fundo (1 digito
+  ; hex cada, 4 bits) da Color Table real do SCREEN 1 - grupo de 8 codigos de
+  ; caractere por entrada (codigo\8), nao por posicao de tela.
+  Declare.i StoreScreen1(Number.i, Tag.s, AlphabetNumber.i, Array GridBytes.a(1), Array OctetInk.a(1), Array OctetPaper.a(1))
+  Declare.i FetchScreen1(Number.i, Array GridBytes.a(1), Array OctetInk.a(1), Array OctetPaper.a(1))
+  Declare.s LastScreen1Tag()
+  Declare.i LastScreen1AlphabetNumber()
+  Declare.i HasScreen1(Number.i)
+  Declare ListScreen1Numbers(List Numbers.i())
+
+  ; Screen12EditorGui.pbi ("Criar -> Screen 1+2...") - mesma grade FIXA 32x24
+  ; de screen1_screens, mas gerando SCREEN 2 (Graphics II) de verdade: a
+  ; Pattern/Color Table reais do SCREEN 2 sao divididas em 3 "tercos" de 2048
+  ; bytes (selecionados por qual terco de linhas de tela - 0-7/8-15/16-23 -
+  ; a celula esta), CADA TERCO com seu proprio alfabeto (AlphaThirds(0..2),
+  ; -1 = fonte padrao), e a Color Table de verdade guarda 1 par Tinta/Fundo
+  ; POR LINHA DE SCANLINE de cada codigo de caractere (nao 1 por celula nem 1
+  ; por grupo de 8 codigos como screen1_screens) - 3 tercos x 256 codigos x 8
+  ; linhas = 6144 entradas, exatamente do tamanho da Color Table real
+  ; (6144 bytes). color_data guarda 2 digitos hex/entrada (1 pra Tinta, 1
+  ; pra Fundo, ordem Terco->Codigo->Linha, mesma convencao 4 bits/cor de
+  ; octet_data em screen1_screens).
+  Declare.i StoreScreen12(Number.i, Tag.s, Array AlphaThirds.i(1), Array GridBytes.a(1), Array ColorInk.a(3), Array ColorPaper.a(3))
+  Declare.i FetchScreen12(Number.i, Array AlphaThirds.i(1), Array GridBytes.a(1), Array ColorInk.a(3), Array ColorPaper.a(3))
+  Declare.s LastScreen12Tag()
+  Declare.i HasScreen12(Number.i)
+  Declare ListScreen12Numbers(List Numbers.i())
+
   ; Graphos III (modulo 14, GraphosScreenGui.pbi) guarda 3 tipos de conteudo,
   ; cada um um FRAMEBUFFER puro (nao lista de comandos como "screens" acima,
   ; que pertence ao editor "Draw Screen 2..." do modulo 5 - tabelas
@@ -264,6 +296,9 @@ Module ProjectDB
   Global FetchedScreen0Paper2.i = 1
   Global FetchedScreen0BlinkOn.i = 8
   Global FetchedScreen0BlinkOff.i = 8
+  Global FetchedScreen1Tag.s = ""
+  Global FetchedScreen1AlphabetNumber.i = -1
+  Global FetchedScreen12Tag.s = ""
   Global FetchedGraphosScreenTag.s = ""
   Global FetchedGraphosLayoutTag.s = ""
   Global FetchedGraphosShapeTag.s = ""
@@ -332,6 +367,22 @@ Module ProjectDB
                          "blink_on_period INTEGER NOT NULL DEFAULT 8, " +
                          "blink_off_period INTEGER NOT NULL DEFAULT 8, " +
                          "attr_data TEXT NOT NULL DEFAULT '', " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS screen1_screens (" +
+                         "screen1_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "alphabet_number INTEGER NOT NULL, " +
+                         "grid_data TEXT NOT NULL, " +
+                         "octet_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS screen12_screens (" +
+                         "screen12_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "alphabet0 INTEGER NOT NULL, " +
+                         "alphabet1 INTEGER NOT NULL, " +
+                         "alphabet2 INTEGER NOT NULL, " +
+                         "grid_data TEXT NOT NULL, " +
+                         "color_data TEXT NOT NULL, " +
                          "updated_at TEXT)")
     DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS graphos_screens (" +
                          "screen_number INTEGER PRIMARY KEY, " +
@@ -1221,6 +1272,199 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT screen0_number FROM screen0_screens ORDER BY screen0_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; --- Screen1EditorGui.pbi ("Criar -> Screen 1...") - grade FIXA 32x24
+  ; (768 celulas, sempre - SCREEN 1 do MSX nao tem largura configuravel como
+  ; SCREEN 0) de bytes MSX crus 0-255 hex-codificados 2 digitos/celula (nao
+  ; Unicode - ver comentario grande no topo de Screen1EditorGui.pbi pro
+  ; porque disso ser diferente de screen0_screens). octet_data guarda os 32
+  ; pares Tinta/Fundo (1 digito hex cada = 4 bits, mesma faixa 0-15 de
+  ; qualquer cor MSX1) da Color Table real do SCREEN 1, 1 par por GRUPO de 8
+  ; codigos de caractere (codigo\8), nao por posicao de tela - 64 digitos hex
+  ; ao todo. Como este arquivo compila ANTES de Screen1EditorGui.pbi (ordem
+  ; de XIncludeFile em BadigEditor.pb), os limites 768/32 sao literais aqui,
+  ; nao constantes externas - mesmo motivo/padrao ja usado por StoreAlphabet/
+  ; StoreGraphosScreen acima.
+  Procedure.i StoreScreen1(Number.i, Tag.s, AlphabetNumber.i, Array GridBytes.a(1), Array OctetInk.a(1), Array OctetPaper.a(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    Protected GridHex.s = "", OctetHex.s = ""
+    Protected Idx
+    For Idx = 0 To 767
+      GridHex + RSet(Hex(GridBytes(Idx)), 2, "0")
+    Next
+    For Idx = 0 To 31
+      OctetHex + RSet(Hex(OctetInk(Idx) & $F), 1, "0") + RSet(Hex(OctetPaper(Idx) & $F), 1, "0")
+    Next
+
+    DatabaseUpdate(#DB, "DELETE FROM screen1_screens WHERE screen1_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO screen1_screens (screen1_number, tag, alphabet_number, grid_data, octet_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', " + Str(AlphabetNumber) + ", '" + GridHex + "', '" + OctetHex + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  Procedure.i FetchScreen1(Number.i, Array GridBytes.a(1), Array OctetInk.a(1), Array OctetPaper.a(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, alphabet_number, grid_data, octet_data FROM screen1_screens WHERE screen1_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedScreen1Tag = GetDatabaseString(#DB, 0)
+        FetchedScreen1AlphabetNumber = Val(GetDatabaseString(#DB, 1))
+        Protected GridHex.s = GetDatabaseString(#DB, 2)
+        Protected OctetHex.s = GetDatabaseString(#DB, 3)
+        Protected Idx
+        For Idx = 0 To 767
+          GridBytes(Idx) = Val("$" + Mid(GridHex, Idx * 2 + 1, 2))
+        Next
+        For Idx = 0 To 31
+          OctetInk(Idx) = Val("$" + Mid(OctetHex, Idx * 2 + 1, 1))
+          OctetPaper(Idx) = Val("$" + Mid(OctetHex, Idx * 2 + 2, 1))
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastScreen1Tag()
+    ProcedureReturn FetchedScreen1Tag
+  EndProcedure
+
+  Procedure.i LastScreen1AlphabetNumber()
+    ProcedureReturn FetchedScreen1AlphabetNumber
+  EndProcedure
+
+  Procedure.i HasScreen1(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM screen1_screens WHERE screen1_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListScreen1Numbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+    If DatabaseQuery(#DB, "SELECT screen1_number FROM screen1_screens ORDER BY screen1_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; --- Screen12EditorGui.pbi ("Criar -> Screen 1+2...") - mesma grade 32x24
+  ; (768 celulas, literal aqui pelo mesmo motivo/padrao ja usado por
+  ; StoreScreen1 acima) de screen1_screens, porem gerando SCREEN 2 de
+  ; verdade: 3 alfabetos (1 por terco) e uma Color Table completa (3 tercos x
+  ; 256 codigos x 8 linhas de scanline = 6144 entradas, literal 6144 aqui
+  ; pelo mesmo motivo). color_data e' Terco (mais externo) -> Codigo ->
+  ; Linha, 2 digitos hex/entrada (1 pra Tinta, 1 pra Fundo).
+  Procedure.i StoreScreen12(Number.i, Tag.s, Array AlphaThirds.i(1), Array GridBytes.a(1), Array ColorInk.a(3), Array ColorPaper.a(3))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+    Protected GridHex.s = "", ColorHex.s = ""
+    Protected Idx, Th, Cd, Rw
+    For Idx = 0 To 767
+      GridHex + RSet(Hex(GridBytes(Idx)), 2, "0")
+    Next
+    For Th = 0 To 2
+      For Cd = 0 To 255
+        For Rw = 0 To 7
+          ColorHex + RSet(Hex(ColorInk(Th, Cd, Rw) & $F), 1, "0") + RSet(Hex(ColorPaper(Th, Cd, Rw) & $F), 1, "0")
+        Next
+      Next
+    Next
+
+    DatabaseUpdate(#DB, "DELETE FROM screen12_screens WHERE screen12_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO screen12_screens " +
+                       "(screen12_number, tag, alphabet0, alphabet1, alphabet2, grid_data, color_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', " + Str(AlphaThirds(0)) + ", " + Str(AlphaThirds(1)) + ", " + Str(AlphaThirds(2)) + ", " +
+                       "'" + GridHex + "', '" + ColorHex + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  Procedure.i FetchScreen12(Number.i, Array AlphaThirds.i(1), Array GridBytes.a(1), Array ColorInk.a(3), Array ColorPaper.a(3))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, alphabet0, alphabet1, alphabet2, grid_data, color_data FROM screen12_screens WHERE screen12_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedScreen12Tag = GetDatabaseString(#DB, 0)
+        AlphaThirds(0) = Val(GetDatabaseString(#DB, 1))
+        AlphaThirds(1) = Val(GetDatabaseString(#DB, 2))
+        AlphaThirds(2) = Val(GetDatabaseString(#DB, 3))
+        Protected GridHex.s = GetDatabaseString(#DB, 4)
+        Protected ColorHex.s = GetDatabaseString(#DB, 5)
+        Protected Idx, Th, Cd, Rw, Pos
+        For Idx = 0 To 767
+          GridBytes(Idx) = Val("$" + Mid(GridHex, Idx * 2 + 1, 2))
+        Next
+        Pos = 0
+        For Th = 0 To 2
+          For Cd = 0 To 255
+            For Rw = 0 To 7
+              ColorInk(Th, Cd, Rw) = Val("$" + Mid(ColorHex, Pos * 2 + 1, 1))
+              ColorPaper(Th, Cd, Rw) = Val("$" + Mid(ColorHex, Pos * 2 + 2, 1))
+              Pos + 1
+            Next
+          Next
+        Next
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.s LastScreen12Tag()
+    ProcedureReturn FetchedScreen12Tag
+  EndProcedure
+
+  Procedure.i HasScreen12(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM screen12_screens WHERE screen12_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListScreen12Numbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+    If DatabaseQuery(#DB, "SELECT screen12_number FROM screen12_screens ORDER BY screen12_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))

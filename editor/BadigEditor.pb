@@ -61,6 +61,8 @@ XIncludeFile "MmlEditorGui.pbi"
 XIncludeFile "Screen2Synth.pbi"
 XIncludeFile "Screen2EditorGui.pbi"
 XIncludeFile "Screen0EditorGui.pbi"
+XIncludeFile "Screen1EditorGui.pbi"
+XIncludeFile "Screen12EditorGui.pbi"
 XIncludeFile "GraphosNativeIO.pbi"
 XIncludeFile "GraphosScreenGui.pbi"
 XIncludeFile "Z80Link.pbi"
@@ -383,6 +385,8 @@ Enumeration MenuItems
   #Menu_CreateMml
   #Menu_CreateScreen2
   #Menu_CreateScreen0
+  #Menu_CreateScreen1
+  #Menu_CreateScreen12
   #Menu_CreateZ80Lib
   #Menu_CreateAsmSubProject
   #Menu_CreateGraphosScreen
@@ -459,7 +463,7 @@ EndEnumeration
 ; integracao MSXBas2Rom/N80-LinkStor80-LibStor80 e destaque de sintaxe do
 ; MSXBas2Rom - sem codinome novo desta vez.
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.11.0"
+  #App_Version = "7.13.0"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -3353,6 +3357,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
     MenuItem(#Menu_CreateGraphosScreen, "Graphos III Screen 2...")
     MenuItem(#Menu_CreateScreen0, "Screen 0...")
+    MenuItem(#Menu_CreateScreen1, "Screen 1...")
+    MenuItem(#Menu_CreateScreen12, "Screen 1+2...")
     MenuItem(#Menu_CreateZ80Lib, "Biblioteca Z80 (.LIB)...")
     MenuItem(#Menu_CreateAsmSubProject, "Assembly Sub Project...")
   MenuTitle("Inserir")
@@ -3522,6 +3528,12 @@ Repeat
 
         Case #Menu_CreateScreen0
           Screen0Editor_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateScreen1
+          Screen1Editor_OpenWindow(#MainWindow)
+
+        Case #Menu_CreateScreen12
+          Screen12Editor_OpenWindow(#MainWindow)
 
         Case #Menu_CreateZ80Lib
           Z80LibGui_OpenWindow(#MainWindow)

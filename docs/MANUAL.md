@@ -119,6 +119,17 @@
     - [Ferramentas](#ferramentas)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-3)
     - [Barra de projeto](#barra-de-projeto-3)
+24. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
+    - [Fonte e a tabela ASCII do alfabeto (cor por octeto)](#fonte-e-a-tabela-ascii-do-alfabeto-cor-por-octeto)
+    - [Ferramentas](#ferramentas-2)
+    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-4)
+    - [Barra de projeto](#barra-de-projeto-4)
+25. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
+    - [3 alfabetos, um por terço da tela](#3-alfabetos-um-por-terço-da-tela)
+    - [Cor por linha de scanline (o modo mais complexo)](#cor-por-linha-de-scanline-o-modo-mais-complexo)
+    - [Ferramentas](#ferramentas-3)
+    - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-5)
+    - [Barra de projeto](#barra-de-projeto-5)
 
 ---
 
@@ -1601,6 +1612,14 @@ acumulando — pode digitar/editar nele normalmente também, não só clicar na 
 
 ## Editor de tela SCREEN 0
 
+Este é o primeiro de uma família de 3 editores de tela de texto MSX (**Criar → Screen 0.../Screen 1.../
+Screen 1+2...**), cada um cobrindo um modo de cor de texto diferente do hardware: **SCREEN 0** (1 cor
+pra tela inteira, com um modo **MSX2+** de 80 colunas que ganha uma segunda cor real de texto — ambos
+neste mesmo editor, ver "Cor 2" abaixo), **SCREEN 1** (1 cor por grupo de 8 caracteres, seção seguinte) e
+**SCREEN 1+2** (SCREEN 2 de verdade — 3 alfabetos e cor por linha de scanline, duas seções à frente). Os
+três compartilham a grade fixa (32×24, ou 40/80×24 no SCREEN 0) e a maioria das ferramentas — só o
+modelo de cor muda entre eles.
+
 Menu **Criar → Screen 0...** abre um editor gráfico de telas de texto do modo **SCREEN 0** do MSX, no
 espírito dos clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw) — mas fiel ao
 hardware MSX de verdade: uma tela SCREEN 0 real não tem cor por caractere como um editor ANSI de PC,
@@ -1678,3 +1697,142 @@ Mesmo padrão dos demais editores gráficos desta IDE: número da tela, navegaç
 (primeiro/anterior/próximo/último), campo de tag (até 16 caracteres), **Novo** (pergunta a largura,
 numera automaticamente, começa em branco) e **Registrar** (grava a tela atual no projeto). Trocar de
 tela ou criar uma nova sem ter registrado avisa antes de descartar as alterações pendentes.
+
+## Editor de tela SCREEN 1
+
+Menu **Criar → Screen 1...** abre um editor gráfico de telas de texto do modo **SCREEN 1** do MSX,
+mesmo espírito do editor SCREEN 0 acima — mas com a diferença real de cor do hardware SCREEN 1: em vez
+de uma única cor de tinta/fundo pra tela inteira, o SCREEN 1 tem uma **Color Table** de 32 entradas,
+cada uma com seu próprio par tinta/fundo, cobrindo um **grupo de 8 códigos de caractere** (código 0-7
+usam a mesma cor, 8-15 usam outra, e assim por diante — 32 grupos × 8 códigos = 256). A grade de tela é
+fixa em 32×24 células (o SCREEN 1 não tem WIDTH configurável como o SCREEN 0).
+
+### Fonte e a tabela ASCII do alfabeto (cor por octeto)
+
+- **Fonte** — combo "Fonte:" no canto superior direito, mesmo mecanismo do editor SCREEN 0: **Padrão**
+  usa o alfabeto embutido do MSX, ou escolha qualquer alfabeto já cadastrado no banco do projeto
+  (**Criar → Alfabeto Graphos III...**).
+- **Tabela ASCII do alfabeto** — grade de 256 células abaixo das paletas, mostrando o **bitmap real** de
+  cada um dos 256 códigos da fonte escolhida. O fundo de cada célula já aparece pintado na cor do
+  **octeto** (grupo de 8) daquele código — é aqui que a colorização acontece: clique numa célula pra
+  escolher o "byte atual" (usado pelas ferramentas Caractere e Bloco) e as duas paletas **Tinta do
+  octeto**/**Fundo do octeto** ao lado mudam a cor dos 8 códigos daquele grupo (não da tela inteira) —
+  a mudança aparece imediatamente tanto na própria tabela quanto no canvas, em qualquer célula da tela
+  que já use um código daquele grupo.
+- **Byte atual** — campo de 1 caractere acima da tabela: digite qualquer letra/símbolo ASCII simples ali
+  pra escolher o byte (equivalente a clicar a célula correspondente na tabela); o texto ao lado mostra o
+  número do byte, seu octeto e a faixa de códigos daquele grupo.
+
+### Ferramentas
+
+Seis abas, uma por ferramenta (mesmas do editor SCREEN 0, sem "Atributo" — exclusiva do recurso de Cor
+2/pisca-pisca do WIDTH 80 do SCREEN 0, que não existe aqui):
+
+- **Texto** — digite numa caixa de texto e clique no canvas: o texto é posicionado horizontalmente a
+  partir da célula clicada (corta se passar do fim da linha, sem quebra automática).
+- **Caractere** — escolha o byte na tabela ASCII de 256 códigos (ou digite ASCII simples no campo acima
+  dela), depois clique ou arraste no canvas pra estampar.
+- **Quadro** — dois cliques (cantos opostos) desenham uma moldura com linhas simples, unindo
+  automaticamente com quadros já existentes que a nova borda encoste (formando T/cruz na junção). Botão
+  direito cancela uma marcação pendente.
+- **Sombra** — dois cliques (cantos opostos, tipicamente o mesmo retângulo de um quadro já desenhado)
+  estampam uma faixa de sombra deslocada uma célula pra baixo e pra direita, ao longo das bordas direita
+  e inferior.
+- **Bloco** — dois cliques (cantos opostos) preenchem o retângulo inteiro com o byte atual. Útil pra
+  texturas, fundos ou apagar uma área maior de uma vez só.
+- **Borracha** — clique ou arraste no canvas apaga (estampa espaço).
+
+### Gerar código e injetar no editor
+
+Os botões **Injetar no cursor**/**Copiar** montam o código na hora. O código sempre inclui `SCREEN 1` e
+um carregador `DATA`+`VPOKE` da Tabela de Cores (32 bytes, um por octeto, endereço padrão `&H2000`) —
+esse bloco sempre aparece, mesmo sem nenhuma cor customizada, porque é ele que garante que a tela use
+exatamente as cores configuradas em cada octeto. Se uma fonte customizada (não-padrão) estiver
+escolhida, um segundo carregador `DATA`+`VPOKE` copia os 2048 bytes da fonte pra Pattern Generator Table
+(`&H0000`). Por fim, um `LOCATE`+`PRINT` por linha não-vazia da tela (linhas totalmente em branco não
+geram `PRINT` nenhum).
+
+Diferente do editor SCREEN 0, o texto gerado aqui não depende da tradução `-tr` — cada célula já é um
+byte MSX bruto, então o código sai como uma mistura de texto literal entre aspas e `CHR$(n)` pros bytes
+fora do intervalo imprimível simples (a mesma técnica que o resto do pipeline usa pra caracteres
+especiais, só que calculada direto pelo editor em vez de esperar a tokenização).
+
+### Barra de projeto
+
+Mesmo padrão dos demais editores gráficos desta IDE: número da tela, navegação
+(primeiro/anterior/próximo/último), campo de tag (até 16 caracteres), **Novo** (numera automaticamente,
+começa em branco) e **Registrar** (grava a tela atual no projeto). Trocar de tela ou criar uma nova sem
+ter registrado avisa antes de descartar as alterações pendentes.
+
+## Editor de tela SCREEN 1+2
+
+Menu **Criar → Screen 1+2...** abre a versão mais completa (e mais complexa) desta família de editores:
+mesma grade de tela 32×24 e mesmas ferramentas do editor SCREEN 1 acima, mas gerando **SCREEN 2**
+(Graphics II) de verdade, que tem dois recursos de cor que o SCREEN 1 não tem.
+
+### 3 alfabetos, um por terço da tela
+
+O SCREEN 2 real divide a Pattern/Color Table em **3 "terços"** de 2048 bytes cada, escolhidos por qual
+terço de LINHAS DE TELA uma célula está (linhas 0-7 = terço 1, 8-15 = terço 2, 16-23 = terço 3). Por
+isso a coluna direita tem **3 combos de fonte** ("Fonte T1"/"T2"/"T3"), um por terço, todos começando em
+**Padrão** mas trocáveis independentemente uns dos outros.
+
+A **tabela ASCII** (grade de 256 células) mostra 1 terço por vez — o seletor **Terço 1 (0-7)/Terço 2
+(8-15)/Terço 3 (16-23)** logo acima da grade escolhe qual terço está sendo visualizado/editado ali,
+deixando claro de qual terço é cada célula mostrada. Importante: esse seletor só afeta o que a TABELA
+mostra — no canvas, cada célula da tela sempre usa o alfabeto e a cor do seu PRÓPRIO terço real (a linha
+onde ela está), não o terço selecionado na tabela. Pra facilitar, esse seletor **acompanha sozinho**
+qualquer clique ou arraste no canvas: ao tocar uma linha de um terço diferente, o rádio muda, e a tabela
+ASCII/o texto do byte atual atualizam pra mostrar exatamente o terço que você acabou de tocar — assim o
+que a tabela mostra nunca fica "atrasado" em relação ao que você está editando na tela. O canvas também
+desenha uma linha-guia preto+branco nos limites de cada terço (linhas de tela 8 e 16), sempre visível
+não importa a cor do que está desenhado ali.
+
+### Cor por linha de scanline (o modo mais complexo)
+
+Diferente do SCREEN 1 (cor por grupo de 8 códigos), a Color Table real do SCREEN 2 guarda uma cor de
+tinta e uma de fundo **para CADA UMA DAS 8 LINHAS de cada glifo** — é o "color clash" de verdade do
+hardware: toda vez que o mesmo código de caractere aparece no mesmo terço, ele usa exatamente as mesmas
+8 cores por linha, não importa em que posição da tela ele esteja.
+
+- **Byte atual** — mesmo mecanismo do SCREEN 1 (campo de texto ou clique na tabela ASCII).
+- **Cores do caractere...** — abre uma janela separada com o glifo do byte atual bem ampliado e 8
+  linhas, cada uma com sua própria paleta de Tinta e de Fundo (16 cores MSX1). Clicar numa cor aplica na
+  hora — não precisa de um botão "Aplicar" separado.
+- **Cores em bloco...** — clique o código inicial e o código final direto na tabela ASCII abaixo (em
+  qualquer ordem) e abre a MESMA janela de cores, mas aplicando o padrão de 8 cores escolhido a TODOS os
+  códigos do intervalo de uma vez (por exemplo, colorir A-Z inteiro com o mesmo esquema). Enquanto você
+  escolhe, os códigos já marcados ganham uma moldura ciano sutil na tabela; botão direito na tabela
+  cancela a escolha. Útil pra colorir uma faixa grande sem repetir o processo código por código.
+- **Copiar cores** / **Colar cores** — copia as 8 cores por linha do byte atual pra um clipboard interno
+  do editor; colar aplica esse padrão a outro byte atual escolhido depois. Rápido pra reaproveitar um
+  esquema de cores já pronto em outro caractere.
+- **Resetar caractere** / **Resetar bloco...** / **Resetar TODOS os caracteres do terço** — voltam
+  Tinta/Fundo pro padrão (letra branca em fundo preto) no byte atual, num intervalo escolhido na tabela
+  ASCII do mesmo jeito que "Cores em bloco...", ou nos 256 códigos do terço selecionado de uma vez (esse
+  último pede confirmação, pois não pode ser desfeito).
+
+Todas as edições de cor valem só para o **terço selecionado** na tabela ASCII no momento.
+
+### Ferramentas
+
+Mesmas 6 ferramentas do editor SCREEN 1 (Texto, Caractere, Quadro, Sombra, Bloco, Borracha) — ver
+descrição na seção anterior. A única diferença de comportamento: a ferramenta **Caractere** estampa o
+byte atual normalmente, mas a cor final exibida depende de qual TERÇO REAL a célula clicada está (não do
+terço selecionado na tabela ASCII).
+
+### Gerar código e injetar no editor
+
+Os botões **Injetar no cursor**/**Copiar** montam o código na hora. O código sempre inclui `SCREEN 2` e,
+para cada um dos 3 terços, um carregador `DATA`+`VPOKE` da Tabela de Cores completa (2048 bytes/terço,
+endereços `&H2000`/`&H2800`/`&H3000`) — esse bloco sempre aparece, incondicionalmente, garantindo que a
+tela use exatamente as cores configuradas em cada linha de cada código. Só os terços com uma fonte
+customizada (não-Padrão) ganham também um carregador da Pattern Generator Table daquele terço. Por fim,
+um `LOCATE`+`PRINT` por linha não-vazia da tela, igual ao editor SCREEN 1.
+
+### Barra de projeto
+
+Mesmo padrão dos demais editores gráficos desta IDE: número da tela, navegação
+(primeiro/anterior/próximo/último), campo de tag (até 16 caracteres), **Novo** (numera automaticamente,
+começa em branco, os 3 alfabetos voltam a Padrão) e **Registrar** (grava a tela atual no projeto). Trocar
+de tela ou criar uma nova sem ter registrado avisa antes de descartar as alterações pendentes.

@@ -58,7 +58,9 @@ servir de especificação byte-a-byte ao port nativo:
 | 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. Ver seção 17 |
 | 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. Ver seção 18 |
 | 19 | Inserir → Caractere Especial (mapa de caracteres MSX) | baixo | **Implementado (2026-08-04)** — `editor/CharMapGui.pbi`, novo menu de topo **Inserir**. Grade estilo "Mapa de Caracteres" do Windows com os 159 caracteres que `-tr` traduz pra ASCII nativo MSX. Ver seção 19 |
-| 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família planejada (SCREEN 1/2 ainda não iniciados, ver seção 20 e Próximos passos) |
+| 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família de 3 editores — **completa** desde o módulo 22, ver linhas abaixo |
+| 21 | Editor de tela SCREEN 1 estilo TheDraw/AcidDraw (`Criar → Screen 1...`) | médio | **Implementado (2026-08-05)** — `editor/Screen1EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen1_screens`). Mesma grade 32×24 e mesmas 6 ferramentas do módulo 20, mas com a Color Table real do SCREEN 1 (1 par tinta/fundo por grupo de 8 códigos de caractere, `&H2000`) — tabela ASCII de 256 células com o bitmap real de cada código já pintado na cor do seu octeto. Ver seção 21 |
+| 22 | Editor de tela SCREEN 1+2 — Color Table real do SCREEN 2, 3 alfabetos, cor por linha de scanline (`Criar → Screen 1+2...`) | alto | **Implementado (2026-08-05), estendido (mesma sessão)** — `editor/Screen12EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen12_screens`). Terceira e mais complexa da família: `SCREEN 2` de verdade, 3 alfabetos (1 por terço de 8 linhas de tela) e cor por LINHA DE SCANLINE de cada código (8 cores/glifo, color clash real do hardware). Correção de UX real (linha-guia + seletor de terço acompanhando o clique no canvas) e escolha de bloco por 2 cliques na tabela ASCII + botões de reset de cor, ambos no mesmo dia do lançamento. Ver seção 22 |
 
 ## Decisões fechadas
 
@@ -2592,8 +2594,9 @@ próprio `-tr` durante esta sessão).
 ### 20. Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) — implementado (2026-08-04)
 
 Pedido explícito do usuário: um editor gráfico de telas de texto MSX **SCREEN 0**, no espírito dos
-clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw) — primeira de uma família
-planejada (SCREEN 1 e SCREEN 2 ficam pra sessões futuras). Duas decisões de design foram confirmadas
+clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw) — primeira de uma família de 3
+(SCREEN 1 e SCREEN 1+2, que cobre SCREEN 2, vieram no dia seguinte, ver módulos 21 e 22). Duas decisões
+de design foram confirmadas
 com o usuário antes de implementar (`AskUserQuestion`), porque SCREEN 0 real do MSX1 **não** tem cor
 por célula como um editor ANSI de PC:
 
@@ -2731,6 +2734,194 @@ pisca-pisca de verdade durante a edição, só mostra a Cor 2 estaticamente nas 
 animação ao vivo exigiria um `AddWindowTimer` redesenhando o canvas periodicamente; a duração
 configurada só afeta o código gerado (`VDP(14)`), não a prévia. Fica como incremento futuro se o
 usuário quiser.
+
+### 21. Editor de tela SCREEN 1 estilo TheDraw/AcidDraw (`Criar → Screen 1...`) — implementado (2026-08-05)
+
+Segunda da família planejada em [[project-screen0-editor]] (SCREEN 0 → SCREEN 1 → SCREEN 2, este módulo
+sendo o SCREEN 1). Pedido explícito do usuário: mesmo espírito do editor SCREEN 0, mas com a diferença
+de cor real do SCREEN 1 — a Color Table real do TMS9918 guarda 32 bytes (Tinta\<\<4|Fundo cada), **1 por
+GRUPO DE 8 CÓDIGOS DE CARACTERE** (código\8, não por posição de tela), endereço padrão `&H2000`
+(confirmado contra a MSX Wiki, "VDP Table Base Address Registers"/"SCREEN 1", antes de escrever
+qualquer código). Diferente do SCREEN 0, aqui **não há** "uma cor pra tela inteira" nem WIDTH
+configurável — a grade é fixa 32×24 (768 células), sem diálogo de "Novo" perguntando largura.
+
+**A "tabela ASCII do alfabeto escolhido"** pedida pelo usuário é a grade de 256 células
+(`Scr1Ed_DrawCharPicker`, `editor/Screen1EditorGui.pbi`) na coluna direita — mostra o bitmap real de
+cada um dos 256 códigos do alfabeto ativo (padrão ou um alfabeto do banco do projeto), com o FUNDO de
+cada célula já pintado na cor do seu octeto (Tinta/Fundo do grupo de 8 a que aquele código pertence) —
+a colorização "direto na tabela ASCII" pedida. Clicar escolhe o "byte atual" (usado pelas ferramentas
+Caractere/Bloco); as duas paletas Tinta/Fundo ao lado não pintam a tela inteira como no SCREEN 0 — mudam
+a cor do OCTETO do byte atual (os 8 códigos daquele grupo), refletido tanto na grade quanto na tela.
+
+**Diferença de armazenamento em relação a `Screen0EditorGui.pbi`**: a grade guarda o **byte MSX cru
+(0-255)**, não um codepoint Unicode. Isso é possível — e mais simples — porque, ao contrário do SCREEN
+0, o SCREEN 1 não precisa do truque "imprimir o glifo Unicode literal e deixar a tradução `-tr` resolver
+depois": os 31 caracteres "gráfico" de `DignifiedPreprocessor.pbi` (`Dig_TransReplacementOrder` —
+moldura/naipes/carinhas) **são, na verdade, os códigos MSX 1-31** — achado real, confirmado lendo
+`Dig_TransReplacement`: cada um vira `Chr(1)+Chr(64+posição)` (`Chr(1)` é o prefixo de escape que o
+driver de tela do MSX usa pra imprimir um dos 31 "gráficos" ocupando os códigos de controle 1-31 sem
+colidir com controles de verdade; a letra que segue codifica qual gráfico, exatamente
+`Chr(64+posição)`), e `DefaultCharsetMsx.pbi` confirma byte a byte: os bitmaps dos códigos 1-31 do
+alfabeto padrão SÃO literalmente carinhas/naipes/moldura na mesma ordem de `Dig_TransReplacementOrder`.
+`Scr1Ed_GlyphByteFor()` cobre essa faixa além da ASCII 32-126 e dos 128 `Dig_TransOriginal` (128-255)
+que `Scr0Ed_GlyphByteFor` já cobria — juntas, resolvem todos os 256 códigos exceto 0 e 127 (sem
+representação Unicode neste codebase; só acessíveis clicando a célula deles direto na grade de 256, não
+digitando).
+
+**Geração de código** (`Scr1Ed_BuildCode`) **não** reaproveita a tradução `-tr` como
+`Screen0EditorGui.pbi` faz — constrói a expressão BASIC (literais entre aspas + `CHR$(n)` concatenado)
+diretamente a partir dos bytes crus da grade (`Scr1Ed_BuildLineExpr`), mais simples e robusto aqui: sem
+depender de tabela de tradução no meio do caminho, só ASCII puro no `.dmx` gerado, correto pra qualquer
+alfabeto (a fonte só muda a APARÊNCIA do byte, nunca seu número). Emite, em ordem: `SCREEN 1`, a Tabela
+de Cores (`FOR CI=0 TO 31:READ CD:VPOKE 8192+CI,CD:NEXT CI` + `DATA`, 32 bytes) e, se uma fonte
+customizada estiver escolhida, o carregador da Pattern Generator Table (`&H0000` — mesmo endereço que
+`CharEd_ScreenPgtAddress()` já usa pra SCREEN 1/2, `CharsetEditorGui.pbi`), depois `LOCATE`/`PRINT` por
+linha (linhas em branco viram nenhum `PRINT`).
+
+**Ferramentas**: as mesmas 6 da primeira versão do SCREEN 0 (Texto, Caractere, Quadro, Sombra, Bloco,
+Borracha — sem "Atributo", exclusiva do mecanismo de Cor 2/piscar do WIDTH 80 do SCREEN 0). Molduras/
+sombra reaproveitam a lógica de bitmask/junção de `Scr0Ed_BoxMaskToChar`/`BoxCharToMask`
+(`Screen0EditorGui.pbi`, já validada) por baixo — só convertendo pra/de byte MSX nas bordas
+(`Scr1Ed_BoxMaskToByte`/`Scr1Ed_ByteToChar`) — e `Scr0Ed_DrawGlyphBitmap` é reaproveitado tal como está
+pra desenhar qualquer byte 0-255, tanto no canvas principal quanto na grade de 256.
+
+**Armazenamento** (`ProjectDB.pbi`, tabela `screen1_screens`) — `grid_data` hex-codifica 2 dígitos/byte
+(768 células, mais simples que os 4 dígitos/célula de `screen0_screens` porque não precisa representar
+Unicode); `octet_data` guarda os 32 pares Tinta/Fundo, 1 dígito hex cada (64 dígitos ao todo). Mesmo
+padrão DELETE+INSERT de `StoreScreen0`, tag truncada a 16 chars.
+
+**Verificado**: harness de auto-teste temporário (flag `--scr1test`, removido após uso) confirmou:
+`Scr1Ed_GlyphByteFor`/`Scr1Ed_ByteToChar` corretos nas 3 faixas (ASCII, `Dig_TransOriginal`,
+`Dig_TransReplacementOrder`) e roundtrip perfeito pros 254 bytes com representação Unicode (só 0 e 127
+ficam de fora, como esperado); roundtrip de bitmask de moldura pras 11 combinações; uma moldura real
+5×3 gerando os bytes certos em cada posição (inclusive contra o cálculo independente da função, não só
+valores hardcoded); sombra deslocada correta; `Scr1Ed_StampText` corrigindo posição mesmo com aspas no
+meio do texto; `Scr1Ed_BuildLineExpr` produzindo a expressão `CHR$`/literal esperada; `Scr1Ed_BuildCode`
+com/sem fonte customizada emitindo os blocos certos. **Bug real pego só na tela, não no harness**: a
+primeira versão de `Scr1Ed_DrawCharPicker` deixava o `DrawingMode` em `#PB_2DDrawing_Outlined` (usado
+pra desenhar a borda de cada célula) vazar pra iteração seguinte do laço, fazendo o preenchimento do
+glifo/fundo da célula seguinte virar só contorno (invisível contra o fundo branco do canvas) — só a
+primeira célula (byte 0) renderizava certo; as outras 255 apareciam em branco. Só apareceu no
+screenshot real (`RedrawWindow`+`PrintWindow`, ver
+[[project-purebasic-gui-screenshot-technique]]), não no harness de lógica pura (que não desenha nada) —
+corrigido resetando `DrawingMode(#PB_2DDrawing_Default)` no início de cada iteração, antes de
+`Scr0Ed_DrawGlyphBitmap`. Depois do fix, screenshot confirmou os 256 glifos reais (carinhas/naipes/
+moldura/ASCII/acentuados) com fundo preto (padrão Tinta 15/Fundo 1 em todos os octetos) e a seleção
+(byte 32) destacada na célula certa. **Não verificado**: clique/arraste interativo no canvas ou na grade
+de 256 (mesma cautela já registrada pro SCREEN 0 — sem API pública de hit-testing pra simular clique
+num `CanvasGadget` de fora do processo) — fica pro usuário confirmar ao vivo.
+
+### 22. Editor de tela SCREEN 1+2 — Color Table real do SCREEN 2, 3 alfabetos, cor por linha de scanline (`Criar → Screen 1+2...`) — implementado (2026-08-05)
+
+Terceira (e mais complexa) da família SCREEN 0/1/2, explicitamente pedida como "o modo mais complexo"
+pelo próprio usuário. Mesma grade 32×24/mesmas 6 ferramentas de `Screen1EditorGui.pbi`, mas gerando
+**SCREEN 2** (Graphics II) de verdade em vez de SCREEN 1, com os dois recursos extras que só o hardware
+do SCREEN 2 tem:
+
+1. **3 alfabetos, um por "terço" da tela** — a Pattern/Color Table reais do SCREEN 2 são divididas em 3
+   blocos de 2048 bytes, selecionados por QUAL TERÇO DE LINHAS DE TELA a célula está (0-7/8-15/16-23,
+   ou seja `Terço = Linha/8`). O usuário pediu "3 alfabetos diferentes para cada terço da tela", cada um
+   iniciando em Padrão mas trocável independentemente — 3 combos "Fonte T1/T2/T3" na coluna direita.
+   Endereços confirmados contra a MSX Wiki ("VDP Table Base Address Registers") antes de escrever
+   qualquer código, mesma matemática já usada por `Scr2Ed_GenAlphabetLoader` em `Screen2EditorGui.pbi`:
+   Pattern = `Terço*2048`, Color = `&H2000+Terço*2048`.
+2. **Cor por LINHA DE SCANLINE de cada código de caractere** — a Color Table real do SCREEN 2 guarda 1
+   par Tinta/Fundo por linha (8 linhas por glifo), não 1 por célula de tela nem 1 por grupo de 8 códigos
+   como o SCREEN 1 (`screen1_screens`/`octet_data`) — o "color clash" de verdade do hardware: toda
+   ocorrência do mesmo código no mesmo terço usa a MESMA cor por linha, não importa em que posição de
+   tela apareça. 3 tercos × 256 códigos × 8 linhas = 6144 entradas, exatamente do tamanho da Color Table
+   real (6144 bytes).
+
+**Reaproveitado DIRETO de `Screen1EditorGui.pbi`, sem nenhuma alteração** (mesma grade 32×24, mesma
+semântica de byte MSX cru por célula): `Scr1Ed_GlyphByteFor`/`ByteToChar`, `Scr1Ed_StampText`/`DrawBox`/
+`ApplyShadow`/`FillRect`/`StampBoxEdge`/`BoxMaskToByte`, `Scr1Ed_BuildLineExpr` (geração de texto) e
+`Scr0Ed_BoxMaskToChar`/`BoxCharToMask` (junção de moldura). Só a renderização e o modelo de cor são
+novos — `Scr0Ed_DrawGlyphBitmap` assume 1 tinta/1 fundo pro glifo inteiro e não serve mais;
+`Scr12Ed_DrawGlyphRows` (`editor/Screen12EditorGui.pbi`) desenha cada uma das 8 linhas com sua própria
+cor.
+
+**A "tabela ASCII"** pedida pelo usuário (grade de 256 células, `Scr12Ed_DrawCharPicker`) mostra 1 terço
+por vez — um seletor "Terço 1 (0-7)/Terço 2 (8-15)/Terço 3 (16-23)" acima da grade escolhe QUAL terço
+está sendo visualizado/editado ali (identificação explícita pedida pelo usuário), cada célula já
+desenhada com as 8 cores por linha daquele código naquele terço. Importante: esse "terço em edição" da
+tabela é só uma conveniência de UI — no CANVAS, cada célula sempre usa o alfabeto/cor do seu PRÓPRIO
+terço real (`Linha/8`), não o que está selecionado na tabela.
+
+**Bug de UX real reportado pelo usuário e corrigido no mesmo dia do lançamento (2026-08-05)**: o usuário
+coloriu um caractere com o seletor em "Terço 1", carimbou no canvas (funcionou), trocou o seletor pra
+"Terço 2" e viu a tabela ASCII mostrar o código como colorido, mas carimbar esse mesmo código na área
+real do Terço 2 saiu sem cor — porque o seletor nunca teve nenhuma relação com ONDE se clica no canvas
+(ver parágrafo acima), só com o que a tabela mostra. Corrigido de duas formas, ambas confirmadas com o
+usuário via `AskUserQuestion` (escolheu as duas): (1) `Scr12Ed_RedrawCanvas` desenha uma linha-guia
+preta+branca nos limites de linha 8 e 16 do canvas, sempre visível não importa a cor desenhada ali; (2)
+`Scr12Ed_SyncEditThirdToRow` (novo helper de topo, `*EditThird` como ponteiro cru + `PokeI`/`PeekI`) é
+chamado a cada clique/arraste no canvas — se `Linha/8` for diferente do `EditThird` atual, troca os rádios,
+o texto do byte e redesenha a tabela ASCII automaticamente, garantindo que o que a tabela mostra sempre
+corresponde ao terço que acabou de ser tocado.
+
+**Edição de cor por linha** — **Cores do caractere...** abre uma janela separada
+(`Scr12Ed_ColorEditor_OpenWindow`, confirmado com o usuário via `AskUserQuestion` — popup dedicado, não
+painel embutido) com o glifo ampliado (zoom 20×) e 8 linhas, cada uma com sua própria mini-paleta
+Tinta/Fundo — clique aplica na hora, sem botão "Aplicar" separado, mesmo padrão de clique-aplica-na-hora
+do resto da IDE. **Cores em bloco...** aplica o MESMO padrão de 8 cores a TODOS os códigos de um
+intervalo de uma vez; os dois botões compartilham a mesma função (`ByteStart=ByteEnd` para o caractere
+único). **Copiar cores**/**Colar cores** movem o padrão de 8 cores de um código pra outro (array de 8
+posições em memória, sem popup). **Resetar caractere**/**Resetar bloco...**/**Resetar TODOS os
+caracteres do terço** voltam Tinta/Fundo pro padrão (15/1 = letra branca em fundo preto) no byte atual,
+num intervalo, ou nos 256 códigos do terço selecionado de uma vez (o último com confirmação via
+`MessageRequester`, ação irreversível).
+
+**Melhoria pedida pelo usuário (2026-08-05, mesmo dia)**: o intervalo início/fim de "Cores em bloco..."
+e "Resetar bloco..." deixou de ser digitado num popup modal (`Scr12Ed_AskBlockRange`, removido) — agora
+os dois botões entram num modo de "escolha de bloco" (`BlockPicking`/`BlockPickStart`/`BlockPickAction`,
+estado local de `Screen12Editor_OpenWindow`) onde o próximo clique na tabela ASCII escolhe o código
+inicial e o clique seguinte o final (em qualquer ordem, normalizados com `Min`/`Max`), com uma moldura
+ciano desenhada por fora da borda cinza normal (`Scr12Ed_DrawCharPicker`, parâmetros opcionais
+`RangeLo`/`RangeHi`) indicando quais códigos estão marcados enquanto a escolha está em andamento — "marca
+sutil" pedida explicitamente pelo usuário, que não esconde o glifo/cor por baixo por ser só um contorno.
+Botão direito na tabela ASCII cancela a escolha pendente (mesmo idioma já usado pro Quadro/Sombra no
+canvas); um guard central no topo do `Case #PB_Event_Gadget` cancela automaticamente qualquer escolha
+pendente se o usuário interagir com QUALQUER outro gadget antes do 2º clique (evita ficar com um
+`BlockPickStart` "órfão" referente a um terço/byte que o usuário já abandonou).
+
+**Geração de código** (`Scr12Ed_BuildCode`) — `SCREEN 2` + Tabela de Cores dos 3 tercos (SEMPRE emitida,
+2048 bytes/terço, incondicional — mesma filosofia "sempre emite tudo" já usada em `screen1_screens`) +
+Pattern Generator Table só dos tercos com fonte customizada + `LOCATE`/`PRINT` por linha (reaproveita
+`Scr1Ed_BuildLineExpr` sem nenhuma mudança).
+
+**Armazenamento** (`ProjectDB.pbi`, tabela `screen12_screens`) — `grid_data` (768 células, 2 dígitos
+hex/byte, igual a `screen1_screens`), `alphabet0`/`alphabet1`/`alphabet2` (1 por terço), `color_data`
+(6144 entradas × 2 dígitos hex cada = Terço→Código→Linha, mesma convenção 4 bits/cor já usada por
+`octet_data` em `screen1_screens`).
+
+**Verificado**: harness de auto-teste temporário (flag `--scr12test`, removido após uso) confirmou:
+reaproveitamento de `Scr1Ed_StampText` funcionando sem alteração nesta grade; `Scr12Ed_ByteInfoText`;
+`Scr12Ed_BuildCode` com os 3 endereços de Color Table corretos (`&H2000`/`&H2800`/`&H3000`), a primeira e
+a última entrada da tabela de cores com o byte exato esperado (Tinta\<\<4|Fundo), e o carregador de fonte
+aparecendo SÓ no terço com alfabeto customizado (os outros 2 em Padrão, sem carregador). Layout verificado
+por 2 screenshots reais (`RedrawWindow`+`PrintWindow`, ver
+[[project-purebasic-gui-screenshot-technique]]): a janela principal (3 combos de fonte, seletor de terço,
+grade de 256 com todos os glifos corretos — já nasceu certa desta vez, aplicando de saída a correção do
+bug de `DrawingMode` descoberta no SCREEN 1, ver [[project-screen1-editor]] — botões, barra de projeto,
+6 abas de ferramenta, sem sobreposição/corte) e o popup "Cores do caractere..." acionado via `SendMessage`
+`BM_CLICK` num botão padrão do Win32 (controle nativo, seguro pra automação — diferente de simular clique
+num `CanvasGadget`, que continua fora do escopo automatizável nesta IDE) — layout de 2 colunas × 4 linhas,
+prévia e as 16 mini-paletas todas corretas para o byte 32 (espaço, prévia preta porque o glifo não tem
+pixels de tinta — comportamento esperado). Clique/arraste interativo no canvas e na grade de 256
+continuam não automatizados (mesma cautela já registrada pro SCREEN 0/1).
+
+**Verificado (2026-08-05, correções de UX + bloco por clique/resetar)**: linha-guia preto+branco
+confirmada por screenshot real separando visualmente os 3 terços no canvas; layout completo com as 3
+novas fileiras de botão (`Resetar caractere`/`Resetar bloco...`/`Resetar TODOS...`) confirmado sem
+sobreposição/corte contra a barra de projeto abaixo (a coluna direita ainda cabe dentro da altura do
+canvas, unchanged `ToolPanelY`); clique em "Cores em bloco..." (`SendMessage`+`BM_CLICK`, botão nativo)
+confirmado trocando o texto de dica acima da tabela ASCII pra "Bloco: clique o código INICIAL..."; clique
+num rádio "Terço" nativo enquanto uma escolha de bloco estava pendente confirmado cancelando-a (texto de
+dica volta ao padrão) via o guard central — o rádio em si não trocou de terço na automação porque
+`BM_CLICK` num `OptionGadget` nem sempre gera o `#PB_EventType_Change` que PureBasic espera (limitação
+conhecida de clique sintético, não bug do app; o `#PB_Event_Gadget` em si chegou, por isso o guard, que
+não depende do `EventType`, disparou corretamente). Clique na grade de 256 pra completar a escolha de
+bloco (2º clique) continua não automatizado, mesma cautela de sempre com `CanvasGadget`.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

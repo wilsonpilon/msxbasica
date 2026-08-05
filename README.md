@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.11.0** — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.14.0** — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -347,38 +347,64 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   na posição do cursor da aba ativa. Motivou a correção de dois bugs reais de tradução em
   `DignifiedPreprocessor.pbi` que já afetavam `-tr` antes desta feature existir — ver Changelog e
   `docs/SPEC.md`, módulo 3h.
-- **Criar → Screen 0...** (`editor/Screen0EditorGui.pbi`) — editor de telas de **texto MSX SCREEN 0**,
-  no espírito dos clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw), mas fiel ao
-  hardware MSX real: grade fixa de **40 ou 80 colunas × 24 linhas** (largura escolhida ao criar cada
-  tela) com **uma única cor de tinta/fundo pra tela inteira** (equivalente a `COLOR fg,bg` — SCREEN 0
-  de verdade não tem cor por célula, diferente de um editor ANSI de PC), usando a fonte padrão do MSX
-  ou uma fonte customizada já cadastrada no banco de alfabetos do projeto (**Criar → Alfabeto Graphos
-  III...**). Seis ferramentas por aba: **Texto** (digita e clica pra posicionar horizontalmente),
-  **Caractere** (grade com os 159 caracteres especiais de `Inserir → Caractere Especial...` — clique/
-  arraste estampa), **Quadro** (2 cliques desenham uma moldura com linhas simples, unindo
-  automaticamente em T/cruz onde encostar num quadro já existente), **Sombra** (2 cliques estampam uma
-  faixa `▒` deslocada, no estilo clássico de sombra de editor ANSI), **Bloco** (2 cliques preenchem um
-  retângulo com o caractere atual) e **Borracha**. **Gerar código**/**Injetar no cursor**/**Copiar**
-  emitem `SCREEN 0`/`WIDTH`/`COLOR`/`LOCATE`+`PRINT` com os glifos Unicode literais — a tradução `-tr`
-  do próprio pipeline Dignified resolve pro byte/escape nativo MSX na hora de tokenizar, sem o editor
-  precisar calcular nenhum endereço de VRAM pro texto em si (só o carregador de fonte customizada, que
-  usa o endereço real da Pattern Generator Table do SCREEN 0 — `&H0800` em 40 colunas, `&H1000` em 80).
-  Integrado ao sistema de projeto, mesma barra de número/tag/navegação/Novo/Registrar dos demais
-  editores. **Em telas de 80 colunas, uma sétima ferramenta ("Atributo") liga o recurso real de
-  segunda cor do MSX2+** (modo T2 do VDP): cada caractere pode usar um segundo par de tinta/fundo
-  (paletas "Cor 2" próprias), piscando com a cor normal num ritmo configurável (0-15, ~1/6s por fase,
-  até 2.5s) ou **travado permanentemente na Cor 2** (zerando a duração "normal") — dando, na prática,
-  texto com 2 cores fixas em 80 colunas, algo que 40 colunas não tem. Gera `VDP(13)`/`VDP(14)` (cor 2 e
-  duração) mais o carregador da tabela de "pisca" (1 bit/caractere, `&H0800` nesse modo) junto do resto
-  do código.
+- **Família de editores de tela de texto MSX** (`Criar → Screen 0.../Screen 1.../Screen 1+2...`), no
+  espírito dos clássicos editores de tela ANSI da era BBS (TheDraw/AcidDraw/DarkDraw), mas fiéis ao
+  hardware MSX real — cada um cobre um modo de cor de texto diferente, do mais simples ao mais
+  complexo: **SCREEN 0** (1 cor pra tela inteira), **SCREEN 0 no modo MSX2+** (80 colunas com uma
+  segunda cor real de texto), **SCREEN 1** (1 cor por grupo de 8 caracteres) e **SCREEN 1+2** (SCREEN 2
+  de verdade — 3 alfabetos e cor por linha de scanline). Os quatro compartilham a mesma grade fixa de
+  32×24 (ou 40/80×24 no SCREEN 0) e a maioria das 6 ferramentas por aba (Texto/Caractere/Quadro/Sombra/
+  Bloco/Borracha) — só o modelo de cor e a renderização mudam entre eles.
+  - **Screen 0...** (`editor/Screen0EditorGui.pbi`) — grade fixa de **40 ou 80 colunas × 24 linhas**
+    (largura escolhida ao criar cada tela) com **uma única cor de tinta/fundo pra tela inteira**
+    (equivalente a `COLOR fg,bg` — SCREEN 0 de verdade não tem cor por célula, diferente de um editor
+    ANSI de PC), usando a fonte padrão do MSX ou uma fonte customizada já cadastrada no banco de
+    alfabetos do projeto (**Criar → Alfabeto Graphos III...**). Ferramentas: **Texto** (digita e clica
+    pra posicionar horizontalmente), **Caractere** (grade com os 159 caracteres especiais de
+    `Inserir → Caractere Especial...` — clique/arraste estampa), **Quadro** (2 cliques desenham uma
+    moldura com linhas simples, unindo automaticamente em T/cruz onde encostar num quadro já
+    existente), **Sombra** (2 cliques estampam uma faixa `▒` deslocada, no estilo clássico de sombra de
+    editor ANSI), **Bloco** (2 cliques preenchem um retângulo com o caractere atual) e **Borracha**.
+    **Gerar código**/**Injetar no cursor**/**Copiar** emitem `SCREEN 0`/`WIDTH`/`COLOR`/`LOCATE`+`PRINT`
+    com os glifos Unicode literais — a tradução `-tr` do próprio pipeline Dignified resolve pro byte/
+    escape nativo MSX na hora de tokenizar, sem o editor precisar calcular nenhum endereço de VRAM pro
+    texto em si (só o carregador de fonte customizada, que usa o endereço real da Pattern Generator
+    Table do SCREEN 0 — `&H0800` em 40 colunas, `&H1000` em 80). **Em telas de 80 colunas (modo MSX2+),
+    uma sétima ferramenta ("Atributo") liga o recurso real de segunda cor** (modo T2 do VDP): cada
+    caractere pode usar um segundo par de tinta/fundo (paletas "Cor 2" próprias), piscando com a cor
+    normal num ritmo configurável (0-15, ~1/6s por fase, até 2.5s) ou **travado permanentemente na Cor
+    2** (zerando a duração "normal") — dando, na prática, texto com 2 cores fixas em 80 colunas, algo
+    que 40 colunas não tem. Gera `VDP(13)`/`VDP(14)` (cor 2 e duração) mais o carregador da tabela de
+    "pisca" (1 bit/caractere, `&H0800` nesse modo) junto do resto do código.
+  - **Screen 1...** (`editor/Screen1EditorGui.pbi`) — mesma grade fixa **32×24** e as mesmas 6
+    ferramentas do SCREEN 0 acima, mas com a diferença real de cor do hardware SCREEN 1: em vez de 1 cor
+    pra tela inteira, uma **Color Table** de 32 entradas dá 1 par tinta/fundo por **grupo de 8 códigos de
+    caractere** (endereço padrão `&H2000`). A **tabela ASCII do alfabeto** (grade de 256 células) mostra
+    o bitmap real de cada código já pintado na cor do seu octeto — clicar escolhe o "byte atual" e as
+    paletas Tinta/Fundo do octeto colorem os 8 códigos daquele grupo, refletido ao vivo na tabela e no
+    canvas.
+  - **Screen 1+2...** (`editor/Screen12EditorGui.pbi`) — terceira e mais complexa da família: gera
+    **SCREEN 2** de verdade (não um editor gráfico de pixels como o **Draw Screen 2...** já existente),
+    com os dois recursos extras do hardware que o SCREEN 1 não tem — **3 alfabetos**, um por "terço" de
+    8 linhas de tela (Pattern `Terço×2048`/Color `&H2000+Terço×2048`), e **cor por LINHA DE SCANLINE de
+    cada código de caractere** (8 cores por glifo, o "color clash" real do SCREEN 2 — toda ocorrência do
+    mesmo código no mesmo terço usa a mesma cor por linha, não importa onde apareça na tela). A tabela
+    ASCII mostra 1 terço por vez (seletor acima da grade que **acompanha sozinho** qualquer clique/
+    arraste no canvas, e uma linha-guia preto+branco no canvas marca visualmente onde cada terço começa/
+    termina). **Cores do caractere...**/**Cores em bloco...** abrem um editor ampliado por linha de
+    scanline (o de bloco escolhido por 2 cliques direto na tabela ASCII, com marca ciano sutil);
+    **Copiar/Colar cores** e **Resetar caractere/bloco/todos** (fundo preto/letra branca) completam o
+    fluxo. Todos os editores da família são integrados ao sistema de projeto, mesma barra de número/tag/
+    navegação/Novo/Registrar dos demais editores.
+
+    ![Editor de tela Screen 1+2 (Criar → Screen 1+2...) mostrando cores diferentes por terço — carinhas amarelas no Terço 1, azuis no Terço 2, texto vermelho no Terço 3](images/msxbasica-15.png)
 
 Ainda não implementado (ver [Lacunas conhecidas](docs/SPEC.md#lacunas-conhecidas-a-preencher-em-conversas-futuras)
 e [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto) em `docs/SPEC.md`): `--code`/`--data`/
 `--align-*`/detecção de sobreposição de segmento/saída Intel HEX no linker, editor de tile (além do
-charset/fonte 8×8), tracker, editores de tela SCREEN 1 e SCREEN 2 no mesmo espírito "estilo ANSI" do
-SCREEN 0 (o editor **Draw Screen 2...** já existente é um editor gráfico de pixels, não de caracteres),
-saída via `msxbas2rom`, input simulado durante a execução e detecção de erro com retorno à linha no
-editor (ver "Controle remoto do openMSX" logo abaixo para o que já existe nessa frente).
+charset/fonte 8×8), tracker, saída via `msxbas2rom`, input simulado durante a execução e detecção de
+erro com retorno à linha no editor (ver "Controle remoto do openMSX" logo abaixo para o que já existe
+nessa frente).
 
 **Controle remoto do openMSX — validado e ampliado (2026-07-30)**: menu **Executar → openMSX...**
 (`editor/OpenMSXBridge.pbi`/`OpenMSXConsoleGui.pbi`) abre uma instância separada do openMSX com um
@@ -1360,6 +1386,52 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   pro lado dele (empilhados verticalmente à direita, mesma faixa de altura). As duas mudanças juntas
   tiraram a barra de projeto inteira (antes ocupando uma faixa própria no topo) e a faixa de botões
   (antes abaixo do painel) da pilha vertical. Verificado por screenshot real.
+- **2026-08-05 — novo editor de tela `Criar → Screen 1...` (`v7.12.0`)**: segunda da família SCREEN 0/1/2
+  planejada, mesmo espírito TheDraw/AcidDraw do editor SCREEN 0, mas com a diferença real de cor do
+  hardware SCREEN 1 — a Color Table real do TMS9918 guarda 32 pares tinta/fundo, um por **grupo de 8
+  códigos de caractere** (endereço padrão `&H2000`, confirmado contra a MSX Wiki antes de escrever
+  código), não uma cor única pra tela inteira. A "tabela ASCII do alfabeto" pedida pelo usuário é uma
+  grade de 256 células mostrando o bitmap real de cada código da fonte ativa, com o fundo de cada célula
+  já pintado na cor do seu octeto — clicar escolhe o byte atual, e as paletas Tinta/Fundo ao lado colorem
+  o octeto (8 códigos) daquele byte, refletido ao vivo na tabela e no canvas. Achado real de hardware:
+  os 31 caracteres "gráfico" de escape do pipeline Dignified (moldura/naipes/carinhas,
+  `Dig_TransReplacementOrder`) são, na verdade, os códigos MSX 1-31 — permitiu guardar a grade como byte
+  MSX cru (0-255) em vez de codepoint Unicode como o editor SCREEN 0 faz, e gerar código sem depender da
+  tradução `-tr` (literais entre aspas + `CHR$(n)` direto dos bytes). Mesmas 6 ferramentas da primeira
+  versão do SCREEN 0 (Texto/Caractere/Quadro/Sombra/Bloco/Borracha). Bug real pego só no screenshot (não
+  no harness de lógica pura): `DrawingMode` vazando entre iterações do laço da grade de 256, deixando 255
+  das 256 células em branco — corrigido resetando o modo antes de cada glifo.
+- **2026-08-05 (mesma sessão) — novo editor de tela `Criar → Screen 1+2...` (`v7.13.0`)**: terceira e mais
+  complexa da família SCREEN 0/1/2, pedida explicitamente como "o modo mais complexo". Mesma grade 32×24
+  e mesmas 6 ferramentas do editor SCREEN 1, mas gerando `SCREEN 2` de verdade com os dois recursos extras
+  do hardware: **3 alfabetos** (um por "terço" de 8 linhas de tela, endereços `Terço*2048`/
+  `&H2000+Terço*2048` confirmados contra a MSX Wiki) e **cor por linha de scanline de cada código de
+  caractere** (8 cores por glifo, o "color clash" real do SCREEN 2 — toda ocorrência do mesmo código no
+  mesmo terço compartilha a mesma cor por linha). Duas decisões de UI confirmadas com o usuário via
+  `AskUserQuestion` antes de implementar: o editor de cores por linha abre como janela separada (não
+  painel embutido), e o botão de edição em bloco (início/fim) aplica o MESMO padrão de 8 cores a todos os
+  códigos do intervalo de uma vez. Reaproveitou direto (sem alteração nenhuma) boa parte do editor SCREEN
+  1 — `Scr1Ed_GlyphByteFor`/`StampText`/`DrawBox`/`ApplyShadow`/`FillRect`/`BuildLineExpr` — já que a
+  grade e a semântica de byte MSX cru são idênticas; só a renderização/modelo de cor mudou. Aplicando a
+  lição do editor SCREEN 1 (bug de `DrawingMode` vazando entre células), a grade de 256 já nasceu
+  renderizando certo desde a primeira screenshot. Verificado por harness de auto-teste temporário
+  (`--scr12test`, removido) e 2 screenshots reais (janela principal + popup "Cores do caractere..."
+  acionado via `SendMessage`/`BM_CLICK` num botão nativo do Win32).
+- **2026-08-05 (mesma sessão) — correções de UX e novos recursos no editor Screen 1+2 (`v7.14.0`)**:
+  usuário reportou um bug real de UX no editor recém-lançado — colorir um caractere com o seletor
+  "Terço" da tabela ASCII num terço não garantia que a cor aparecesse ao carimbar aquele código na área
+  real da tela do mesmo terço, porque o seletor nunca teve nenhuma relação com QUAL linha do canvas
+  estava sendo tocada, só com o que a tabela mostra (a cor de fato usada sempre vem do terço REAL da
+  linha clicada). Corrigido de duas formas (as duas escolhidas pelo usuário via `AskUserQuestion`): uma
+  linha-guia preto+branco no canvas marcando os limites de cada terço, e o seletor/tabela ASCII passaram
+  a **acompanhar sozinhos** qualquer clique/arraste no canvas (`Scr12Ed_SyncEditThirdToRow`). Na mesma
+  sessão, dois pedidos de melhoria: **"Cores em bloco..."** deixou de pedir início/fim num popup
+  digitado — agora clica-se o código inicial e final direto na tabela ASCII (marca ciano sutil enquanto
+  escolhido, botão direito cancela); e três novos botões **Resetar caractere/Resetar bloco.../Resetar
+  TODOS os caracteres do terço** voltam Tinta/Fundo pro padrão (letra branca em fundo preto) no byte
+  atual, num intervalo ou nos 256 códigos do terço de uma vez. Verificado com screenshots reais da
+  janela completa e do fluxo de escolha de bloco. Versão embutida no executável atualizada para
+  `7.14.0`.
 
 ## Ferramentas e ambiente
 
