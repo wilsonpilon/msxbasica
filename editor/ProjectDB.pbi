@@ -73,6 +73,24 @@ DeclareModule ProjectDB
   Declare.i HasSound(Number.i)
   Declare ListSoundNumbers(List Numbers.i())
 
+  ; SeeTrackerEditorGui.pbi ("Criar -> SEE Tracker...") - um "SFX" e uma
+  ; sequencia ORDENADA de patterns, cada um os 15 bytes CRUS exatamente no
+  ; formato de arquivo .SEE real (evento + 3x frequencia + rustle + controle
+  ; de canais + 3x volume + periodo/forma de envelope - ver
+  ; editor/SeeTrackerSynth.pbi e Ajuda -> SEE Tracker...). PatternBytes() e
+  ; 1D "achatado" (PatternBytes(i*15+b), NumPatterns*15 elementos - mesmo
+  ; motivo de Regs() em StoreSound/FetchSound acima: ReDim so redimensiona a
+  ; ULTIMA dimensao de um array no PureBasic). Guardar o byte CRU (nao uma
+  ; struct interpretada) deixa a serializacao aqui identica ao que
+  ; "Gerar codigo"/o driver de replay realmente consomem - sem risco de
+  ; divergencia entre "o que editamos" e "o que sai"/"o que toca".
+  Declare.i StoreSeeSfx(Number.i, Tag.s, NumPatterns.i, Array PatternBytes.a(1))
+  Declare.i FetchSeeSfx(Number.i, Array PatternBytes.a(1))
+  Declare.i LastSeeSfxPatternCount()
+  Declare.s LastSeeSfxTag()
+  Declare.i HasSeeSfx(Number.i)
+  Declare ListSeeSfxNumbers(List Numbers.i())
+
   ; Uma "musica" MML/PLAY guarda as linhas de texto MML montadas em cada um
   ; dos 3 canais (A/B/C) - ver editor/MmlSynth.pbi/MmlEditorGui.pbi. Lines()
   ; e uma matriz 2D FIXA (canal 0-2, indice de linha) dimensionada pelo
@@ -284,6 +302,8 @@ Module ProjectDB
   Global FetchedAlphabetTag.s = ""
   Global FetchedSoundTag.s = ""
   Global FetchedStepCount.i = 0
+  Global FetchedSeeSfxTag.s = ""
+  Global FetchedSeeSfxPatternCount.i = 0
   Global FetchedSongTag.s = ""
   Global FetchedScreenTag.s = ""
   Global FetchedScreenCommandsText.s = ""
@@ -341,6 +361,12 @@ Module ProjectDB
                          "tag TEXT, " +
                          "step_count INTEGER NOT NULL, " +
                          "steps_data TEXT NOT NULL, " +
+                         "updated_at TEXT)")
+    DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS see_sfx (" +
+                         "sfx_number INTEGER PRIMARY KEY, " +
+                         "tag TEXT, " +
+                         "pattern_count INTEGER NOT NULL, " +
+                         "patterns_data TEXT NOT NULL, " +
                          "updated_at TEXT)")
     DatabaseUpdate(#DB, "CREATE TABLE IF NOT EXISTS mml_songs (" +
                          "song_number INTEGER PRIMARY KEY, " +
@@ -965,6 +991,94 @@ Module ProjectDB
     EndIf
 
     If DatabaseQuery(#DB, "SELECT sound_number FROM psg_sounds ORDER BY sound_number ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Numbers())
+        Numbers() = Val(GetDatabaseString(#DB, 0))
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
+  EndProcedure
+
+  ; Empacota PatternBytes() (1D achatado, NumPatterns*15 elementos) num TEXT
+  ; hex de largura fixa (30 digitos/pattern) - mesmo padrao de StoreSound
+  ; acima, so trocando 14+2 bytes/passo por 15 bytes/pattern.
+  Procedure.i StoreSeeSfx(Number.i, Tag.s, NumPatterns.i, Array PatternBytes.a(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected i, b
+    Protected HexData.s = ""
+    For i = 0 To NumPatterns - 1
+      For b = 0 To 14
+        HexData = HexData + RSet(Hex(PatternBytes(i * 15 + b)), 2, "0")
+      Next
+    Next
+
+    Protected SafeTag.s = Left(ReplaceString(Tag, "'", "''"), 16)
+
+    DatabaseUpdate(#DB, "DELETE FROM see_sfx WHERE sfx_number=" + Str(Number))
+    Protected SQL.s = "INSERT INTO see_sfx (sfx_number, tag, pattern_count, patterns_data, updated_at) VALUES (" +
+                       Str(Number) + ", '" + SafeTag + "', " + Str(NumPatterns) + ", '" + HexData + "', datetime('now'))"
+    ProcedureReturn DatabaseUpdate(#DB, SQL)
+  EndProcedure
+
+  Procedure.i FetchSeeSfx(Number.i, Array PatternBytes.a(1))
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT tag, pattern_count, patterns_data FROM see_sfx WHERE sfx_number=" + Str(Number))
+      If NextDatabaseRow(#DB)
+        FetchedSeeSfxTag = GetDatabaseString(#DB, 0)
+        FetchedSeeSfxPatternCount = Val(GetDatabaseString(#DB, 1))
+        Protected HexData.s = GetDatabaseString(#DB, 2)
+
+        If FetchedSeeSfxPatternCount > 0
+          ReDim PatternBytes(FetchedSeeSfxPatternCount * 15 - 1)
+          Protected i, b, Pos = 1
+          For i = 0 To FetchedSeeSfxPatternCount - 1
+            For b = 0 To 14
+              PatternBytes(i * 15 + b) = Val("$" + Mid(HexData, Pos, 2))
+              Pos + 2
+            Next
+          Next
+        EndIf
+        Found = #True
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure.i LastSeeSfxPatternCount()
+    ProcedureReturn FetchedSeeSfxPatternCount
+  EndProcedure
+
+  Procedure.s LastSeeSfxTag()
+    ProcedureReturn FetchedSeeSfxTag
+  EndProcedure
+
+  Procedure.i HasSeeSfx(Number.i)
+    If Not EnsureOpen()
+      ProcedureReturn #False
+    EndIf
+    Protected Found.b = #False
+    If DatabaseQuery(#DB, "SELECT 1 FROM see_sfx WHERE sfx_number=" + Str(Number))
+      Found = NextDatabaseRow(#DB)
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Found
+  EndProcedure
+
+  Procedure ListSeeSfxNumbers(List Numbers.i())
+    ClearList(Numbers())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT sfx_number FROM see_sfx ORDER BY sfx_number ASC")
       While NextDatabaseRow(#DB)
         AddElement(Numbers())
         Numbers() = Val(GetDatabaseString(#DB, 0))

@@ -60,27 +60,34 @@
     - [Tocar / Parar](#tocar--parar)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor)
     - [Barra de projeto](#barra-de-projeto)
-11. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
+11. [Editor SEE Tracker](#editor-see-tracker)
+    - [A grade e o painel de edição](#a-grade-e-o-painel-de-edição)
+    - [Patterns: inserir, apagar, mover, copiar](#patterns-inserir-apagar-mover-copiar)
+    - [Tocar / Parar](#tocar--parar-1)
+    - [Gerar código, Injetar no cursor, Copiar](#gerar-código-injetar-no-cursor-copiar)
+    - [Importar .SEE...](#importar-see)
+    - [Barra de projeto](#barra-de-projeto-1)
+12. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
     - [Montando uma linha](#montando-uma-linha)
     - [Lista de linhas por canal](#lista-de-linhas-por-canal)
-    - [Tocar / Parar](#tocar--parar-1)
+    - [Tocar / Parar](#tocar--parar-2)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-1)
-    - [Barra de projeto](#barra-de-projeto-1)
-12. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
+    - [Barra de projeto](#barra-de-projeto-2)
+13. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
     - [Tabela de 46 caracteres e grade 16x16](#tabela-de-46-caracteres-e-grade-16x16)
     - [Arquivo .FNT](#arquivo-fnt)
-13. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
+14. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
     - [Canvas, paleta e cor de tinta/fundo](#canvas-paleta-e-cor-de-tintafundo)
     - [Ferramentas de desenho](#ferramentas-de-desenho-1)
     - [Parâmetros STEP e LINE -(x,y)](#parâmetros-step-e-line--xy)
     - [Ferramenta TEXTO — quadro elástico arrastável](#ferramenta-texto--quadro-elástico-arrastável)
     - [Lista de comandos e mini buffers](#lista-de-comandos-e-mini-buffers)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-2)
-    - [Barra de projeto](#barra-de-projeto-2)
-14. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
+    - [Barra de projeto](#barra-de-projeto-3)
+15. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
     - [Canvas e color clash](#canvas-e-color-clash)
     - [Paleta INK/PAPER e ferramentas](#paleta-inkpaper-e-ferramentas)
-15. [Assembler Z80](#assembler-z80)
+16. [Assembler Z80](#assembler-z80)
     - [Aba Assembly (.asm)](#aba-assembly-asm)
     - [Montar (Ctrl+F5)](#montar-ctrlf5)
     - [O que já é suportado](#o-que-já-é-suportado)
@@ -89,47 +96,49 @@
     - [Biblioteca Z80 (.LIB)](#biblioteca-z80-lib)
     - [Assembly Sub Project (Makefile primitivo)](#assembly-sub-project-makefile-primitivo)
     - [O que ainda não é suportado](#o-que-ainda-não-é-suportado)
-16. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
+17. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
     - [Abrindo e navegando](#abrindo-e-navegando)
     - [O que está coberto](#o-que-está-coberto)
-17. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
+18. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
     - [Arquivo → Novo Nestor Basic...](#arquivo--novo-nestor-basic)
     - [Executar → Nestor Basic](#executar--nestor-basic)
     - [Ajuda → Nestor Basic...](#ajuda--nestor-basic)
-18. [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)
+19. [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)
     - [Arquivo → Novo MSXBas2Rom...](#arquivo--novo-msxbas2rom)
     - [Configurar → MSXBas2Rom...](#configurar--msxbas2rom)
     - [Ajuda → MSXBas2Rom...](#ajuda--msxbas2rom)
-19. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
+20. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
     - [Configurar → N80...](#configurar--n80)
     - [Ajuda → N80...](#ajuda--n80)
-20. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
+21. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
     - [O que está coberto](#o-que-está-coberto-1)
-21. [Editor Hexa](#editor-hexa)
+22. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
+    - [O que está coberto](#o-que-está-coberto-2)
+23. [Editor Hexa](#editor-hexa)
     - [Abrir/Salvar e a grade hex/ASCII](#abrirsalvar-e-a-grade-hexascii)
     - [Reconhecimento de formato](#reconhecimento-de-formato)
     - [Galeria de templates](#galeria-de-templates)
     - [Intervalo marcado e operações de bloco](#intervalo-marcado-e-operações-de-bloco)
     - [Barra de rolagem](#barra-de-rolagem)
-22. [Inserir → Caractere Especial](#inserir--caractere-especial)
+24. [Inserir → Caractere Especial](#inserir--caractere-especial)
     - [A grade e a prévia](#a-grade-e-a-prévia)
     - [Campo acumulador e o botão Inserir](#campo-acumulador-e-o-botão-inserir)
-23. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
+25. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
     - [Largura, fonte e cor (INK/PAPER único pra tela inteira)](#largura-fonte-e-cor-inkpaper-único-pra-tela-inteira)
     - [Ferramentas](#ferramentas)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-3)
-    - [Barra de projeto](#barra-de-projeto-3)
-24. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
+    - [Barra de projeto](#barra-de-projeto-4)
+26. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
     - [Fonte e a tabela ASCII do alfabeto (cor por octeto)](#fonte-e-a-tabela-ascii-do-alfabeto-cor-por-octeto)
     - [Ferramentas](#ferramentas-2)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-4)
-    - [Barra de projeto](#barra-de-projeto-4)
-25. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
+    - [Barra de projeto](#barra-de-projeto-5)
+27. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
     - [3 alfabetos, um por terço da tela](#3-alfabetos-um-por-terço-da-tela)
     - [Cor por linha de scanline (o modo mais complexo)](#cor-por-linha-de-scanline-o-modo-mais-complexo)
     - [Ferramentas](#ferramentas-3)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-5)
-    - [Barra de projeto](#barra-de-projeto-5)
+    - [Barra de projeto](#barra-de-projeto-6)
 
 ---
 
@@ -757,8 +766,8 @@ motor de emulação que gera o código, então o resultado real no MSX/openMSX d
 
 Um **som** é um **mini-sequenciador de passos**: uma lista curta onde cada passo guarda os 14
 registradores do PSG (tom, ruído, volume, envelope) mais uma duração em quadros — é o time-line de UM
-efeito/instrumento (tiro, explosão, bipe etc.), não um sequenciador multi-canal de música completa
-(isso fica para um futuro editor de Tracker, ainda não implementado).
+efeito/instrumento (tiro, explosão, bipe etc.), sem os recursos de loop/eventos de um tracker de
+verdade (para isso, ver o **Editor SEE Tracker** logo abaixo).
 
 ### Canais A/B/C, ruído e envelope
 
@@ -825,6 +834,123 @@ padrão da barra de projeto dos editores de sprite e alfabeto:
 
 Alterações feitas num som e ainda não registradas pedem confirmação antes de trocar de som ou fechar a
 janela, para não perder trabalho sem querer.
+
+---
+
+## Editor SEE Tracker
+
+![Editor SEE Tracker (Criar → SEE Tracker...) com um efeito de 8 patterns tocando — cursor de playback verde no pattern 0, botões Limpar/Limpar linha/Limpar bloco e o seletor visual de forma do envelope à direita](../images/msxbasica-16.png)
+
+O menu **Criar → SEE Tracker...** abre um tracker de efeitos sonoros **compatível com o formato .SEE**
+(Sound Effect Editor, Fuzzy Logic 1991/95 — ver **Ajuda → SEE Tracker...** para o manual original e o
+formato de arquivo). Diferente do editor de Som (PSG) acima, um efeito aqui é uma sequência de
+**patterns com comandos de controle** (espera, loop, retomada) — o mesmo modelo do SEE original, gerando
+um **driver de replay Z80 nativo** desta IDE junto com os dados, pronto pra tocar via NestorBASIC. Um
+**cursor de playback** mostra em tempo real qual pattern está tocando (ver **Tocar/Parar** abaixo), e a
+**forma do envelope** do PSG pode ser escolhida visualmente numa grade com as 16 curvas reais do chip
+(ver o campo **Forma** logo abaixo).
+
+### A grade e o painel de edição
+
+A grade à esquerda mostra uma linha por **pattern** (numerados a partir de 0), com uma prévia compacta
+de cada canal nas colunas: `Evt` (evento), `Snd1-3` (frequência dos 3 canais de som, com `^`/`v` se
+houver slide de afinação), `R1-3` (`R` = este canal usa o ruído compartilhado, `-` = não usa), `V1-3`
+(volume, com `W` se usa o envelope de hardware), `Wv`/`Time` (forma/período do envelope). Clicar numa
+linha seleciona aquele pattern para edição completa no painel à direita. As cores da grade seguem o
+tema do editor (**Configurar → Editor...**) — fundo claro no tema Light, fundo escuro (mas não preto) com
+letras claras no tema Dark, pra manter boa legibilidade nos dois casos:
+
+- **Evento** — combo com os 7 comandos do formato (`HALT`/`FOR`/`NEXT`/`START`/`RERUN`/`TMP`) mais
+  `-- (nada)`/`END`, e um campo **Valor** (0-15: quadros do `HALT`, repetições do `FOR`, ou o `TMP`).
+- **Freq 1/2/3** — frequência PSG (0-4095) de cada canal, com checkboxes **Som** (liga o oscilador de
+  tom), **Rustle** (este canal usa o ruído compartilhado) e **Up**/**Down** (slide de afinação, relativo
+  ao valor real do pattern anterior — não ao valor absoluto digitado aqui). Digitar uma frequência ou
+  volume diferente de zero **liga "Som" sozinho** se ainda estiver desmarcado (nunca desliga sozinho,
+  só desmarcando à mão) — sem isso, seria fácil digitar um valor e não ouvir nada por esquecer desse
+  passo extra, diferente do editor SEE original (lá, digitar um valor já liga o canal).
+- **Rustle** — período de ruído compartilhado (0-31, só ouvido nos canais com **Rustle** marcado) mais
+  **Up**/**Down**.
+- **Vol 1/2/3** — volume (0-15) de cada canal, com **Wave** (usa o envelope de hardware do PSG em vez de
+  volume fixo — quando marcado, os slides deste canal são ignorados, o hardware manda sozinho) e
+  **Up**/**Down**.
+- **Período do envelope** / **Forma** — regs. 11/12 (0-65535) e reg. 13 (0-15) do envelope de hardware do
+  PSG, usados pelos canais de volume com **Wave** marcado. Ao lado do campo **Forma** fica um preview
+  compacto com a curva da forma atual, atualizado a cada seleção/edição; o botão **...** abre uma janela
+  com as **16 formas reais do PSG** numa grade (rótulo hex 0-F + a curva de cada uma) — clicar numa
+  já escolhe e fecha, mais fácil que decorar o número de cada forma de cabeça.
+
+Mudar qualquer campo aplica na hora (sem botão "Aplicar" separado, mesmo padrão do resto da IDE).
+
+### Patterns: inserir, apagar, mover, copiar
+
+- **Inserir pattern** / **Apagar pattern** — insere um pattern em branco depois do selecionado (ou
+  **antes**, se o selecionado tiver evento `END` — um pattern novo depois de um `END` nunca seria
+  alcançado, já que o playback sempre começa no pattern 0), ou apaga o selecionado (sempre sobra pelo
+  menos 1). Um SFX novo já começa com 2 patterns (um em branco, editável na hora, e um `END` depois
+  dele) — nunca só 1 pattern `END`, pelo mesmo motivo.
+- **Mover p/ cima** / **Mover p/ baixo** — troca o pattern selecionado de posição com o vizinho.
+- **Copiar pattern** / **Colar pattern** — copia os 15 bytes do pattern atual para uma área de
+  transferência interna; colar substitui o pattern selecionado por essa cópia (um pattern de cada vez —
+  copiar/colar um **intervalo** fica para uma versão futura).
+- **Limpar** — apaga **todos** os patterns deste SFX, voltando ao estado inicial (1 pattern em branco +
+  `END`) — mantém o número/tag do SFX (diferente de **Novo**, que também zera mas troca pra um número de
+  SFX novo). Pede confirmação se houver alterações não registradas.
+- **Limpar linha** — zera os 15 bytes do pattern **selecionado**, sem remover a linha nem afetar a ordem
+  dos outros patterns (diferente de **Apagar pattern**, que remove a linha de vez e desloca os de baixo
+  pra cima).
+- **Limpar bloco** — abre uma janelinha pedindo um intervalo (**De**/**Até**, pré-preenchido com o
+  pattern selecionado nos dois campos — clicar **Limpar** sem editar equivale a limpar 1 linha só) e zera
+  todos os patterns daquele intervalo, também sem remover nenhuma linha. Útil pra apagar um trecho
+  inteiro de um efeito de uma vez sem contar clique por clique.
+
+### Tocar / Parar
+
+**Tocar** interpreta a sequência inteira de patterns — inclusive `HALT`/`FOR`/`NEXT`/`START`/`RERUN` —
+exatamente como o driver de replay real processaria quadro a quadro, e sintetiza o resultado com o
+mesmo motor do editor de Som (PSG) acima. Um efeito com `RERUN` (loop sem fim, a parte "sustain" de um
+efeito) é tocado até um teto de segurança (~60s) para não travar a prévia — o código **gerado** continua
+fiel ao original (o `RERUN` real só para quando outro código cortar o som). Volume mestre (`Max Volume`
+do SEE original) não é aplicado na prévia (sempre toca no volume cheio); o código gerado aplica a escala
+de verdade no hardware real.
+
+Enquanto toca, um **cursor de playback** (borda verde + faixa na lateral esquerda da linha, distinto do
+realce amarelo/dourado de "pattern selecionado") mostra em tempo real **qual pattern está soando naquele
+instante** — útil pra acompanhar visualmente `HALT`s longos, loops de `FOR`/`NEXT` reaplicando o mesmo
+pattern várias vezes, ou pra confirmar que um `RERUN` está realmente ficando "preso" no trecho esperado.
+A grade rola sozinha se o cursor sair da área visível (efeitos com mais de 18 patterns). O cursor some
+sozinho quando a reprodução termina (naturalmente ou por **Parar**).
+
+### Gerar código, Injetar no cursor, Copiar
+
+**Gerar código** monta duas coisas e produz um listing BASIC pronto:
+
+1. O **driver de replay** (Z80 nativo desta IDE, montado na hora pelo assembler embutido) como
+   `DATA`+`POKE` carregando em `&HC000`.
+2. Os **dados do SFX atual**, já no formato binário `.SEE` real (cabeçalho + tabela de posições +
+   patterns), como `DATA`+`POKE` carregando em `&H8000`.
+
+Mais as linhas `DEFUSR`/`USR()` prontas para ligar o driver, tocar o SFX, cortar o som e desligar o
+driver — endereços já calculados para o SFX/tela atual. **Injetar no cursor** insere esse listing na aba
+de texto ativa; **Copiar** copia para a área de transferência.
+
+### Importar .SEE...
+
+Lê um arquivo `.SEE` de verdade, gerado pelo editor **SEE original** (não um arquivo criado por esta
+IDE) — útil pra recuperar efeitos sonoros de projetos antigos. Um arquivo `.SEE` pode conter **vários**
+efeitos; depois de escolher o arquivo, uma janela lista todos os SFX que ele define (número + pattern
+inicial) — dê duplo-clique ou selecione e confirme em **Importar** para trazer os patterns daquele SFX
+pros patterns do SFX atualmente aberto (substituindo o conteúdo dele — pede confirmação se houver
+alterações não registradas). A extração segue os patterns sequencialmente a partir do início do efeito
+escolhido até encontrar o evento `END` (mesmo jeito que todo exemplo do manual original organiza um
+efeito). Se o arquivo escolhido não começar com a identificação `SEE3`, ou não tiver nenhum SFX definido,
+a IDE avisa e não importa nada.
+
+### Barra de projeto
+
+Mesmo padrão dos demais editores ([sistema de projeto](#sistema-de-projeto-arquivo-msxproject)): número
+do SFX (`#N`), navegação Primeiro/Anterior/Próximo/Último, campo **Tag**, **Novo** (próximo número,
+começa com 1 pattern `END`) e **Registrar** (grava o SFX atual, com todos os patterns, no projeto).
+Alterações não registradas pedem confirmação antes de trocar de SFX ou fechar a janela.
 
 ---
 
@@ -1476,6 +1602,32 @@ aplica aqui.
 - **Sobre a suíte original** — ferramentas do Basic Dignified Suite em Python que **não foram
   portadas** para esta IDE (o conversor reverso DignifieR, a integração com Sublime Text/VSCode, o
   suporte a Tandy CoCo), mais uma referência rápida do formato binário tokenizado `.bmx`.
+
+## Ajuda SEE Tracker (manual original e formato de arquivo)
+
+Menu **Ajuda → SEE Tracker...** abre uma janela de referência (mesma UI não-modal de busca/árvore/
+histórico das outras janelas de Ajuda) sobre o **SEE** (Sound Effect Editor), um editor de efeitos
+sonoros PSG shareware para MSX (Fuzzy Logic, 1991/95) que gera arquivos `.SEE`/`.SFX` tocáveis via um
+pequeno driver Z80 — o mesmo tipo de integração `BLOAD`+`DEFUSR`/`USR()` já usado pelo NestorBASIC
+desta IDE. É material de **estudo**: ainda não existe nenhum editor/gerador `.SEE` nesta IDE, mas o
+objetivo é construir um tracker de SFX nativo compatível com o formato, para uso via NestorBASIC.
+
+### O que está coberto
+
+- **Manual original (v3.10a)** — telas, menus, teclas de atalho, os 11 canais de um pattern (event/
+  som/rustle/volume/wave/time), os comandos do canal `event` (`HALT`/`FOR`/`NEXT`/`START`/`RERUN`/
+  `TMP`/`END`), efeitos de slide (`D:`/`U:`) e edição em bloco.
+- **Formato de arquivo `.SEE`** — cabeçalho, tabela de posições de SFX e o registro de pattern de 15
+  bytes, campo a campo, cruzando o manual com o código-fonte do driver de replay (`see/SEE3PLAY.ASC`)
+  para corrigir/precisar pontos que o manual só descreve por alto (ex.: quantos bits do byte de
+  evento o player realmente testa, o mapeamento exato pros 14 registradores do PSG).
+- **Motor de replay** — a API de vetores do driver, o mecanismo real de `FOR`/`NEXT`/`START`/`RERUN`
+  (não é só "volta pro pattern" — só dispara uma vez, ver o tópico dedicado) e as fórmulas exatas de
+  slide de afinação/volume e da escala por `Max Volume`.
+- **Rumo a um tracker compatível** — o que já está confirmado com segurança versus o que ainda
+  precisa de um teste controlado antes de implementar de verdade (ex.: o significado exato de um dos
+  campos do cabeçalho, que não bateu de forma conclusiva contra os 4 arquivos `.SEE` de exemplo desta
+  sessão de estudo).
 
 ## Editor Hexa
 

@@ -25,6 +25,14 @@
 /fonts/*
 !/fonts/Source_Code_Pro.zip
 
+# Copia local do SEE (Sound Effect Editor, Fuzzy Logic 1991/95) - shareware,
+# nao dominio publico (uso comercial exige pagamento aos autores, ver
+# see/SEE3HELP.TXT) - referencia de leitura do formato .SEE/driver de replay
+# (see/SEE3PLAY.ASC) a portar nativamente pro futuro tracker de SFX
+# compativel (ver docs/SPEC.md modulo 23, editor/SeeTrackerHelpData.pbi),
+# nao dependencia de runtime nem material pra distribuir com o repositorio.
+/see/
+
 # Caminho do JOE
 /joewin/
 

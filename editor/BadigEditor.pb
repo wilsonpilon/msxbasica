@@ -58,6 +58,9 @@ XIncludeFile "PsgSynth.pbi"
 XIncludeFile "PsgEditorGui.pbi"
 XIncludeFile "MmlSynth.pbi"
 XIncludeFile "MmlEditorGui.pbi"
+XIncludeFile "SeeTrackerDriverAsm.pbi"
+XIncludeFile "SeeTrackerSynth.pbi"
+XIncludeFile "SeeTrackerEditorGui.pbi"
 XIncludeFile "Screen2Synth.pbi"
 XIncludeFile "Screen2EditorGui.pbi"
 XIncludeFile "Screen0EditorGui.pbi"
@@ -82,6 +85,8 @@ XIncludeFile "MsxBasic2PlusManualData.pbi"
 XIncludeFile "MsxBasicHelpGui.pbi"
 XIncludeFile "BasicDignifiedHelpData.pbi"
 XIncludeFile "BasicDignifiedHelpGui.pbi"
+XIncludeFile "SeeTrackerHelpData.pbi"
+XIncludeFile "SeeTrackerHelpGui.pbi"
 XIncludeFile "OpenMsxHelpData.pbi"
 XIncludeFile "OpenMsxHelpGui.pbi"
 XIncludeFile "GenericMdHelpGui.pbi"
@@ -387,6 +392,7 @@ Enumeration MenuItems
   #Menu_CreateScreen0
   #Menu_CreateScreen1
   #Menu_CreateScreen12
+  #Menu_CreateSeeTracker
   #Menu_CreateZ80Lib
   #Menu_CreateAsmSubProject
   #Menu_CreateGraphosScreen
@@ -409,6 +415,7 @@ Enumeration MenuItems
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
   #Menu_HelpBasicDignified
+  #Menu_HelpSeeTracker
   #Menu_HelpOpenMSX
   #Menu_HelpMsxBas2Rom
   #Menu_HelpN80
@@ -3353,6 +3360,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CreateAlphabet, "Alfabeto Graphos III...")
     MenuItem(#Menu_CreateAlphabetAquarela, "Alfabeto Aquarela...")
     MenuItem(#Menu_CreateSound, "Som (PSG)...")
+    MenuItem(#Menu_CreateSeeTracker, "SEE Tracker...")
     MenuItem(#Menu_CreateMml, "Musica (PLAY)...")
     MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
     MenuItem(#Menu_CreateGraphosScreen, "Graphos III Screen 2...")
@@ -3389,6 +3397,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
     MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
     MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
+    MenuItem(#Menu_HelpSeeTracker, "SEE Tracker...")
     MenuItem(#Menu_HelpOpenMSX, "openMSX...")
     MenuItem(#Menu_HelpMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_HelpN80, "N80...")
@@ -3517,6 +3526,9 @@ Repeat
         Case #Menu_CreateSound
           PsgEditor_OpenWindow(#MainWindow)
 
+        Case #Menu_CreateSeeTracker
+          SeeTrackerEditor_OpenWindow(#MainWindow)
+
         Case #Menu_CreateMml
           MmlEditor_OpenWindow(#MainWindow)
 
@@ -3606,6 +3618,9 @@ Repeat
 
         Case #Menu_HelpBasicDignified
           BasicDignifiedHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpSeeTracker
+          SeeTrackerHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpOpenMSX
           OpenMsxHelp_OpenWindow(#MainWindow)

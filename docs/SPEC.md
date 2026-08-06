@@ -61,6 +61,8 @@ servir de especificação byte-a-byte ao port nativo:
 | 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família de 3 editores — **completa** desde o módulo 22, ver linhas abaixo |
 | 21 | Editor de tela SCREEN 1 estilo TheDraw/AcidDraw (`Criar → Screen 1...`) | médio | **Implementado (2026-08-05)** — `editor/Screen1EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen1_screens`). Mesma grade 32×24 e mesmas 6 ferramentas do módulo 20, mas com a Color Table real do SCREEN 1 (1 par tinta/fundo por grupo de 8 códigos de caractere, `&H2000`) — tabela ASCII de 256 células com o bitmap real de cada código já pintado na cor do seu octeto. Ver seção 21 |
 | 22 | Editor de tela SCREEN 1+2 — Color Table real do SCREEN 2, 3 alfabetos, cor por linha de scanline (`Criar → Screen 1+2...`) | alto | **Implementado (2026-08-05), estendido (mesma sessão)** — `editor/Screen12EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen12_screens`). Terceira e mais complexa da família: `SCREEN 2` de verdade, 3 alfabetos (1 por terço de 8 linhas de tela) e cor por LINHA DE SCANLINE de cada código (8 cores/glifo, color clash real do hardware). Correção de UX real (linha-guia + seletor de terço acompanhando o clique no canvas) e escolha de bloco por 2 cliques na tabela ASCII + botões de reset de cor, ambos no mesmo dia do lançamento. Ver seção 22 |
+| 23 | Ajuda SEE Tracker — estudo do formato SEE/.SEE (`Ajuda → SEE Tracker...`) | baixo (estudo) | **Implementado (2026-08-06)** — `editor/SeeTrackerHelpData.pbi`/`SeeTrackerHelpGui.pbi`, manual original + formato de arquivo `.SEE` + mecanismo real do driver de replay (`see/SEE3PLAY.ASC`). Preparou o terreno pro tracker de verdade, construído na sequência da mesma sessão — ver módulo 24 |
+| 24 | Editor SEE Tracker — efeitos sonoros compatíveis com .SEE (`Criar → SEE Tracker...`) | alto | **Implementado (2026-08-06), estendido (mesma sessão)** — `editor/SeeTrackerEditorGui.pbi` (janela) + `editor/SeeTrackerSynth.pbi` (modelo de dados/interpretador/gerador/**importador**) + `editor/SeeTrackerDriverAsm.pbi` (porta do driver de replay, montada em tempo real pelo assembler Z80 nativo, `editor/Z80Asm.pbi`). Integrado ao sistema de projeto (módulo 13, tabela `see_sfx`). **Importar .SEE...** lê arquivos reais do editor original (validado contra `see/FIREBIRD.SEE`, 33 SFX). Ver seção 24 |
 
 ## Decisões fechadas
 
@@ -2923,6 +2925,364 @@ conhecida de clique sintético, não bug do app; o `#PB_Event_Gadget` em si cheg
 não depende do `EventType`, disparou corretamente). Clique na grade de 256 pra completar a escolha de
 bloco (2º clique) continua não automatizado, mesma cautela de sempre com `CanvasGadget`.
 
+### 23. Ajuda SEE Tracker — estudo do formato SEE/.SEE (`Ajuda → SEE Tracker...`) — implementado (2026-08-06)
+
+Pedido do usuário: ler o material original do **SEE** (Sound Effect Editor, Fuzzy Logic 1991/95,
+`see/`) e registrar o máximo entendido numa tela de Ajuda nova, como preparação para um **tracker de
+SFX nativo compatível com `.SEE`** a ser construído numa sessão futura (`por hora apenas estudo` — nada
+de editor/gerador `.SEE` foi implementado nesta sessão). `editor/SeeTrackerHelpData.pbi` (dados) +
+`editor/SeeTrackerHelpGui.pbi` (janela) — clone estrutural exato de `BasicDignifiedHelpGui.pbi`
+(árvore agrupada + busca + histórico, reaproveitando `NBHelpGui_SetupStyles`/`_RenderMarkdown` de
+`NestorBasicHelpGui.pbi`), menu **Ajuda → SEE Tracker...**.
+
+**Fontes lidas** (todas em `see/`, gitignored/vendorizadas como as outras pastas de ferramentas
+externas): `SEE3HELP.TXT` (manual oficial da v3.10a — a versão presente aqui; `SEE3HELP.DOC`/`.TED`
+são a v3.00, mais antiga, mantidas só como histórico), `SEE3PLAY.ASC` (fonte Z80 do driver de replay
+v3.10a, ASCII salvo do WBass2), `SEE.BAS`/`SEE.LDR`/`SEEV3_10.BAS` (bootstrap BASIC tokenizado, lido
+parcialmente via os bytes crus — dá pra reconhecer nomes de variável/comentários mesmo sem
+detokenizar), e os 4 arquivos de exemplo reais (`FIREBIRD.SEE`/`PLICS.SEE`/`QUARTH.SEE`/
+`SEEDRUMS.SEE`), cujo cabeçalho foi inspecionado byte a byte (`xxd`) pra confirmar contra o manual e o
+driver.
+
+**Achado real mais valioso**: o manual descreve o mecanismo de loop (`FOR`/`NEXT`) e retomada
+(`START`/`RERUN`) só pelo resultado (“patterns 000+001 repetem 7 vezes”), não pelo mecanismo. Lendo
+`SEE3PLAY.ASC` linha a linha, ficou claro que `FOR`/`START` disparam **uma única vez** (na primeira
+passagem natural do ponteiro por aquele pattern) — nas repetições seguintes, `NEXT`/`RERUN` só fazem o
+ponteiro **revisitar os dados PSG** daquele pattern (pulando o próprio byte de evento, nunca
+reprocessado), evitando qualquer re-disparo acidental do `FOR`. Outros achados por leitura cruzada
+manual+driver: o byte de evento só tem 3 bits realmente testados pelo player (`AND $70`, 7 códigos
+possíveis, não o byte inteiro como o manual dá a entender); o registrador de rustle do PSG é mascarado
+pra 5 bits (`$1F`) no driver, não os "6 bits" que o manual descreve; o bit 4 do byte de volume é
+literalmente o bit `M` (envelope de hardware) do próprio AY-3-8910 — quando ligado, o driver escreve o
+byte cru, sem aplicar slide nem a escala de `Max Volume`; a fórmula exata de `Max Volume`
+(`SEEVOL - (15 - volume_bruto)`, travada em 0) só aparece implementada em `FIXVOL`, não descrita em
+lugar nenhum do manual; e a checagem de identificação do arquivo que o **player** realmente faz é só
+4 bytes (`SEE3`), mais frouxa que os 8 bytes que o manual sugere — confirmado comparando os 4 `.SEE`
+reais desta pasta, que usam sufixos de ID diferentes (`SEE3org`+`$10` vs `SEE3EDIT`) mas todos passam
+no teste real do driver.
+
+**Atualização (2026-08-06, mesmo dia) — cabeçalho resolvido por análise cruzada**: o usuário pediu pra
+insistir em inferir mais sobre o campo `$08-$09` a partir do próprio `SEE3PLAY.ASC`. Rastrear a rotina
+`SEE_IN` byte a byte revelou uma inconsistência real: o loop de checagem de ID faz `LD B,4` (só compara
+4 bytes), mas o `LDIR` seguinte (que copia o cabeçalho pra memória de trabalho) começa logo depois desse
+loop, sem reposicionar o ponteiro — lido ao pé da letra, isso copiaria a partir do byte `4` do arquivo,
+não do `8` como os próprios comentários `%HISPT EQU &H08` do driver dizem. Testando as duas leituras
+contra os 4 arquivos `.SEE` reais desta pasta (script Python ad-hoc, não commitado): a leitura literal
+(byte 4) dá números sem sentido nenhum (nenhuma divisão inteira, nenhuma consistência entre arquivos);
+a leitura "como os EQU dizem" (byte 8) bate **perfeitamente nos 4 arquivos** — `$0A-$0B` (HIPTA) menos
+528 (16 de cabeçalho + 512 da tabela de posições) dividido por 15 dá um número **inteiro exato** em
+todos: 807/125/272/51 patterns respectivamente, apesar de tamanhos de arquivo bem diferentes. Isso
+confirma: **`$08-$09` é uma constante de capacidade (`$03FF`=1023, batendo com `%PATTS EQU &H0210 ;max
+1024 patts`), não uma contagem por arquivo**, e `$0A-$0B` segue exatamente a fórmula
+`patterns_usados*15+528` do manual. Suspeita forte sobre a causa da inconsistência: erro de transcrição
+no `.ASC` (`LD B,4` deveria quase certamente ser `LD B,8`, já que o template `SEE_ID` comparado logo
+abaixo tem exatamente 8 bytes declarados). Atualizado em `editor/SeeTrackerHelpData.pbi` (tópico
+"Cabeçalho do arquivo... RESOLVIDO por análise cruzada").
+
+**Achado colateral, ainda em aberto**: nos 4 arquivos, `tamanho do arquivo - HIPTA` dá exatamente
+**1056 bytes sobrando no final**, sempre o mesmo valor independente do tamanho do arquivo — sugere mais
+uma área de tamanho fixo não documentada no Apêndice B do manual (hipótese: tabela de nomes de SFX).
+Não investigado byte a byte ainda. Também ficou uma anomalia isolada no `QUARTH.SEE` (único com ID
+`SEE3EDIT`): seu campo `$0C-$0D` (`Highest used SFX`) leu `48394`, um valor absurdo pra um índice de
+SFX de 0-255 — pode ser só uma variante/build diferente do editor, não confirmado. Ambos documentados
+explicitamente no tópico "Status desta pesquisa e próximos passos" (`SeeTrackerHelpData.pbi`) para não
+serem esquecidos quando a implementação começar de verdade.
+
+**Atualização (2026-08-06, mesmo dia) — o tracker de verdade foi construído na sequência desta mesma
+sessão**: ver módulo 24 logo abaixo (`Criar → SEE Tracker...`). O texto acima permanece como registro
+do que foi entendido só de LER o material original, antes de qualquer linha de código do editor/driver
+nativo ter sido escrita.
+
+### 24. Editor SEE Tracker — efeitos sonoros nativos compatíveis com .SEE (`Criar → SEE Tracker...`) — implementado (2026-08-06)
+
+Pedido do usuário na sequência do estudo (módulo 23, mesmo dia): "vamos criar Criar->See Tracker". Duas
+decisões de arquitetura confirmadas com o usuário via `AskUserQuestion` antes de implementar (mesmo
+padrão já usado nesta IDE pra toda decisão grande de UI/escopo):
+
+- **Edição em grade nativa** (não uma lista de passos estilo editor PSG) — cada linha da grade é um
+  pattern, colunas = os canais do formato real. Na prática, a edição de campo a campo (12 campos
+  heterogêneos por pattern — evento, 3 frequências com tuning, rustle compartilhado, 3 volumes com
+  wave/tuning, envelope) acontece num **painel lateral com controles de verdade** (combo de evento,
+  campos numéricos, checkboxes), não digitando hex direto nas células — a grade em si é uma visão geral
+  clicável (clicar uma linha seleciona o pattern pro painel), mais parecido com "clique escolhe, painel
+  edita" do que com edição inline célula a célula.
+- **Driver de replay Z80 nativo embutido** (não só os dados binários pra usar com o driver original) —
+  opção mais ambiciosa das duas oferecidas, escolhida pelo usuário. Motivou portar `see/SEE3PLAY.ASC`
+  pra rodar no assembler nativo desta IDE.
+
+**Arquitetura, 3 arquivos:**
+
+- `editor/SeeTrackerDriverAsm.pbi` — `SeeDrv_SourceCode()` devolve a fonte Z80 do driver, uma **porta**
+  (não cópia literal) de `see/SEE3PLAY.ASC` adaptada pro `Z80Asm.pbi` desta IDE: hex `&Hxx` → `#xx`
+  (única forma sem ambiguidade que o tokenizer aceita), rótulos com `%`/`!` (`%SEEID`, `!EVENT`) → nomes
+  normais (`"%"`/`"!"` não são caracteres de identificador válidos aqui — só letras/dígitos/`$.?@_`,
+  confirmado lendo `ChIsIdentExtra`; rótulos com `.` no nome, tipo `MAIN.A`, foram mantidos como no
+  original, já que `.` É válido). Dois problemas reais corrigidos na porta (não presentes no arquivo
+  original, introduzidos ou já existentes nele — ver módulo 23 pra discussão do bug original): a checagem
+  de ID (só 4 bytes, permissiva de propósito) e a cópia dos 4 contadores do cabeçalho ficam
+  **desacopladas** (a cópia sempre pula pro offset 8 explicitamente, em vez de confiar em onde o loop de
+  validação parou); e foi removida a checagem opcional de overflow via `RST #20` (ROM-BIOS) que o próprio
+  driver original já descrevia como dispensável — dado que o `.SEE` é sempre gerado por nós mesmos, essa
+  situação não pode ocorrer. Vetor **novo** (não existe no original): `BSETFX` (offset +15), adaptador
+  que empacota o argumento inteiro de `USR()` (chega em HL) em B (prioridade)+C (número do SFX) antes de
+  saltar pro `SETSFX` cru, que precisa dos dois em registradores separados — sem isso, `SETSFX` não seria
+  chamável direto de um `USR()` de um argumento só. **Verificado**: harness
+  `editor/tools/SeeTrackerDriverTestCli.pb` monta a fonte, confirma 784 bytes sem erro e imprime o
+  endereço de cada vetor/variável — os 6 `JP` da tabela de vetores conferidos byte a byte (`c3` + endereço
+  little-endian) contra os símbolos resolvidos pelo assembler, todos batendo exatamente.
+- `editor/SeeTrackerSynth.pbi` — modelo de dados: cada pattern são os **15 bytes crus exatamente no
+  formato de arquivo** (não uma struct interpretada — mesma filosofia de `Screen12EditorGui.pbi` guardar
+  byte MSX cru por célula), com procedures `SeeP_*` de acesso a cada campo/flag. `SeeSynth_Expand()` é o
+  interpretador: caminha os patterns simulando `MAIN`/`DOEVENT`/`SETPSG` do driver **quadro a quadro**,
+  reproduzindo com fidelidade um detalhe que só aparece lendo o driver linha a linha (não documentado no
+  manual nem na Ajuda antes desta sessão): `TEMPO` e `HALT` interagem em dois níveis — cada "passo
+  lógico" dura `TEMPO+1` quadros reais, e um `HALT(x)` segura o estado ANTERIOR por `x` passos lógicos
+  antes de aplicar os dados do próprio pattern do halt, sem nunca reprocessar o evento de novo (mesmo
+  princípio do `FOR`/`START`, que também só disparam uma vez — ver módulo 23). O resultado vira uma
+  sequência concreta de `PsgStepData` (`PsgSynth.pbi`) — reaproveitamento direto do motor de síntese já
+  usado pelo editor de Som PSG, zero código de síntese novo. `SeeGen_BuildSeeBlob()` monta o blob binário
+  `.SEE` exato (cabeçalho com os offsets confirmados no módulo 23, tabela de posições **sempre nos 512
+  bytes cheios** — bug real pego só ao revisar a função antes do primeiro teste: o driver usa
+  `PATTS_OFS=#0210` como constante FIXA pro início dos patterns, uma tabela reduzida deslocaria os dados
+  pro lugar errado). `SeeGen_BuildCode()` monta driver+blob e gera `DATA`/`POKE`/`DEFUSR` prontos (mesmo
+  espírito "sempre gera tudo" do resto da IDE), consultando `Z80Asm::GetSymbolValue("SEEADR")` pro
+  endereço real da variável a pokear, em vez de um offset chumbado. **Verificado**:
+  `editor/tools/SeeTrackerSynthTestCli.pb`, 22 asserções cobrindo: pattern só-END não emite nada; `HALT`
+  segura o estado anterior pela duração certa e depois aplica os dados do próprio pattern; `FOR(3)/NEXT`
+  reaplica os dados do pattern-âncora exatamente 3 vezes (1 disparo + 2 repetições), nunca reprocessando o
+  evento `FOR`; `RERUN` sem fim é truncado pelo teto de segurança (não trava o preview); geração de código
+  não falha e contém os vetores/endereços certos; blob `.SEE` bate campo a campo com a fórmula confirmada
+  no módulo 23.
+- `editor/SeeTrackerEditorGui.pbi` — janela: grade (`CanvasGadget`, texto monoespaçado) + painel de edição
+  + barra de projeto padrão (número/tag/navegação/Novo/Registrar, mesmo padrão dos demais editores) +
+  Inserir/Apagar/Mover pattern + Copiar/Colar de **um** pattern (bloco de intervalo maior fica pra uma
+  fase futura) + Tocar/Parar (mesmo mecanismo de `.wav` temporário do editor PSG) + Gerar código/Injetar
+  no cursor/Copiar. Gotcha real de PureBasic batido de novo nesta sessão (já documentado nas memórias de
+  Screen0/Screen12): `SeeEd_RefreshPanel`/`SeeEd_ApplyPanel` foram escritas inicialmente como
+  `Procedure` **aninhada** dentro de `SeeTrackerEditor_OpenWindow` — ilegal em PureBasic — corrigido
+  hoisteando as duas pro escopo de arquivo, recebendo os IDs de gadget como parâmetro.
+
+**Integração com o projeto** (`ProjectDB.pbi`) — tabela `see_sfx` (`sfx_number`/`tag`/`pattern_count`/
+`patterns_data`), mesmo padrão hex-achatado de `psg_sounds`/`StoreSound`/`FetchSound` (`PatternBytes()` 1D
+`PatternBytes(i*15+b)`, não uma matriz 2D, pelo mesmo motivo de `ReDim` só redimensionar a última
+dimensão).
+
+**Verificado ao vivo (não só os harnesses headless)**: app completo aberto, menu **Criar → SEE
+Tracker...** clicado via `PostMessage`/`WM_COMMAND` (mesma automação segura já usada nesta IDE), grade e
+painel renderizando corretos desde a primeira screenshot; **Inserir pattern** clicado (`BM_CLICK`, botão
+nativo) confirmado adicionando uma linha e atualizando o painel; **Gerar código** clicado ao vivo gerou
+5399 caracteres sem erro (driver assemblado + blob montado dentro do processo real da GUI, não só no
+harness); **Copiar** + inspeção do clipboard confirmou os endereços exatos (`49152`=`$C000`,
+`49167`=`$C000+15` BSETFX, `49161`=`$C000+9` CUTSFX, `49155`=`$C000+3` SEE_EX, `49170`=`$C012` SEEADR) —
+todos batendo com o que o harness standalone já tinha confirmado; **Tocar** num SFX vazio (só END)
+respondeu corretamente "Nada pra tocar" sem travar. Clique/arraste na grade em si (`CanvasGadget`)
+continua não automatizado (mesma cautela de sempre nesta IDE).
+
+**Bug real corrigido: "Tocar" não tocava nada — achado e corrigido na sequência da mesma sessão
+(2026-08-06)**: usuário reportou "quando coloco tocar, não está tocando". Reproduzido ao vivo (não só
+supondo): a causa raiz de verdade era `InitSound()` **nunca ter sido chamado** nesta janela —
+`PsgEditorGui.pbi`/`MmlEditorGui.pbi` cada um chama `InitSound()` (guardado por um `Global` booleano
+"só uma vez", `PsgEd_SoundSystemReady`) dentro da própria abertura de janela, e `SeeTrackerEditorGui.pbi`
+nunca ganhou o equivalente ao ser escrito. Sem isso, `LoadSound()` falha (devolve 0) **silenciosamente**,
+e como o código não tinha `Else` pros 3 níveis de falha possíveis (`TotalSamp<=0`/`*Buf` nulo/
+`SoundHandle` nulo), "Tocar" não fazia literalmente nada visível — nem tocava, nem avisava erro nenhum.
+Corrigido com o mesmo padrão `SeeEd_SoundSystemReady`/`InitSound()` guardado, mais mensagens de erro
+reais nos 3 pontos que antes falhavam em silêncio. **Achado colateral, também real e corrigido junto**:
+mesmo com o áudio funcionando, um SFX novo (1 pattern, evento `END`) tinha um efeito colateral sério —
+clicar **Inserir pattern** sempre insere DEPOIS do pattern selecionado, então o primeiro pattern novo
+ficava DEPOIS do `END` inicial, ou seja, **nunca alcançado** no playback (que sempre começa no pattern 0
+— ver `SeeSynth_Expand`). Corrigido de duas formas: (1) o estado inicial de um SFX novo agora começa com
+**2 patterns** (`SeeEd_InitBlankSfx` — 0 em branco editável, 1 com `END`), não 1 só; (2) **Inserir
+pattern** agora insere ANTES do pattern selecionado quando esse pattern tem evento `END` (nunca depois),
+então um `END` nunca fica bloqueando dados inseridos depois dele por engano. Terceiro ajuste, de
+ergonomia (o editor SEE original liga o canal implicitamente ao digitar uma frequência — manual: "to
+switch the channel off, simply press on Backspace" — nosso editor exige marcar "Som" à parte, um passo
+que o original não tinha): os campos de frequência/volume agora **ligam sozinhos** o checkbox "Som"
+daquele canal na primeira vez que o valor digitado fica diferente de zero (nunca desliga sozinho, só o
+usuário desmarca de propósito). Mensagem de "Nada pra tocar" também ficou diagnóstica (diz
+explicitamente quando a causa é um `END` no pattern 0, com a sugestão de correção). Verificado ao vivo:
+depois da correção, digitar frequência+volume no pattern 0 (estado inicial já não tem mais `END` na
+frente) liga "Som" sozinho e **Tocar** mostra "Reproduzindo..." de verdade (`GetWindowText` no controle
+de status, não só a screenshot — a screenshot do texto de status especificamente se mostrou pouco
+confiável nesta automação sem foco real de janela, gotcha novo de automação registrado aqui pra não
+repetir: prefira `GetWindowText` a `PrintWindow` pra conferir o CONTEÚDO de um `TextGadget`, screenshot
+serve pra layout/grade).
+
+**Bug real corrigido: grade de patterns ilegível ("fundo preto e letras escuras") — achado e corrigido
+na sequência da mesma sessão (2026-08-06)**: usuário reportou que as linhas com dados da grade (canvas
+à esquerda, `SeeEd_DrawGrid`) apareciam com fundo preto e texto escuro, difícil de ler. **Só foi possível
+identificar a causa real com screenshot de verdade** (`PrintWindow` + crop/zoom, técnica descrita no
+início deste módulo) — lendo só o código, `SeeEd_DrawGrid` parecia inofensivo
+(preenche a grade toda de branco com `Box()`, depois `DrawText()` colorido por cima). A screenshot real
+mostrou cada valor dentro de uma "caixinha" preta opaca do tamanho exato do texto, mesmo sobre uma linha
+branca/realçada por baixo. **Causa raiz**: nenhum `DrawText()` da função trocava pra
+`DrawingMode(#PB_2DDrawing_Transparent)` antes de desenhar — no modo padrão
+(`#PB_2DDrawing_Default`), `DrawText()` pinta um retângulo OPACO atrás do texto usando `BackColor()`,
+que nunca tinha sido setada em lugar nenhum da função (fica preta, o padrão do PB, se nunca chamada).
+Resultado: cada célula (índice, evento, frequência, ruído, volume, envelope) ficava com uma caixa preta
+colada atrás do dígito, e como as cores de texto originais já eram tons escuros saturados (pensadas só
+pra contraste sobre fundo branco: `RGB(0,0,150)` navy, `RGB(120,0,0)` vinho, `RGB(90,0,90)` roxo escuro
+etc.), o resultado era ilegível em qualquer fundo — **presente nos dois temas** (Light e Dark), só mais
+perceptível pro usuário no tema Dark porque a caixa preta de cada célula contrasta mais com o resto da
+janela escura ao redor. Corrigido com um `DrawingMode(#PB_2DDrawing_Transparent)` logo antes do bloco de
+`DrawText()` de cada linha (mantém a cor de fundo já pintada pelo `Box()` da linha, seja branco ou o
+realce de seleção). Aproveitado o mesmo fix pra também tornar a grade sensível a `EditorCfg\Theme`
+(antes sempre desenhava fundo branco fixo, nunca lido nesta função) — tema Light mantém a paleta
+original (branco + cores escuras saturadas, já com bom contraste uma vez removida a caixa preta); tema
+Dark usa fundo cinza-azulado bem menos escuro que o preto da janela (`RGB(48,51,60)`, realce de seleção
+`RGB(92,76,34)`) com cores de texto claras/vivas (`RGB(140,190,255)` azul, `RGB(255,130,130)` vermelho,
+`RGB(255,195,110)` âmbar, `RGB(230,155,235)` magenta, `RGB(230,230,235)` quase-branco pro índice) —
+atende ao pedido literal do usuário ("o fundo pode ser menos escuro e as letras mais brilhosas").
+Verificado ao vivo nos dois temas via screenshot real (não só suposição): capturas antes/depois
+mostram a caixa preta desaparecendo em ambos, e a paleta clara/escura nova renderizando exatamente como
+codificado (cores de pixel amostradas em ambas as versões confirmam).
+
+**Cursor de playback + seletor visual de forma do envelope — implementados na sequência da mesma
+sessão (2026-08-06)**: usuário pediu (1) "faca o tocar mover uma especie de cursor em cada
+pattern/linha para visualmente podermos ver onde estamos naquele momento" e (2) "na parte de Forma,
+voce poderia fazer algo visual para podermos ver as formas do PSG? facilitando assim escolher um dos
+numeros de forma".
+
+Para o cursor de playback, `SeeSynth_Expand()` (`SeeTrackerSynth.pbi`) ganhou um novo parâmetro
+`List OutPatIdx.i()`, preenchido em paralelo a `OutSteps()` (mesmo tamanho, elemento a elemento) com o
+índice do PATTERN de origem de cada step — inclusive o step de espera do `HALT` (que também aponta pro
+próprio pattern do `HALT`, já que o cursor deve ficar "parado" nele durante a espera, e não em nenhum
+outro lugar). Assinatura muda, então os 4 call sites do harness `SeeTrackerSynthTestCli.pb` e o único
+call site da GUI precisaram de um `NewList` a mais cada — sem parâmetro default possível pra `List` em
+PureBasic (só tipos simples aceitam `=` default), então não dava pra manter compatível sem tocar nos
+chamadores. Duas asserções novas no harness (Teste 2 e Teste 3) travam essa tag num nível bem mais
+forte que "compila" — conferem os valores REAIS de `PatIdx` produzidos pelos casos já existentes de
+`HALT`/`FOR`/`NEXT` (ex.: Teste 3 - FOR(3)/NEXT deve gerar `[0,0,0,1]`, já que o loop inteiro fica
+"ancorado" no pattern do `FOR` e só o ÚLTIMO step, quando o contador realmente zera, move o cursor pro
+pattern seguinte - exatamente o instante em que o replay avança de verdade). `SeeEd_DrawGrid()`
+(`SeeTrackerEditorGui.pbi`) ganhou um parâmetro `PlayCursor.i = -1`, desenhado como uma borda dupla +
+faixa de 4px na borda esquerda da linha, numa cor de destaque própria (`ColPlay` - verde, distinta do
+realce de seleção tan/dourado e de todas as outras cores já usadas na grade) — deliberadamente
+independente do realce de "Selected" (a linha que o usuário clicou pra editar): são dois conceitos
+diferentes que podem coincidir ou não. Na janela, `PlayStepStartMs()`/`PlayPatArr()` (arrays
+redimensionados via `ReDim` a cada "Tocar", não `Global`) formam a "linha do tempo" do efeito
+atualmente carregado; um `AddWindowTimer()` de 40ms consulta `GetSoundPosition(SoundHandle,
+#PB_Sound_Millisecond)` de verdade (não estima tempo decorrido por conta própria — imune a qualquer
+atraso de início do driver de áudio) e acha em qual step aquele tempo cai, só redesenhando a grade
+quando o pattern realmente muda (não a cada tick, pra não piscar à toa). Rola a grade automaticamente
+(`ScrollTop`) se o cursor sair da área visível, senão um efeito com mais patterns que as 18 linhas
+visíveis deixaria o cursor "desaparecer" ao passar da última linha. O cursor também acompanha corretamente
+"Parar" e o fim natural da reprodução (comparando a posição atual contra a duração total já calculada,
+sem depender de `GetSoundPosition()` reportar algo específico após o fim). **Verificado ao vivo com
+screenshots reais em duas configurações diferentes** (não só suposição): com os dados HALT(15) no
+pattern 1, o cursor apareceu corretamente na linha 1; depois de mover esses MESMOS dados pro pattern 0
+via "Mover p/ cima" (botão já validado nesta sessão) e tocar de novo, o cursor apareceu na linha 0 -
+prova de que o cursor segue o ÍNDICE real de onde os dados estão, não uma linha fixa. Uma terceira
+captura depois do fim natural da reprodução confirmou o destaque sumindo sozinho (sem precisar de
+"Parar").
+
+Para o seletor visual de forma, `PsgSynth.pbi` já tinha `PsgSynth_ApplyEnvShape()`/`PsgSynth_EnvTick()`
+— o MESMO gerador de envelope usado de verdade no motor de síntese (`PsgSynth_RenderStep`) - então a
+nova `SeeEd_DrawEnvShapeGraph()` (`SeeTrackerEditorGui.pbi`) só simula 40 "quadros" com essas mesmas
+duas procedures e traça a curva resultante, garantindo que o desenho é fiel ao som real (nunca uma
+segunda implementação da tabela de formas que podia divergir). Dois usos dessa curva: (1)
+`SeeEd_DrawEnvShapeIcon()`, um preview compacto sem rótulo ao lado do campo "Forma" no painel,
+redesenhado a cada seleção/edição de pattern (via um novo parâmetro `G_EnvShapeIcon` encadeado em
+`SeeEd_RefreshPanel`/`SeeEd_ApplyPanel` — mesmo padrão de "passar cada gadget como parâmetro" já usado
+por todo o resto deste arquivo); (2) `SeeEd_PickEnvShape()`, uma janela modal com um botão "..." novo
+que mostra as 16 formas reais do registrador 13 do PSG numa grade 4x4 (`SeeEd_DrawEnvShapeCell()`, com
+rótulo hex 0-F + a curva + realce na forma atualmente selecionada) — clicar numa célula já escolhe e
+fecha, mesmo espírito de um seletor de cor de paleta fixa pequena, sem precisar de OK/Cancelar
+separado pra confirmar (só um "Cancelar" pra fechar sem escolher). **Verificado ao vivo via
+screenshot**: as 16 formas renderizadas batem exatamente com a tabela padrão do AY-3-8910/YM2149 (0-3
+decai e para no zero, 4-7 sobe e para no zero, 8 dente-de-serra descendente repetindo, 9 decai e para
+no zero, A triângulo descendente-ascendente repetindo, B decai e para no máximo, C dente-de-serra
+ascendente repetindo, D sobe e para no máximo, E triângulo ascendente-descendente repetindo, F sobe e
+para no zero) — conferido visualmente contra a tabela de hardware conhecida, não apenas "compilou sem
+erro".
+
+**Botões Limpar/Limpar linha/Limpar bloco — implementados na sequência da mesma sessão (2026-08-06)**:
+usuário pediu "crie um botão limpar para limpar totalmente os padrões já inseridos, e um botão para
+limpar uma linha em particular, e outro para limpar um bloco". Três botões novos numa linha própria
+(`SeeTrackerEditorGui.pbi`, entre "Copiar/Colar pattern"+"Tocar/Parar" e "Gerar código" — layout
+recalculado com `5 * 34` em vez de `4 * 34` no cálculo de `ProjBarY`, já que agora são 5 linhas de
+botões, não 4):
+
+- **Limpar** (`G_ClearAll`) — mesmo padrão "só pede confirmação se `Dirty`" já usado por
+  `G_New`/`G_First`/`G_Prev`/`G_Next`/`G_Last` neste arquivo; chama `SeeEd_InitBlankSfx()` (o mesmo
+  helper usado por "Novo") mas **sem** trocar `SfxNumber`/`SfxTag` — é o mesmo slot, só esvaziado, não
+  um SFX novo.
+- **Limpar linha** (`G_ClearLine`) — um `SeeP_Clear(PB(), SelPattern)` direto, sem confirmação (mesmo
+  nível de risco de "Colar pattern", que também sobrescreve sem perguntar) - zera os 15 bytes do pattern
+  selecionado **no lugar**, sem deslocar nada (diferente de "Apagar pattern", que remove a linha de
+  verdade).
+- **Limpar bloco** (`G_ClearBlock`) — nova janela modal `SeeEd_AskPatternRange()` (mesmo padrão de
+  `SeeEd_PickSfxFromFile()` já existente no arquivo: `DisableWindow` do pai, loop de evento próprio,
+  devolve via ponteiro cru + `PokeI`), pede um intervalo `De`/`Até` pré-preenchido com `SelPattern` nos
+  dois campos (clicar "Limpar" sem editar equivale a limpar 1 linha só), grampeia em `0..NumPatterns-1`
+  e inverte com `Swap` se o usuário digitar `De > Até` em vez de travar. A própria janela modal já é o
+  gate de confirmação (não pede um segundo `MessageRequester` em cima). Nenhum dos três remove pattern
+  nenhum da lista (`NumPatterns` não muda) — só zeram dados, mesma distinção já explicada acima entre
+  "Apagar pattern" (remove) e estes três (zeram no lugar).
+
+**Verificado ao vivo via screenshot** (não só "compilou"): inseridos 3 patterns extras, "Limpar bloco"
+com intervalo 0-2 zerou os três em uma tacada só (incluindo o pattern com `END`, virando `None` — sem
+guarda especial pra isso, já que `SeeSynth_Expand` já trata "ponteiro correu pra fora da lista" igual a
+um `END` explícito, então um efeito sem nenhum `END` de verdade não trava nem quebra); depois "Limpar"
+mostrou o `MessageRequester` de confirmação (havia alterações não registradas), e confirmando com "Sim"
+voltou exatamente ao estado inicial (`Pattern atual: 0/1`, mesmo `SfxNumber` de antes).
+
+**Bug real corrigido: título das colunas desalinhado com a grade — achado e corrigido na sequência da
+mesma sessão (2026-08-06)**: usuário reportou "os títulos das colunas #, Evt, Snd1... está desalinhado
+com as colunas". Causa raiz: o cabeçalho era um `TextGadget` comum com o texto alinhado à mão via
+espaços (`SeeEd_HeaderLine()`, string fixa "#    Evt   Snd1  Snd2  Snd3..."), renderizado na fonte
+padrão da UI (proporcional) - nunca a mesma fonte nem os mesmos offsets X em pixel usados por
+`SeeEd_DrawGrid()` pra desenhar os dados abaixo (`#SeeEd_GridColIdx`/`#SeeEd_GridColEvt`/etc.). Como uma
+fonte proporcional não tem largura de caractere constante, o espaçamento manual por contagem de
+caracteres nunca corresponderia de verdade aos limites de coluna em pixel da grade - alinhamento
+"por coincidência de fonte", não por construção. Corrigido substituindo o `TextGadget` por um
+`CanvasGadget` (`G_Header`, mesma largura `#SeeEd_GridW`, `#SeeEd_GridHeaderH`=18px de altura) desenhado
+uma única vez por `SeeEd_DrawHeader()` usando os MESMOS `#SeeEd_GridColXxx` e o MESMO preenchimento
+esquerdo (`X+2`/`X+4`) de cada célula que `SeeEd_DrawGrid()` já usa pros dados - alinhamento garantido por
+construção (os dois desenhos compartilham os números), não por espaçamento de texto. `SeeEd_HeaderLine()`
+removida (função obsoleta, sem mais chamadores). Também aplica a mesma fonte `Consolas 9` (`FixedFont`)
+usada na grade, e segue o tema (fundo levemente diferenciado do resto da janela nos dois temas, texto
+claro no Dark). **Verificado ao vivo via screenshot com crop/zoom**: cada rótulo (`#`/`Evt`/`Snd1-3`/
+`R1-3`/`V1-3`/`Wv`/`Time`) cai exatamente sobre a coluna de dados correspondente na linha de baixo.
+
+**Importação de `.SEE` real — implementada na sequência da mesma sessão (2026-08-06)**: usuário pediu
+"uma opção para ler arquivos SEE gerados pelo SEE original de MSX". Três funções novas em
+`SeeTrackerSynth.pbi` — `SeeImp_IsValidHeader` (confere só os 4 bytes `SEE3`, mesmo critério permissivo
+do driver real), `SeeImp_ListDefinedSfx` (varre a tabela de posições inteira, 256 slots fixos,
+**sem confiar no campo `HISFX`** do cabeçalho — o `QUARTH.SEE` de exemplo já mostrou um valor implausível
+nesse campo, ver módulo 23) e `SeeImp_ExtractSfxPatterns` (anda sequencialmente a partir do pattern
+inicial do SFX escolhido até encontrar um evento `END`, mesma suposição de layout contíguo que todos os
+exemplos do manual original seguem). Botão **Importar .SEE...** na janela (`SeeTrackerEditorGui.pbi`)
+abre um `OpenFileRequester`, lista os SFX definidos numa janela auxiliar (`SeeEd_PickSfxFromFile`, mesmo
+espírito de `Scr12Ed_AskBlockRange`) e substitui os patterns do SFX atual pelos importados (com
+confirmação se houver alterações não registradas). **Validado contra um arquivo real** (`see/FIREBIRD.SEE`,
+harness ad-hoc não commitado): 33 SFX encontrados, limites de pattern perfeitamente sequenciais (SFX #0
+termina no pattern 7, SFX #1 já começa no 8, sem lacunas) e o primeiro SFX extraído (8 patterns) termina
+corretamente num evento `END` (`$F0`, que também liga o bit 7 mencionado no manual — a máscara `$70` do
+driver ainda reconhece certo). Verificação ao vivo do botão/diálogo na GUI real **não foi possível**: o
+`OpenFileRequester` nativo do Windows, quando disparado por um `BM_CLICK` sintético vindo de outro
+processo (a mesma automação usada em todo o resto desta sessão), não recebeu a digitação/Enter
+simulados — nenhum travamento (o "Fechar" da mesma janela respondeu normalmente logo depois, confirmando
+que a janela nunca ficou presa), só uma limitação conhecida dessa forma de automação com diálogos nativos
+do shell, distinta da lista já registrada de `CanvasGadget`/clique real (ver notas de automação em outros
+módulos). Confiança na correção vem do teste direto das funções `SeeImp_*` contra o arquivo real, não do
+clique no botão em si.
+
+**Deixado como trabalho futuro, não escondido**: cópia/colagem de um **intervalo** de patterns (só
+1-a-1 nesta versão); `FIXVOL`/`Max Volume` não é aplicado no preview de áudio (sempre toca como se
+`SEEVOL=15` — o código `.SEE` GERADO continua exato e aplica a escala de verdade no hardware/driver
+real, é só o preview local que simplifica); nenhuma validação de round-trip byte a byte comparando um
+SFX importado com o que o `SeeGen_BuildSeeBlob` geraria de volta a partir dele (o gerador produz um
+formato NOVO/próprio, com sua própria tabela de posições reduzida a 1 slot usado — não tenta reescrever
+o arquivo original byte a byte).
+
+**Documentação — screenshot adicionado (2026-08-06)**: `README.md` e `docs/MANUAL.md` ganharam a
+imagem `images/msxbasica-16.png` (efeito de 8 patterns tocando, cursor de playback visível no pattern 0,
+botões **Limpar**/**Limpar linha**/**Limpar bloco** e o seletor visual de forma do envelope à direita),
+mesmo padrão dos demais editores desta IDE (uma screenshot real por seção de feature). Descrição da
+feature em `README.md` atualizada pra mencionar o cursor de playback, o seletor visual de forma e os
+três botões de limpeza, que não estavam cobertos no texto original (escrito antes deles existirem).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -2966,6 +3326,28 @@ bloco (2º clique) continua não automatizado, mesma cautela de sempre com `Canv
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-08-06 — estudo do formato SEE concluído (cabeçalho resolvido), tracker ainda
+não iniciado**: ver módulo 23 acima para o material já registrado em `Ajuda → SEE Tracker...` (manual
+original, formato de arquivo `.SEE`, mecanismo real do driver de replay `SEE3PLAY.ASC`) e a atualização
+do mesmo dia que resolveu o significado do campo `$08-$09` (constante de capacidade `$03FF`, não uma
+contagem por arquivo) por análise cruzada dos 4 `.SEE` de exemplo. **Em aberto pra quando o tracker de
+verdade começar a ser construído**:
+- Investigar os **1056 bytes de área extra** no final dos 4 arquivos de exemplo (depois do fim dos
+  dados de pattern, tamanho idêntico nos 4 apesar de arquivos de tamanhos bem diferentes) — hipótese de
+  uma estrutura não documentada no Apêndice B do manual (nomes de SFX?).
+- A anomalia isolada do `QUARTH.SEE` (único com ID `SEE3EDIT`): seu campo `$0C-$0D` leu um valor
+  absurdo (`48394`) pra um índice de SFX de 0-255 — pode ser uma variante/build diferente do editor,
+  não confirmado.
+- Descobrir o layout do arquivo `.SFX` (um único efeito) — só o `.SEE` completo está documentado no
+  Apêndice B do manual original; não há nenhum arquivo `.SFX` de exemplo em `see/` pra conferir.
+- Decidir a interface do futuro tracker nesta IDE: gerar SFX pra tocar via **NestorBASIC** (caminho
+  principal já existente, ver módulo 9) é o objetivo declarado pelo usuário — falta decidir se o
+  gerador de código também vai emitir um driver de replay nativo (porta do `SEE3PLAY.ASC`) ou se vai
+  reaproveitar/gerar arquivos `.SEE` binários compatíveis com o driver original tal como está.
+- Harness de round-trip (`editor/tools/`) contra os 4 arquivos `.SEE` reais desta pasta antes de
+  confiar em qualquer leitor/escritor novo, mesmo padrão já usado por `MSXDisk.pbi`/
+  `GraphosNativeIO.pbi`.
 
 **Estado ao fim de 2026-07-30 — módulo 12 (controle do openMSX) validado ao vivo e ampliado**: a pedido
 do usuário, revisão + testes ao vivo (harness novo, `editor/tools/OpenMsxBridgeTestCli.pb`) contra um

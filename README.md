@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.14.0** — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.21.1** — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -170,6 +170,28 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   navegação/Registrar/Novo dos editores de sprite e alfabeto.
 
   ![Editor de som PSG (Criar → Som (PSG)...) com os 3 canais, ruído/envelope compartilhados, lista de passos e código BASIC gerado](images/msxbasica-06.png)
+- **Editor SEE Tracker** (`editor/SeeTrackerEditorGui.pbi` + `editor/SeeTrackerSynth.pbi` +
+  `editor/SeeTrackerDriverAsm.pbi`, menu **Criar → SEE Tracker...**) — tracker de efeitos sonoros
+  **compatível com o formato `.SEE`** (Sound Effect Editor, Fuzzy Logic 1991/95 — ver **Ajuda → SEE
+  Tracker...** para o manual original e o formato de arquivo). Diferente do editor de Som (PSG) acima,
+  um efeito aqui é uma sequência de **patterns com comandos de controle** (`HALT`/`FOR`/`NEXT`/`START`/
+  `RERUN`/`TMP`/`END`, os mesmos do formato original) — grade clicável (uma linha por pattern) com
+  painel de edição completo (evento, frequência/rustle/volume dos 3 canais com slides de afinação,
+  envelope de hardware) ao lado. **Tocar**/**Parar** interpretam a sequência quadro a quadro (inclusive
+  loops) e sintetizam via o mesmo motor do editor PSG. **Gerar código** monta um **driver de replay Z80
+  nativo** (porta de `see/SEE3PLAY.ASC`, corrigida e montada em tempo real pelo assembler Z80 desta IDE)
+  junto com o blob binário `.SEE` do efeito atual, prontos como `DATA`/`POKE`/`DEFUSR` para tocar via
+  NestorBASIC. **Importar .SEE...** lê um arquivo `.SEE` real gerado pelo editor original (útil pra
+  recuperar efeitos de projetos antigos) — lista todos os SFX definidos nele (um arquivo pode ter vários)
+  e importa os patterns do escolhido pro SFX atual, andando sequencialmente até o evento `END`. Um
+  **cursor de playback** (borda verde na grade) mostra em tempo real qual pattern está soando, com
+  auto-scroll se ele sair da área visível. A **forma do envelope** de hardware do PSG (reg. 13) tem um
+  preview ao vivo e um seletor visual com as **16 curvas reais do chip** — clicar numa já escolhe, sem
+  precisar decorar o número de cada forma. **Limpar**/**Limpar linha**/**Limpar bloco** zeram todos os
+  patterns, um só ou um intervalo, sem precisar apagar e reinserir linha por linha. Integrado ao sistema
+  de projeto, mesmo padrão de número/tag/navegação/Registrar/Novo dos demais editores.
+
+  ![Editor SEE Tracker (Criar → SEE Tracker...) com um efeito de 8 patterns tocando — cursor de playback verde no pattern 0, botões Limpar/Limpar linha/Limpar bloco e o seletor visual de forma do envelope à direita](images/msxbasica-16.png)
 - **Editor de música MML** (`editor/MmlSynth.pbi` + `editor/MmlEditorGui.pbi`, menu **Criar → Música
   (PLAY)...**) — editor de MML (Music Macro Language) para o comando `PLAY` do MSX-BASIC, cobrindo os
   3 canais **A/B/C em paralelo**. Cada canal tem uma "linha atual" editável que os botões vão
@@ -318,6 +340,17 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   (`##BB:arguments=`/`export_file=`/`help=`, com a lista exata de flags que o remtag `arguments=`
   realmente aplica) e **sobre a suíte original** (ferramentas não portadas pra esta IDE, como o
   DignifieR de conversão reversa, e referência do formato tokenizado `.bmx`).
+- **Ajuda SEE Tracker** (`editor/SeeTrackerHelpData.pbi`/`SeeTrackerHelpGui.pbi`, menu **Ajuda → SEE
+  Tracker...**) — mesma janela de referência não-modal, desta vez sobre o **SEE** (Sound Effect
+  Editor, Fuzzy Logic 1991/95), um editor shareware de efeitos sonoros PSG pra MSX que gera arquivos
+  `.SEE`/`.SFX` tocados via um pequeno driver Z80 (mesmo estilo de integração `BLOAD`+`DEFUSR`/`USR()`
+  já usado pelo NestorBASIC desta IDE). Cobre o manual original (telas, menus, teclas, os 11 canais de
+  um pattern, comandos do canal `event`), o **formato binário `.SEE`** campo a campo e o **mecanismo
+  real do driver de replay** (`see/SEE3PLAY.ASC`, lido linha a linha) — inclusive achados que só
+  aparecem lendo o driver, não o manual, como o fato de `FOR`/`START` dispararem só uma vez (nunca
+  reprocessados nas repetições de um loop) e a fórmula exata de escala por `Max Volume`. Preparação
+  para um **tracker de SFX nativo compatível** a construir numa sessão futura — por ora é só estudo,
+  nenhum editor/gerador `.SEE` existe ainda nesta IDE.
 - **Editor Hexa** (`editor/HexEditorGui.pbi`, menu **Executar → Editor Hexa...**) — editor
   hexadecimal genérico: abre **qualquer arquivo** do disco (não só os do editor de texto), mostra
   offset/hex/ASCII numa grade rolável e permite editar bytes individuais (clique seleciona, campo +
@@ -1432,6 +1465,135 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   atual, num intervalo ou nos 256 códigos do terço de uma vez. Verificado com screenshots reais da
   janela completa e do fluxo de escolha de bloco. Versão embutida no executável atualizada para
   `7.14.0`.
+- **2026-08-06 — nova Ajuda SEE Tracker, estudo do formato SEE (`v7.15.0`)**: usuário pediu pra ler o
+  manual original do **SEE** (`see/SEE3HELP.TXT`) e o driver de replay (`see/SEE3PLAY.ASC`), guardando
+  o máximo entendido numa tela de Ajuda nova — preparação para um tracker de SFX nativo compatível com
+  `.SEE`, a construir numa sessão futura (`por hora apenas estudo`, nenhum editor/gerador `.SEE`
+  implementado ainda). Novo menu **Ajuda → SEE Tracker...** (`editor/SeeTrackerHelpData.pbi`/
+  `SeeTrackerHelpGui.pbi`, clone estrutural de `BasicDignifiedHelpGui.pbi`) cobre o manual (telas,
+  menus, teclas, os 11 canais de um pattern), o formato binário `.SEE` campo a campo e o mecanismo
+  real do driver — lendo o `.ASC` linha a linha (não só o manual) revelou detalhes reais que o manual
+  não menciona: os comandos `FOR`/`START` só disparam uma vez (nunca reprocessados nas repetições
+  seguintes de um loop — só os dados PSG do pattern são revisitados), o byte de evento só tem 3 bits
+  realmente testados pelo player, o bit de "Wave" do volume é literalmente o bit de envelope de
+  hardware do próprio PSG, e a fórmula exata de escala por `Max Volume`. Também comparados byte a byte
+  (`xxd`) os cabeçalhos dos 4 arquivos `.SEE` de exemplo desta pasta contra o que o manual/driver
+  descrevem, com pelo menos uma divergência real deixada como pergunta em aberto (documentada, não
+  escondida) para quando a implementação de verdade começar. Versão embutida no executável atualizada
+  para `7.15.0`.
+- **2026-08-06 (mesma sessão) — usuário insistiu em inferir mais sobre o cabeçalho a partir do driver**:
+  rastrear `SEE_IN` (`see/SEE3PLAY.ASC`) byte a byte revelou uma inconsistência real entre a checagem de
+  identificação (só 4 bytes) e a cópia dos 4 contadores do cabeçalho, que ficavam encadeadas no arquivo
+  original. Testando as duas leituras possíveis contra os 4 `.SEE` reais desta pasta: a leitura "como os
+  comentários do próprio driver descrevem" bate perfeitamente nos 4 arquivos (divisão exata, resto
+  zero) — resolvendo a dúvida anterior: `$08-$09` é uma constante de capacidade (`$03FF`), não uma
+  contagem por arquivo. Achado colateral: os 4 arquivos sobram exatamente os mesmos 1056 bytes no final,
+  sugerindo uma área não documentada no manual. Ajuda/SPEC.md atualizados com a correção.
+- **2026-08-06 (mesma sessão) — novo editor `Criar → SEE Tracker...` (`v7.16.0`)**: "vamos criar
+  Criar->See Tracker". Duas decisões confirmadas via `AskUserQuestion` antes de implementar: grade
+  nativa de patterns (não lista de passos) com painel de edição de verdade ao lado, e um **driver de
+  replay Z80 nativo embutido** (não só os dados `.SEE`) — a opção mais ambiciosa das duas oferecidas.
+  `editor/SeeTrackerDriverAsm.pbi` porta `see/SEE3PLAY.ASC` pro assembler nativo desta IDE (sintaxe de
+  hex/rótulos adaptada, checagem de ID desacoplada da cópia do cabeçalho — corrigindo o problema
+  encontrado na entrada de changelog anterior —, checagem opcional de overflow via ROM-BIOS removida, e
+  um vetor novo `BSETFX` que adapta o argumento de `USR()` pro `SETSFX` cru), montado **em tempo real**
+  pelo `Z80Asm::Assemble()` já existente. `editor/SeeTrackerSynth.pbi` interpreta patterns+eventos
+  quadro a quadro fiel ao driver (`TEMPO`/`HALT` interagem em dois níveis — achado só visível lendo o
+  driver linha a linha) expandindo pra `PsgStepData` e reaproveitando 100% do motor de síntese do editor
+  PSG pro preview; monta o blob `.SEE` exato e o código BASIC (`DATA`/`POKE`/`DEFUSR`) prontos.
+  `editor/SeeTrackerEditorGui.pbi` é a janela (grade + painel + barra de projeto, mesmo padrão dos
+  demais editores) — bateu de novo o gotcha de `Procedure` aninhada (PureBasic não permite), corrigido
+  hoisteando as duas procedures de painel pro escopo de arquivo. Verificado por 2 harnesses novos
+  (`editor/tools/SeeTrackerDriverTestCli.pb`: 784 bytes montados, os 6 vetores conferidos byte a byte;
+  `editor/tools/SeeTrackerSynthTestCli.pb`: 22 asserções sobre `HALT`/`FOR`/`NEXT`/`RERUN`/geração de
+  código/formato do blob) e verificação ao vivo na GUI real (Inserir pattern, Gerar código — 5399
+  caracteres sem erro —, endereços do clipboard conferidos contra o harness, Tocar num efeito vazio).
+  Versão embutida no executável atualizada para `7.16.0`.
+- **2026-08-06 (mesma sessão) — Importar .SEE... (`v7.17.0`)**: "Podemos ter uma opção para ler arquivos
+  SEE gerados pelo SEE original de MSX?". Três funções novas em `SeeTrackerSynth.pbi`:
+  `SeeImp_IsValidHeader` (confere só os 4 bytes `SEE3`), `SeeImp_ListDefinedSfx` (varre os 256 slots da
+  tabela de posições procurando o sentinela `$FF` — sem confiar no campo `HISFX`, que já mostrou um
+  valor implausível no `QUARTH.SEE` de exemplo) e `SeeImp_ExtractSfxPatterns` (anda sequencialmente a
+  partir do pattern inicial até o evento `END`). Botão **Importar .SEE...** na janela abre o arquivo,
+  lista os SFX definidos numa janela auxiliar e substitui os patterns do SFX atual pelos importados.
+  **Validado contra um arquivo real** (`see/FIREBIRD.SEE`, harness ad-hoc): 33 SFX encontrados, limites
+  perfeitamente sequenciais (SFX #0 termina no pattern 7, SFX #1 já começa no 8) e o primeiro efeito
+  extraído termina corretamente num `END` real (`$F0`). A automação da sessão não conseguiu dirigir o
+  diálogo nativo de abrir arquivo (`BM_CLICK` sintético não entrega a digitação ao `OpenFileRequester`
+  do Windows) — sem travar nada (o resto da janela respondeu normal logo depois), só uma limitação da
+  automação, não do recurso; a confiança vem do teste direto das funções contra o arquivo real. Versão
+  embutida no executável atualizada para `7.17.0`.
+- **2026-08-06 (mesma sessão) — correção do "Tocar" no SEE Tracker (`v7.18.0`)**: "quando coloco tocar,
+  não está tocando". Causa raiz real, reproduzida ao vivo: `SeeTrackerEditorGui.pbi` nunca chamava
+  `InitSound()` (padrão `Global ..._SoundSystemReady.b` já usado por `PsgEditorGui.pbi`/
+  `MmlEditorGui.pbi`, mas nunca copiado pra essa janela nova) — sem isso `LoadSound()` falha (devolve 0)
+  **silenciosamente**, e como o `G_Play` não tinha `Else` nos 3 pontos onde podia falhar, "Tocar" não
+  fazia literalmente nada visível, nem tocar nem avisar erro. Corrigido com o mesmo padrão
+  `SeeEd_SoundSystemReady` + mensagens de erro reais nos 3 pontos. **Achado colateral corrigido junto**:
+  um SFX novo (1 pattern, evento `END`) mais **Inserir pattern** (sempre inseria DEPOIS do selecionado)
+  formava uma armadilha — o primeiro pattern editado ficava depois do `END` inicial, nunca alcançado no
+  playback (que sempre começa no pattern 0). Corrigido em duas frentes: SFX novo já nasce com 2 patterns
+  (`SeeEd_InitBlankSfx` — um em branco, um com `END` depois), e **Inserir pattern** agora insere ANTES do
+  selecionado quando esse tem evento `END`. Terceiro ajuste, de ergonomia (o editor SEE original liga o
+  canal implicitamente ao digitar uma frequência — nosso editor exigia marcar "Som" à parte): os campos
+  de frequência/volume agora ligam sozinhos o checkbox "Som" daquele canal na primeira vez que o valor
+  digitado fica diferente de zero (nunca desliga sozinho). Mensagem de "Nada pra tocar" também ficou
+  diagnóstica quando a causa é um `END` no pattern 0. Verificado ao vivo depois da correção — status
+  mostra "Reproduzindo..." de verdade, conferido via `GetWindowText` no controle (não só screenshot, que
+  se mostrou pouco confiável pra conteúdo de `TextGadget` nesta automação — gotcha novo documentado no
+  `docs/SPEC.md`). Versão embutida no executável atualizada para `7.18.0`.
+- **2026-08-06 (mesma sessão) — grade do SEE Tracker ilegível, "fundo preto e letras escuras" (`v7.19.0`)**:
+  usuário reportou baixo contraste nas linhas com dados da grade. Só foi possível achar a causa real com
+  screenshot de verdade (`PrintWindow` + crop/zoom) — pelo código, `SeeEd_DrawGrid` parecia inofensivo
+  (`Box()` branco de fundo, depois `DrawText()` colorido por cima). A screenshot mostrou cada valor
+  preso numa caixinha preta opaca do tamanho exato do texto: nenhum `DrawText()` da função usava
+  `DrawingMode(#PB_2DDrawing_Transparent)`, então o modo padrão pintava um retângulo opaco atrás de cada
+  texto com `BackColor()` — nunca setada ali, portanto preta (padrão do PB) — por cima de qualquer fundo
+  já desenhado. Presente nos dois temas, mais perceptível no Dark. Corrigido com
+  `DrawingMode(#PB_2DDrawing_Transparent)` antes do bloco de `DrawText()` de cada linha. Aproveitado pra
+  também tornar a grade sensível a `EditorCfg\Theme` (antes sempre desenhava fundo branco fixo): tema
+  Light mantém a paleta original; tema Dark ganhou fundo cinza-azulado bem menos escuro que a janela
+  (`RGB(48,51,60)`) com cores de texto claras/vivas (azul, vermelho, âmbar, magenta, quase-branco),
+  atendendo ao pedido do usuário ("o fundo pode ser menos escuro e as letras mais brilhosas"). Verificado
+  ao vivo nos dois temas via screenshot real antes/depois. Versão embutida no executável atualizada para
+  `7.19.0`.
+- **2026-08-06 (mesma sessão) — cursor de playback + seletor visual de forma do envelope (`v7.20.0`)**:
+  dois pedidos - "faça o tocar mover uma espécie de cursor em cada pattern/linha para visualmente
+  podermos ver onde estamos" e "na parte de Forma, você poderia fazer algo visual para podermos ver as
+  formas do PSG?". `SeeSynth_Expand()` ganhou um novo parâmetro `List OutPatIdx.i()` (o pattern de
+  origem de cada step, em paralelo a `OutSteps()`) - 2 novas asserções no harness conferem os valores
+  reais produzidos pelos casos de `HALT`/`FOR`/`NEXT` já existentes, não só que "compila". A grade
+  ganhou um `PlayCursor` (borda verde + faixa lateral, independente do realce de seleção) atualizado por
+  um timer de 40ms que consulta `GetSoundPosition()` de verdade contra a linha do tempo do efeito, com
+  auto-scroll se o cursor sair da área visível. Pro seletor de forma: um preview compacto ao lado do
+  campo **Forma** (sempre visível) mais um botão **...** que abre uma grade 4x4 com as 16 formas reais
+  do envelope do PSG (curva + rótulo hex), clicar já escolhe. Ambas as curvas reaproveitam
+  `PsgSynth_ApplyEnvShape`/`PsgSynth_EnvTick` (o MESMO gerador usado na síntese de verdade), garantindo
+  fidelidade ao som real. **Verificado ao vivo com screenshots reais**: as 16 formas batem exatamente
+  com a tabela padrão do AY-3-8910/YM2149; o cursor de playback foi testado em duas configurações
+  diferentes (dados no pattern 1, depois movidos pro pattern 0 via "Mover p/ cima") e apareceu na linha
+  correta nas duas vezes, sumindo sozinho ao fim natural da reprodução. Versão embutida no executável
+  atualizada para `7.20.0`.
+- **2026-08-06 (mesma sessão) — Limpar / Limpar linha / Limpar bloco (`v7.21.0`)**: "crie um botão limpar
+  para limpar totalmente os padrões já inseridos, e um botão para limpar uma linha em particular, e outro
+  para limpar um bloco". Três botões novos numa linha própria no SEE Tracker: **Limpar** (volta ao estado
+  inicial - 1 pattern em branco + `END` - mas mantém o número/tag do SFX, diferente de "Novo"; pede
+  confirmação se houver alterações não registradas, mesmo padrão já usado por "Novo"/navegação de SFX)
+  **Limpar linha** (zera os 15 bytes do pattern selecionado sem remover a linha, diferente de "Apagar
+  pattern") e **Limpar bloco** (janela nova pedindo um intervalo De/Até, pré-preenchido com o pattern
+  selecionado, zera todos daquele intervalo de uma vez - a própria janela já serve de confirmação).
+  Nenhum dos três remove nenhuma linha da lista, só zeram dados no lugar. Verificado ao vivo via
+  screenshot: inseridos patterns extras, "Limpar bloco" com intervalo 0-2 zerou os três numa tacada
+  (inclusive um pattern `END`, sem quebrar nada - o motor já trata "sem `END` nenhum" como fim implícito),
+  e "Limpar" mostrou a confirmação e voltou exatamente ao estado inicial ao confirmar. Versão embutida no
+  executável atualizada para `7.21.0`.
+- **2026-08-06 (mesma sessão) — cabeçalho da grade desalinhado (`v7.21.1`)**: "os títulos das colunas #,
+  Evt, Snd1... está desalinhado com as colunas". Causa: o cabeçalho era um `TextGadget` com texto
+  espaçado à mão numa fonte proporcional, nunca garantido bater com os offsets em pixel que
+  `SeeEd_DrawGrid()` usa pra desenhar as colunas de dados. Trocado por um `CanvasGadget` desenhado uma
+  vez (`SeeEd_DrawHeader()`) usando os MESMOS `#SeeEd_GridColXxx` e preenchimento de cada célula que a
+  grade já usa - alinhamento garantido por construção. Verificado ao vivo via screenshot com zoom: cada
+  rótulo cai exatamente sobre sua coluna. Versão embutida no executável atualizada para `7.21.1`.
 
 ## Ferramentas e ambiente
 
@@ -1464,6 +1626,11 @@ Este projeto não existiria sem o trabalho de:
   (`N80.exe`/`LK80.exe`/`LB80.exe`, compilados localmente a partir do código-fonte C# aberto) para o
   assembler Z80 nativo desta IDE, tanto o vocabulário de syntax highlight quanto o motor de montagem em
   si (tabela de opcodes, avaliador de expressão, formato `.REL`).
+- **Fuzzy Logic** (R. v/d Meulen e A. v/d Wal, Holanda), autores do **SEE (Sound Effect Editor) v3.10**
+  (1991/95), editor shareware de efeitos sonoros PSG para MSX — o formato de arquivo `.SEE` e o driver de
+  replay original (`SEE3PLAY.ASC`) foram a especificação de comportamento (estudada por engenharia
+  reversa do driver, campo a campo) para o editor **SEE Tracker** nativo desta IDE (`Criar → SEE
+  Tracker...`) e seu driver de replay Z80 embutido, uma porta própria do driver original.
 
 ## Licença
 
