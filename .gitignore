@@ -33,6 +33,15 @@
 # nao dependencia de runtime nem material pra distribuir com o repositorio.
 /see/
 
+# Copia local de sc2/ (projeto Go pessoal do usuario, sc2msx, reescrita do
+# SuperCalc 2) - a pasta sc2/msx/ carrega software original de terceiros
+# (SuperCalc 2 MSX: SC2*.COM/.OVL, PDFs de manuais com copyright, dumps de
+# disquete supercalc2*.dsk) - referencia de leitura/engenharia reversa do
+# formato .CAL (ver docs/reference/supercalc2-cal-format.md, modulo 17 do
+# SPEC.md), nao dependencia de runtime nem material pra distribuir com o
+# repositorio.
+/sc2/
+
 # Caminho do JOE
 /joewin/
 

@@ -55,7 +55,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. **Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)** — SALVA TELA/Restaurar, INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE VIDEO/ATRIBUTOS, todos com ícone; coluna direita e faixa abaixo do canvas reequilibradas, ver seção 14d. **Fase 5: persistência no projeto (2026-07-25, mesma sessão)** — Telas/Layouts/Shapes no `.msxproject` via `ProjectDB.pbi`, mesmo padrão número/navegação/tag/Novo/Registrar do editor de sprites/alfabetos, ver seção 14e. **Fase 6: menu AJUSTE (2026-07-25, mesma sessão)** — SCROLL/ROTAÇÃO, 1px e 8x8, 4 direções, ver seção 14f. **Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)** — ZOOM (janela à parte), SHAPE (carimbo com 4 modos lógicos), CORTE (Inverter/Espelhar), GRID (overlay não destrutivo), ver seção 14g. **Fase 8 (2026-07-25, mesma sessão): cursor de teclado — tentada e revertida**, ver seção 14h (usuário achou desnecessária com o mouse já disponível). **Fase 9: formatos nativos .ALF/.LAY/.SCR/.SHP (2026-07-25, mesma sessão)** — importar/exportar telas/layouts/shapes no formato binário que o Graphos III de verdade grava em disco (`editor/GraphosNativeIO.pbi`), verificado por round-trip contra arquivos reais (`editor/tools/GraphosNativeIOTestCli.pb`), ver seção 14i. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). **Todos os 5 menus do original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) + os formatos de arquivo nativos estão implementados.** Ver seções 14/14b a 14i |
 | 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
 | 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
-| 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. Ver seção 17 |
+| 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29), reconhecimento estendido (2026-08-07)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. **2026-08-07**: reconhece também executável MSX-DOS (`.COM`), diferencia texto ASCII puro de BASIC clássico numerado, **planilha SuperCalc 2 MSX (`.CAL`)** — assinatura + título + início da seção de dados, validado contra 6 arquivos `.CAL` reais (ver `docs/reference/supercalc2-cal-format.md`) —, **banco de dados dBase II (`.DBF`)** — formato totalmente decifrado (cabeçalho + descritores de campo + registros), validado registro a registro contra um `.DBF` real (ver `docs/reference/dbase2-dbf-format.md`) — e **os 4 formatos nativos do Graphos III (`.ALF`/`.LAY`/`.SCR`/`.SHP`)**, reaproveitando a spec já validada em `GraphosNativeIO.pbi` (módulo 14i), validado em lote contra ~4100 arquivos reais do repositório (97-100% reconhecidos, ver seção 17); WordStar/MSX-Word seguem pendentes. |
 | 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. Ver seção 18 |
 | 19 | Inserir → Caractere Especial (mapa de caracteres MSX) | baixo | **Implementado (2026-08-04)** — `editor/CharMapGui.pbi`, novo menu de topo **Inserir**. Grade estilo "Mapa de Caracteres" do Windows com os 159 caracteres que `-tr` traduz pra ASCII nativo MSX. Ver seção 19 |
 | 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família de 3 editores — **completa** desde o módulo 22, ver linhas abaixo |
@@ -2381,11 +2381,32 @@ quanto as **configurações** desta IDE.
   pelos mesmos motivos já documentados no módulo 2 (sessão em janela de outro processo/sessão do
   Windows, inacessível a `FindWindow`/`PostMessage` a partir do shell).
 
-### 17. Editor Hexa genérico — implementado (2026-07-29)
+### 17. Editor Hexa genérico — implementado (2026-07-29), reconhecimento estendido (2026-08-07)
 
 Pedido explícito do usuário: um editor hexadecimal genérico dentro da IDE, não amarrado a nenhum
 formato específico — abre **qualquer arquivo** do disco (diferente dos demais editores visuais, que só
 operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
+
+**Formatos reconhecidos hoje** (`HexEd_DescribeFile`, `editor/HexEditorGui.pbi`) — checagem sempre
+automática, sem nenhuma configuração do usuário, nesta ordem:
+
+| Formato | Como é reconhecido | Confiança |
+|---|---|---|
+| Imagem de disco MSX (`.dsk`, FAT12) | Extensão + boot sector | Formato nativo, offsets de `MSXDisk.pbi` |
+| Executável MSX-DOS (`.com`) | Extensão (sem cabeçalho, código Z80 cru) | Convenção CP/M bem estabelecida |
+| Planilha SuperCalc 2 MSX (`.cal`) | Assinatura de 22 bytes `"SuperCalc ver. ..."` | Validado contra 6 arquivos reais — só cabeçalho, dados de célula ainda não decifrados (`docs/reference/supercalc2-cal-format.md`) |
+| Banco de dados dBase II (`.dbf`) | Byte `02h` + extensão | **Formato inteiro decifrado** — cabeçalho, descritores de campo e registros validados um a um contra um `.dbf` real (`docs/reference/dbase2-dbf-format.md`) |
+| Alfabeto Graphos III (`.alf`) | Cabeçalho BLOAD/BSAVE `FEh` + exatamente 2048 bytes de dados | Validado em lote contra 781 arquivos reais (97%) |
+| Layout Graphos III (`.lay`) | Cabeçalho BLOAD/BSAVE + decodifica o RLE/ofuscação de verdade | Validado em lote contra 234 arquivos reais (100%) |
+| Tela Graphos III (`.scr`) | Cabeçalho BLOAD/BSAVE + 12288 bytes fixos de padrão/cor | Validado em lote contra 86 arquivos reais (100%) |
+| Banco de shapes Graphos III (`.shp`) | Percorre a cadeia de blocos até o terminador `FFh` (sem cabeçalho BLOAD/BSAVE) | Validado em lote contra 3028 arquivos reais (96%) |
+| Binário MSX BLOAD/BSAVE genérico | Byte `FEh` + endereços | Formato nativo, qualquer arquivo não coberto pelas linhas acima |
+| MSX-BASIC tokenizado | Byte `FFh` | Formato nativo, convenção `#Tok_Base` |
+| BASIC MSX clássico (ASCII, numerado) vs. texto puro | Primeiro caractere visível | Heurística (regra de entrada do tokenizador) |
+| Binário desconhecido / dados crus | Nenhum dos anteriores bateu | — |
+
+**Pendente** (sem arquivo de amostra real suficiente pra validar, ver detalhe mais abaixo): WordStar,
+MSX-Word.
 
 - **UI** (`editor/HexEditorGui.pbi`, menu **Executar → Editor Hexa...**) — janela própria com grade
   rolável offset/hex/ASCII; clique seleciona um byte, campo de valor + **Aplicar** grava. Rolagem
@@ -2420,6 +2441,102 @@ operam sobre conteúdo do sistema de projeto ou de uma aba de texto).
   qualquer no disco) não é um tipo de conteúdo do `.msxproject`.
 - **Versão embutida no executável**: `7.7.1`, codinome **"BFG9200"** (BFG9000 do Doom + endereço
   `9200h`, pedido explícito do usuário — MSX + Doom + heavy metal).
+
+**Reconhecimento estendido (2026-08-07)** — pedido do usuário pra cobrir mais formatos de disquete/CP-M
+da época além dos três nativos da IDE:
+- **Executável MSX-DOS (`.COM`)**: reconhecido por **extensão**, checado antes dos bytes mágicos
+  `FEh`/`FFh` — um `.COM` é código Z80 cru sem cabeçalho (mesma convenção CP/M, carrega e executa sempre
+  em `0100h`), então o primeiro byte real do programa pode perfeitamente valer `FEh` (`CP n`) ou `FFh`
+  (`RST 38h`) por coincidência; sem checar a extensão primeiro esses `.COM` cairiam classificados como
+  BLOAD/BSAVE ou tokenizado por engano.
+- **Texto ASCII puro vs. BASIC MSX clássico numerado**: o fallback antigo rotulava qualquer arquivo
+  100% imprimível como "BASIC clássico ou fonte", sem distinguir. Nova heurística
+  (`HexEd_LooksLikeBasicSource`) olha só o primeiro caractere visível do arquivo (pulando espaço/tab de
+  indentação) — dígito = provável linha numerada (mesma regra que o tokenizador exige de entrada); linha
+  em branco antes de qualquer caractere visível = não é (todo BASIC clássico válido começa com número na
+  primeira linha).
+- **Ainda em aberto no momento deste pedido, aguardando arquivos reais pra estudar** (pedido explícito
+  do usuário: WordStar, MSX-Word, SuperCalc II, dBase II) — nenhum dos quatro foi implementado nesta
+  primeira rodada porque nenhum tinha cabeçalho/layout binário confirmado contra uma fonte confiável a
+  partir daqui (diferente do `.COM`, que é convenção CP/M bem estabelecida, e do padrão line-number, que
+  é a própria regra do tokenizador desta IDE). WordStar historicamente marca fim-de-palavra ligando o 8º
+  bit do último caractere (sem cabeçalho fixo) — heurística arriscada de acertar sem arquivo real pra
+  validar; MSX-Word, SuperCalc II e dBase II não tinham formato de arquivo documentado neste repositório
+  ainda. **SuperCalc II e dBase II deixaram de estar pendentes ainda na mesma sessão** — o usuário
+  forneceu arquivos de amostra reais pra ambos, ver os dois blocos abaixo; só WordStar/MSX-Word
+  continuam em aberto. Mesmo padrão de trabalho já usado pra `MSXDisk.pbi`/`GraphosNativeIO.pbi`/SEE
+  Tracker (módulo 24): não crava detecção binária por
+  suposição, só depois de validar contra arquivo real.
+
+**SuperCalc 2 MSX (`.CAL`) — reconhecimento adicionado na mesma sessão (2026-08-07)**: o usuário forneceu
+`sc2/` (projeto Go pessoal dele, `sc2msx`, uma reescrita do SuperCalc 2 que já lê/grava o formato SDI
+texto intermediário) e `sc2/msx/*.CAL` (5 planilhas `.CAL` binárias reais). Achado que destravou o
+estudo: o disco original `sc2/msx/supercalc2L.dsk` tem `EXEMPLO.CAL` **e** `EXEMPLO.SDI` lado a lado —
+um par binário/texto verdadeiro, extraído com a própria `--diskmanipulator` desta IDE, sem precisar rodar
+o `SDI.COM` original num emulador. Cruzando esse par com os outros 5 `.CAL`, confirmado (e só isso foi
+implementado em `HexEd_DescribeFile`): assinatura de 22 bytes `"SuperCalc ver.  1.00\r\n"` em
+`000000h`, campo de título de 80 bytes terminado em NUL em `000016h`, cabeçalho de tamanho fixo com a
+seção de dados sempre começando em `000300h` (confirmado idêntico nos 6 arquivos independente do
+tamanho do título/conteúdo). O layout campo a campo de cada célula dentro da seção de dados não foi
+decifrado com confiança suficiente ainda — fica como próximo passo, ver
+`docs/reference/supercalc2-cal-format.md` (novo arquivo, todas as notas de engenharia reversa, inclusive
+o que ficou em aberto e como continuar usando o openMSX real já configurado nesta máquina,
+`D:\msx\openMSX\openmsx.exe`). Achado colateral: `sc2/msx/msxdos1.dsk` tem `PESSOAL.DBF`, uma amostra
+real de dBase II — guardado pra quando o dBase II do módulo 17 for atacado.
+
+**dBase II (`.DBF`) — reconhecimento adicionado na mesma sessão (2026-08-07)**: usando o achado colateral
+acima (`PESSOAL.DBF`, extraído de `sc2/msx/msxdos1.dsk`). Diferente do SuperCalc 2, esse formato saiu
+**totalmente decifrado** — não só reconhecido, decodificado campo a campo e registro a registro,
+conferido contra o texto legível do próprio arquivo (harness descartável imprimiu os 6 registros reais:
+nome/cargo/salário/data de admissão de 6 funcionários, batendo exatamente com o hexdump). Confirmado:
+byte `02h` = versão dBase II; bytes `01h`-`02h` (LE) = número de registros; bytes `06h`-`07h` (LE) =
+tamanho do registro de dados; descritores de campo de 16 bytes cada a partir de `000008h` (nome de 11
+bytes + tipo 1 char + tamanho 1 byte + 3 reservados), terminados por `0Dh`; dados sempre começam no
+offset fixo `000209h` (= `8 + 32×16 + 1`, espaço reservado pra até 32 descritores mesmo com menos campos
+de verdade — o limite clássico do dBase II); registros = 1 byte de flag + campos concatenados na ordem
+dos descritores; `1Ah` marca o fim dos dados (mesma convenção CP/M já vista no `.CAL` do SuperCalc 2).
+Ver `docs/reference/dbase2-dbf-format.md` (novo arquivo, spec completa + o que ficou fora do escopo
+dessa única amostra: ordem exata dos bytes de data, byte de registro excluído, outros tipos de campo
+como `L`/`D`/`M`). `HexEd_DescribeFile` reconhece (extensão `.dbf` + byte `02h`, exigidos juntos porque
+um byte sozinho é assinatura fraca demais) e lista os campos decodificados no resumo — não decodifica os
+registros de dados em si (ficaria melhor numa ferramenta dedicada, se algum dia fizer sentido).
+
+**Graphos III: `.ALF`/`.LAY`/`.SCR`/`.SHP` — reconhecimento adicionado na mesma sessão (2026-08-07)**:
+diferente do SuperCalc 2/dBase II, esses 4 formatos **já estavam totalmente documentados** por uma
+sessão anterior (`editor/GraphosNativeIO.pbi`, módulo 14i) — não precisou de engenharia reversa, só
+portar o conhecimento já validado pra dentro de `HexEd_DescribeFile` (a galeria de templates genérica já
+reconhecia ALF/LAY/SCR fracamente, por header; SHP não tinha cabeçalho BLOAD/BSAVE nenhum pra
+reconhecer, passava direto pra "binário desconhecido"). Validado contra **todos os arquivos reais do
+repositório** (`graphos/` + `graphos-IV/`, ~4100 arquivos, harness descartável em lote, não só uma
+amostra pequena):
+- **`.LAY`**: 234/234 (100%) — validação forte: decodifica o RLE+ofuscação de verdade e confere que dá
+  exatamente 6144 bytes. Achou e corrigiu um bug real no primeiro rascunho do decodificador (parava cedo
+  demais por causa de padding sobrando no fim do stream comprimido, contando com o tamanho declarado no
+  cabeçalho em vez de parar assim que os 6144 bytes esperados fossem alcançados — mesma lição do `.SCR`
+  abaixo, cabeçalho nem sempre é fonte confiável de tamanho).
+- **`.SCR`**: 86/86 (100%) — usa a mesma lógica já validada de `GraphosNative_LoadScr` (tamanho real do
+  arquivo, não o cabeçalho, pra achar onde a rotina de apresentação termina).
+- **`.ALF`**: 759/781 (97%) — validação em lote revelou duas nuances reais não documentadas antes: (1)
+  o endereço de início nem sempre é `9200h` (`LETR-*.ALF` usa outros endereços) — reconhecimento agora
+  só exige 2048 bytes de dados, sem travar em endereço fixo (diferente da galeria de templates genérica,
+  que continua travada em `9200h` deliberadamente); (2) uma minoria real declara `Fim = Início + 2048`
+  em vez de `Início + 2047` (convenção "fim exclusivo", confirmada em 3 arquivos de conteúdo diferente
+  com o mesmo padrão) — também aceito. Os ~22 restantes são legitimamente outra coisa: um punhado sem
+  cabeçalho `FEh` nenhum (`SHADOW`/`SOMBRA`/`TORTA`/`LETR-40.ALF` etc., formato desconhecido, não
+  adivinhado) e alguns genuinamente truncados (menos bytes no disco do que o cabeçalho declara).
+- **`.SHP`**: 2920/3028 (96%) — o maior ganho real (não tinha NENHUM reconhecimento antes): percorre a
+  cadeia de blocos inteira (mesmo algoritmo de `GraphosNative_ScanShpFile`, sobre bytes em memória em
+  vez de arquivo) e só reconhece se terminar exatamente no `FFh`, não em EOF por acaso — deliberadamente
+  mais rígido que o importador de verdade (que é tolerante/best-effort) porque aqui o objetivo é
+  reconhecimento seguro, não importação. Falhas investigadas uma a uma: a maioria é arquivo de outro
+  formato com extensão `.SHP` por coincidência (`TITLE01.SHP` é texto puro, `CLIPART*.SHP` tem campos
+  claramente inválidos pro layout Graphos), o resto é arquivo vazio ou sem terminador `FFh` limpo — sem
+  nenhum falso positivo encontrado.
+
+**Versão embutida no executável ao fim desta sessão**: `7.25.0`, codinome **"HEXORCIST"** (Hex do Editor
+Hexa + Exorcist, pedido explícito do usuário — mesmo espírito de `BFG9200`/7.7.1 acima: a sessão inteira
+foi sobre reconhecer/"esconjurar" formato atrás de formato que antes caía em "binário desconhecido/dados
+crus"). Ver `docs/RELEASE_NOTES.md` para as notas de lançamento completas desta versão.
 
 ### 18. Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 — implementado (2026-08-01)
 

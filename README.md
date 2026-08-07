@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.21.1** — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.25.0** ("`HEXORCIST`") — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -354,22 +354,34 @@ Python — que serve de referência de comportamento a ser portada, não de depe
 - **Editor Hexa** (`editor/HexEditorGui.pbi`, menu **Executar → Editor Hexa...**) — editor
   hexadecimal genérico: abre **qualquer arquivo** do disco (não só os do editor de texto), mostra
   offset/hex/ASCII numa grade rolável e permite editar bytes individuais (clique seleciona, campo +
-  **Aplicar** grava). Reconhece os formatos que a própria IDE produz/consome — binário MSX
-  BLOAD/BSAVE (cabeçalho `FEh` + início/fim/execução), MSX-BASIC tokenizado (`FFh`, endereço de carga
-  `8001h`) e o boot sector FAT12 de uma imagem `.dsk` (mesmos offsets que `MSXDisk.pbi` lê/escreve) —
-  e ainda mantém uma **galeria de templates** (`hexeditor_templates.json`, mesmo estilo de persistência
-  de `editor_settings.json`/`badig_settings.json`) que dá nome amigável a binários BLOAD/BSAVE cujo
-  byte de tipo + endereço inicial + tamanho dos dados batam com um template registrado — de fábrica já
-  vem com os três formatos nativos do Graphos III (**Alfabeto `.ALF`**: `FEh`/`9200h`/2048 bytes exatos,
-  **Layout `.LAY`** e **Tela `.SCR`**: `FEh`/`9200h` com tamanho variável). Operações de bloco a partir
-  de um intervalo marcado (**Marcar início**/**Marcar fim**/**Limpar seleção**) ou, se nada estiver
-  marcado, perguntando endereço inicial/final na hora: **Preencher...** (um valor num intervalo),
-  **Inserir bloco...** (desloca o resto do arquivo pra frente) e **Sobrepor bloco...** (não desloca),
-  ambos trazendo os bytes de outro arquivo inteiro ou gerando bytes em branco (quantidade + valor), e
-  **Excluir bloco...** (desloca de verdade, encolhendo o arquivo, ou só sobrescreve com `00` no lugar).
-  Barra de rolagem vertical customizada (setas topo/base tradicionais + barra visual com a posição
-  proporcional no arquivo, desenhada à mão porque o `ScrollBarGadget` nativo do PureBasic renderizava
-  enorme e com os botões trocados nesta configuração) mais rolagem pela roda do mouse.
+  **Aplicar** grava). **Reconhece automaticamente, sem nenhuma configuração**:
+  - **Formatos nativos desta IDE**: binário MSX BLOAD/BSAVE (cabeçalho `FEh` + início/fim/execução),
+    MSX-BASIC tokenizado (`FFh`), boot sector FAT12 de imagem `.dsk` (mesmos offsets que `MSXDisk.pbi`
+    lê/escreve), texto ASCII puro vs. BASIC MSX clássico numerado (mesma regra de entrada do
+    tokenizador).
+  - **Executável MSX-DOS** (`.COM`) — código Z80 cru sem cabeçalho, convenção CP/M, carrega/executa
+    sempre em `0100h`.
+  - **Planilha SuperCalc 2 MSX** (`.CAL`) — assinatura, título e início da seção de dados (ver
+    `docs/reference/supercalc2-cal-format.md`).
+  - **Banco de dados dBase II** (`.DBF`) — cabeçalho, descritores de campo (nome/tipo/tamanho) e onde os
+    registros começam (ver `docs/reference/dbase2-dbf-format.md`).
+  - **Os 4 formatos nativos do Graphos III**: **Alfabeto `.ALF`** (256 caracteres × 8 bytes), **Layout
+    `.LAY`** (decodifica o RLE+ofuscação de verdade e confere os 6144 bytes), **Tela `.SCR`** (padrão +
+    cor de SCREEN 2 completa) e **Banco de shapes `.SHP`** (percorre a cadeia de blocos até o
+    terminador `FFh` — o único dos quatro sem cabeçalho BLOAD/BSAVE).
+
+  Além do reconhecimento automático, uma **galeria de templates** (`hexeditor_templates.json`, mesmo
+  estilo de persistência de `editor_settings.json`/`badig_settings.json`) deixa o usuário cadastrar
+  binários BLOAD/BSAVE próprios (byte de tipo + endereço inicial + tamanho dos dados) pra dar nome
+  amigável a qualquer outro formato. Operações de bloco a partir de um intervalo marcado (**Marcar
+  início**/**Marcar fim**/**Limpar seleção**) ou, se nada estiver marcado, perguntando endereço
+  inicial/final na hora: **Preencher...** (um valor num intervalo), **Inserir bloco...** (desloca o
+  resto do arquivo pra frente) e **Sobrepor bloco...** (não desloca), ambos trazendo os bytes de outro
+  arquivo inteiro ou gerando bytes em branco (quantidade + valor), e **Excluir bloco...** (desloca de
+  verdade, encolhendo o arquivo, ou só sobrescreve com `00` no lugar). Barra de rolagem vertical
+  customizada (setas topo/base tradicionais + barra visual com a posição proporcional no arquivo,
+  desenhada à mão porque o `ScrollBarGadget` nativo do PureBasic renderizava enorme e com os botões
+  trocados nesta configuração) mais rolagem pela roda do mouse.
 
   ![Editor Hexa (Executar → Editor Hexa...) reconhecendo um alfabeto Graphos III via galeria de templates](images/msxbasica-14.png)
 - **Inserir → Caractere Especial...** (`editor/CharMapGui.pbi`, novo menu de topo **Inserir**) — mapa
@@ -1594,6 +1606,70 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   vez (`SeeEd_DrawHeader()`) usando os MESMOS `#SeeEd_GridColXxx` e preenchimento de cada célula que a
   grade já usa - alinhamento garantido por construção. Verificado ao vivo via screenshot com zoom: cada
   rótulo cai exatamente sobre sua coluna. Versão embutida no executável atualizada para `7.21.1`.
+- **2026-08-07 — Editor Hexa: mais formatos reconhecidos (`v7.22.0`)**: usuário pediu pra ampliar o
+  reconhecimento de formato do módulo 17 (`editor/HexEditorGui.pbi`) além dos três nativos da IDE.
+  Implementado: **executável MSX-DOS `.COM`** (extensão checada antes dos bytes mágicos `FEh`/`FFh` —
+  código Z80 cru sem cabeçalho, convenção CP/M, carrega e executa sempre em `0100h`, então o primeiro
+  byte real do programa poderia bater por coincidência com um cabeçalho BLOAD/BSAVE ou tokenizado se a
+  extensão não fosse checada primeiro); e **texto ASCII puro vs. BASIC MSX clássico numerado**
+  (`HexEd_LooksLikeBasicSource` — olha só o primeiro caractere visível do arquivo, dígito = linha
+  numerada, mesma regra que o tokenizador exige de entrada). Pedido também incluía WordStar, MSX-Word,
+  SuperCalc II e dBase II — **não implementados nesta sessão**: nenhum tem cabeçalho/layout binário
+  confirmado a partir daqui (WordStar historicamente só liga o 8º bit no último caractere de cada
+  palavra, sem cabeçalho fixo — heurística arriscada sem arquivo real pra validar; os outros três não
+  têm formato documentado neste repositório), então ficaram como pendência aguardando arquivos de
+  exemplo reais do usuário pra estudar antes de cravar qualquer detecção binária, mesmo padrão de
+  trabalho já usado em `MSXDisk.pbi`/`GraphosNativeIO.pbi`/SEE Tracker. Ver módulo 17 em `docs/SPEC.md`.
+  Versão embutida no executável atualizada para `7.22.0`.
+- **2026-08-07 (mesma sessão) — Editor Hexa reconhece SuperCalc 2 MSX `.CAL` (`v7.23.0`)**: usuário
+  forneceu `sc2/` (projeto Go pessoal dele, `sc2msx`, reescrita do SuperCalc 2) e 5 planilhas `.CAL`
+  reais (`sc2/msx/*.CAL`) pra atacar a pendência de SuperCalc II deixada na entrada anterior. Achado
+  que destravou o estudo sem precisar de emulador: o disco original `supercalc2L.dsk` tinha
+  `EXEMPLO.CAL` **e** `EXEMPLO.SDI` (o formato texto intermediário) lado a lado — um par binário/texto
+  verdadeiro, extraído com a própria `--diskmanipulator` desta IDE. Cruzando esse par com os outros 5
+  `.CAL`, confirmado: assinatura de 22 bytes `"SuperCalc ver.  1.00\r\n"`, campo de título de 80 bytes
+  em `000016h`, cabeçalho de tamanho fixo com a seção de dados sempre começando em `000300h` —
+  validado contra os 6 arquivos reais via harness descartável antes de integrar. O layout célula a
+  célula dentro da seção de dados ainda não foi decifrado (fica documentado como próximo passo em
+  `docs/reference/supercalc2-cal-format.md`, novo arquivo). Achado colateral: `sc2/msx/msxdos1.dsk` tem
+  `PESSOAL.DBF`, amostra real de dBase II pra quando essa pendência for atacada. Versão embutida no
+  executável atualizada para `7.23.0`.
+- **2026-08-07 (mesma sessão) — Editor Hexa reconhece dBase II `.DBF` (`v7.24.0`)**: usuário pediu pra
+  aproveitar o achado colateral da entrada anterior (`PESSOAL.DBF`, de `sc2/msx/msxdos1.dsk`) e adicionar
+  `.gitignore` pra `sc2/` (software original de terceiros, mesmo padrão já usado pra `see/`). Diferente
+  do SuperCalc 2, o dBase II saiu **totalmente decifrado** — não só reconhecido: cabeçalho (versão,
+  número de registros, tamanho do registro), descritores de campo (nome/tipo/tamanho, 16 bytes cada,
+  até 32, terminados em `0Dh`) e os próprios registros de dados, validados um a um contra um harness
+  descartável que reconstituiu os 6 registros reais do arquivo (nome/cargo/salário/data de admissão de 6
+  funcionários) e bateu exatamente com o hexdump. Achado notável: dados sempre começam no offset fixo
+  `000209h` (`8 + 32×16 + 1`) — o formato reserva espaço pra até 32 campos mesmo quando poucos estão em
+  uso, e o mesmo byte `1Ah` de fim-de-arquivo do CP/M que já apareceu no `.CAL` do SuperCalc 2 marca o
+  fim dos dados aqui também. Notas completas em `docs/reference/dbase2-dbf-format.md` (novo arquivo).
+  Versão embutida no executável atualizada para `7.24.0`.
+- **2026-08-07 (mesma sessão) — Editor Hexa reconhece os 4 formatos nativos do Graphos III (`v7.25.0`)**:
+  usuário perguntou se dava pra identificar Tela/Alfabeto/Shape/Layout do Graphos III (`.SCR`/`.ALF`/
+  `.SHP`/`.LAY`) usando o material de `graphos/`/`graphos-IV/` já no repositório. Diferente do SuperCalc
+  2/dBase II, esses formatos já estavam **totalmente documentados** de uma sessão anterior
+  (`editor/GraphosNativeIO.pbi`, módulo 14i) — só precisou portar o conhecimento já validado, não
+  decifrar do zero. Validado em lote contra **todos os arquivos reais do repositório** (~4100 arquivos
+  entre `graphos/` e `graphos-IV/`, não só uma amostra pequena): `.LAY` 234/234 (100%, decodifica o
+  RLE+ofuscação de verdade e confere 6144 bytes exatos — achou e corrigiu um bug real no decodificador
+  nesse processo), `.SCR` 86/86 (100%), `.ALF` 759/781 (97% — validação em lote revelou que o endereço
+  de início nem sempre é `9200h` e que uma minoria real usa uma convenção de "fim exclusivo" no
+  cabeçalho, ambos agora tolerados), `.SHP` 2920/3028 (96% — esse é o ganho real, não tinha NENHUM
+  reconhecimento antes por não ter cabeçalho BLOAD/BSAVE; percorre a cadeia de blocos inteira até o
+  terminador `FFh`, sem nenhum falso positivo encontrado nas falhas investigadas). Versão embutida no
+  executável atualizada para `7.25.0`.
+- **2026-08-07 (mesma sessão) — codinome `HEXORCIST` pra `7.25.0`, documentação consolidada e
+  `RELEASE_NOTES.md`**: pedido explícito do usuário pra revisar toda a documentação da sessão (esta
+  sessão inteira girou em torno do Editor Hexa aprendendo a reconhecer formato atrás de formato — `.COM`,
+  `.CAL`, `.DBF`, `.ALF`/`.LAY`/`.SCR`/`.SHP`), consolidar o que já é identificado hoje no `docs/SPEC.md`
+  (módulo 17 ganhou uma tabela única com todos os formatos + nível de confiança de cada um, em vez de só
+  parágrafos cronológicos espalhados) e gerar `docs/RELEASE_NOTES.md` com notas de lançamento formais
+  desta versão. Codinome escolhido seguindo o mesmo espírito de `BFG9200` (7.7.1): **"HEXORCIST"** — Hex
+  (do Editor Hexa) + Exorcist, porque a sessão inteira foi literalmente sobre "esconjurar" arquivos
+  binários que antes caíam em "dados crus"/fantasmas sem nome, dando um formato e um nome de verdade pra
+  cada um. Sem mudança de código nesta entrada — só documentação.
 
 ## Ferramentas e ambiente
 

@@ -7,7 +7,11 @@
 ;  tipo FEh + inicio/fim/execucao, ver Z80OutputGui.pbi e #CharEd_AlfID em
 ;  CharsetEditorGui.pbi), MSX-BASIC tokenizado (byte FFh, ver #Tok_Base em
 ;  MsxTokenizer.pbi) e o boot sector FAT12 de uma imagem de disco .dsk
-;  (mesmos offsets de BootBlock() que MSXDisk.pbi le/escreve) - alem de
+;  (mesmos offsets de BootBlock() que MSXDisk.pbi le/escreve) - reconhece
+;  tambem, por extensao/heuristica de conteudo (sem cabecalho magico
+;  proprio): executavel MSX-DOS (.COM, codigo Z80 cru carregado em 0100h,
+;  convencao CP/M), texto ASCII puro vs. BASIC MSX classico numerado (mesma
+;  regra do tokenizador: toda linha comeca com numero) - alem de
 ;  permitir editar bytes individuais e salvar. Tambem mantem uma "galeria de
 ;  templates" (persistida em JSON, mesmo estilo de editor_settings.json/
 ;  badig_settings.json) de formatos binarios conhecidos (byte de tipo +
@@ -30,7 +34,7 @@
 #HexEd_VisibleRows  = 26
 #HexEd_MaxFileSize  = 8 * 1024 * 1024 ; guarda de sanidade - disquete MSX max e 720KB
 
-#HexEd_FilePattern = "Todos os arquivos (*.*)|*.*|Binario/tokenizado MSX (*.bin;*.bas;*.bmx)|*.bin;*.bas;*.bmx|Imagem de disco (*.dsk)|*.dsk|ROM (*.rom)|*.rom"
+#HexEd_FilePattern = "Todos os arquivos (*.*)|*.*|Binario/tokenizado MSX (*.bin;*.bas;*.bmx)|*.bin;*.bas;*.bmx|Executavel MSX-DOS (*.com)|*.com|Planilha SuperCalc 2 (*.cal)|*.cal|Banco de dados dBase II (*.dbf)|*.dbf|Imagem de disco (*.dsk)|*.dsk|ROM (*.rom)|*.rom"
 
 Global Dim HexEd_Bytes.a(0)
 Global HexEd_Size.i  = 0
@@ -190,6 +194,28 @@ EndProcedure
 ;- Reconhecimento de formato de arquivo
 ;- ------------------------------------------------------------
 
+; Heuristica pra distinguir um listing BASIC MSX classico (ASCII, todo linha
+; comecando com numero - unico formato que o tokenizador desta IDE aceita de
+; entrada) de texto ASCII puro qualquer: olha so o primeiro caractere visivel
+; do arquivo (pulando espaco/tab de indentacao) - se for digito, e uma linha
+; numerada; se vier uma linha em branco antes de qualquer caractere visivel,
+; ja considera que nao e (todo BASIC classico valido comeca com numero na
+; primeira linha).
+Procedure.b HexEd_LooksLikeBasicSource(Array Bytes.a(1), Size.i)
+  Protected i.i, Ch.i
+  For i = 0 To Size - 1
+    Ch = Bytes(i) & $FF
+    If Ch = 32 Or Ch = 9
+      ; espaco/tab de indentacao antes do primeiro char visivel - ignora
+    ElseIf Ch = 10 Or Ch = 13
+      ProcedureReturn #False
+    Else
+      ProcedureReturn Bool(Ch >= 48 And Ch <= 57)
+    EndIf
+  Next
+  ProcedureReturn #False
+EndProcedure
+
 ; Reconhece os formatos que este app produz/consome (ver comentario do topo)
 ; e, se nada bater, tenta classificar como texto ASCII puro antes de cair em
 ; "dados crus". So le Bytes()/Size - nao depende de janela nem estado global
@@ -230,6 +256,263 @@ Procedure HexEd_DescribeFile(Array Bytes.a(1), Size.i, Path.s, *Info.HexEd_Info)
                   "Boot sector: offset 000000h" + Chr(13) + Chr(10) +
                   "Diretorio raiz: offset " + HexEd_Hex6(RootDirOffset) + "h"
     ProcedureReturn
+  EndIf
+
+  ; Extensao .COM - checado antes dos bytes magicos FEh/FFh porque um
+  ; executavel MSX-DOS e codigo Z80 cru sem cabecalho (mesma convencao
+  ; CP/M): o primeiro byte e so o primeiro opcode do programa, pode
+  ; perfeitamente valer FEh (CP n) ou FFh (RST 38h) por coincidencia, e
+  ; nesse caso a extensao e o unico sinal confiavel de que NAO e um
+  ; BLOAD/BSAVE nem um tokenizado.
+  If Ext = "com" And Size > 0
+    *Info\TypeName = "Executavel MSX-DOS (.COM)"
+    *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                  "Formato: codigo de maquina Z80 cru, sem cabecalho (convencao MSX-DOS/CP-M)" + Chr(13) + Chr(10) +
+                  "Endereco de carga e execucao: " + HexEd_Hex4($0100) + "h (fixo, todo .COM MSX-DOS carrega ai)"
+    ProcedureReturn
+  EndIf
+
+  ; SuperCalc 2 MSX (.CAL) - assinatura de texto "SuperCalc ver." nos
+  ; primeiros 14 bytes, confirmada identica byte-a-byte em 6 arquivos .CAL
+  ; reais (sc2/msx/*.CAL, ver docs/reference/supercalc2-cal-format.md) -
+  ; suficientemente longa e especifica pra nao precisar checar extensao.
+  ; So reconhece o arquivo (assinatura + titulo + onde a secao de dados
+  ; comeca) - o layout byte a byte de cada celula dentro da secao de dados
+  ; ainda nao foi decifrado com confianca suficiente pra decodificar aqui.
+  If Size >= 768
+    Protected Sig.s = ""
+    Protected SigIdx.i
+    For SigIdx = 0 To 13
+      Sig + Chr(Bytes(SigIdx) & $FF)
+    Next
+
+    If Sig = "SuperCalc ver."
+      Protected Ver.s = ""
+      Protected VerIdx.i = 16
+      While VerIdx < Size And VerIdx < 22 And (Bytes(VerIdx) & $FF) <> 13 And (Bytes(VerIdx) & $FF) <> 10
+        Ver + Chr(Bytes(VerIdx) & $FF)
+        VerIdx + 1
+      Wend
+
+      Protected Title.s = ""
+      Protected TitleIdx.i = $16
+      Protected TitleEnd.i = $66
+      If TitleEnd > Size : TitleEnd = Size : EndIf
+      While TitleIdx < TitleEnd And (Bytes(TitleIdx) & $FF) <> 0
+        Title + Chr(Bytes(TitleIdx) & $FF)
+        TitleIdx + 1
+      Wend
+      If Title = "" : Title = "(sem titulo)" : EndIf
+
+      *Info\TypeName = "Planilha SuperCalc 2 MSX (.CAL)"
+      *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                    "Assinatura: SuperCalc ver. " + Ver + Chr(13) + Chr(10) +
+                    "Titulo: " + Title + Chr(13) + Chr(10) +
+                    "Cabecalho fixo: offset 000000h a 0002FFh (768 bytes)" + Chr(13) + Chr(10) +
+                    "Secao de dados: a partir de offset 000300h"
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  ; Banco de dados dBase II (.DBF) - byte de tipo 02h checado JUNTO com a
+  ; extensao (diferente da assinatura de 14 bytes do SuperCalc, um unico
+  ; byte sozinho e fraco demais pra confiar sem a extensao tambem bater).
+  ; Layout confirmado contra um .DBF real (ver docs/reference/dbase2-dbf-format.md):
+  ; byte 0 = 02h, bytes 1-2 = num. de registros (LE), bytes 6-7 = tamanho
+  ; do registro em bytes (LE, inclui o byte de flag de exclusao),
+  ; descritores de campo de 16 bytes cada a partir do offset 8 (nome de 11
+  ; bytes terminado em NUL + tipo (1 char: C/N/...) + tamanho (1 byte) + 3
+  ; bytes reservados), ate 32 campos, terminados por 0Dh - dados sempre
+  ; comecam no offset fixo 209h (8 + 32*16 + 1 = espaco reservado pra ate
+  ; 32 descritores mesmo que menos campos existam de verdade).
+  If Ext = "dbf" And Size >= 521 And b0 = $02
+    Protected DbRecCount.i = (Bytes(1) & $FF) | ((Bytes(2) & $FF) << 8)
+    Protected DbRecLen.i   = (Bytes(6) & $FF) | ((Bytes(7) & $FF) << 8)
+    Protected DbFieldIdx.i, DbOff.i, DbFieldName.s, DbType.s, DbLen.i
+    Protected DbNi.i, DbCh.i, FieldLines.s = "", DbFieldCount.i = 0
+
+    For DbFieldIdx = 0 To 31
+      DbOff = 8 + DbFieldIdx * 16
+      If DbOff + 15 >= Size : Break : EndIf
+      If (Bytes(DbOff) & $FF) = $0D : Break : EndIf
+
+      DbFieldName = ""
+      For DbNi = 0 To 10
+        DbCh = Bytes(DbOff + DbNi) & $FF
+        If DbCh = 0 : Break : EndIf
+        DbFieldName + Chr(DbCh)
+      Next
+      DbType = Chr(Bytes(DbOff + 11) & $FF)
+      DbLen  = Bytes(DbOff + 12) & $FF
+
+      FieldLines + Chr(13) + Chr(10) + "  " + DbFieldName + " (" + DbType + ", " + Str(DbLen) + " bytes)"
+      DbFieldCount + 1
+    Next
+
+    *Info\TypeName = "Banco de dados dBase II (.DBF)"
+    *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                  "Registros: " + Str(DbRecCount) + Chr(13) + Chr(10) +
+                  "Tamanho do registro: " + Str(DbRecLen) + " bytes (1 byte de flag + campos)" + Chr(13) + Chr(10) +
+                  "Secao de dados: a partir de offset 000209h" + Chr(13) + Chr(10) +
+                  "Campos (" + Str(DbFieldCount) + "):" + FieldLines
+    ProcedureReturn
+  EndIf
+
+  ; Alfabeto Graphos III (.ALF) - formato JA CONHECIDO (nao precisou de
+  ; engenharia reversa nesta sessao, ver editor/GraphosNativeIO.pbi/
+  ; CharsetEditorGui.pbi, modulo 4/14i): cabecalho BSAVE FEh + 2048 bytes
+  ; de dados (256 caracteres x 8 bytes, Pattern Generator Table de SCREEN
+  ; 1). Validado contra os 781 arquivos .ALF reais deste repositorio
+  ; (graphos/+graphos-IV/, harness descartavel) - achados dessa validacao
+  ; em lote que NAO estavam documentados antes: (1) o endereco de inicio
+  ; NEM SEMPRE e 9200h (ex.: LETR-*.ALF usa outros enderecos) - por isso
+  ; aqui so exige DataSize=2048, sem travar em StartAddr fixo, diferente
+  ; da galeria de templates generica (essa sim trava em 9200h, deliberado,
+  ; ver HexEd_SeedDefaultTemplates); (2) uma minoria real de arquivos
+  ; declara Fim=Inicio+2048 em vez do Fim=Inicio+2047 esperado (convencao
+  ; "fim exclusivo" de outra ferramenta/versao, confirmada em 3 arquivos
+  ; reais de conteudo diferente com o mesmo padrao de cabecalho) - por
+  ; isso DataSize=2049 tambem e aceito. Arquivos sem cabecalho FEh (uma
+  ; segunda variante rara vista em SHADOW/SOMBRA/TORTA/LETR-40.ALF etc.,
+  ; comecando direto com dado ou ate texto ASCII) e arquivos truncados
+  ; (menos de 2048 bytes de dados de verdade apesar do cabecalho declarar
+  ; 2048) ficam de fora deliberadamente - formato desconhecido ou dado
+  ; incompleto demais pra confiar.
+  If Ext = "alf" And Size >= (7 + 2048) And b0 = $FE
+    Protected AlfStart.i = (Bytes(1) & $FF) | ((Bytes(2) & $FF) << 8)
+    Protected AlfEnd.i   = (Bytes(3) & $FF) | ((Bytes(4) & $FF) << 8)
+    Protected AlfDataSize.i = AlfEnd - AlfStart + 1
+    If AlfDataSize = 2048 Or AlfDataSize = 2049
+      *Info\TypeName = "Alfabeto Graphos III (.ALF)"
+      *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                    "Cabecalho BLOAD/BSAVE: inicio " + HexEd_Hex4(AlfStart) + "h, fim " + HexEd_Hex4(AlfEnd) + "h" + Chr(13) + Chr(10) +
+                    "256 caracteres x 8 bytes (fonte 8x8, Pattern Generator Table de SCREEN 1)"
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  ; Layout Graphos III (.LAY) - formato JA CONHECIDO (ver
+  ; editor/GraphosNativeIO.pbi, modulo 14i): cabecalho BSAVE FEh, inicio
+  ; fixo 9200h, fim VARIAVEL (dados comprimidos). Dados = RLE restrito (so
+  ; 00h/FFh) + ofuscacao (+99h mod 256 em cada byte). Validacao FORTE (nao
+  ; so o cabecalho): decodifica os dados de verdade e confere que da
+  ; EXATAMENTE 6144 bytes (tamanho fixo da Pattern Generator Table de
+  ; SCREEN 2 completa) - um arquivo qualquer com esse cabecalho quase
+  ; certamente NAO decodificaria pra esse tamanho exato por acaso.
+  If Ext = "lay" And Size >= 7 And b0 = $FE
+    Protected LayStart.i = (Bytes(1) & $FF) | ((Bytes(2) & $FF) << 8)
+    Protected LayEnd.i   = (Bytes(3) & $FF) | ((Bytes(4) & $FF) << 8)
+    Protected LayDataSize.i = LayEnd - LayStart + 1
+    If LayStart = $9200 And LayDataSize > 0 And (7 + LayDataSize) <= Size
+      ; Para assim que os 6144 bytes esperados forem decodificados, mesmo
+      ; que sobrem bytes comprimidos nao consumidos - o campo "fim" do
+      ; cabecalho (que define LayInEnd) nem sempre bate exatamente com o
+      ; fim real dos dados uteis (mesma licao do .SCR abaixo: nao confiar
+      ; cegamente no cabecalho). Consumir "ate acabar o input declarado"
+      ; em vez de "ate ter 6144 bytes decodificados" fazia sobra de
+      ; padding no final ser interpretada como mais um marcador RLE
+      ; truncado, derrubando falsos negativos em arquivos reais validos.
+      Protected LayPos.i = 7, LayIn.i, LayReal.i, LayRun.i, LayOutLen.i = 0
+      Protected LayInEnd.i = 7 + LayDataSize
+      Protected LayOk.b = #True
+      While LayPos < LayInEnd And LayOutLen < #GraphosNative_TableSize
+        LayIn = Bytes(LayPos) & $FF
+        LayReal = (LayIn + $67) & $FF ; desfaz o +99h (mod 256) da ofuscacao
+        LayPos + 1
+        If LayReal = 0 Or LayReal = $FF
+          If LayPos >= LayInEnd
+            LayOk = #False : Break
+          EndIf
+          LayRun = Bytes(LayPos) & $FF
+          LayPos + 1
+          LayOutLen + LayRun
+        Else
+          LayOutLen + 1
+        EndIf
+      Wend
+      If LayOk And LayOutLen = #GraphosNative_TableSize
+        *Info\TypeName = "Layout Graphos III (.LAY)"
+        *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                      "Cabecalho BLOAD/BSAVE: inicio " + HexEd_Hex4($9200) + "h, fim " + HexEd_Hex4(LayEnd) + "h" + Chr(13) + Chr(10) +
+                      "Dados comprimidos: " + Str(LayDataSize) + " bytes (RLE restrito 00h/FFh + ofuscacao +99h)" + Chr(13) + Chr(10) +
+                      "Decodificado: " + Str(LayOutLen) + " bytes (confere - Pattern Generator Table de SCREEN 2 completa)"
+        ProcedureReturn
+      EndIf
+    EndIf
+  EndIf
+
+  ; Tela Graphos III (.SCR) - formato JA CONHECIDO (ver
+  ; editor/GraphosNativeIO.pbi, modulo 14i): cabecalho BSAVE FEh + rotina
+  ; de apresentacao Z80 de TAMANHO VARIAVEL (129 ou 121 bytes nas amostras
+  ; reais estudadas, ha outras variantes possiveis) + 12288 bytes fixos de
+  ; padrao+cor (Pattern Generator Table + Color Table de SCREEN 2
+  ; completas). O campo "fim" do cabecalho nem sempre bate com o tamanho
+  ; real do arquivo (amostras truncadas/copiadas de disquete de forma
+  ; imperfeita) - por isso a validacao usa o TAMANHO REAL DO ARQUIVO, nao
+  ; o cabecalho, exatamente como GraphosNative_LoadScr ja faz.
+  If Ext = "scr" And Size >= (7 + #GraphosNative_TableSize * 2) And b0 = $FE
+    Protected ScrProgLen.i = Size - 7 - #GraphosNative_TableSize * 2
+    *Info\TypeName = "Tela Graphos III (.SCR)"
+    *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                  "Cabecalho BLOAD/BSAVE (FEh)" + Chr(13) + Chr(10) +
+                  "Rotina de apresentacao Z80: " + Str(ScrProgLen) + " bytes (descartada na leitura, nao interpretada)" + Chr(13) + Chr(10) +
+                  "Padrao + cor: " + Str(#GraphosNative_TableSize * 2) + " bytes (SCREEN 2 completa, 3 tercos x 256 tiles x 8 bytes cada plano)"
+    ProcedureReturn
+  EndIf
+
+  ; Banco de shapes Graphos III (.SHP) - formato JA CONHECIDO (ver
+  ; editor/GraphosNativeIO.pbi, modulo 14i) mas SEM cabecalho BLOAD/BSAVE -
+  ; por isso passava batido nos outros formatos e caia direto em "binario
+  ; desconhecido". Estrutura propria: sequencia de blocos [K numero do
+  ; shape 1-254][T tipo][S largura em pixels][H altura em tiles 8x8][dados
+  ; - S*H bytes por "plano", 1/2/2/3 planos conforme o tipo 1/2/3/4],
+  ; terminada por um byte K=FFh sozinho. Validacao percorre a cadeia de
+  ; blocos INTEIRA (mesmo algoritmo de GraphosNative_ScanShpFile, so que
+  ; sobre Bytes()/Size em vez de arquivo) - so reconhece se a cadeia for
+  ; bem formada do inicio ao fim E terminar exatamente no FFh (nao em EOF
+  ; por acaso), com pelo menos 1 shape - proteção contra falso positivo,
+  ; ja que o byte K sozinho (1-254) e' uma assinatura fraca sem isso.
+  If Ext = "shp" And Size >= 4
+    Protected ShpPos.i = 0, ShpCount.i = 0, ShpOk.b = #False
+    Protected ShpK.i, ShpT.i, ShpS.i, ShpH.i, ShpPlaneSize.i, ShpSkip.i, ShpNext.i
+    While ShpPos < Size
+      ShpK = Bytes(ShpPos) & $FF
+      If ShpK = $FF
+        If ShpCount >= 1 : ShpOk = #True : EndIf
+        Break
+      EndIf
+      If ShpK = 0 Or ShpPos + 3 >= Size
+        Break
+      EndIf
+      ShpT = Bytes(ShpPos + 1) & $FF
+      ShpS = Bytes(ShpPos + 2) & $FF
+      ShpH = Bytes(ShpPos + 3) & $FF
+      If ShpS = 0 Or (ShpS % 8) <> 0 Or ShpH = 0
+        Break
+      EndIf
+      ShpPlaneSize = ShpS * ShpH
+      Select ShpT
+        Case 1 : ShpSkip = ShpPlaneSize
+        Case 3 : ShpSkip = ShpPlaneSize * 2
+        Case 4 : ShpSkip = ShpPlaneSize * 3
+        Default : ShpSkip = ShpPlaneSize * 2 ; tipo 2 (padrao+cor), tambem fallback de tipo desconhecido
+      EndSelect
+      ShpNext = ShpPos + 4 + ShpSkip
+      If ShpNext > Size
+        Break
+      EndIf
+      ShpCount + 1
+      ShpPos = ShpNext
+    Wend
+
+    If ShpOk
+      *Info\TypeName = "Banco de shapes Graphos III (.SHP)"
+      *Info\Lines = "Tamanho: " + Str(Size) + " bytes" + Chr(13) + Chr(10) +
+                    "Sem cabecalho BLOAD/BSAVE (estrutura propria de blocos)" + Chr(13) + Chr(10) +
+                    "Shapes no banco: " + Str(ShpCount) + Chr(13) + Chr(10) +
+                    "Terminador FFh: offset " + HexEd_Hex6(ShpPos) + "h"
+      ProcedureReturn
+    EndIf
   EndIf
 
   If b0 = $FE And Size >= 7
@@ -278,7 +561,11 @@ Procedure HexEd_DescribeFile(Array Bytes.a(1), Size.i, Path.s, *Info.HexEd_Info)
     EndIf
   Next
   If Printable
-    *Info\TypeName = "Texto ASCII (BASIC classico ou fonte)"
+    If HexEd_LooksLikeBasicSource(Bytes(), Size)
+      *Info\TypeName = "Basic MSX classico (ASCII, linhas numeradas)"
+    Else
+      *Info\TypeName = "Texto ASCII puro"
+    EndIf
   Else
     *Info\TypeName = "Binario desconhecido / dados crus"
   EndIf

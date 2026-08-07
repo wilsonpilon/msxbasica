@@ -1652,7 +1652,10 @@ reconhecimento automático dos formatos binários que a própria IDE produz e co
 
 ### Reconhecimento de formato
 
-O painel à esquerda mostra o tipo de arquivo detectado e os campos relevantes, reconhecendo:
+O painel à esquerda mostra o tipo de arquivo detectado e os campos relevantes. A checagem é sempre
+automática (nenhuma configuração necessária) e cobre, nesta ordem:
+
+**Formatos nativos desta IDE**
 
 - **Binário MSX BLOAD/BSAVE** — primeiro byte `FEh`, seguido de endereço inicial/final/execução (2
   bytes cada, little-endian) — mesmo cabeçalho gerado por **Executar → Montar Assembly (.bin)...**
@@ -1664,9 +1667,40 @@ O painel à esquerda mostra o tipo de arquivo detectado e os campos relevantes, 
 - **Imagem de disco MSX (FAT12)** — extensão `.dsk`: lê o boot sector (setor 0) e mostra bytes por
   setor, setores por cluster, número de FATs, entradas do diretório raiz, total de setores, descritor
   de mídia e setores por FAT — os mesmos offsets que `MSXDisk.pbi` lê/escreve internamente.
-- **Texto ASCII** ou, se nada bater, **binário desconhecido/dados crus**.
+- **Texto ASCII puro** vs. **BASIC MSX clássico (linhas numeradas)** — diferenciados pelo primeiro
+  caractere visível do arquivo (dígito = provável linha numerada, mesma regra que o tokenizador exige
+  de entrada).
+
+**Formatos de terceiros da era MSX/CP-M** (reconhecidos por assinatura/estrutura própria, sem precisar
+de nenhum programa externo instalado)
+
+- **Executável MSX-DOS (`.COM`)** — extensão checada junto com o fato de não ter cabeçalho (código Z80
+  cru, convenção CP/M) — carrega e executa sempre em `0100h`.
+- **Planilha SuperCalc 2 MSX (`.CAL`)** — assinatura `"SuperCalc ver."` nos primeiros bytes, mostra
+  versão, título da planilha e onde a seção de dados começa. Detalhe completo do formato (o que já foi
+  decifrado e o que ainda não) em `docs/reference/supercalc2-cal-format.md`.
+- **Banco de dados dBase II (`.DBF`)** — byte de versão `02h` + extensão, mostra número de registros,
+  tamanho do registro e a lista de campos decodificada (nome/tipo/tamanho). Formato totalmente
+  decifrado, ver `docs/reference/dbase2-dbf-format.md`.
+- **Alfabeto Graphos III (`.ALF`)** — cabeçalho BLOAD/BSAVE + 2048 bytes de dados (256 caracteres × 8
+  bytes).
+- **Layout Graphos III (`.LAY`)** — cabeçalho BLOAD/BSAVE + dados comprimidos; a checagem decodifica o
+  RLE+ofuscação de verdade e só reconhece se o resultado bater exatamente com 6144 bytes.
+- **Tela Graphos III (`.SCR`)** — cabeçalho BLOAD/BSAVE + rotina de apresentação (tamanho variável) +
+  12288 bytes fixos de padrão/cor de SCREEN 2.
+- **Banco de shapes Graphos III (`.SHP`)** — o único dos quatro formatos do Graphos III sem cabeçalho
+  BLOAD/BSAVE; a checagem percorre a cadeia de blocos do arquivo até achar o terminador `FFh`.
+
+Se nada bater, cai em **binário desconhecido/dados crus**. WordStar e MSX-Word seguem como possíveis
+extensões futuras, dependendo de arquivos de amostra reais pra validar antes de implementar — este
+projeto não crava reconhecimento de formato binário por suposição.
 
 ### Galeria de templates
+
+`.ALF`/`.LAY`/`.SCR` já têm checagem própria e mais profunda (seção anterior, incluindo decodificação
+de verdade no caso do `.LAY`) — a galeria de templates abaixo continua existindo pra qualquer outro
+binário BLOAD/BSAVE que o usuário queira dar nome amigável, e serve de segunda tentativa se um arquivo
+tiver a extensão certa mas não passar na checagem mais profunda (ex.: um `.SCR` fora do padrão).
 
 Binários BLOAD/BSAVE reconhecidos passam por uma segunda checagem contra uma **galeria de
 templates**: cada template tem nome, extensão, byte de tipo, endereço inicial e tamanho dos dados

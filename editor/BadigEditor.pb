@@ -469,6 +469,10 @@ EndEnumeration
 ; 7.9.1 = bump pedido explicitamente pelo usuario ao fechar Renumerar (RENUM),
 ; integracao MSXBas2Rom/N80-LinkStor80-LibStor80 e destaque de sintaxe do
 ; MSXBas2Rom - sem codinome novo desta vez.
+; 7.25.0 = codinome "HEXORCIST" (pedido explicito do usuario) - Hex do Editor
+; Hexa + Exorcist, sessao inteira sobre reconhecer (esconjurar) formatos
+; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
+; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
   #App_Version = "7.13.0"
 CompilerEndIf
