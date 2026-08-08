@@ -38,12 +38,18 @@ Declare App_ApplyWindowIcon(WinNum)
 ; definida) - mesmo motivo das declaracoes acima.
 Declare OpenMsxHelp_OpenWindow(ParentWindow)
 
+; Referenciada pelo botao "Transferir programa atual" do console do openMSX
+; (OpenMSXConsoleGui.pbi, incluido bem antes desta definicao "de verdade" mais
+; abaixo neste arquivo) - mesmo motivo das declaracoes acima.
+Declare RunBasicFromActiveTab()
+
 
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
 XIncludeFile "Z80Asm.pbi"
 XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
+XIncludeFile "OpenMsxSettingsGui.pbi"
 XIncludeFile "FontDownloader.pbi"
 XIncludeFile "CharMapGui.pbi"
 XIncludeFile "MSXDisk.pbi"
@@ -411,6 +417,7 @@ Enumeration MenuItems
   #Menu_ConfigureEditor
   #Menu_ConfigureMsxBas2Rom
   #Menu_ConfigureN80
+  #Menu_ConfigureOpenMSX
   #Menu_HelpCommands
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
@@ -3229,26 +3236,12 @@ Procedure RunOnOpenMSX(BaseName.s, DmxText.s, AsciiText.s, HexOut.s, IncludeNest
     ProcedureReturn
   EndIf
 
-  Protected Params.s = ""
-  If BadigCfg\EmMachine <> ""
-    Params + "-machine " + Chr(34) + BadigCfg\EmMachine + Chr(34) + " "
-  EndIf
-  If BadigCfg\EmExtension <> ""
-    ; campo aceita "Nome" ou "Nome:slot" (ex. "Nome:exta") - o slot vira
-    ; parte do NOME da flag no openMSX (-exta), nao um argumento separado
-    Protected ExtValue.s = BadigCfg\EmExtension
-    Protected ExtFlag.s = "-ext"
-    Protected ColonPos.i = FindString(ExtValue, ":")
-    If ColonPos > 0
-      ExtFlag = "-" + Mid(ExtValue, ColonPos + 1)
-      ExtValue = Left(ExtValue, ColonPos - 1)
-    EndIf
-    Params + ExtFlag + " " + Chr(34) + ExtValue + Chr(34) + " "
-  EndIf
-  Params + "-diska " + Chr(34) + DiskPath + Chr(34)
-
-  Protected Prog = RunProgram(BadigCfg\EmulatorPath, Params, GetPathPart(BadigCfg\EmulatorPath), #PB_Program_Open)
-  If Not Prog
+  ; Reaproveita a instancia atual do openMSX em vez de abrir uma nova a cada
+  ; run: OMSX_LoadDisk() (OpenMSXBridge.pbi) sobe o emulador se precisar
+  ; (com -machine/-ext atuais, ver OMSX_BuildParams()) ou, se ja estiver
+  ; rodando, so troca o disco da unidade A e reinicia - equivalente a trocar
+  ; o disquete de um MSX de verdade sem fechar a janela do emulador.
+  If Not OMSX_LoadDisk(DiskPath)
     MessageRequester("Erro", "Nao foi possivel executar o openMSX:" + Chr(10) + BadigCfg\EmulatorPath,
                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
   EndIf
@@ -3396,6 +3389,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_ConfigureEditor, "Editor...")
     MenuItem(#Menu_ConfigureMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_ConfigureN80, "N80...")
+    MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
   MenuTitle("Ajuda")
     MenuItem(#Menu_HelpCommands, "Comandos..." + Chr(9) + "Ctrl+K H")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
@@ -3610,6 +3604,9 @@ Repeat
 
         Case #Menu_ConfigureN80
           N80Settings_OpenWindow(#MainWindow)
+
+        Case #Menu_ConfigureOpenMSX
+          OpenMsxCfg_OpenSettingsWindow(#MainWindow)
 
         Case #Menu_HelpCommands
           WS_ShowHelp()

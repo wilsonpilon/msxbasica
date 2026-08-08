@@ -533,6 +533,161 @@ Procedure.s BadigCfg_OpenMsxShareDir(ExePath.s, SubFolder.s)
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Campos da pagina "Emulador" - compartilhados entre a aba "Emulador" de
+;- Configurar -> Basic Dignified... (BadigCfg_OpenSettingsWindow, abaixo) e a
+;- janela standalone Configurar -> openMSX (OpenMsxCfg_OpenSettingsWindow, em
+;- OpenMsxSettingsGui.pbi) - as duas leem/gravam os MESMOS campos BadigCfg\Em*
+;- por construcao (nunca duas fontes de verdade), so a moldura ao redor muda
+;- (aba de painel vs. janela propria).
+;- ------------------------------------------------------------
+
+Structure BadigCfg_EmuGadgets
+  G_EmRun.i
+  G_EmMonitor.i
+  G_EmNoThrottle.i
+  G_EmSetting.i
+  G_EmSettingBrowse.i
+  G_EmMachine.i
+  G_EmMachineBrowse.i
+  G_EmExtension.i
+  G_EmExtensionBrowse.i
+  G_EmVerbose.i
+  G_EmulatorPath.i
+  G_EmulatorPathBrowse.i
+EndStructure
+
+; Cria os gadgets da pagina "Emulador" com Y deslocado por BaseY (mesmas
+; coordenadas X de sempre) - funciona tanto dentro de um PanelGadget (chamado
+; logo apos AddGadgetItem(Panel, -1, "Emulador"), ainda no contexto de
+; gadget-list dessa pagina, BaseY = 0) quanto numa janela comum (BaseY = 0,
+; mesma margem externa de 24px).
+Procedure BadigCfg_CreateEmulatorGadgets(BaseY.i, *G.BadigCfg_EmuGadgets)
+  *G\G_EmRun = CheckBoxGadget(#PB_Any, 24, BaseY + 24, 460, 22, "Abrir o openMSX e rodar o codigo apos gerar")
+  *G\G_EmMonitor = CheckBoxGadget(#PB_Any, 24, BaseY + 54, 460, 22, "Monitorar execucao (detectar erros em runtime)")
+  *G\G_EmNoThrottle = CheckBoxGadget(#PB_Any, 24, BaseY + 84, 460, 22, "Rodar sem limitador de velocidade (nothrottle)")
+
+  TextGadget(#PB_Any, 24, BaseY + 136, 320, 20, "Arquivo de configuracao (setting)")
+  *G\G_EmSetting = StringGadget(#PB_Any, 24, BaseY + 164, 512, 24, BadigCfg\EmSetting)
+  *G\G_EmSettingBrowse = ButtonGadget(#PB_Any, 544, BaseY + 164, 64, 24, "...")
+
+  TextGadget(#PB_Any, 24, BaseY + 214, 320, 20, "Maquina (machine)")
+  *G\G_EmMachine = StringGadget(#PB_Any, 24, BaseY + 242, 512, 24, BadigCfg\EmMachine)
+  *G\G_EmMachineBrowse = ButtonGadget(#PB_Any, 544, BaseY + 242, 64, 24, "...")
+
+  TextGadget(#PB_Any, 24, BaseY + 292, 420, 20, "Extensao de disco (extension), formato Nome:slot")
+  *G\G_EmExtension = StringGadget(#PB_Any, 24, BaseY + 320, 512, 24, BadigCfg\EmExtension)
+  *G\G_EmExtensionBrowse = ButtonGadget(#PB_Any, 544, BaseY + 320, 64, 24, "...")
+
+  TextGadget(#PB_Any, 24, BaseY + 370, 420, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
+  *G\G_EmVerbose = StringGadget(#PB_Any, 24, BaseY + 398, 70, 24, "")
+
+  TextGadget(#PB_Any, 24, BaseY + 448, 560, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
+  *G\G_EmulatorPath = StringGadget(#PB_Any, 24, BaseY + 476, 512, 24, BadigCfg\EmulatorPath)
+  *G\G_EmulatorPathBrowse = ButtonGadget(#PB_Any, 544, BaseY + 476, 64, 24, "...")
+EndProcedure
+
+; Preenche os gadgets criados acima com o BadigCfg atual - separado da criacao
+; porque quem chama pode estar preenchendo varias paginas/gadgets de uma vez
+; so depois de fechar a gadget-list (CloseGadgetList()).
+Procedure BadigCfg_ApplyEmulatorDefaults(*G.BadigCfg_EmuGadgets)
+  SetGadgetState(*G\G_EmRun, BadigCfg\EmRun)
+  SetGadgetState(*G\G_EmMonitor, BadigCfg\EmMonitor)
+  SetGadgetState(*G\G_EmNoThrottle, BadigCfg\EmNoThrottle)
+  If BadigCfg\EmVerbose >= 0 : SetGadgetText(*G\G_EmVerbose, Str(BadigCfg\EmVerbose)) : EndIf
+EndProcedure
+
+; Trata os 4 botoes "..." (arquivo de configuracao, executavel, maquina,
+; extensao) desta pagina - devolve #True se Ev era um deles (quem chama pode
+; ignorar o retorno se so tiver esses 4 gadgets pra tratar). Mesma logica que
+; ja existia inline em BadigCfg_OpenSettingsWindow().
+Procedure.b BadigCfg_HandleEmulatorGadgetEvent(Win.i, Ev.i, *G.BadigCfg_EmuGadgets)
+  If Ev = *G\G_EmSettingBrowse
+    Protected PickSetting.s = OpenFileRequester("Selecione o arquivo de configuracao do openMSX",
+                                                GetGadgetText(*G\G_EmSetting), "Todos os arquivos (*.*)|*.*", 0)
+    If PickSetting <> ""
+      SetGadgetText(*G\G_EmSetting, PickSetting)
+    EndIf
+    ProcedureReturn #True
+  EndIf
+
+  If Ev = *G\G_EmulatorPathBrowse
+    CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+      Protected ExeFilter.s = "Executavel (*.exe)|*.exe|Todos os arquivos (*.*)|*.*"
+    CompilerElse
+      Protected ExeFilter.s = "Todos os arquivos (*.*)|*.*"
+    CompilerEndIf
+    Protected PickPath.s = OpenFileRequester("Selecione o executavel do openMSX",
+                                             GetGadgetText(*G\G_EmulatorPath), ExeFilter, 0)
+    If PickPath <> ""
+      SetGadgetText(*G\G_EmulatorPath, PickPath)
+    EndIf
+    ProcedureReturn #True
+  EndIf
+
+  If Ev = *G\G_EmMachineBrowse
+    If Trim(GetGadgetText(*G\G_EmulatorPath)) = ""
+      MessageRequester("Maquina", "Informe o caminho do executavel do openMSX acima primeiro.",
+                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    Else
+      Protected MachinesDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(*G\G_EmulatorPath), "machines")
+      Protected PickedMachine.s = BadigCfg_PickXmlName(Win, "Selecione a maquina",
+                                                       MachinesDir, GetGadgetText(*G\G_EmMachine))
+      If PickedMachine <> ""
+        SetGadgetText(*G\G_EmMachine, PickedMachine)
+      EndIf
+    EndIf
+    ProcedureReturn #True
+  EndIf
+
+  If Ev = *G\G_EmExtensionBrowse
+    If Trim(GetGadgetText(*G\G_EmulatorPath)) = ""
+      MessageRequester("Extensao", "Informe o caminho do executavel do openMSX acima primeiro.",
+                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    Else
+      Protected ExtensionsDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(*G\G_EmulatorPath), "extensions")
+      ; preserva ":slot" ja digitado, se houver - so troca o nome da extensao
+      Protected CurExt.s = GetGadgetText(*G\G_EmExtension)
+      Protected CurExtName.s = CurExt
+      Protected ColonPos.i = FindString(CurExt, ":")
+      If ColonPos > 0
+        CurExtName = Left(CurExt, ColonPos - 1)
+      EndIf
+      Protected PickedExt.s = BadigCfg_PickXmlName(Win, "Selecione a extensao",
+                                                   ExtensionsDir, CurExtName)
+      If PickedExt <> ""
+        If ColonPos > 0
+          SetGadgetText(*G\G_EmExtension, PickedExt + Mid(CurExt, ColonPos))
+        Else
+          SetGadgetText(*G\G_EmExtension, PickedExt)
+        EndIf
+      EndIf
+    EndIf
+    ProcedureReturn #True
+  EndIf
+
+  ProcedureReturn #False
+EndProcedure
+
+; Le os gadgets de volta pro BadigCfg (SEM salvar - quem chama decide quando
+; persistir, ja que BadigCfg_OpenSettingsWindow() ainda precisa ler as outras
+; paginas antes de um unico BadigCfg_Save() final; OpenMsxCfg_OpenSettingsWindow(),
+; que so tem esta pagina, salva logo em seguida).
+Procedure BadigCfg_ApplyEmulatorGadgetsToConfig(*G.BadigCfg_EmuGadgets)
+  BadigCfg\EmRun = GetGadgetState(*G\G_EmRun)
+  BadigCfg\EmSetting = GetGadgetText(*G\G_EmSetting)
+  BadigCfg\EmMachine = GetGadgetText(*G\G_EmMachine)
+  BadigCfg\EmExtension = GetGadgetText(*G\G_EmExtension)
+  BadigCfg\EmNoThrottle = GetGadgetState(*G\G_EmNoThrottle)
+  BadigCfg\EmMonitor = GetGadgetState(*G\G_EmMonitor)
+  If Trim(GetGadgetText(*G\G_EmVerbose)) = ""
+    BadigCfg\EmVerbose = -1
+  Else
+    BadigCfg\EmVerbose = Val(GetGadgetText(*G\G_EmVerbose))
+  EndIf
+  BadigCfg\EmulatorPath = GetGadgetText(*G\G_EmulatorPath)
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Janela de configuracao (Configurar -> Basic Dignified...)
 ;- ------------------------------------------------------------
 
@@ -625,29 +780,8 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   ;- Pagina 3: Emulador --------------------------------------------------------
   AddGadgetItem(Panel, -1, "Emulador")
 
-  Protected G_EmRun = CheckBoxGadget(#PB_Any, 24, 24, 460, 22, "Abrir o openMSX e rodar o codigo apos gerar")
-  Protected G_EmMonitor = CheckBoxGadget(#PB_Any, 24, 54, 460, 22, "Monitorar execucao (detectar erros em runtime)")
-  Protected G_EmNoThrottle = CheckBoxGadget(#PB_Any, 24, 84, 460, 22, "Rodar sem limitador de velocidade (nothrottle)")
-
-  TextGadget(#PB_Any, 24, 136, 320, 20, "Arquivo de configuracao (setting)")
-  Protected G_EmSetting = StringGadget(#PB_Any, 24, 164, 512, 24, BadigCfg\EmSetting)
-  Protected G_EmSettingBrowse = ButtonGadget(#PB_Any, 544, 164, 64, 24, "...")
-
-  TextGadget(#PB_Any, 24, 214, 320, 20, "Maquina (machine)")
-  Protected G_EmMachine = StringGadget(#PB_Any, 24, 242, 512, 24, BadigCfg\EmMachine)
-  Protected G_EmMachineBrowse = ButtonGadget(#PB_Any, 544, 242, 64, 24, "...")
-
-  TextGadget(#PB_Any, 24, 292, 420, 20, "Extensao de disco (extension), formato Nome:slot")
-  Protected G_EmExtension = StringGadget(#PB_Any, 24, 320, 512, 24, BadigCfg\EmExtension)
-  Protected G_EmExtensionBrowse = ButtonGadget(#PB_Any, 544, 320, 64, 24, "...")
-
-  TextGadget(#PB_Any, 24, 370, 420, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
-  Protected G_EmVerbose = StringGadget(#PB_Any, 24, 398, 70, 24, "")
-  If BadigCfg\EmVerbose >= 0 : SetGadgetText(G_EmVerbose, Str(BadigCfg\EmVerbose)) : EndIf
-
-  TextGadget(#PB_Any, 24, 448, 560, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
-  Protected G_EmulatorPath = StringGadget(#PB_Any, 24, 476, 512, 24, BadigCfg\EmulatorPath)
-  Protected G_EmulatorPathBrowse = ButtonGadget(#PB_Any, 544, 476, 64, 24, "...")
+  Protected EmuG.BadigCfg_EmuGadgets
+  BadigCfg_CreateEmulatorGadgets(0, @EmuG)
 
   CloseGadgetList()
 
@@ -681,9 +815,7 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   SetGadgetState(G_TkList, BadigCfg\TkList)
   SetGadgetState(G_TkDelAscii, BadigCfg\TkDelAscii)
 
-  SetGadgetState(G_EmRun, BadigCfg\EmRun)
-  SetGadgetState(G_EmMonitor, BadigCfg\EmMonitor)
-  SetGadgetState(G_EmNoThrottle, BadigCfg\EmNoThrottle)
+  BadigCfg_ApplyEmulatorDefaults(@EmuG)
 
   Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
   Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
@@ -706,61 +838,8 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
           Case G_DownloadSuite
             BadigCfg_DownloadSuite(Win, GetGadgetText(G_InstallDir))
 
-          Case G_EmSettingBrowse
-            Protected PickSetting.s = OpenFileRequester("Selecione o arquivo de configuracao do openMSX",
-                                                        GetGadgetText(G_EmSetting), "Todos os arquivos (*.*)|*.*", 0)
-            If PickSetting <> ""
-              SetGadgetText(G_EmSetting, PickSetting)
-            EndIf
-
-          Case G_EmulatorPathBrowse
-            CompilerIf #PB_Compiler_OS = #PB_OS_Windows
-              Protected ExeFilter.s = "Executavel (*.exe)|*.exe|Todos os arquivos (*.*)|*.*"
-            CompilerElse
-              Protected ExeFilter.s = "Todos os arquivos (*.*)|*.*"
-            CompilerEndIf
-            Protected PickPath.s = OpenFileRequester("Selecione o executavel do openMSX",
-                                                     GetGadgetText(G_EmulatorPath), ExeFilter, 0)
-            If PickPath <> ""
-              SetGadgetText(G_EmulatorPath, PickPath)
-            EndIf
-
-          Case G_EmMachineBrowse
-            If Trim(GetGadgetText(G_EmulatorPath)) = ""
-              MessageRequester("Maquina", "Informe o caminho do executavel do openMSX acima primeiro.",
-                               #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
-            Else
-              Protected MachinesDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(G_EmulatorPath), "machines")
-              Protected PickedMachine.s = BadigCfg_PickXmlName(Win, "Selecione a maquina",
-                                                               MachinesDir, GetGadgetText(G_EmMachine))
-              If PickedMachine <> ""
-                SetGadgetText(G_EmMachine, PickedMachine)
-              EndIf
-            EndIf
-
-          Case G_EmExtensionBrowse
-            If Trim(GetGadgetText(G_EmulatorPath)) = ""
-              MessageRequester("Extensao", "Informe o caminho do executavel do openMSX acima primeiro.",
-                               #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
-            Else
-              Protected ExtensionsDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(G_EmulatorPath), "extensions")
-              ; preserva ":slot" ja digitado, se houver - so troca o nome da extensao
-              Protected CurExt.s = GetGadgetText(G_EmExtension)
-              Protected CurExtName.s = CurExt
-              Protected ColonPos.i = FindString(CurExt, ":")
-              If ColonPos > 0
-                CurExtName = Left(CurExt, ColonPos - 1)
-              EndIf
-              Protected PickedExt.s = BadigCfg_PickXmlName(Win, "Selecione a extensao",
-                                                           ExtensionsDir, CurExtName)
-              If PickedExt <> ""
-                If ColonPos > 0
-                  SetGadgetText(G_EmExtension, PickedExt + Mid(CurExt, ColonPos))
-                Else
-                  SetGadgetText(G_EmExtension, PickedExt)
-                EndIf
-              EndIf
-            EndIf
+          Case EmuG\G_EmSettingBrowse, EmuG\G_EmulatorPathBrowse, EmuG\G_EmMachineBrowse, EmuG\G_EmExtensionBrowse
+            BadigCfg_HandleEmulatorGadgetEvent(Win, EventGadget(), @EmuG)
 
           Case G_Save
             Saved = #True
@@ -819,18 +898,7 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
       BadigCfg\TkVerbose = Val(GetGadgetText(G_TkVerbose))
     EndIf
 
-    BadigCfg\EmRun = GetGadgetState(G_EmRun)
-    BadigCfg\EmSetting = GetGadgetText(G_EmSetting)
-    BadigCfg\EmMachine = GetGadgetText(G_EmMachine)
-    BadigCfg\EmExtension = GetGadgetText(G_EmExtension)
-    BadigCfg\EmNoThrottle = GetGadgetState(G_EmNoThrottle)
-    BadigCfg\EmMonitor = GetGadgetState(G_EmMonitor)
-    If Trim(GetGadgetText(G_EmVerbose)) = ""
-      BadigCfg\EmVerbose = -1
-    Else
-      BadigCfg\EmVerbose = Val(GetGadgetText(G_EmVerbose))
-    EndIf
-    BadigCfg\EmulatorPath = GetGadgetText(G_EmulatorPath)
+    BadigCfg_ApplyEmulatorGadgetsToConfig(@EmuG)
 
     BadigCfg_Save()
     BadigCfg_SyncEmulatorIni()

@@ -1454,10 +1454,13 @@ confirmado abrindo sem nenhuma janela de console residual.
 `RunOnOpenMSX()` (F5/"Executar → BASIC") continua sendo "gerar disco e abrir o openMSX já rodando", sem
 `-control`, sem nenhuma comunicação de volta da emulação para a IDE.
 
-**Console de comandos — menu "Executar → openMSX..." (implementado 2026-07-29, arquitetura corrigida no
-mesmo dia, validado ao vivo 2026-07-30)**: `editor/OpenMSXBridge.pbi` (processo/protocolo) +
-`editor/OpenMSXConsoleGui.pbi` (janela) — caminho **separado** de `RunOnOpenMSX()` acima (não mexe
-nele), voltado a controlar manualmente uma instância do openMSX já aberta.
+**Painel de controle — menu "Executar → openMSX..." (implementado 2026-07-29, arquitetura corrigida no
+mesmo dia, validado ao vivo 2026-07-30, unificado com `RunOnOpenMSX()` e ampliado pra 6 abas em
+2026-08-08 — ver "Estado ao fim de 2026-08-08" mais abaixo pro detalhe completo)**:
+`editor/OpenMSXBridge.pbi` (processo/protocolo) + `editor/OpenMSXConsoleGui.pbi` (janela). Desde
+2026-08-08, `RunOnOpenMSX()` acima **usa esta mesma ponte** (via `OMSX_LoadDisk()`) em vez de lançar um
+processo `RunProgram()` próprio — F5 e este painel controlam a mesma instância, não são mais processos
+separados.
 
 **Status: validado ao vivo contra o openMSX de verdade (2026-07-30)** — ver "Validação ao vivo" no
 final desta lista. Anteriormente rotulado experimental (ver histórico logo abaixo) porque não havia um
@@ -3465,6 +3468,65 @@ verdade começar a ser construído**:
 - Harness de round-trip (`editor/tools/`) contra os 4 arquivos `.SEE` reais desta pasta antes de
   confiar em qualquer leitor/escritor novo, mesmo padrão já usado por `MSXDisk.pbi`/
   `GraphosNativeIO.pbi`.
+
+**Estado ao fim de 2026-08-08 — módulo 12 unificado (F5 = console) e ampliado pra 6 abas (v7.27.3,
+"TORRE DE CONTROLE")**: resolve o item em aberto deixado pela sessão de 2026-07-30 abaixo ("F5 e o
+console continuam sendo instâncias separadas... pergunta feita ao usuário, ainda sem decisão") — a
+pedido do usuário, os dois fluxos foram unificados. Mudanças principais:
+
+- **`OMSX_LoadDisk()`** (novo, `OpenMSXBridge.pbi`): `RunOnOpenMSX()` (usado por F5/Nestor Basic/
+  export-com-EmRun) não faz mais `RunProgram()` direto — chama isto, que reaproveita a instância já
+  rodando (`diska insert` + `reset`, mesma logica de "trocar o disquete") ou sobe uma nova se
+  necessário, com um `OMSX_PendingDiskPath` pra resolver a corrida entre "acabou de lançar" e "pipe
+  ainda não conectou" (mesmo padrão já usado pela sequência de boot).
+- **`Configurar → openMSX...`** (novo arquivo `OpenMsxSettingsGui.pbi`): tela standalone com os mesmos
+  campos da aba "Emulador" de `BadigSettings.pbi` — extraídos pra 4 procedimentos compartilhados
+  (`BadigCfg_CreateEmulatorGadgets`/`ApplyEmulatorDefaults`/`HandleEmulatorGadgetEvent`/
+  `ApplyEmulatorGadgetsToConfig`) chamados pelas duas telas, garantindo fonte única por construção.
+- **`OpenMSXConsoleGui.pbi` virou um `PanelGadget` de 6 abas** (Console/Outros comandos/Vídeo/Volume/
+  Input Text/Status Info — detalhe completo de cada uma em `docs/MANUAL.md`, seção "Controle remoto
+  do openMSX"). Toda a lógica de estado nova segue o MESMO padrão já estabelecido pra Power/Pause
+  (`OMSX_ExtractSettingUpdate()` + par `*Known`/valor, atualizado em `OMSX_Poll()`), só estendido pra
+  mais nomes de setting: `speed`, `firmwareswitch`, `renshaturbo`, `vsync`, `scale_algorithm`,
+  `deinterlace`, `limitsprites`, `fullscreen`, `disablesprites`, `scanline`/`blur`/`glow`/`gamma`/
+  `noise`, `led_caps`/`led_kana`/`led_turbo`/`led_fdd` (LEDs — **nome real tem prefixo `led_`**, um
+  nome simples tipo `"caps"` nunca casa, achado só testando ao vivo).
+- **Descoberta ativa sob demanda** (além da passiva de sempre): `OMSX_QueryFps()`
+  (`openmsx_info fps`), `OMSX_QueryMidiConnectors()` (`plug` sem argumentos, parseia a lista de
+  conectores) e `OMSX_QueryDevice()` (consulta `set "NOME_volume"` sem valor). Todas usam o mesmo
+  padrão "fire and forget com correlação por ordem" (`OMSX_Awaiting*` + `OMSX_ExtractReplyContent()`),
+  não um id de correlação real — assume que nada mais está em trânsito no meio, mesma suposição que o
+  resto do módulo já fazia implicitamente.
+- **Achado de arquitetura importante (aba Volume)**: nomes de dispositivo de som e de conector MIDI
+  **não são fixos** — variam por ROM/cartucho/quantidade de instâncias conectadas (confirmado ao vivo:
+  `"Konami SCC+ Cartridge with expanded RAM (1)"`, `"Sunrise MoonSound (1) FM"`,
+  `"Generic MSX-Audio-MIDI-in"`). Only `PSG`/`keyclick`/`cassetteplayer` são fixos. Isso descartou um
+  design inicial de "sliders fixos por nome" (não funcionaria assim que o usuário trocasse de
+  cartucho) em favor de descoberta dinâmica: qualquer `<update type="setting" name="X_volume">` que
+  chegar vira uma entrada num `Map` (`OMSX_DeviceVolume()`/`OMSX_DeviceBalance()`), keyed pelo nome
+  real — resolvido com o usuário via pergunta direta antes de implementar (opção "lista dinâmica"
+  escolhida). Limitação residual: consultas de LEITURA (`set "X_volume"` sem valor) não disparam
+  `<update>` nenhum (só mudanças de verdade notificam) — problema de "ovo e galinha" no boot (nada
+  mudou ainda, lista fica vazia) resolvido com o campo "Adicionar" manual (`OMSX_QueryDevice()`).
+- **Balance substitui o antigo `<soundchip>_mode`** (Mute/Left/Right/Stereo) — setting real removido
+  do openMSX atual em favor de um `_balance` contínuo (-100 a 100). A aba Volume usa Volume+Balance em
+  vez do dropdown de 4 opções que o usuário pediu originalmente ("como no Catapult"), por não existir
+  mais no protocolo atual.
+- **Dois crashes do openMSX observados durante a investigação ao vivo**, ao empilhar extensões de som
+  conflitantes manualmente (`ext moonsound` + `ext audio` no mesmo teste, fora do fluxo normal do
+  editor) — não reproduzido em uso normal/conservador; registrado como observação, não como bug
+  confirmado no código deste projeto.
+
+**Em aberto nessa frente, pra decisão/trabalho futuro**:
+- Nenhum comando do openMSX encontrado que enumere todos os dispositivos de som de uma vez — a
+  descoberta depende de mudança de estado ou adição manual.
+- Fluxo de conectar/desconectar MIDI in/out implementado mas não testado ao vivo de ponta a ponta.
+- Rastreio de estado é "cego a máquina" — se mais de uma instância MSX existir ao mesmo tempo (visto
+  ao vivo: uma config de teste subiu "machine1" e "machine2" simultaneamente), os updates de ambas se
+  misturam num único conjunto de globais.
+- Os itens já abertos pela sessão de 2026-07-30 abaixo que não foram tocados nesta sessão continuam
+  válidos (parsing estruturado de ok/nok, detecção de erro em runtime com retorno à linha, timeout na
+  thread de `ConnectNamedPipe_()`).
 
 **Estado ao fim de 2026-07-30 — módulo 12 (controle do openMSX) validado ao vivo e ampliado**: a pedido
 do usuário, revisão + testes ao vivo (harness novo, `editor/tools/OpenMsxBridgeTestCli.pb`) contra um

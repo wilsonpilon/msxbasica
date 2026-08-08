@@ -422,6 +422,11 @@ modificada) — não salva sozinho, revise e salve como de costume.
     **Arquivo → Dignified → tokenizado nativo (.bmx)...** passa a montar um disquete com o programa
     gerado (mais um `AUTOEXEC.BAS` para rodar automaticamente) e abrir o openMSX direto nele, já
     com a máquina/extensão escolhidas.
+- **Configurar → openMSX...** — tela própria só com os campos do emulador (executável, máquina,
+  extensão) — os mesmos campos da aba **Emulador** acima, lendo e gravando exatamente o mesmo
+  `badig_settings.json`. As duas telas nunca ficam dessincronizadas: mudar num lugar já reflete no
+  outro na próxima vez que abrir, porque é literalmente o mesmo dado. Mantidas as duas de propósito,
+  pra quem prefere acessar o ajuste do emulador direto sem entrar em "Basic Dignified...".
 - **Configurar → MSXBas2Rom...** — baixa a versão mais recente do compilador de terceiro
   [MSXBAS2ROM](https://github.com/amaurycarvalho/msxbas2rom) e gera a Ajuda a partir do que foi
   baixado (ver [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)).
@@ -1529,40 +1534,108 @@ Mesmo motor de Ajuda do MSXBas2Rom (conteúdo lido ao vivo de `tools/n80/help/`,
 
 ## Controle remoto do openMSX
 
-> Validado ao vivo (2026-07-30) contra um openMSX 21.0 real: pipe conecta, o boot automático
-> (`unset renderer`/`set power on`) funciona e comandos manuais recebem resposta. Ver `docs/SPEC.md`,
-> módulo 12, para os detalhes técnicos da validação.
+> Validado ao vivo contra um openMSX real (2026-07-30, ampliado 2026-08-08): pipe conecta, o boot
+> automático (`unset renderer`/`set power on`) funciona, comandos manuais recebem resposta, e todos os
+> mecanismos de descoberta dinâmica (dispositivo de som, conector MIDI, FPS) foram testados contra um
+> openMSX de verdade rodando. Ver `docs/SPEC.md`, módulo 12, para os detalhes técnicos.
 
-### Executar → openMSX (console de comandos)
+### Executar → BASIC (F5) e o console usam a MESMA instância
 
-Abre uma instância do openMSX **separada** do fluxo normal de **Executar → BASIC**/**Nestor Basic**
-(aquelas continuam gerando um disco e abrindo o openMSX do jeito de sempre, sem nenhuma mudança) — o
-objetivo aqui é controlar manualmente uma instância já aberta, digitando comandos do próprio openMSX
-(os mesmos que funcionam no console interno dele, F10) direto de uma janela da IDE:
+Desde a versão 7.27.3, **Executar → BASIC**/**Nestor Basic** não abrem mais uma janela nova do openMSX
+a cada execução — reaproveitam a instância já aberta (a mesma que **Executar → openMSX...**, abaixo,
+controla): rodar F5 duas vezes seguidas troca só o disco da unidade A e dá reset, como trocar o
+disquete de um MSX de verdade, sem piscar uma segunda janela do emulador. Se o openMSX ainda não
+estiver aberto, F5 sobe ele normalmente, já com a máquina/extensão configuradas.
 
-- **Indicador de estado** no topo ("Ligado/Desligado | Rodando/Pausado") — atualiza sozinho, mesmo se o
-  estado mudar por outro caminho que não um comando mandado por esta janela (ex. você pausando pela
-  janela do próprio openMSX).
-- Campo de comando (Enter ou botão **Enviar**) + log de respostas.
-- **Área de colar/digitar texto** + botão **Inserir no openMSX**: cole ou digite qualquer texto ali
-  (inclusive um listing BASIC inteiro) e clique no botão — o texto é digitado no MSX como se fosse
-  teclado de verdade, quebra de linha vira Enter. Útil pra colar um programa direto na linha de comando
-  do BASIC sem precisar montar um disco. Botão **Limpar** ao lado só esvazia essa área (não afeta o
-  openMSX).
-- Botões rápidos: **Reset**, **Pausar**, **Continuar**, **Ligar**, **Desligar**, **Mostrar janela**
-  (o `-control` do openMSX sobe sem nenhuma janela visível por padrão; este botão manda o comando que
-  restaura isso) e **Ajuda** (abre a Ajuda → openMSX ao lado, para consultar comandos/configurações
-  sem sair do console).
-- Fechar esta janela **não** fecha o openMSX — abrir o menu de novo reconecta na mesma instância.
+> **Atenção**: máquina/extensão só valem no **lançamento** do openMSX — se você mudar esses campos em
+> **Configurar → openMSX...** com o emulador já aberto, a mudança não se aplica sozinha na instância
+> viva. Um aviso aparece na aba **Console** (abaixo) nesse caso; o botão **Reiniciar openMSX** encerra
+> e sobe de novo já com a configuração atual.
+
+### Executar → openMSX...
+
+Abre um painel de controle de 6 abas pra essa mesma instância — útil tanto durante a edição (pra
+transferir o programa atual sem sair da janela) quanto sozinho, sem nenhum arquivo aberto. Fechar esta
+janela **não** fecha o openMSX — abrir o menu de novo reconecta na mesma instância.
+
+No topo, sempre visível: **indicador de estado** ("Ligado/Desligado | Rodando/Pausado", atualiza
+sozinho mesmo se o estado mudar por fora, ex. você pausando pela janela do próprio openMSX), botão
+**Transferir programa atual** (pega o código da aba ativa do editor e roda na mesma instância — igual
+F5) e um aviso automático se máquina/extensão configuradas divergirem da instância aberta (ver caixa
+acima).
+
+#### Aba Console
+
+- Grupo **Mídia**: Disco A / Cartucho / Cassete, cada um com campo de caminho + "..." (escolher
+  arquivo) + **Inserir** + **Ejetar**.
+- **Log** de comandos e respostas + campo de comando livre (Enter ou botão **Enviar**) — qualquer
+  comando que o openMSX aceita via `-control` (os mesmos do console interno dele, F10).
+
+#### Aba Outros comandos
+
+- **Velocidade de emulação**: barra manual (1% a 800%), botão **100%** e botão **Turbo** — segure o
+  botão do mouse pra acelerar ao máximo (9999%), solte pra voltar a 100% automaticamente.
+- **Power**, **Reset**, **Pause** — os dois primeiros alternam mostrando o estado atual no próprio
+  rótulo do botão ("Power: Ligado"/"Desligado").
+- **Firmware** — liga/desliga o software residente em memória (só existe em algumas máquinas MSX).
+- **Conectores das portas de joystick** (Joystick 1 / Joystick 2): Nada, Mouse, Teclado (P1), Teclado
+  (P2) (usa o teclado do PC como joystick — bom pra 2 jogadores locais) ou Paddle.
+- **Ren Sha Turbo** — acelera o botão de tiro (auto fire de hardware, só em máquinas com suporte, ex.
+  turboR).
+
+#### Aba Vídeo
+
+- **Renderer** (SDLGL-PP/none), **Escala** (2/3/4), **VSync**, **Modo TV** — dropdown com as 5 opções
+  reais do openMSX (`simple`/`ScaleNx`/`hq`/`RGBtriplet`/`TV`), igual o seletor de scaler do Catapult
+  original.
+- Toggles: **Deinterlace**, **Limitar sprites**, **Tela cheia**, **Desabilitar sprites**, **Fonte de
+  vídeo** (MSX/GFX9000/Video9000 — só faz efeito com uma extensão GFX9000/Video9000 conectada).
+- **Efeitos de tela estilo CRT** — Scanlines, Blur, Glow, Gamma e Noise: cada um com barra, rótulo
+  mostrando o valor atual (sincronizado ao vivo com o openMSX) e botão **Reset** que volta pro padrão
+  de fábrica real do openMSX (scanline 20, blur 50, glow 0, gamma 1.1, noise 0).
+- **Screenshot**: nome base + diretório opcional. Com diretório escolhido, o próprio editor calcula o
+  próximo número sequencial livre (`nome0001.png`, `nome0002.png`...); sem diretório, usa a numeração
+  nativa do openMSX na pasta padrão dele (`screenshots/`).
+- **LEDs** (Power/Caps/Kana/Pause/Turbo/FDD) desenhados como círculos coloridos (verde = ligado, cinza
+  = desligado, amarelo = ainda não sabido) + botão **STOP** (simula a tecla física STOP do teclado
+  MSX, usada pra interromper um programa BASIC) + **FPS** ao vivo.
+
+#### Aba Volume
+
+Mixer de som do openMSX com **descoberta dinâmica de dispositivo**: como o nome real de cada chip
+varia por cartucho/ROM conectado (ex. `"Konami SCC+ Cartridge with expanded RAM (1)"`, não um nome
+fixo tipo "SCC+"), a lista de dispositivos não vem pronta — aparece sozinha conforme o openMSX avisa
+que algo mudou, ou você adiciona manualmente digitando o nome (campo **Adicionar** acima da lista;
+consulte o nome exato no próprio menu do openMSX, **Configurações → Áudio → Mostrar ajustes dos chips
+de som**). `PSG`, `keyclick` e `cassetteplayer` são nomes fixos que sempre existem.
+
+Selecionando um dispositivo na lista: **Volume** (0-100) e **Balance** (-100 = canal esquerdo, 0 =
+centro/estéreo normal, 100 = canal direito — substitui o antigo esquema Mute/Left/Right/? do Catapult,
+que foi removido do openMSX atual em favor deste controle contínuo) + botão **Mudo**.
+
+Seção **MIDI**: entrada (arquivo `.mid` pra tocar como MIDI IN) e saída (log de eventos MIDI OUT em
+arquivo), cada uma com **Conectar**/**Desconectar** — os conectores MIDI reais também variam por
+hardware (descobertos automaticamente ao abrir a aba). **Log de áudio geral** grava um `.wav` da sessão
+inteira (clique de novo pra parar).
+
+#### Aba Input Text
+
+Área grande de texto + botão **Type** (digita o conteúdo no MSX como se fosse teclado de verdade —
+quebra de linha vira Enter, mesmo mecanismo do Catapult) e **Clear** (só esvazia a área, não afeta o
+openMSX). Útil pra colar um programa inteiro direto na linha de comando do BASIC sem precisar montar
+um disco.
+
+#### Aba Status Info
+
+Log somente-leitura de **tudo** que o openMSX reporta — mudou por um comando seu ou não (ex. você
+apertando uma tecla direto na janela do openMSX, ou um jogo acendendo o LED de disquete). Separado do
+log da aba Console de propósito: lá fica só a sua sessão interativa (o que você digitou + respostas);
+aqui fica o "o que está acontecendo" cru.
 
 A comunicação usa um mecanismo próprio do openMSX (`-control`) espelhado no do Catapult (a GUI
-oficial do projeto), documentado com mais detalhe em `docs/SPEC.md`. Configure o caminho do openMSX
-em **Configurar → Basic Dignified... → aba Emulador** antes de usar, se ainda não tiver feito isso
-para o fluxo normal de **Executar → BASIC**.
-
-> **Nota**: esta janela controla uma instância própria do openMSX, separada da que **Executar → BASIC**
-> abre para rodar seu programa — não são a mesma sessão a menos que uma tenha sido aberta a partir da
-> outra.
+oficial do projeto), documentado com mais detalhe em `docs/SPEC.md`. Configure o caminho do openMSX em
+**Configurar → openMSX...** (ou na aba **Emulador** de **Configurar → Basic Dignified...** — mesmo
+campo) antes de usar.
 
 ### Ajuda → openMSX...
 

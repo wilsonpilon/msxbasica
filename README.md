@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.25.0** ("`HEXORCIST`") — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.27.3** ("`TORRE DE CONTROLE`") — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -53,16 +53,32 @@ Python — que serve de referência de comportamento a ser portada, não de depe
 - **Rodar no openMSX** (`RunOnOpenMSX()` em `editor/BadigEditor.pb`) — com a opção "Abrir o openMSX e
   rodar o código após gerar" marcada, tokenizar monta um disquete `.dsk` (`.dmx`+`.amx`+`.bmx` mais um
   `AUTOEXEC.BAS` de autorun) e abre o openMSX já rodando o programa, com a máquina/extensão
-  configuradas. Rotinas de disco `.dsk` (FAT12) próprias em `editor/MSXDisk.pbi` (originalmente
-  vendorizadas do projeto separado `msxDiskUtil`, depois incorporadas de vez e o diretório
-  `msxDiskUtil/` removido do repositório — sem dependência externa nenhuma) — compiladas direto no
-  executável do editor, sem depender de processo externo para montar o disco.
+  configuradas. **Reaproveita a instância já aberta** em vez de lançar uma nova a cada execução
+  (`OMSX_LoadDisk()`, `editor/OpenMSXBridge.pbi`) — igual F5 duas vezes seguidas troca só o disco e
+  reinicia, sem abrir uma segunda janela. Rotinas de disco `.dsk` (FAT12) próprias em
+  `editor/MSXDisk.pbi` (originalmente vendorizadas do projeto separado `msxDiskUtil`, depois
+  incorporadas de vez e o diretório `msxDiskUtil/` removido do repositório — sem dependência externa
+  nenhuma) — compiladas direto no executável do editor, sem depender de processo externo para montar
+  o disco.
+- **Painel de controle remoto do openMSX** (`Executar → openMSX...`, `editor/OpenMSXConsoleGui.pbi` +
+  `editor/OpenMSXBridge.pbi`) — 6 abas cobrindo praticamente tudo que o Catapult original oferecia:
+  **Console** (mídia, transferir programa, log, comando livre), **Outros comandos** (velocidade com
+  Turbo segurando o mouse, Power/Reset/Pause, firmware, portas de joystick, Ren Sha Turbo), **Vídeo**
+  (renderer, escala, Modo TV com as 5 opções reais do openMSX, efeitos estilo CRT com reset pro
+  padrão, screenshot com numeração sequencial, LEDs visuais + STOP + FPS), **Volume** (mixer com
+  **descoberta dinâmica** de dispositivo de som — os nomes reais variam por cartucho/ROM conectado,
+  não são fixos —, Volume/Balance, MIDI in/out), **Input Text** (área grande + Type/Clear) e
+  **Status Info** (log passivo de tudo que o openMSX reporta). Ver
+  [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md) pro detalhe completo desta leva de features.
 - **Telas de configuração nativas**:
   - `Configurar → Basic Dignified...` (`editor/BadigSettings.pbi`) — três abas: pré-processador/
     tokenizador, opções específicas do MSX, e **Emulador** (caminho do openMSX, máquina/extensão com
     botão de busca automática em `share/machines`/`share/extensions`, opção de rodar após gerar).
     Diretório de instalação do toolchain com botão para baixar o Basic Dignified Suite direto do
     GitHub (`git clone` ou `.zip`), tudo persistido em JSON.
+  - `Configurar → openMSX...` (`editor/OpenMsxSettingsGui.pbi`) — os mesmos campos da aba "Emulador"
+    acima, numa tela própria — lê/grava exatamente o mesmo `BadigCfg`/`badig_settings.json`, então as
+    duas telas nunca divergem.
   - `Configurar → Editor...` (`editor/EditorSettings.pbi`) — fonte (só monoespaçadas, com suporte a
     pasta de fontes customizadas carregadas em memória), tema, estilo de abas, caminho de instalação do
     editor.
@@ -1670,6 +1686,24 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   (do Editor Hexa) + Exorcist, porque a sessão inteira foi literalmente sobre "esconjurar" arquivos
   binários que antes caíam em "dados crus"/fantasmas sem nome, dando um formato e um nome de verdade pra
   cada um. Sem mudança de código nesta entrada — só documentação.
+- **2026-08-08 — painel de controle do openMSX com 6 abas, F5 unificado com o console, codinome
+  `TORRE DE CONTROLE` (`7.27.3`)**: sessão pedida pelo usuário pra transformar o controle remoto do
+  openMSX (até então um console de comando avulso) num painel completo. **`Executar → BASIC` (F5) parou
+  de abrir uma janela nova do openMSX a cada execução** — `RunOnOpenMSX()` passou a chamar
+  `OMSX_LoadDisk()` (novo, `OpenMSXBridge.pbi`), que reaproveita a instância já aberta (troca o disco +
+  reset) em vez de lançar um processo novo, unificando o que antes eram dois fluxos deliberadamente
+  separados. Nova tela `Configurar → openMSX...` com os mesmos campos da aba "Emulador" de
+  `Configurar → Basic Dignified...`, compartilhando os mesmos 4 procedimentos de gadget pra nunca
+  divergir. `Executar → openMSX...` virou um `PanelGadget` de 6 abas — Console, Outros comandos
+  (velocidade com Turbo segurando o mouse, Power/Reset/Pause, firmware, portas de joystick, Ren Sha
+  Turbo), Vídeo (renderer/escala/Modo TV com as 5 opções reais do openMSX, efeitos estilo CRT com
+  reset pro padrão de fábrica real, screenshot com numeração sequencial, LEDs + STOP + FPS), Volume
+  (mixer com **descoberta dinâmica de dispositivo de som** — os nomes reais variam por cartucho/ROM
+  conectado, confirmado ao vivo contra um openMSX de verdade antes de implementar, ex.
+  `"Konami SCC+ Cartridge with expanded RAM (1)"` —, MIDI in/out), Input Text (área grande + Type/
+  Clear) e Status Info (log passivo de tudo que o openMSX reporta). Detalhe completo em
+  `docs/RELEASE_NOTES.md` e `docs/SPEC.md` (módulo 12). Codinome **"TORRE DE CONTROLE"** — o usuário
+  escolheu entre algumas opções temáticas de "sala de controle" propostas.
 
 ## Ferramentas e ambiente
 

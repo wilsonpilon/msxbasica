@@ -59,8 +59,175 @@ Global OMSX_PowerOn.b = #False
 Global OMSX_PausedKnown.b = #False
 Global OMSX_Paused.b = #False
 
+; Mesma ideia (alimentado por "<update type="setting" ...>", nao por reply de
+; comando - ver OMSX_Poll()) pros controles da aba "Outros comandos"
+; (OpenMSXConsoleGui.pbi): velocidade de emulacao ("speed", 1-9999%),
+; interruptor de firmware residente ("firmwareswitch", so existe em algumas
+; maquinas) e Ren Sha Turbo ("renshaturbo", 0-100, so existe em maquinas com
+; suporte de hardware - turboR etc.). "*Known" comeca #False pelo mesmo
+; motivo de OMSX_PowerKnown: nao sabemos o valor real ate a primeira
+; atualizacao chegar.
+Global OMSX_SpeedKnown.b = #False
+Global OMSX_Speed.i = 100
+Global OMSX_FirmwareKnown.b = #False
+Global OMSX_FirmwareOn.b = #False
+Global OMSX_RenshaKnown.b = #False
+Global OMSX_RenshaOn.b = #False
+
+; LEDs da aba "Video" (OpenMSXConsoleGui.pbi) - "power" e "pause" reaproveitam
+; OMSX_PowerOn/OMSX_Paused acima (mesmo settings, ja rastreados: ligar a
+; maquina ou pausar TAMBEM acende o LED correspondente, nao sao coisas
+; separadas). Caps/Kana/Turbo/FDD sao read-only (o openMSX que controla,
+; nunca setados por nos) mas passam pelo MESMO mecanismo de "<update
+; type="setting">" que tudo mais aqui - simples questao de assinar o nome
+; certo.
+Global OMSX_LedCapsKnown.b = #False
+Global OMSX_LedCapsOn.b = #False
+Global OMSX_LedKanaKnown.b = #False
+Global OMSX_LedKanaOn.b = #False
+Global OMSX_LedTurboKnown.b = #False
+Global OMSX_LedTurboOn.b = #False
+Global OMSX_LedFddKnown.b = #False
+Global OMSX_LedFddOn.b = #False
+
+; FPS (aba "Video") - NAO e um "setting" (nao vem via "openmsx_update"), e
+; uma estatistica de execucao consultada sob demanda com "openmsx_info fps".
+; Como o protocolo daqui e "fire and forget" (sem id de correlacao
+; comando->resposta), OMSX_AwaitingFps marca "a proxima linha <reply> que
+; chegar e a resposta dessa consulta" - funciona bem desde que ninguem mais
+; mande outro comando bem no meio (mesma suposicao de ordem serial que o
+; resto da ponte ja faz implicitamente). Quem dispara a consulta
+; periodicamente e a GUI (nao aqui, pra nao gerar trafego sem ninguem
+; pedindo) - ver OMSX_QueryFps().
+Global OMSX_FpsKnown.b = #False
+Global OMSX_Fps.s = ""
+Global OMSX_AwaitingFps.b = #False
+
+; Toggles da aba "Video" (OpenMSXConsoleGui.pbi) - mesmo mecanismo de
+; sempre ("<update type="setting">", ver OMSX_Poll()). OMSX_TvModeOn e
+; derivado da string de "scale_algorithm" (nao um bool nativo do openMSX):
+; #True quando o valor atual e exatamente "TV" (ver RenderSettings.cc real -
+; "simple"/"ScaleNx"/"hq"/"RGBtriplet"/"TV" sao os valores possiveis, so
+; expomos o toggle simple<->TV pedido, nao o combo completo).
+Global OMSX_VSyncKnown.b = #False
+Global OMSX_VSyncOn.b = #False
+; "Modo TV" virou dropdown de verdade (pedido explicito do usuario, "como no
+; Catapult") com as 5 opcoes reais de scale_algorithm (simple/ScaleNx/hq/
+; RGBtriplet/TV, ver RenderSettings.cc do openMSX) em vez de um toggle
+; simple<->TV so - guarda a string crua, nao um booleano.
+Global OMSX_ScaleAlgorithmKnown.b = #False
+Global OMSX_ScaleAlgorithm.s = "simple"
+Global OMSX_DeinterlaceKnown.b = #False
+Global OMSX_DeinterlaceOn.b = #False
+Global OMSX_LimitSpritesKnown.b = #False
+Global OMSX_LimitSpritesOn.b = #False
+Global OMSX_FullscreenKnown.b = #False
+Global OMSX_FullscreenOn.b = #False
+Global OMSX_DisableSpritesKnown.b = #False
+Global OMSX_DisableSpritesOn.b = #False
+
+; Barras estilo CRT da aba "Video" - mesmo mecanismo, sincroniza o valor
+; real (idempotente durante arraste manual - ver comentario no timer de
+; poll, OpenMSXConsoleGui.pbi). Gamma fica como STRING (nao Int) porque e
+; float ("1.10" etc.) - convertido pra posicao de trackbar (*10) so na hora
+; de exibir, ver OMSXGui_OpenWindow().
+Global OMSX_ScanlineKnown.b = #False
+Global OMSX_Scanline.i = 20
+Global OMSX_BlurKnown.b = #False
+Global OMSX_Blur.i = 50
+Global OMSX_GlowKnown.b = #False
+Global OMSX_Glow.i = 0
+Global OMSX_GammaKnown.b = #False
+Global OMSX_Gamma.s = "1.1"
+Global OMSX_NoiseKnown.b = #False
+Global OMSX_Noise.i = 0
+
+; Dispositivos de som da aba "Volume" (OpenMSXConsoleGui.pbi) - descobertos
+; DINAMICAMENTE, nunca por nome fixo. Confirmado ao vivo contra um openMSX de
+; verdade (2026-08-08): so "PSG" e "keyclick" sao nomes fixos - qualquer
+; outro dispositivo (SCC+, MSX-MUSIC/FM-PAC, MoonSound FM/wave, MSX-AUDIO,
+; cassete, DAC de cartucho) usa o nome comercial COMPLETO do hardware
+; especifico conectado (ex.: "Konami SCC+ Cartridge with expanded RAM (1)",
+; "Sunrise MoonSound (1) FM") - varia por ROM/config/quantidade de
+; instancias, entao fixar sliders por nome simplesmente nao funcionaria.
+; Em vez disso, qualquer "<update type="setting" name="X_volume">" que
+; chegar (todo device de som manda isso assim que existe, ja que
+; "openmsx_update enable setting" - assinado no boot - cobre TODOS os
+; settings, nao so os que a gente conhece de antemao) vira uma entrada no
+; Map abaixo, keyed pelo nome real do dispositivo. OMSX_DeviceListDirty
+; avisa a GUI que a lista mudou (dispositivo novo apareceu) pra ela
+; reconstruir o ListView so quando precisa, nao a cada tick.
+Global NewMap OMSX_DeviceVolume.i()
+Global NewMap OMSX_DeviceBalance.i()
+Global OMSX_DeviceListDirty.b = #False
+
+; Conectores MIDI (aba "Volume") - MESMO problema dos dispositivos de som:
+; nao sao nomes fixos tipo "midi-in"/"midi-out" (confirmado ao vivo: nesta
+; maquina sao "Generic MSX-Audio-MIDI-in"/"...-MIDI-out", nomes do hardware
+; especifico). Descobertos com UMA consulta "plug" (lista todos os
+; conectores) ao abrir a aba - ver OMSX_QueryMidiConnectors()/
+; OMSX_FindConnectorByName() mais abaixo.
+Global OMSX_MidiInConnector.s = ""
+Global OMSX_MidiOutConnector.s = ""
+Global OMSX_AwaitingPlugList.b = #False
+
+; "Adicionar dispositivo" manual (aba "Volume") - consultar "set
+; NOME_volume" (SEM valor - so LEITURA, nao muda nada) nao dispara
+; "<update>" nenhum (confirmado ao vivo: so mudancas de verdade notificam,
+; nao consultas), entao a descoberta passiva sozinha tem um problema de
+; "ovo e galinha" no boot (nada mudou ainda, lista fica vazia pra sempre).
+; Isto complementa com consulta ativa sob demanda pra UM nome que o usuario
+; digitou (descoberto por ele via o proprio menu do openMSX, "Mostrar
+; ajustes dos chips de som", ja que os nomes variam por cartucho - ver
+; comentario de OMSX_DeviceVolume() acima). Funcao em si fica perto de
+; OMSX_QueryFps()/OMSX_QueryMidiConnectors() mais abaixo (precisa de
+; OMSX_IsRunning() ja definida).
+Global OMSX_AwaitingDeviceQuery.s = ""
+
+; Caminho de um .dsk pendente de carregar assim que o pipe conectar - ver
+; OMSX_LoadDisk() e o final de OMSX_PipeConnectThread() (mesma logica ja
+; usada pra sequencia de boot: nao da pra mandar comando nenhum antes do
+; pipe conectar de verdade, entao um pedido feito nesse meio-tempo fica
+; guardado aqui em vez de se perder).
+Global OMSX_PendingDiskPath.s = ""
+
+; Maquina/extensao com que a instancia ATUAL foi de fato lancada (preenchido
+; em OMSX_Start() so quando ele realmente sobe um processo novo, nao quando
+; so reaproveita um ja rodando) - "-machine"/"-ext" so valem no lancamento,
+; entao isso serve pra comparar com BadigCfg\EmMachine/EmExtension e avisar
+; o usuario se ele mudou a configuracao com o openMSX ja aberto (ver
+; OpenMSXConsoleGui.pbi).
+Global OMSX_LaunchedMachine.s = ""
+Global OMSX_LaunchedExtension.s = ""
+
+; Usada por OMSX_ExtractAnySettingUpdate() - diferente de
+; OMSX_ExtractSettingUpdate() (que so serve quando ja sabemos o nome exato
+; do setting de antemao), extrai nome E valor de QUALQUER "<update
+; type="setting">", pra descobrir dispositivos de som na hora (ver
+; OMSX_DeviceVolume()/OMSX_DeviceBalance() acima).
+Structure OMSX_SettingUpdate
+  Name.s
+  Value.s
+EndStructure
+
 Declare OMSX_SendCommand(Cmd.s)
 Declare OMSX_ShowWindow()
+
+; Zera todo o estado ligado a UMA instancia do openMSX (handles, flags de
+; conexao/power/pause, disco pendente) - usado tanto quando
+; OMSX_IsRunning() detecta que o processo morreu por fora quanto por
+; OMSX_Stop() (encerramento de proposito). NAO zera OMSX_Prog - quem chama
+; decide isso (precisa do valor antigo pra CloseProgram() antes de zerar).
+Procedure OMSX_ResetState()
+  If OMSX_PipeHandle
+    CloseHandle_(OMSX_PipeHandle)
+    OMSX_PipeHandle = 0
+  EndIf
+  OMSX_PipeConnected = #False
+  OMSX_PowerKnown = #False
+  OMSX_PausedKnown = #False
+  OMSX_PendingDiskPath = ""
+EndProcedure
 
 ; #True se o processo guardado em OMSX_Prog ainda esta vivo. Alem de
 ; consultar, tambem faz a faxina (fecha handles e zera estado) quando o
@@ -73,13 +240,7 @@ Procedure.b OMSX_IsRunning()
   If Not ProgramRunning(OMSX_Prog)
     CloseProgram(OMSX_Prog)
     OMSX_Prog = 0
-    If OMSX_PipeHandle
-      CloseHandle_(OMSX_PipeHandle)
-      OMSX_PipeHandle = 0
-    EndIf
-    OMSX_PipeConnected = #False
-    OMSX_PowerKnown = #False
-    OMSX_PausedKnown = #False
+    OMSX_ResetState()
     ProcedureReturn #False
   EndIf
   ProcedureReturn #True
@@ -152,6 +313,15 @@ Procedure OMSX_PipeConnectThread(*Dummy)
     OMSX_SendCommand("openmsx_update enable setting")
     OMSX_SendCommand("unset renderer")
     OMSX_SendCommand("set power on")
+
+    ; Disco pedido enquanto o openMSX ainda estava subindo (ver
+    ; OMSX_LoadDisk()) - manda agora que a conexao de verdade acabou de
+    ; completar, mesmo espirito da sequencia de boot acima.
+    If OMSX_PendingDiskPath <> ""
+      OMSX_SendCommand("diska insert " + Chr(34) + OMSX_PendingDiskPath + Chr(34))
+      OMSX_SendCommand("reset")
+      OMSX_PendingDiskPath = ""
+    EndIf
   EndIf
 EndProcedure
 
@@ -195,6 +365,12 @@ Procedure.b OMSX_Start()
     OMSX_PipeHandle = 0
     ProcedureReturn #False
   EndIf
+
+  ; "-machine"/"-ext" so valem no lancamento - guarda o que foi de fato usado
+  ; pra dar pra comparar depois com BadigCfg\EmMachine/EmExtension (ver
+  ; comentario dos globais, topo do arquivo).
+  OMSX_LaunchedMachine = BadigCfg\EmMachine
+  OMSX_LaunchedExtension = BadigCfg\EmExtension
 
   OMSX_PipeConnected = #False
   OMSX_PipeThread = CreateThread(@OMSX_PipeConnectThread(), 0)
@@ -282,6 +458,49 @@ Procedure OMSX_ShowWindow()
   OMSX_SendCommand("unset renderer")
 EndProcedure
 
+; Carrega DiskPath (um .dsk ja pronto, ver RunOnOpenMSX() em BadigEditor.pb)
+; na instancia ATUAL do openMSX em vez de abrir uma nova - sobe o emulador se
+; precisar (OMSX_Start(), reaproveita se ja estiver rodando) e troca o disco
+; da unidade A com "diska insert" + "reset" (equivalente a trocar o
+; disquete e reiniciar um MSX de verdade, sem fechar a janela do emulador).
+; Se o pipe ainda nao tiver conectado (openMSX acabou de subir agora
+; mesmo), guarda DiskPath em OMSX_PendingDiskPath pra
+; OMSX_PipeConnectThread() mandar os mesmos dois comandos assim que a
+; conexao completar, em vez de perder o pedido.
+Procedure.b OMSX_LoadDisk(DiskPath.s)
+  If OMSX_IsRunning() And OMSX_PipeConnected
+    OMSX_SendCommand("diska insert " + Chr(34) + DiskPath + Chr(34))
+    OMSX_SendCommand("reset")
+    ProcedureReturn #True
+  EndIf
+
+  If Not OMSX_Start()
+    ProcedureReturn #False
+  EndIf
+  OMSX_PendingDiskPath = DiskPath
+  ProcedureReturn #True
+EndProcedure
+
+; Encerra a instancia atual DE PROPOSITO (diferente de "set power off", que
+; so desliga a maquina virtual mas deixa o processo/janela do openMSX
+; abertos) - usado pelo botao "Reiniciar openMSX" (OpenMSXConsoleGui.pbi)
+; quando o usuario mudou maquina/extensao em Configurar -> openMSX e quer
+; aplicar de verdade (nao da pra trocar isso a quente, sao flags so de
+; lancamento). Pede uma saida limpa primeiro (comando Tcl nativo "exit"),
+; da um tempo curto pra processar e so entao fecha na marra via
+; CloseProgram() - mesmo padrao que o resto do modulo ja usa pra tratar o
+; processo como podendo morrer a qualquer momento.
+Procedure OMSX_Stop()
+  If Not OMSX_IsRunning()
+    ProcedureReturn
+  EndIf
+  OMSX_SendCommand("exit")
+  Delay(300)
+  CloseProgram(OMSX_Prog)
+  OMSX_Prog = 0
+  OMSX_ResetState()
+EndProcedure
+
 ; Tira as tags XML mais comuns do protocolo pra sobrar so o texto legivel no
 ; console - limpeza simples por substituicao de string (nao um parser XML de
 ; verdade), mesmo espirito do msx_bridge.py (que so faz .replace("<reply>",
@@ -310,6 +529,128 @@ Procedure.s OMSX_ExtractSettingUpdate(RawLine.s, SettingName.s)
     ProcedureReturn ""
   EndIf
   ProcedureReturn Mid(RawLine, ValueStart, ValueEnd - ValueStart)
+EndProcedure
+
+; Extrai o conteudo cru de uma linha "<reply result="...">CONTEUDO</reply>"
+; (ANTES de OMSX_CleanLine() mutilar as tags) - "" se a linha nao for uma
+; reply. Usado so por OMSX_QueryFps()/OMSX_Poll() pra pegar a resposta de
+; "openmsx_info fps" sem esperar um "<update type=setting>" (que so existe
+; pra settings de verdade, nao pra consultas avulsas tipo openmsx_info).
+Procedure.s OMSX_ExtractReplyContent(RawLine.s)
+  Protected TagPos.i = FindString(RawLine, "<reply")
+  If TagPos = 0
+    ProcedureReturn ""
+  EndIf
+  Protected GtPos.i = FindString(RawLine, ">", TagPos)
+  If GtPos = 0
+    ProcedureReturn ""
+  EndIf
+  Protected CloseStart.i = FindString(RawLine, "</reply>", GtPos)
+  If CloseStart = 0
+    ProcedureReturn ""
+  EndIf
+  ProcedureReturn Mid(RawLine, GtPos + 1, CloseStart - GtPos - 1)
+EndProcedure
+
+; Extrai nome+valor de QUALQUER "<update type="setting" ...name="X">valor</update>"
+; (ANTES de OMSX_CleanLine() mutilar as tags, mesmo motivo de sempre) - #False
+; se a linha nao for uma atualizacao de setting. Usado so pra descoberta
+; dinamica de dispositivo de som (OMSX_Poll() confere se Name termina em
+; "_volume"/"_balance") - diferente de OMSX_ExtractSettingUpdate(), que
+; exige saber o nome exato de antemao.
+Procedure.b OMSX_ExtractAnySettingUpdate(RawLine.s, *Out.OMSX_SettingUpdate)
+  If FindString(RawLine, "<update type=" + Chr(34) + "setting" + Chr(34)) = 0
+    ProcedureReturn #False
+  EndIf
+  Protected Needle.s = "name=" + Chr(34)
+  Protected NamePos.i = FindString(RawLine, Needle)
+  If NamePos = 0
+    ProcedureReturn #False
+  EndIf
+  Protected NameStart.i = NamePos + Len(Needle)
+  Protected NameEnd.i = FindString(RawLine, Chr(34), NameStart)
+  If NameEnd = 0
+    ProcedureReturn #False
+  EndIf
+  Protected GtPos.i = FindString(RawLine, ">", NameEnd)
+  If GtPos = 0
+    ProcedureReturn #False
+  EndIf
+  Protected CloseStart.i = FindString(RawLine, "</update>", GtPos)
+  If CloseStart = 0
+    ProcedureReturn #False
+  EndIf
+  *Out\Name = Mid(RawLine, NameStart, NameEnd - NameStart)
+  *Out\Value = Mid(RawLine, GtPos + 1, CloseStart - GtPos - 1)
+  ProcedureReturn #True
+EndProcedure
+
+; Acha, dentro da resposta cheia do comando "plug" (sem argumentos - lista
+; TODOS os conectores/pluggables atuais, uma "linha" por conector no
+; formato "conector: pluggable", separadas por "&#x0a;" ja que veio dentro
+; de um XML), o nome de um conector cujo PROPRIO NOME contem NeedleLower
+; (case-insensitive) - usado pra achar o conector MIDI-in/MIDI-out de
+; verdade, que varia por hardware (ver comentario de OMSX_MidiInConnector
+; acima). "" se nao achar.
+Procedure.s OMSX_FindConnectorByName(ReplyContent.s, NeedleLower.s)
+  Protected Lines.s = ReplaceString(ReplyContent, "&#x0a;", Chr(10))
+  Protected N.i = CountString(Lines, Chr(10)) + 1
+  Protected I.i
+  For I = 1 To N
+    Protected OneLine.s = StringField(Lines, I, Chr(10))
+    Protected ColonPos.i = FindString(OneLine, ":")
+    If ColonPos > 0
+      Protected ConnName.s = Trim(Left(OneLine, ColonPos - 1))
+      If FindString(LCase(ConnName), NeedleLower) > 0
+        ProcedureReturn ConnName
+      EndIf
+    EndIf
+  Next
+  ProcedureReturn ""
+EndProcedure
+
+; Consulta sob demanda UM nome de dispositivo digitado manualmente (botao
+; "Adicionar" da aba "Volume") - ver comentario de OMSX_AwaitingDeviceQuery,
+; topo do arquivo.
+Procedure OMSX_QueryDevice(DevName.s)
+  If OMSX_IsRunning() And OMSX_PipeConnected And Trim(DevName) <> ""
+    OMSX_AwaitingDeviceQuery = DevName
+    OMSX_SendCommand("set " + Chr(34) + DevName + "_volume" + Chr(34))
+  EndIf
+EndProcedure
+
+; Dispara a consulta que descobre os conectores MIDI-in/MIDI-out de verdade
+; desta maquina - ver OMSX_Poll() pra onde a resposta e capturada
+; (OMSX_AwaitingPlugList). Chamada uma vez ao abrir a aba "Volume" (nao
+; precisa repetir - conectores nao aparecem/somem sozinhos em runtime).
+Procedure OMSX_QueryMidiConnectors()
+  If OMSX_IsRunning() And OMSX_PipeConnected
+    OMSX_AwaitingPlugList = #True
+    OMSX_SendCommand("plug")
+  EndIf
+EndProcedure
+
+; Consulta o FPS atual - so dispara o comando e marca "aguardando resposta",
+; ver OMSX_Poll() pra onde a resposta e capturada. Chamada periodicamente
+; pela GUI (nao daqui), pra nao gerar trafego sem ninguem pedindo.
+Procedure OMSX_QueryFps()
+  If OMSX_IsRunning() And OMSX_PipeConnected
+    OMSX_AwaitingFps = #True
+    OMSX_SendCommand("openmsx_info fps")
+  EndIf
+EndProcedure
+
+; Simula a tecla STOP fisica do teclado MSX (Ctrl+Stop interrompe um
+; programa BASIC em execucao - "break") - linha 7, bit 0x08 da matriz de
+; teclado padrao do MSX, confirmado contra um script real de binding do
+; openMSX (share/scripts, "bind PAGEUP keymatrixdown 7 0x08" /
+; "keymatrixup 7 0x08"). Pulso curto (down seguido de up), como um toque de
+; tecla de verdade - mesmo padrao de delay curto e bloqueante que
+; OMSX_Stop() ja usa pra dar tempo do comando anterior ser processado.
+Procedure OMSX_PressStop()
+  OMSX_SendCommand("keymatrixdown 7 0x08")
+  Delay(50)
+  OMSX_SendCommand("keymatrixup 7 0x08")
 EndProcedure
 
 Procedure.s OMSX_CleanLine(Line.s)
@@ -360,6 +701,158 @@ Procedure.s OMSX_Poll()
     If SettingVal <> ""
       OMSX_Paused = Bool(SettingVal = "true")
       OMSX_PausedKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "speed")
+    If SettingVal <> ""
+      OMSX_Speed = Val(SettingVal)
+      OMSX_SpeedKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "firmwareswitch")
+    If SettingVal <> ""
+      OMSX_FirmwareOn = Bool(SettingVal = "true")
+      OMSX_FirmwareKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "renshaturbo")
+    If SettingVal <> ""
+      OMSX_RenshaOn = Bool(Val(SettingVal) > 0)
+      OMSX_RenshaKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "caps")
+    If SettingVal <> ""
+      OMSX_LedCapsOn = Bool(SettingVal = "true")
+      OMSX_LedCapsKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "kana")
+    If SettingVal <> ""
+      OMSX_LedKanaOn = Bool(SettingVal = "true")
+      OMSX_LedKanaKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "turbo")
+    If SettingVal <> ""
+      OMSX_LedTurboOn = Bool(SettingVal = "true")
+      OMSX_LedTurboKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "fdd")
+    If SettingVal <> ""
+      OMSX_LedFddOn = Bool(SettingVal = "true")
+      OMSX_LedFddKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "vsync")
+    If SettingVal <> ""
+      OMSX_VSyncOn = Bool(SettingVal = "true")
+      OMSX_VSyncKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "scale_algorithm")
+    If SettingVal <> ""
+      OMSX_ScaleAlgorithm = SettingVal
+      OMSX_ScaleAlgorithmKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "deinterlace")
+    If SettingVal <> ""
+      OMSX_DeinterlaceOn = Bool(SettingVal = "true")
+      OMSX_DeinterlaceKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "limitsprites")
+    If SettingVal <> ""
+      OMSX_LimitSpritesOn = Bool(SettingVal = "true")
+      OMSX_LimitSpritesKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "fullscreen")
+    If SettingVal <> ""
+      OMSX_FullscreenOn = Bool(SettingVal = "true")
+      OMSX_FullscreenKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "disablesprites")
+    If SettingVal <> ""
+      OMSX_DisableSpritesOn = Bool(SettingVal = "true")
+      OMSX_DisableSpritesKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "scanline")
+    If SettingVal <> ""
+      OMSX_Scanline = Val(SettingVal)
+      OMSX_ScanlineKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "blur")
+    If SettingVal <> ""
+      OMSX_Blur = Val(SettingVal)
+      OMSX_BlurKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "glow")
+    If SettingVal <> ""
+      OMSX_Glow = Val(SettingVal)
+      OMSX_GlowKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "gamma")
+    If SettingVal <> ""
+      OMSX_Gamma = SettingVal
+      OMSX_GammaKnown = #True
+    EndIf
+    SettingVal = OMSX_ExtractSettingUpdate(Line, "noise")
+    If SettingVal <> ""
+      OMSX_Noise = Val(SettingVal)
+      OMSX_NoiseKnown = #True
+    EndIf
+
+    ; Resposta de "openmsx_info fps" (nao e um "<update type=setting>", ver
+    ; comentario de OMSX_AwaitingFps/OMSX_QueryFps() no topo do arquivo) -
+    ; checado ANTES de OMSX_CleanLine() mutilar a linha, mesmo motivo de
+    ; tudo acima.
+    If OMSX_AwaitingFps
+      Protected ReplyContent.s = OMSX_ExtractReplyContent(Line)
+      If ReplyContent <> ""
+        OMSX_Fps = ReplyContent
+        OMSX_FpsKnown = #True
+        OMSX_AwaitingFps = #False
+      EndIf
+    EndIf
+
+    ; Resposta de "set NOME_volume" (consulta manual, ver OMSX_QueryDevice())
+    ; - se o nome existir de verdade, isto adiciona o dispositivo ao Map
+    ; mesmo sem nenhuma mudanca real ter ocorrido (resolve o "ovo e
+    ; galinha" da descoberta so-passiva). Se o nome NAO existir, a resposta
+    ; vem como erro (Val() disso vira 0) mas o [ERRO] correspondente ja
+    ; aparece no log de qualquer jeito via OMSX_CleanLine() normal - o
+    ; usuario ve que falhou.
+    If OMSX_AwaitingDeviceQuery <> ""
+      Protected DevReply.s = OMSX_ExtractReplyContent(Line)
+      If DevReply <> ""
+        If AddMapElement(OMSX_DeviceVolume(), OMSX_AwaitingDeviceQuery)
+          OMSX_DeviceListDirty = #True
+        EndIf
+        OMSX_DeviceVolume(OMSX_AwaitingDeviceQuery) = Val(DevReply)
+        OMSX_AwaitingDeviceQuery = ""
+      EndIf
+    EndIf
+
+    ; Resposta de "plug" (lista de conectores) - ver OMSX_QueryMidiConnectors().
+    If OMSX_AwaitingPlugList
+      Protected PlugReply.s = OMSX_ExtractReplyContent(Line)
+      If PlugReply <> ""
+        OMSX_MidiInConnector = OMSX_FindConnectorByName(PlugReply, "midi-in")
+        OMSX_MidiOutConnector = OMSX_FindConnectorByName(PlugReply, "midi-out")
+        OMSX_AwaitingPlugList = #False
+      EndIf
+    EndIf
+
+    ; Descoberta dinamica de dispositivo de som (aba "Volume") - qualquer
+    ; setting terminando em "_volume"/"_balance" vira uma entrada no Map,
+    ; keyed pelo nome real do dispositivo (ver comentario de
+    ; OMSX_DeviceVolume() no topo do arquivo). AddMapElement() devolve
+    ; #True so quando a chave e NOVA - e o sinal certo pra avisar a GUI que
+    ; a lista mudou, sem precisar comparar antes/depois.
+    Protected Upd.OMSX_SettingUpdate
+    If OMSX_ExtractAnySettingUpdate(Line, @Upd)
+      If Right(Upd\Name, 7) = "_volume"
+        Protected DevName.s = Left(Upd\Name, Len(Upd\Name) - 7)
+        If AddMapElement(OMSX_DeviceVolume(), DevName)
+          OMSX_DeviceListDirty = #True
+        EndIf
+        OMSX_DeviceVolume(DevName) = Val(Upd\Value)
+      ElseIf Right(Upd\Name, 8) = "_balance"
+        Protected DevName2.s = Left(Upd\Name, Len(Upd\Name) - 8)
+        AddMapElement(OMSX_DeviceBalance(), DevName2)
+        OMSX_DeviceBalance(DevName2) = Val(Upd\Value)
+      EndIf
     EndIf
 
     Line = OMSX_CleanLine(Line)
