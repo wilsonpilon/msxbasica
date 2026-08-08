@@ -116,6 +116,7 @@ Procedure OpenMsxHelp_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   OMSXHelpGui_WinID = Win
 
@@ -123,7 +124,8 @@ Procedure OpenMsxHelp_OpenWindow(ParentWindow)
   TextGadget(#PB_Any, 24, TopY + 4, 55, 20, "Buscar:")
   Protected G_Search = StringGadget(#PB_Any, 87, TopY, 300, 24, "")
   GadgetToolTip(G_Search, "Filtra por titulo ou grupo (manual/secao)")
-  Protected G_ClearSearch = ButtonGadget(#PB_Any, 399, TopY, 80, 24, "Limpar")
+  Protected G_ClearSearch = ThemedButton(399, TopY, 80, 24, "Limpar", Chr(#Icon_Clear))
+  GadgetToolTip(G_ClearSearch, "Limpar")
   Protected G_Status = TextGadget(#PB_Any, 495, TopY + 4, WinW - 519, 20, "")
 
   Protected ButtonY = WinH - 56
@@ -134,8 +136,10 @@ Procedure OpenMsxHelp_OpenWindow(ParentWindow)
   Protected G_Content = ScintillaGadget(#PB_Any, 24 + TreeW + 24, TreeY, WinW - TreeW - 72, TreeH, 0)
   NBHelpGui_SetupStyles(G_Content)
 
-  Protected G_Back = ButtonGadget(#PB_Any, 24, ButtonY, 180, 32, "<- Voltar (Alt+Esquerda)")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
+  Protected G_Back = ThemedButton(24, ButtonY, 180, 32, "<- Voltar (Alt+Esquerda)", Chr(#Icon_ArrowLeft))
+  GadgetToolTip(G_Back, "<- Voltar (Alt+Esquerda)")
+  Protected G_Close = ThemedButton(WinW - 24 - 110, ButtonY, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   OMSXHelpGui_PopulateTree(G_Tree)
   AddKeyboardShortcut(Win, #PB_Shortcut_Alt | #PB_Shortcut_Left, #OMSXHelpGui_ShortcutBack)

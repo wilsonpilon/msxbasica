@@ -155,6 +155,7 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -164,7 +165,7 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
 
   TextGadget(#PB_Any, 24, 24, 140, 20, "Arquivo do disco:")
   Protected G_DiskPathText = StringGadget(#PB_Any, 172, 21, WinW - 24 - 90 - 8 - 172, 24, "", #PB_String_ReadOnly)
-  Protected G_Browse = ButtonGadget(#PB_Any, WinW - 24 - 90, 21, 90, 24, "...")
+  Protected G_Browse = ThemedButton(WinW - 24 - 90, 21, 90, 24, "...", "")
 
   Protected G_LeftPathText = TextGadget(#PB_Any, LeftX, 64, LeftW, 20, "")
   Protected G_DiskStatusText = TextGadget(#PB_Any, RightX, 64, RightW, 20, "Nenhum disco selecionado")
@@ -174,10 +175,12 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   AddGadgetColumn(G_LeftList, 1, "Tamanho", 100)
 
   Protected MidCenterY = PanelY + PanelH / 2
-  Protected G_AddButton     = ButtonGadget(#PB_Any, MidX + 5, MidCenterY - 82, MidW - 10, 32, "Adicionar >>")
-  Protected G_ExtractButton = ButtonGadget(#PB_Any, MidX + 5, MidCenterY - 42, MidW - 10, 32, "<< Extrair")
-  Protected G_RemoveLocalButton = ButtonGadget(#PB_Any, MidX + 5, MidCenterY + 10, MidW - 10, 32, "Remover local")
-  Protected G_RemoveDiskButton  = ButtonGadget(#PB_Any, MidX + 5, MidCenterY + 50, MidW - 10, 32, "Remover disco")
+  Protected G_AddButton     = ThemedButton(MidX + 5, MidCenterY - 82, MidW - 10, 32, "Adicionar >>", "")
+  Protected G_ExtractButton = ThemedButton(MidX + 5, MidCenterY - 42, MidW - 10, 32, "<< Extrair", "")
+  Protected G_RemoveLocalButton = ThemedButton(MidX + 5, MidCenterY + 10, MidW - 10, 32, "Remover local", Chr(#Icon_Remove))
+  GadgetToolTip(G_RemoveLocalButton, "Remover local")
+  Protected G_RemoveDiskButton  = ThemedButton(MidX + 5, MidCenterY + 50, MidW - 10, 32, "Remover disco", Chr(#Icon_Remove))
+  GadgetToolTip(G_RemoveDiskButton, "Remover disco")
 
   Protected G_DiskList = ListIconGadget(#PB_Any, RightX, PanelY, RightW, PanelH, "Nome", 150,
                                         #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
@@ -188,11 +191,13 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
                                   "Use '...' para escolher um disco existente ou criar um novo.")
 
   Protected ButtonY = WinH - 56
-  Protected G_Save      = ButtonGadget(#PB_Any, 272, ButtonY, 100, 32, "Salvar")
-  Protected G_SaveAs    = ButtonGadget(#PB_Any, 384, ButtonY, 130, 32, "Salvar como...")
-  Protected G_Duplicate = ButtonGadget(#PB_Any, 526, ButtonY, 110, 32, "Duplicar...")
-  Protected G_DeleteDisk = ButtonGadget(#PB_Any, 648, ButtonY, 140, 32, "Excluir disco...")
-  Protected G_Cancel    = ButtonGadget(#PB_Any, 800, ButtonY, 132, 32, "Cancelar")
+  Protected G_Save      = ThemedButton(272, ButtonY, 100, 32, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_SaveAs    = ThemedButton(384, ButtonY, 130, 32, "Salvar como...", Chr(#Icon_SaveAs))
+  GadgetToolTip(G_SaveAs, "Salvar como...")
+  Protected G_Duplicate = ThemedButton(526, ButtonY, 110, 32, "Duplicar...", "")
+  Protected G_DeleteDisk = ThemedButton(648, ButtonY, 140, 32, "Excluir disco...", "")
+  Protected G_Cancel    = ThemedButton(800, ButtonY, 132, 32, "Cancelar", "")
 
   Protected NewList LeftEntries.DiskMgrEntry()
   Protected LeftDir.s = DiskMgr_EnsureTrailingSep(GetCurrentDirectory())

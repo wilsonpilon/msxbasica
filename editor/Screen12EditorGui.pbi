@@ -222,6 +222,7 @@ Procedure Scr12Ed_ColorEditor_OpenWindow(ParentWindow, Array CharsetBytes.a(2), 
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -257,7 +258,8 @@ Procedure Scr12Ed_ColorEditor_OpenWindow(ParentWindow, Array CharsetBytes.a(2), 
   Next
 
   Protected CloseY = RowsY + 4 * RowH + 10
-  Protected G_Close = ButtonGadget(#PB_Any, (WinW - 120) / 2, CloseY, 120, 32, "Fechar")
+  Protected G_Close = ThemedButton((WinW - 120) / 2, CloseY, 120, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Scr12Ed_ColorPopupRedraw(G_Preview, G_RowInk(), G_RowPaper(), CharsetBytes(), Palette(), Third, ByteStart, ColorInk(), ColorPaper())
 
@@ -482,6 +484,7 @@ Procedure Screen12Editor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -512,13 +515,13 @@ Procedure Screen12Editor_OpenWindow(ParentWindow)
   Protected G_CharPicker = CanvasGadget(#PB_Any, RightX, PickGridY, #Scr12Ed_CharPickW, #Scr12Ed_CharPickH)
 
   Protected BtnW = (RightColW - 8) / 2
-  Protected G_CharColors = ButtonGadget(#PB_Any, RightX, ButtonsY, BtnW, 30, "Cores do caractere...")
-  Protected G_BlockColors = ButtonGadget(#PB_Any, RightX + BtnW + 8, ButtonsY, BtnW, 30, "Cores em bloco...")
-  Protected G_CopyColors = ButtonGadget(#PB_Any, RightX, ButtonsY + 34, BtnW, 30, "Copiar cores")
-  Protected G_PasteColors = ButtonGadget(#PB_Any, RightX + BtnW + 8, ButtonsY + 34, BtnW, 30, "Colar cores")
-  Protected G_ResetChar = ButtonGadget(#PB_Any, RightX, ButtonsY + 68, BtnW, 30, "Resetar caractere")
-  Protected G_ResetBlock = ButtonGadget(#PB_Any, RightX + BtnW + 8, ButtonsY + 68, BtnW, 30, "Resetar bloco...")
-  Protected G_ResetAll = ButtonGadget(#PB_Any, RightX, ButtonsY + 102, RightColW, 30, "Resetar TODOS os caracteres do terco")
+  Protected G_CharColors = ThemedButton(RightX, ButtonsY, BtnW, 30, "Cores do caractere...", "")
+  Protected G_BlockColors = ThemedButton(RightX + BtnW + 8, ButtonsY, BtnW, 30, "Cores em bloco...", "")
+  Protected G_CopyColors = ThemedButton(RightX, ButtonsY + 34, BtnW, 30, "Copiar cores", "")
+  Protected G_PasteColors = ThemedButton(RightX + BtnW + 8, ButtonsY + 34, BtnW, 30, "Colar cores", "")
+  Protected G_ResetChar = ThemedButton(RightX, ButtonsY + 68, BtnW, 30, "Resetar caractere", "")
+  Protected G_ResetBlock = ThemedButton(RightX + BtnW + 8, ButtonsY + 68, BtnW, 30, "Resetar bloco...", "")
+  Protected G_ResetAll = ThemedButton(RightX, ButtonsY + 102, RightColW, 30, "Resetar TODOS os caracteres do terco", "")
   GadgetToolTip(G_CharColors, "Abre a previa ampliada do byte atual e permite escolher Tinta/Fundo linha a linha (terco selecionado acima)")
   GadgetToolTip(G_BlockColors, "Clique o codigo inicial e final na tabela ASCII abaixo e aplica o MESMO padrao de 8 cores a todos eles de uma vez")
   GadgetToolTip(G_CopyColors, "Copia as 8 cores por linha do byte atual (terco selecionado acima)")
@@ -595,9 +598,10 @@ Procedure Screen12Editor_OpenWindow(ParentWindow)
   CloseGadgetList()
 
   Protected ButtonsX = LeftX + #Scr12Ed_ToolPanelW + 24
-  Protected G_Inject = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY, 180, 32, "Injetar no cursor")
-  Protected G_Copy = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY + 40, 180, 32, "Copiar")
-  Protected G_Close = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY + 80, 180, 32, "Fechar")
+  Protected G_Inject = ThemedButton(ButtonsX, ToolPanelY, 180, 32, "Injetar no cursor", Chr(#Icon_Insert))
+  Protected G_Copy = ThemedButton(ButtonsX, ToolPanelY + 40, 180, 32, "Copiar", Chr(#Icon_Copy))
+  Protected G_Close = ThemedButton(ButtonsX, ToolPanelY + 80, 180, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
   GadgetToolTip(G_Inject, "Gera o codigo BASIC (SCREEN 2 + Tabela de Cores dos 3 tercos, mais os carregadores de fonte custom) e injeta na aba de texto ativa")
   GadgetToolTip(G_Copy, "Gera o mesmo codigo e copia pra area de transferencia")
 

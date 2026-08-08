@@ -484,8 +484,8 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
     SetGadgetState(G_List, SelectIndex)
   EndIf
 
-  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "OK")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
+  Protected G_Ok = ThemedButton(WinW - 256, WinH - 56, 110, 32, "OK", "")
+  Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Result.s = "", Sel.i
 
@@ -568,22 +568,22 @@ Procedure BadigCfg_CreateEmulatorGadgets(BaseY.i, *G.BadigCfg_EmuGadgets)
 
   TextGadget(#PB_Any, 24, BaseY + 136, 320, 20, "Arquivo de configuracao (setting)")
   *G\G_EmSetting = StringGadget(#PB_Any, 24, BaseY + 164, 512, 24, BadigCfg\EmSetting)
-  *G\G_EmSettingBrowse = ButtonGadget(#PB_Any, 544, BaseY + 164, 64, 24, "...")
+  *G\G_EmSettingBrowse = ThemedButton(544, BaseY + 164, 64, 24, "...", "")
 
   TextGadget(#PB_Any, 24, BaseY + 214, 320, 20, "Maquina (machine)")
   *G\G_EmMachine = StringGadget(#PB_Any, 24, BaseY + 242, 512, 24, BadigCfg\EmMachine)
-  *G\G_EmMachineBrowse = ButtonGadget(#PB_Any, 544, BaseY + 242, 64, 24, "...")
+  *G\G_EmMachineBrowse = ThemedButton(544, BaseY + 242, 64, 24, "...", "")
 
   TextGadget(#PB_Any, 24, BaseY + 292, 420, 20, "Extensao de disco (extension), formato Nome:slot")
   *G\G_EmExtension = StringGadget(#PB_Any, 24, BaseY + 320, 512, 24, BadigCfg\EmExtension)
-  *G\G_EmExtensionBrowse = ButtonGadget(#PB_Any, 544, BaseY + 320, 64, 24, "...")
+  *G\G_EmExtensionBrowse = ThemedButton(544, BaseY + 320, 64, 24, "...", "")
 
   TextGadget(#PB_Any, 24, BaseY + 370, 420, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
   *G\G_EmVerbose = StringGadget(#PB_Any, 24, BaseY + 398, 70, 24, "")
 
   TextGadget(#PB_Any, 24, BaseY + 448, 560, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
   *G\G_EmulatorPath = StringGadget(#PB_Any, 24, BaseY + 476, 512, 24, BadigCfg\EmulatorPath)
-  *G\G_EmulatorPathBrowse = ButtonGadget(#PB_Any, 544, BaseY + 476, 64, 24, "...")
+  *G\G_EmulatorPathBrowse = ThemedButton(544, BaseY + 476, 64, 24, "...", "")
 EndProcedure
 
 ; Preenche os gadgets criados acima com o BadigCfg atual - separado da criacao
@@ -742,9 +742,9 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
 
   TextGadget(#PB_Any, 24, 452, 500, 20, "Diretorio de instalacao do Basic Dignified Suite")
   Protected G_InstallDir = StringGadget(#PB_Any, 24, 480, 512, 24, BadigCfg\InstallDir)
-  Protected G_InstallDirBrowse = ButtonGadget(#PB_Any, 544, 480, 64, 24, "...")
+  Protected G_InstallDirBrowse = ThemedButton(544, 480, 64, 24, "...", "")
 
-  Protected G_DownloadSuite = ButtonGadget(#PB_Any, 24, 520, 280, 28, "Baixar Basic Dignified Suite...")
+  Protected G_DownloadSuite = ThemedButton(24, 520, 280, 28, "Baixar Basic Dignified Suite...", "")
   TextGadget(#PB_Any, 328, 520, 280, 40, "Clona com Git ou baixa um .zip do GitHub e descompacta no diretorio acima.")
   TextGadget(#PB_Any, 24, 576, 584, 40,
     "Opcional: o editor ja tem pre-processador e tokenizador nativos (menu Arquivo), nao precisa " +
@@ -817,8 +817,9 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
 
   BadigCfg_ApplyEmulatorDefaults(@EmuG)
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
+  Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Saved = #False
 

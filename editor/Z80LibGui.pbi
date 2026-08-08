@@ -45,13 +45,15 @@ Procedure Z80LibGui_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, 80, 20, "Biblioteca:")
   Protected G_LibPathText = StringGadget(#PB_Any, 112, 22, 323, 24, "", #PB_String_ReadOnly)
-  Protected G_New  = ButtonGadget(#PB_Any, 443, 21, 90, 28, "Nova...")
-  Protected G_Open = ButtonGadget(#PB_Any, 541, 21, 95, 28, "Abrir...")
+  Protected G_New  = ThemedButton(443, 21, 90, 28, "Nova...", Chr(#Icon_Add))
+  GadgetToolTip(G_New, "Nova...")
+  Protected G_Open = ThemedButton(541, 21, 95, 28, "Abrir...", "")
 
   Protected G_List = ListIconGadget(#PB_Any, 24, 64, WinW - 48, 220, "Programa", 150,
                                     #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
@@ -60,11 +62,13 @@ Procedure Z80LibGui_OpenWindow(ParentWindow)
 
   Protected G_Status = TextGadget(#PB_Any, 24, 304, WinW - 48, 40, "Use 'Nova...' ou 'Abrir...' para escolher uma biblioteca.")
 
-  Protected G_Add    = ButtonGadget(#PB_Any, 24, 364, 160, 30, "Adicionar .REL...")
-  Protected G_Remove = ButtonGadget(#PB_Any, 200, 364, 160, 30, "Remover selecionado")
+  Protected G_Add    = ThemedButton(24, 364, 160, 30, "Adicionar .REL...", "")
+  Protected G_Remove = ThemedButton(200, 364, 160, 30, "Remover selecionado", Chr(#Icon_Remove))
+  GadgetToolTip(G_Remove, "Remover selecionado")
 
   Protected ButtonY = WinH - 56
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
+  Protected G_Close = ThemedButton(WinW - 24 - 110, ButtonY, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected LibPath.s = ""
   Protected Event, Quit = #False, Sel

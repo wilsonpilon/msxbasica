@@ -240,6 +240,7 @@ Procedure PsgEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -255,16 +256,16 @@ Procedure PsgEditor_OpenWindow(ParentWindow)
   Protected G_SoundNumberText = TextGadget(#PB_Any, Cx, 16, 40, 20, "#1")
   Cx + 40 + 10
 
-  Protected G_First = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9198))
+  Protected G_First = ThemedButton(Cx, 12, 28, 26, Chr(9198), "")
   GadgetToolTip(G_First, "Primeiro som")
   Cx + 28 + 2
-  Protected G_Prev = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9664))
+  Protected G_Prev = ThemedButton(Cx, 12, 28, 26, Chr(9664), "")
   GadgetToolTip(G_Prev, "Som anterior")
   Cx + 28 + 2
-  Protected G_Next = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9654))
+  Protected G_Next = ThemedButton(Cx, 12, 28, 26, Chr(9654), "")
   GadgetToolTip(G_Next, "Proximo som")
   Cx + 28 + 2
-  Protected G_Last = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9197))
+  Protected G_Last = ThemedButton(Cx, 12, 28, 26, Chr(9197), "")
   GadgetToolTip(G_Last, "Ultimo som")
   Cx + 28 + 16
 
@@ -342,19 +343,19 @@ Procedure PsgEditor_OpenWindow(ParentWindow)
   ; --- Botoes de edicao de passo ---
   Protected StepBtnY = ShY + 70 + 10
   Cx = 15
-  Protected G_AddStep = ButtonGadget(#PB_Any, Cx, StepBtnY, 110, 26, "Adicionar passo")
+  Protected G_AddStep = ThemedButton(Cx, StepBtnY, 110, 26, "Adicionar passo", "")
   Cx + 110 + 6
-  Protected G_UpdateStep = ButtonGadget(#PB_Any, Cx, StepBtnY, 110, 26, "Atualizar passo")
+  Protected G_UpdateStep = ThemedButton(Cx, StepBtnY, 110, 26, "Atualizar passo", "")
   Cx + 110 + 6
-  Protected G_RemoveStep = ButtonGadget(#PB_Any, Cx, StepBtnY, 100, 26, "Remover")
+  Protected G_RemoveStep = ThemedButton(Cx, StepBtnY, 100, 26, "Remover", "")
   Cx + 100 + 6
-  Protected G_MoveUp = ButtonGadget(#PB_Any, Cx, StepBtnY, 34, 26, Chr(9650))
+  Protected G_MoveUp = ThemedButton(Cx, StepBtnY, 34, 26, Chr(9650), "")
   GadgetToolTip(G_MoveUp, "Mover passo pra cima")
   Cx + 34 + 4
-  Protected G_MoveDown = ButtonGadget(#PB_Any, Cx, StepBtnY, 34, 26, Chr(9660))
+  Protected G_MoveDown = ThemedButton(Cx, StepBtnY, 34, 26, Chr(9660), "")
   GadgetToolTip(G_MoveDown, "Mover passo pra baixo")
   Cx + 34 + 12
-  Protected G_DuplicateStep = ButtonGadget(#PB_Any, Cx, StepBtnY, 110, 26, "Duplicar passo")
+  Protected G_DuplicateStep = ThemedButton(Cx, StepBtnY, 110, 26, "Duplicar passo", "")
 
   ; --- Lista de passos ---
   Protected ListY = StepBtnY + 26 + 8
@@ -363,23 +364,26 @@ Procedure PsgEditor_OpenWindow(ParentWindow)
 
   ; --- Tocar/Parar + status ---
   Protected PlayY = ListY + 130 + 10
-  Protected G_Play = ButtonGadget(#PB_Any, 15, PlayY, 100, 28, "Tocar")
-  Protected G_Stop = ButtonGadget(#PB_Any, 125, PlayY, 100, 28, "Parar")
+  Protected G_Play = ThemedButton(15, PlayY, 100, 28, "Tocar", Chr(#Icon_Play))
+  GadgetToolTip(G_Play, "Tocar")
+  Protected G_Stop = ThemedButton(125, PlayY, 100, 28, "Parar", Chr(#Icon_Stop))
+  GadgetToolTip(G_Stop, "Parar")
   Protected G_Status = TextGadget(#PB_Any, 240, PlayY + 4, 500, 20, "")
 
   ; --- Geracao de codigo ---
   Protected GenY = PlayY + 28 + 10
-  Protected G_GenBasic = ButtonGadget(#PB_Any, 15, GenY, 165, 26, "Gerar codigo BASIC")
-  Protected G_GenRaw = ButtonGadget(#PB_Any, 190, GenY, 150, 26, "Gerar bytes crus")
-  Protected G_Inject = ButtonGadget(#PB_Any, 350, GenY, 150, 26, "Injetar no cursor")
+  Protected G_GenBasic = ThemedButton(15, GenY, 165, 26, "Gerar codigo BASIC", "")
+  Protected G_GenRaw = ThemedButton(190, GenY, 150, 26, "Gerar bytes crus", "")
+  Protected G_Inject = ThemedButton(350, GenY, 150, 26, "Injetar no cursor", Chr(#Icon_Insert))
   GadgetToolTip(G_Inject, "Insere o codigo gerado abaixo no cursor da aba de texto ativa")
-  Protected G_Copy = ButtonGadget(#PB_Any, 510, GenY, 100, 26, "Copiar")
+  Protected G_Copy = ThemedButton(510, GenY, 100, 26, "Copiar", Chr(#Icon_Copy))
   GadgetToolTip(G_Copy, "Copia o codigo gerado abaixo para a area de transferencia")
 
   Protected CodeY = GenY + 26 + 8
   Protected G_CodeOutput = EditorGadget(#PB_Any, 15, CodeY, 725, 100)
 
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 15 - 90, CodeY + 100 + 10, 90, 28, "Fechar")
+  Protected G_Close = ThemedButton(WinW - 15 - 90, CodeY + 100 + 10, 90, 28, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   ; --- Estado ---
   Dim Steps.PsgStepData(#PsgEd_MaxSteps - 1)

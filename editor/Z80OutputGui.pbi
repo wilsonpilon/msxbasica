@@ -251,14 +251,18 @@ Procedure Z80Out_ShowListing(Array Bytes.a(1), NBytes.i, StartAddr.u, ParentWind
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
   Protected G_Text = EditorGadget(#PB_Any, 24, 24, WinW - 48, 364)
   SetGadgetText(G_Text, ListingText)
-  Protected G_Copy = ButtonGadget(#PB_Any, 24, 404, 100, 32, "Copiar")
-  Protected G_Inject = ButtonGadget(#PB_Any, 136, 404, 150, 32, "Injetar no cursor")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, 404, 110, 32, "Fechar")
+  Protected G_Copy = ThemedButton(24, 404, 100, 32, "Copiar", Chr(#Icon_Copy))
+  GadgetToolTip(G_Copy, "Copiar")
+  Protected G_Inject = ThemedButton(136, 404, 150, 32, "Injetar no cursor", Chr(#Icon_Insert))
+  GadgetToolTip(G_Inject, "Injetar no cursor")
+  Protected G_Close = ThemedButton(WinW - 24 - 110, 404, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected Event, Quit = #False
   Repeat
@@ -299,17 +303,20 @@ Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, 
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
   Protected InfoTxt.s = Str(NBytes) + " bytes, endereco " + Hex(StartAddr, #PB_Word) + "h-" + Hex(EndAddr, #PB_Word) + "h."
   TextGadget(#PB_Any, 24, 24, WinW - 48, 20, InfoTxt)
 
-  Protected G_Bin    = ButtonGadget(#PB_Any, 24, 60, WinW - 48, 32, "Salvar .bin no PC...")
-  Protected G_Com    = ButtonGadget(#PB_Any, 24, 100, WinW - 48, 32, "Gerar .COM (MSX-DOS, independente do BASIC)...")
-  Protected G_Dsk    = ButtonGadget(#PB_Any, 24, 140, WinW - 48, 32, "Gravar disco MSX (.dsk, BLOAD)...")
-  Protected G_List   = ButtonGadget(#PB_Any, 24, 180, WinW - 48, 32, "Gerar listing BASIC (DATA/POKE)...")
-  Protected G_Cancel = ButtonGadget(#PB_Any, 24, 220, WinW - 48, 32, "Cancelar")
+  Protected G_Bin    = ThemedButton(24, 60, WinW - 48, 32, "Salvar .bin no PC...", Chr(#Icon_Save))
+  GadgetToolTip(G_Bin, "Salvar .bin no PC...")
+  Protected G_Com    = ThemedButton(24, 100, WinW - 48, 32, "Gerar .COM (MSX-DOS, independente do BASIC)...", "")
+  Protected G_Dsk    = ThemedButton(24, 140, WinW - 48, 32, "Gravar disco MSX (.dsk, BLOAD)...", Chr(#Icon_Save))
+  GadgetToolTip(G_Dsk, "Gravar disco MSX (.dsk, BLOAD)...")
+  Protected G_List   = ThemedButton(24, 180, WinW - 48, 32, "Gerar listing BASIC (DATA/POKE)...", "")
+  Protected G_Cancel = ThemedButton(24, 220, WinW - 48, 32, "Cancelar", "")
 
   Protected Event, Quit = #False
   Repeat

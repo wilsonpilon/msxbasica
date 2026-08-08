@@ -314,6 +314,7 @@ Procedure.i SeeEd_PickEnvShape(ParentWindow, CurrentShape.a)
   If Not Win
     ProcedureReturn -1
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -327,7 +328,7 @@ Procedure.i SeeEd_PickEnvShape(ParentWindow, CurrentShape.a)
     SeeEd_DrawEnvShapeCell(G_Cell(s), s, Bool(s = CurrentShape))
   Next
 
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW / 2 - 55, WinH - 36, 110, 28, "Cancelar")
+  Protected G_Cancel = ThemedButton(WinW / 2 - 55, WinH - 36, 110, 28, "Cancelar", "")
 
   Protected Event, Quit = #False, Result.i = -1
   Repeat
@@ -417,6 +418,7 @@ Procedure.b SeeEd_PickSfxFromFile(ParentWindow, List SfxNums.i(), List StartPats
   If Not Win
     ProcedureReturn #False
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -433,8 +435,9 @@ Procedure.b SeeEd_PickSfxFromFile(ParentWindow, List SfxNums.i(), List StartPats
     SetGadgetState(G_List, 0)
   EndIf
 
-  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 24 - 234, WinH - 44, 110, 32, "Importar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 24 - 110, WinH - 44, 110, 32, "Cancelar")
+  Protected G_Ok = ThemedButton(WinW - 24 - 234, WinH - 44, 110, 32, "Importar", Chr(#Icon_Import))
+  GadgetToolTip(G_Ok, "Importar")
+  Protected G_Cancel = ThemedButton(WinW - 24 - 110, WinH - 44, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Result.b = #False, Sel
   Repeat
@@ -491,6 +494,7 @@ Procedure.b SeeEd_AskPatternRange(ParentWindow, DefaultLo.i, DefaultHi.i, MaxIdx
   If Not Win
     ProcedureReturn #False
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -500,8 +504,9 @@ Procedure.b SeeEd_AskPatternRange(ParentWindow, DefaultLo.i, DefaultHi.i, MaxIdx
   TextGadget(#PB_Any, 168, 58, 34, 20, "Ate:")
   Protected G_Hi = StringGadget(#PB_Any, 204, 54, 90, 24, Str(DefaultHi), #PB_String_Numeric)
 
-  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 24 - 234, WinH - 44, 110, 32, "Limpar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 24 - 110, WinH - 44, 110, 32, "Cancelar")
+  Protected G_Ok = ThemedButton(WinW - 24 - 234, WinH - 44, 110, 32, "Limpar", Chr(#Icon_Clear))
+  GadgetToolTip(G_Ok, "Limpar")
+  Protected G_Cancel = ThemedButton(WinW - 24 - 110, WinH - 44, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Result.b = #False
   Repeat
@@ -605,6 +610,7 @@ Procedure SeeTrackerEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -627,22 +633,28 @@ Procedure SeeTrackerEditor_OpenWindow(ParentWindow)
   SeeEd_DrawHeader(G_Header)
   Protected G_Scroll = ScrollBarGadget(#PB_Any, LeftX + #SeeEd_GridW, GridY, ScrollW, #SeeEd_GridH, 0, 0, #SeeEd_GridRows)
 
-  Protected G_Insert = ButtonGadget(#PB_Any, LeftX, BtnRowY, 120, 30, "Inserir pattern")
-  Protected G_Delete = ButtonGadget(#PB_Any, LeftX + 124, BtnRowY, 120, 30, "Apagar pattern")
-  Protected G_MoveUp = ButtonGadget(#PB_Any, LeftX + 248, BtnRowY, 90, 30, "Mover p/ cima")
-  Protected G_MoveDown = ButtonGadget(#PB_Any, LeftX + 342, BtnRowY, 90, 30, "Mover p/ baixo")
-  Protected G_Copy1 = ButtonGadget(#PB_Any, LeftX, BtnRowY + 34, 120, 30, "Copiar pattern")
-  Protected G_Paste1 = ButtonGadget(#PB_Any, LeftX + 124, BtnRowY + 34, 120, 30, "Colar pattern")
-  Protected G_Play = ButtonGadget(#PB_Any, LeftX + 248, BtnRowY + 34, 90, 30, "Tocar")
-  Protected G_Stop = ButtonGadget(#PB_Any, LeftX + 342, BtnRowY + 34, 90, 30, "Parar")
-  Protected G_ClearAll = ButtonGadget(#PB_Any, LeftX, BtnRowY + 68, 140, 30, "Limpar")
-  Protected G_ClearLine = ButtonGadget(#PB_Any, LeftX + 144, BtnRowY + 68, 140, 30, "Limpar linha")
-  Protected G_ClearBlock = ButtonGadget(#PB_Any, LeftX + 288, BtnRowY + 68, 144, 30, "Limpar bloco")
-  Protected G_GenCode = ButtonGadget(#PB_Any, LeftX, BtnRowY + 102, 120, 30, "Gerar codigo")
-  Protected G_Inject = ButtonGadget(#PB_Any, LeftX + 124, BtnRowY + 102, 120, 30, "Injetar no cursor")
-  Protected G_CopyCode = ButtonGadget(#PB_Any, LeftX + 248, BtnRowY + 102, 90, 30, "Copiar")
-  Protected G_Close = ButtonGadget(#PB_Any, LeftX + 342, BtnRowY + 102, 90, 30, "Fechar")
-  Protected G_ImportSee = ButtonGadget(#PB_Any, LeftX, BtnRowY + 136, 432, 30, "Importar .SEE... (arquivo gerado pelo SEE original)")
+  Protected G_Insert = ThemedButton(LeftX, BtnRowY, 120, 30, "Inserir pattern", Chr(#Icon_Insert))
+  GadgetToolTip(G_Insert, "Inserir pattern")
+  Protected G_Delete = ThemedButton(LeftX + 124, BtnRowY, 120, 30, "Apagar pattern", "")
+  Protected G_MoveUp = ThemedButton(LeftX + 248, BtnRowY, 90, 30, "Mover p/ cima", Chr(#Icon_ArrowUp))
+  GadgetToolTip(G_MoveUp, "Mover p/ cima")
+  Protected G_MoveDown = ThemedButton(LeftX + 342, BtnRowY, 90, 30, "Mover p/ baixo", Chr(#Icon_ArrowDown))
+  GadgetToolTip(G_MoveDown, "Mover p/ baixo")
+  Protected G_Copy1 = ThemedButton(LeftX, BtnRowY + 34, 120, 30, "Copiar pattern", "")
+  Protected G_Paste1 = ThemedButton(LeftX + 124, BtnRowY + 34, 120, 30, "Colar pattern", "")
+  Protected G_Play = ThemedButton(LeftX + 248, BtnRowY + 34, 90, 30, "Tocar", Chr(#Icon_Play))
+  GadgetToolTip(G_Play, "Tocar")
+  Protected G_Stop = ThemedButton(LeftX + 342, BtnRowY + 34, 90, 30, "Parar", Chr(#Icon_Stop))
+  GadgetToolTip(G_Stop, "Parar")
+  Protected G_ClearAll = ThemedButton(LeftX, BtnRowY + 68, 140, 30, "Limpar", Chr(#Icon_Clear))
+  Protected G_ClearLine = ThemedButton(LeftX + 144, BtnRowY + 68, 140, 30, "Limpar linha", Chr(#Icon_Clear))
+  Protected G_ClearBlock = ThemedButton(LeftX + 288, BtnRowY + 68, 144, 30, "Limpar bloco", Chr(#Icon_Clear))
+  Protected G_GenCode = ThemedButton(LeftX, BtnRowY + 102, 120, 30, "Gerar codigo", "")
+  Protected G_Inject = ThemedButton(LeftX + 124, BtnRowY + 102, 120, 30, "Injetar no cursor", Chr(#Icon_Insert))
+  Protected G_CopyCode = ThemedButton(LeftX + 248, BtnRowY + 102, 90, 30, "Copiar", Chr(#Icon_Copy))
+  Protected G_Close = ThemedButton(LeftX + 342, BtnRowY + 102, 90, 30, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
+  Protected G_ImportSee = ThemedButton(LeftX, BtnRowY + 136, 432, 30, "Importar .SEE... (arquivo gerado pelo SEE original)", Chr(#Icon_Import))
   GadgetToolTip(G_GenCode, "Monta o driver Z80 nativo + o blob .SEE deste SFX e mostra o codigo BASIC pronto (DATA/POKE/DEFUSR)")
   GadgetToolTip(G_Inject, "Gera o mesmo codigo e injeta na aba de texto ativa")
   GadgetToolTip(G_ImportSee, "Le um arquivo .SEE real (do editor original) e importa um dos SFX dele pros patterns do SFX atual")
@@ -753,7 +765,7 @@ Procedure SeeTrackerEditor_OpenWindow(ParentWindow)
   Protected G_EnvPeriod = StringGadget(#PB_Any, RightX + 100, PY, 70, 24, "0", #PB_String_Numeric)
   TextGadget(#PB_Any, RightX + 180, PY + 4, 50, 20, "Forma:")
   Protected G_EnvShape = StringGadget(#PB_Any, RightX + 228, PY, 50, 24, "0", #PB_String_Numeric)
-  Protected G_EnvShapePick = ButtonGadget(#PB_Any, RightX + 282, PY, 26, 24, "...")
+  Protected G_EnvShapePick = ThemedButton(RightX + 282, PY, 26, 24, "...", "")
   Protected G_EnvShapeIcon = CanvasGadget(#PB_Any, RightX + 312, PY, 66, 24)
   GadgetToolTip(G_EnvPeriod, "Periodo do envelope de hardware do PSG (0-65535, regs 11/12)")
   GadgetToolTip(G_EnvShape, "Forma do envelope de hardware do PSG (0-15, reg 13)")

@@ -106,6 +106,7 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -121,16 +122,16 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
   Protected G_SongNumberText = TextGadget(#PB_Any, Cx, 16, 40, 20, "#1")
   Cx + 40 + 10
 
-  Protected G_First = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9198))
+  Protected G_First = ThemedButton(Cx, 12, 28, 26, Chr(9198), "")
   GadgetToolTip(G_First, "Primeira musica")
   Cx + 28 + 2
-  Protected G_Prev = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9664))
+  Protected G_Prev = ThemedButton(Cx, 12, 28, 26, Chr(9664), "")
   GadgetToolTip(G_Prev, "Musica anterior")
   Cx + 28 + 2
-  Protected G_Next = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9654))
+  Protected G_Next = ThemedButton(Cx, 12, 28, 26, Chr(9654), "")
   GadgetToolTip(G_Next, "Proxima musica")
   Cx + 28 + 2
-  Protected G_Last = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9197))
+  Protected G_Last = ThemedButton(Cx, 12, 28, 26, Chr(9197), "")
   GadgetToolTip(G_Last, "Ultima musica")
   Cx + 28 + 16
 
@@ -196,10 +197,10 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
     ; estilo das notas em vez de um botao largo "Pausa (R)" a parte).
     Cy = TopY + 68
     For n = 0 To 6
-      G_Note(c, n) = ButtonGadget(#PB_Any, FX + 10 + n * 34, Cy, 30, 24, Mid(NoteNames, n + 1, 1))
+      G_Note(c, n) = ThemedButton(FX + 10 + n * 34, Cy, 30, 24, Mid(NoteNames, n + 1, 1), "")
     Next
     GadgetToolTip(G_Note(c, 0), "Insere a nota (usa o acidente/duracao/pontos correntes ao lado)")
-    G_Pause(c) = ButtonGadget(#PB_Any, FX + 10 + 7 * 34, Cy, 30, 24, "R")
+    G_Pause(c) = ThemedButton(FX + 10 + 7 * 34, Cy, 30, 24, "R", "")
     GadgetToolTip(G_Pause(c), "Pausa - insere uma pausa (usa duracao/pontos correntes)")
 
     Cy + 30
@@ -224,49 +225,49 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
     Cy + 28
     TextGadget(#PB_Any, FX + 10, Cy + 3, 12, 18, "N")
     G_NoteNumField(c) = StringGadget(#PB_Any, FX + 22, Cy, 42, 22, "")
-    G_NoteNumBtn(c) = ButtonGadget(#PB_Any, FX + 66, Cy, 26, 22, "+")
+    G_NoteNumBtn(c) = ThemedButton(FX + 66, Cy, 26, 22, "+", "")
     GadgetToolTip(G_NoteNumBtn(c), "Insere nota absoluta por numero (1-96, cromatica, 8 oitavas)")
     TextGadget(#PB_Any, FX + 104, Cy + 3, 12, 18, "O")
     G_OctField(c) = StringGadget(#PB_Any, FX + 116, Cy, 28, 22, "4")
-    G_OctBtn(c) = ButtonGadget(#PB_Any, FX + 146, Cy, 26, 22, "+")
+    G_OctBtn(c) = ThemedButton(FX + 146, Cy, 26, 22, "+", "")
     GadgetToolTip(G_OctBtn(c), "Define a oitava atual (1-8)")
-    G_OctUp(c) = ButtonGadget(#PB_Any, FX + 176, Cy, 26, 22, ">")
+    G_OctUp(c) = ThemedButton(FX + 176, Cy, 26, 22, ">", "")
     GadgetToolTip(G_OctUp(c), "Sobe 1 oitava")
-    G_OctDown(c) = ButtonGadget(#PB_Any, FX + 204, Cy, 26, 22, "<")
+    G_OctDown(c) = ThemedButton(FX + 204, Cy, 26, 22, "<", "")
     GadgetToolTip(G_OctDown(c), "Desce 1 oitava")
 
     Cy + 28
     TextGadget(#PB_Any, FX + 10, Cy + 3, 12, 18, "L")
     G_LenField(c) = StringGadget(#PB_Any, FX + 22, Cy, 28, 22, "4")
-    G_LenBtn(c) = ButtonGadget(#PB_Any, FX + 52, Cy, 26, 22, "+")
+    G_LenBtn(c) = ThemedButton(FX + 52, Cy, 26, 22, "+", "")
     GadgetToolTip(G_LenBtn(c), "Define a duracao padrao (1-64) das notas/pausas sem duracao explicita")
     TextGadget(#PB_Any, FX + 90, Cy + 3, 12, 18, "T")
     G_TempoField(c) = StringGadget(#PB_Any, FX + 102, Cy, 38, 22, "120")
-    G_TempoBtn(c) = ButtonGadget(#PB_Any, FX + 142, Cy, 26, 22, "+")
+    G_TempoBtn(c) = ThemedButton(FX + 142, Cy, 26, 22, "+", "")
     GadgetToolTip(G_TempoBtn(c), "Define o andamento em BPM (32-255)")
 
     Cy + 28
     TextGadget(#PB_Any, FX + 10, Cy + 3, 12, 18, "V")
     G_VolField(c) = StringGadget(#PB_Any, FX + 22, Cy, 28, 22, "8")
-    G_VolBtn(c) = ButtonGadget(#PB_Any, FX + 52, Cy, 26, 22, "+")
+    G_VolBtn(c) = ThemedButton(FX + 52, Cy, 26, 22, "+", "")
     GadgetToolTip(G_VolBtn(c), "Define o volume do canal (0-15) - volta ao modo volume fixo (desliga o envelope)")
 
     Cy + 28
     TextGadget(#PB_Any, FX + 10, Cy + 3, 12, 18, "M")
     G_EnvPeriodField(c) = StringGadget(#PB_Any, FX + 22, Cy, 46, 22, "1000")
-    G_EnvPeriodBtn(c) = ButtonGadget(#PB_Any, FX + 70, Cy, 26, 22, "+")
+    G_EnvPeriodBtn(c) = ThemedButton(FX + 70, Cy, 26, 22, "+", "")
     GadgetToolTip(G_EnvPeriodBtn(c), "Define o periodo do envelope (1-65535) - so 1 gerador, compartilhado pelos 3 canais")
     TextGadget(#PB_Any, FX + 108, Cy + 3, 12, 18, "S")
     G_EnvShapeField(c) = StringGadget(#PB_Any, FX + 120, Cy, 28, 22, "0")
-    G_EnvShapeBtn(c) = ButtonGadget(#PB_Any, FX + 150, Cy, 26, 22, "+")
+    G_EnvShapeBtn(c) = ThemedButton(FX + 150, Cy, 26, 22, "+", "")
     GadgetToolTip(G_EnvShapeBtn(c), "Define a forma do envelope (0-15) - liga o modo envelope neste canal e retrigga")
 
     Cy + 30
-    G_ClearLine(c) = ButtonGadget(#PB_Any, FX + 10, Cy, 90, 24, "Limpar linha")
+    G_ClearLine(c) = ThemedButton(FX + 10, Cy, 90, 24, "Limpar linha", Chr(#Icon_Clear))
     GadgetToolTip(G_ClearLine(c), "Apaga a linha atual (recomeca do zero)")
-    G_UpdateLine(c) = ButtonGadget(#PB_Any, FX + 104, Cy, 90, 24, "Atualizar")
+    G_UpdateLine(c) = ThemedButton(FX + 104, Cy, 90, 24, "Atualizar", "")
     GadgetToolTip(G_UpdateLine(c), "Aplica a linha atual sobre a linha selecionada na lista")
-    G_NewLine(c) = ButtonGadget(#PB_Any, FX + 198, Cy, 122, 24, "Inserir nova linha")
+    G_NewLine(c) = ThemedButton(FX + 198, Cy, 122, 24, "Inserir nova linha", Chr(#Icon_Insert))
     GadgetToolTip(G_NewLine(c), "Fecha a linha atual como uma nova entrada na lista abaixo")
 
     Cy + 30
@@ -274,32 +275,34 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
     AddGadgetColumn(G_LineList(c), 1, "Linha MML", ColW - 60)
 
     Cy + 112
-    G_RemoveLine(c) = ButtonGadget(#PB_Any, FX + 10, Cy, 34, 24, "-")
+    G_RemoveLine(c) = ThemedButton(FX + 10, Cy, 34, 24, "-", "")
     GadgetToolTip(G_RemoveLine(c), "Remove a linha selecionada")
-    G_MoveUp(c) = ButtonGadget(#PB_Any, FX + 50, Cy, 34, 24, Chr(9650))
+    G_MoveUp(c) = ThemedButton(FX + 50, Cy, 34, 24, Chr(9650), "")
     GadgetToolTip(G_MoveUp(c), "Mover linha pra cima")
-    G_MoveDown(c) = ButtonGadget(#PB_Any, FX + 88, Cy, 34, 24, Chr(9660))
+    G_MoveDown(c) = ThemedButton(FX + 88, Cy, 34, 24, Chr(9660), "")
     GadgetToolTip(G_MoveDown(c), "Mover linha pra baixo")
   Next
 
   ; --- Tocar/Parar + status ---
-  Protected G_Play = ButtonGadget(#PB_Any, 15, BelowY, 100, 28, "Tocar")
+  Protected G_Play = ThemedButton(15, BelowY, 100, 28, "Tocar", Chr(#Icon_Play))
   GadgetToolTip(G_Play, "Toca os 3 canais juntos (linhas ja inseridas + a linha atual de cada canal)")
-  Protected G_Stop = ButtonGadget(#PB_Any, 125, BelowY, 100, 28, "Parar")
+  Protected G_Stop = ThemedButton(125, BelowY, 100, 28, "Parar", Chr(#Icon_Stop))
+  GadgetToolTip(G_Stop, "Parar")
   Protected G_Status = TextGadget(#PB_Any, 240, BelowY + 4, 700, 20, "")
 
   ; --- Geracao de codigo ---
   Protected GenY = BelowY + 28 + 10
-  Protected G_GenPlay = ButtonGadget(#PB_Any, 15, GenY, 165, 26, "Gerar codigo PLAY")
-  Protected G_Inject = ButtonGadget(#PB_Any, 190, GenY, 150, 26, "Injetar no cursor")
+  Protected G_GenPlay = ThemedButton(15, GenY, 165, 26, "Gerar codigo PLAY", "")
+  Protected G_Inject = ThemedButton(190, GenY, 150, 26, "Injetar no cursor", Chr(#Icon_Insert))
   GadgetToolTip(G_Inject, "Insere o codigo gerado abaixo no cursor da aba de texto ativa")
-  Protected G_Copy = ButtonGadget(#PB_Any, 350, GenY, 100, 26, "Copiar")
+  Protected G_Copy = ThemedButton(350, GenY, 100, 26, "Copiar", Chr(#Icon_Copy))
   GadgetToolTip(G_Copy, "Copia o codigo gerado abaixo para a area de transferencia")
 
   Protected CodeY = GenY + 26 + 8
   Protected G_CodeOutput = EditorGadget(#PB_Any, 15, CodeY, WinW - 30, 100)
 
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 15 - 90, CodeY + 100 + 10, 90, 28, "Fechar")
+  Protected G_Close = ThemedButton(WinW - 15 - 90, CodeY + 100 + 10, 90, 28, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   ; --- Estado ---
   Dim Lines.s(2, #MmlEd_MaxLines - 1)

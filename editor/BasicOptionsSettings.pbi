@@ -94,6 +94,7 @@ Procedure.b BasicOptionsCfg_OpenSettingsWindow(ParentWindow)
   If Not Win
     ProcedureReturn #False
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
@@ -120,8 +121,9 @@ Procedure.b BasicOptionsCfg_OpenSettingsWindow(ParentWindow)
     "usadas no documento atual (sempre com a grafia original). Enter" + Chr(10) +
     "escolhe a primeira opcao, setas navegam e Esc cancela.")
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
+  Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Saved = #False
 

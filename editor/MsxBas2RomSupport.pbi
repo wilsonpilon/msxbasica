@@ -261,6 +261,7 @@ Procedure MsxBas2RomSettings_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -275,10 +276,11 @@ Procedure MsxBas2RomSettings_OpenWindow(ParentWindow)
     SetGadgetText(G_Installed, "Nao instalado ainda.")
   EndIf
 
-  Protected G_Download = ButtonGadget(#PB_Any, 24, 120, 280, 28, "Baixar versao mais recente")
+  Protected G_Download = ThemedButton(24, 120, 280, 28, "Baixar versao mais recente", "")
   Protected G_Status = TextGadget(#PB_Any, 24, 176, WinW - 48, 40, "")
 
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, WinH - 56, 110, 32, "Fechar")
+  Protected G_Close = ThemedButton(WinW - 24 - 110, WinH - 56, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected Event, Quit = #False
   Repeat

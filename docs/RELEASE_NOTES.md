@@ -6,6 +6,263 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.31.4 — "ADEUS WINDOWS 3.1" (2026-08-08)
+
+**Tema da versão**: o piloto no Editor Hexa (`7.31.3`) agradou — usuário pediu pra replicar o
+mesmo formato (botões tematizados + ícones Nerd Font opcionais) em **todos** os diálogos e
+módulos da IDE. 293 botões em 33 arquivos convertidos numa sessão só.
+
+### Novidades
+
+- **Todo diálogo da IDE agora segue o tema** — telas de Configurar, editores visuais (Sprite,
+  Alfabetos, Som, SEE Tracker, Telas, Música, DRAW Screen 2), gerenciador de disco, console do
+  openMSX, todas as telas de Ajuda: fundo da janela + todos os botões (293 ao todo) seguem a
+  paleta do tema escolhido, em vez de chrome branco/cinza nativo do Windows.
+- **Mais de 140 botões com ícone Nerd Font** quando uma fonte de ícones está configurada — Fechar,
+  Salvar, Salvar como, Copiar, Tocar, Parar, Ejetar, Inserir, Limpar, Adicionar, Remover, Conectar/
+  Desconectar, Voltar, Reset, Montar (Build), Linkar, Importar, Mudo e mais, cada um com tooltip
+  mostrando o nome ao passar o mouse. Ações bem específicas de um módulo (ex.: "Gerar código PLAY",
+  "Injetar no cursor", "Transferir programa atual") ficam de propósito só com texto — um ícone
+  genérico ali confundiria mais do que ajudaria; o mesmo vale pros botões de estado dinâmico do
+  console do openMSX ("VSync: ?", "Power: ?" etc.) e pros de uma letra só dos editores de
+  som/música/tracker.
+- **Infraestrutura generalizada**: o que nasceu especificamente no Editor Hexa (`HexEd_*`,
+  `7.31.3`) virou `editor/ThemedButtons.pbi` — módulo compartilhado com a `Macro ThemedButton()` e
+  as constantes `#Icon_*`, usado por todos os 33 arquivos. `HexEditorGui.pbi` foi migrado pra usar
+  o módulo compartilhado também, sem duplicar código.
+
+### Bugs corrigidos nesta versão
+
+- Nenhum — rollout de um padrão já validado no piloto anterior, sem correção de regressão
+  conhecida.
+
+### Documentação nova
+
+- `docs/MANUAL.md`: seção **Botões com ícones** reescrita pra refletir o escopo novo (todos os
+  diálogos, não só o Editor Hexa); `CLAUDE.md` ganhou uma nota de arquitetura sobre a ordem de
+  declaração `Global`/`Structure` exigida por `EnableExplicit` + inclusão textual — pegadinha real
+  encontrada ao mover `ThemedButtons.pbi` pra cedo o bastante na cadeia de `XIncludeFile`.
+
+### Bastidores
+
+- **Achado real de arquitetura**: quase todos os 33 arquivos de diálogo são incluídos bem no topo
+  de `BadigEditor.pb` (antes de `Global Color_*`/`Structure EditorSettings` existirem) — igual ao
+  motivo que já forçava `WordStarKeys.pbi` (removido em `7.31.0`)/`MdViewerGui.pbi`/
+  `EditorSearch.pbi` a ficarem no fim do arquivo. A correção não foi mover os 33 arquivos (mudaria
+  a ordem de dezenas de `Declare` existentes) e sim mover as poucas linhas de `Structure`/`Global`
+  de que `ThemedButtons.pbi` precisa pro topo do arquivo, antes do primeiro `XIncludeFile` —
+  mesmo idioma que os `Declare` de procedure já usados ali, só que pra dado em vez de código.
+- **Como a conversão foi feita em escala sem virar bagunça**: nenhuma das ~400 edições (267
+  botões + 40 janelas + 127 ícones + 104 tooltips) foi digitada uma por uma — três scripts Python
+  pequenos e descartáveis (conversão mecânica `ButtonGadget`→`ThemedButton` com parsing de parênteses
+  balanceados, não regex ingênuo; inserção de `SetWindowColor` após o guard `If Not Win`; upgrade de
+  ícone só pra rótulos exatos de uma lista curada) fizeram o trabalho repetitivo, com
+  recompilação depois de cada rodada pra pegar erro cedo. Foram escritos no scratchpad da sessão,
+  não fazem parte do repositório.
+- **Por que só ~140 dos 293 botões ganharam ícone**: a lista de conceitos com ícone verificado
+  (contra o `glyphnames.json` oficial, mesmo cuidado do piloto) ficou deliberadamente pequena e
+  só com ações universais — o resto continua em texto, o que é a escolha certa pra ação
+  específica de um módulo, não uma lacuna a preencher depois.
+
+---
+
+## 7.31.3 — "NERD DE VERDADE" (2026-08-08)
+
+**Tema da versão**: o usuário achou que os diálogos ainda pareciam "Windows 3.1" mesmo com os 7
+temas novos — "aquele mar de botões cinza que estragam a aparência". Piloto no **Editor Hexa**:
+botões deixam de ser controle nativo do Windows (que ignora `Color_*`) e viram imagens desenhadas
+na hora, na cor do tema — com a opção de trocar o texto por ícone de verdade de uma Nerd Font,
+não um desenho genérico à mão.
+
+### Novidades
+
+- **Editor Hexa (`F7`) com botões tematizados**: os 16 botões da janela (Abrir arquivo, Salvar,
+  Marcar início/fim, Preencher..., Excluir bloco... etc., mais os 3 da Galeria de templates) agora
+  são desenhados na cor do tema (fundo + borda a partir de `Color_TabInactive`, texto em
+  `Color_TextActive`) em vez de chrome cinza nativo do Windows. As setas da barra de rolagem
+  customizada também deixaram de ser quadradinhos brancos fixos.
+- **Fonte da interface reaproveitada**: os botões tematizados usam a mesma fonte já escolhida em
+  **Configurar → Editor...** (`EditorCfg\FontName`) em vez de "Segoe UI" fixo — qualquer `.ttf`
+  colocado na pasta de fontes customizadas (ou baixado pelo botão **Baixar fontes (Nerd
+  Fonts)...**, que já existia) já deixa a interface mais bonita, sem precisar instalar nada no
+  Windows (mesmo mecanismo `AddFontResourceEx` privado ao processo que já existia).
+- **Ícones de verdade, não desenhados à mão**: novo combo **Fonte de ícones** em **Configurar →
+  Editor...** — escolhendo uma Nerd Font ali, os botões do Editor Hexa trocam o texto por um
+  glifo de ícone real (pasta aberta, disquete, lixeira, cadeado etc.), com o nome continuando
+  disponível via tooltip ao passar o mouse. Os 15 codepoints usados foram conferidos ao vivo
+  contra o `glyphnames.json` oficial do projeto Nerd Fonts (v3.5.0) antes de entrar no código —
+  não chutados de memória. Sem fonte de ícones escolhida (padrão), os botões continuam com texto
+  normalmente.
+
+### Bugs corrigidos nesta versão
+
+- Nenhum — recurso novo, sem correção de regressão conhecida.
+
+### Documentação nova
+
+- `docs/MANUAL.md` ganhou a seção **Botões com ícones** e a menção à nova opção **Fonte de
+  ícones** em **Configurar → Editor...**.
+
+### Bastidores
+
+- **Por que não confiar no primeiro resultado da busca web pra codepoints**: uma primeira consulta
+  (resumida por IA a partir do `glyphnames.json`) devolveu `fa-plus_square = U+F055`; conferindo
+  o JSON bruto direto (`curl` + parse Python), o valor real é `U+F0FE`. Motivo pra sempre verificar
+  codepoint exato contra a fonte primária antes de gravar no código, em vez de confiar num resumo
+  de segunda mão.
+- **Por que fonte de ícones é uma opção separada da fonte de código**: nem toda fonte bonita pro
+  código é uma Nerd Font (a maioria não é), e forçar os botões a tentar usar qualquer fonte
+  escolhida arriscaria mostrar o quadradinho de "glifo ausente" em vez de um ícone — combo próprio,
+  com "(Nenhuma - usa texto)" como padrão seguro, deixa a decisão explícita com o usuário.
+- **O que NÃO entrou nesta rodada**: o mesmo tratamento (botões tematizados + ícones opcionais)
+  vale só pro Editor Hexa por enquanto — as ~10 outras janelas de diálogo (Configurar, SEE
+  Tracker, editores visuais) continuam com botão nativo. Replicar o padrão (macro
+  `HexEd_Button`/`HexEd_CreateButtonImage`, generalizada) fica pra uma próxima rodada, se o
+  resultado deste piloto agradar.
+
+---
+
+## 7.31.2 — "CAMALEÃO" (2026-08-08)
+
+**Tema da versão**: os dois temas originais (Escuro/Claro) viraram sete. O usuário achou os dois
+atuais feios de verdade e pediu variações mais atraentes — azul escuro, rosa, vermelho, verde,
+bege. As paletas foram desenhadas e aprovadas num mockup HTML fora do PureBasic antes de virar
+código de verdade (iterar cor em CSS é muito mais rápido que recompilar o app a cada ajuste).
+
+### Novidades
+
+- **7 temas** em **Configurar → Editor...**: **Grafite** e **Neve** (revisão dos dois atuais —
+  mais equilibrados, sem preto/branco puro) e cinco novos — **Azul Profundo** (clima Night Owl/
+  Nord), **Rosé** (Rosé Pine), **Carmesim** (oxblood/vinho), **Floresta** (Everforest) e **Bege**
+  (Solarized Light). Cada um define as ~24 cores nomeadas da área de edição, abas, régua e
+  destaque de sintaxe (`ApplyTheme()`, `BadigEditor.pb`) num pacote coerente só.
+- `EditorCfg\Theme` deixou de ser um booleano Dark/Light e virou um dos 7 IDs (`Graphite`/`Snow`/
+  `Navy`/`Rose`/`Crimson`/`Forest`/`Paper`) — `editor_settings.json` de instalações antigas com
+  `"Dark"`/`"Light"` migra sozinho pra `Graphite`/`Snow` no primeiro carregamento, sem resetar a
+  preferência do usuário.
+
+### Bugs corrigidos nesta versão
+
+- Nenhum — troca de mecanismo de tema, sem correção de regressão conhecida.
+
+### Documentação nova
+
+- `docs/MANUAL.md` ganhou a seção **Temas** (tabela com as 7 opções e o que muda/não muda de
+  verdade em cada uma).
+
+### Bastidores
+
+- **O que NÃO entrou nesta rodada**: os 7 temas valem só pra área do editor + Editor Hexa (os
+  únicos dois já ligados ao `ApplyTheme()`). As demais janelas (SEE Tracker, editores de
+  Alfabeto/Sprite/Som/Telas, disco, todas as telas de Configurar) usam cores próprias fixas e
+  controles nativos do Windows (botões/combos não são temáveis de jeito nenhum, é chrome do SO) —
+  auditado ao vivo no código antes de prometer algo: `SeeTrackerEditorGui.pbi` tem 22 botões
+  nativos contra só 4 áreas desenhadas à mão, `CharsetEditorGui.pbi` é parecido. Estender tema pra
+  essas janelas é um projeto à parte, arquivo por arquivo — cada cor hardcoded precisa ser
+  separada em "chrome" (segue o tema) vs. "conteúdo" (ex.: a paleta MSX real mostrada no editor de
+  alfabeto/sprite não pode virar rosa só porque o tema é Rosé, senão a ferramenta mentiria sobre a
+  cor de verdade do hardware). Fica como próximo passo, uma janela de cada vez, se o usuário
+  quiser seguir.
+- **Por que migrar `"Dark"`/`"Light"` em vez de só aceitar os dois como sinônimos permanentes**:
+  mais simples normalizar uma vez no carregamento (`EditorCfg_Load()`) do que espalhar `Case
+  "Dark", "Graphite"` em todo lugar que olha `EditorCfg\Theme` — `ApplyTheme()` só precisa
+  conhecer os 7 IDs canônicos.
+
+---
+
+## 7.31.1 — "ATALHO DE TUDO" (2026-08-08)
+
+**Tema da versão**: continuação da mesma sessão de `7.31.0` — depois de tirar o modo WordStar/JOE,
+o usuário pediu atalhos de teclado pro resto da IDE (novo projeto, caractere especial, openMSX,
+editor hexa, editores gráficos/sprites/som/tracker...) pra não ficar tão preso navegando menu.
+
+### Novidades
+
+- **22 atalhos novos** cobrindo praticamente toda a IDE, seguindo convenções de editor moderno onde
+  fazia sentido e reaproveitando teclas já livres onde não havia convenção óbvia:
+  - **Projeto**: `Ctrl+Alt+N` novo projeto, `Ctrl+Alt+O` abrir projeto.
+  - **Inserir/Configurar**: `Ctrl+Alt+I` caractere especial, `Ctrl+Alt+E` Configurar → Editor...
+  - **Executar**: `Shift+F5` Nestor Basic, `F6` renumerar, `Ctrl+Shift+F5` montar relocável,
+    `Ctrl+Alt+F5` linkar, `F7` Editor Hexa, `F8` console openMSX, `F9`/`Shift+F9` ver MD/TXT.
+  - **Criar (editores visuais)**: `Ctrl+Shift+D` disco, `Ctrl+Shift+P` sprite, `Ctrl+Shift+A`
+    alfabeto Graphos III, `Ctrl+Shift+G` som PSG, `Ctrl+Shift+T` SEE Tracker, `Ctrl+Shift+M`
+    música, `Ctrl+Shift+2`/`0`/`1` Draw Screen 2/Screen 0/Screen 1.
+  - **Ajuda**: `F1` abre `Ajuda → Editor...` — convenção universal de "ajuda", além do menu.
+- **Menu Editar novo** (adicionado já em `7.31.0`) segue documentado e sem mudanças aqui.
+- **`Ajuda → Editor...`** (`F1`) ganhou as seções novas (Executar, Criar, Inserir/Configurar/Ajuda)
+  na referência de atalhos, e a janela cresceu (`680×760`) pra caber o conteúdo sem espremer.
+
+### Bugs corrigidos nesta versão
+
+- Nenhum.
+
+### Documentação nova
+
+- `docs/MANUAL.md`: seções **Executar**, **Criar (editores visuais)** e **Outros atalhos** novas
+  dentro de "O editor de texto"; nota de atalho adicionada em cada seção de editor visual
+  individual (sprites, alfabetos, som, SEE Tracker, música, Screen 0/1/2) e nos menus Novo
+  projeto/Abrir projeto, Caractere Especial e Configurar → Editor.
+
+### Bastidores
+
+- **Por que nem todo item de "Criar" ganhou tecla**: Alfabeto Aquarela, Graphos III Screen 2,
+  Screen 1+2, Biblioteca Z80 e Assembly Sub Project são variantes menos usadas dos editores que já
+  ganharam atalho — precisariam de um terceiro ou quarto modificador pra não colidir com nada, o que
+  deixaria de ser um atalho rápido pra virar mais um exercício de memorização. Ficaram só no menu.
+- **Por que `Ctrl+Alt+` para projeto/inserir/configurar em vez de mnemônicos diretos**: `Ctrl+N`/
+  `Ctrl+O`/`Ctrl+S` já estavam ocupados pelas ações de arquivo (mais comuns) desde `7.31.0`; `Ctrl+Alt+`
+  ficou reservado como o "segundo andar" dessas mesmas letras para as ações de projeto equivalentes,
+  em vez de inventar letras sem relação.
+
+---
+
+## 7.31.0 — "APOSENTADORIA" (2026-08-08)
+
+**Tema da versão**: aposentadoria do teclado estilo WordStar/JOE. O usuário nunca tinha se apegado
+tanto ao modo assim no dia a dia (usa Helix/JetBrains/VSCode/Sublime/010 Editor no resto do tempo) e
+pediu pra voltar ao padrão Scintilla/Windows — setas, `Ctrl+C/V/X/Z/Y`, `Home`/`End` etc. — sem nenhum
+modo de teclado próprio por cima.
+
+### Novidades
+
+- **Teclado do editor agora é o padrão Scintilla/Windows**, sem nenhuma interceptação por cima — o
+  antigo modo WordStar/JOE (`editor/WordStarKeys.pbi`: subclass de HWND, comandos de duas teclas
+  `Ctrl+K x`/`Ctrl+Q x`, bloco marcado com destaque persistente) foi removido por completo.
+- **Buscar/Substituir/Ir para linha** ganharam atalhos padrão — `Ctrl+F` (buscar), `F3` (buscar
+  próxima), `Ctrl+H` (substituir, tudo de uma vez ou confirmando ocorrência por ocorrência) e `Ctrl+G`
+  (ir para linha) — também no novo menu **Editar**. A lógica de busca já existia (portátil, só fala
+  com o Scintilla) e foi só desacoplada do antigo mecanismo de teclas duplas.
+- **Atalhos de arquivo voltaram ao convencional**: `Ctrl+N` novo, `Ctrl+S` salva (antes `Ctrl+S` movia
+  o cursor e salvar era `Ctrl+K D`), `Ctrl+W` fecha aba.
+- **`Ajuda → Editor...`** troca a antiga tela cheia (`Ctrl+K H`, ocupava o lugar do editor, fechava
+  com qualquer tecla) por uma janela normal com a referência completa dos atalhos, no mesmo estilo
+  visual das outras telas de Ajuda.
+- **Bloco marcado com destaque persistente foi removido** — seleção normal (mouse ou `Shift`+setas) +
+  `Ctrl+C`/`Ctrl+X`/`Ctrl+V` cobre o mesmo caso de uso com o padrão que todo editor moderno já usa.
+  Reformatar parágrafo (`Ctrl+B` no modo antigo) e salvar bloco marcado direto num arquivo (`Ctrl+K W`)
+  não têm substituto — não estavam em uso real e ficaram de fora desta rodada.
+
+### Bugs corrigidos nesta versão
+
+- Nenhum — troca de mecanismo de teclado, sem correção de regressão conhecida.
+
+### Documentação nova
+
+- `docs/MANUAL.md`: seção "O editor de texto" reescrita (atalhos padrão, Buscar/Substituir/Ir para
+  linha, `Ajuda → Editor...`); `CLAUDE.md` e `README.md` perderam as referências ao arquivo removido.
+
+### Bastidores
+
+- **Por que remover em vez de só desligar por padrão**: o usuário deixou claro que quer esquecer o
+  WordStar/JOE de vez, não só desativar — então o código morto (subclass Win32, tela de ajuda em tela
+  cheia, bloco marcado) saiu do repositório, não ficou guardado atrás de uma flag.
+- **Por que Buscar/Substituir/Ir para linha sobreviveram**: essas três eram a única funcionalidade real
+  do modo antigo sem equivalente automático no Scintilla puro (diferente de copiar/colar/desfazer, que
+  já vêm de graça do keymap padrão) — descartá-las teria sido uma regressão de verdade, não só uma
+  mudança de tecla.
+
+---
+
 ## 7.29.5 — "PALPITEIRO" (2026-08-08)
 
 **Tema da versão**: o editor aprendeu a "dar palpite" — auto completar de verdade, tanto em BASIC/

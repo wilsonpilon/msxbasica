@@ -477,6 +477,7 @@ Procedure Screen1Editor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -569,9 +570,10 @@ Procedure Screen1Editor_OpenWindow(ParentWindow)
   CloseGadgetList()
 
   Protected ButtonsX = LeftX + #Scr1Ed_ToolPanelW + 24
-  Protected G_Inject = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY, 180, 32, "Injetar no cursor")
-  Protected G_Copy = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY + 40, 180, 32, "Copiar")
-  Protected G_Close = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY + 80, 180, 32, "Fechar")
+  Protected G_Inject = ThemedButton(ButtonsX, ToolPanelY, 180, 32, "Injetar no cursor", Chr(#Icon_Insert))
+  Protected G_Copy = ThemedButton(ButtonsX, ToolPanelY + 40, 180, 32, "Copiar", Chr(#Icon_Copy))
+  Protected G_Close = ThemedButton(ButtonsX, ToolPanelY + 80, 180, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
   GadgetToolTip(G_Inject, "Gera o codigo BASIC (SCREEN 1 + Tabela de Cores, mais o carregador de fonte se houver) e injeta na aba de texto ativa")
   GadgetToolTip(G_Copy, "Gera o mesmo codigo e copia pra area de transferencia")
 

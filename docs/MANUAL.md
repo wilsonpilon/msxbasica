@@ -21,18 +21,20 @@
 1. [Compilação](#compilação)
 2. [Execução](#execução)
 3. [O editor de texto](#o-editor-de-texto)
-   - [Teclado estilo WordStar/JOE](#teclado-estilo-wordstarjoe)
-   - [Movimento do cursor](#movimento-do-cursor)
-   - [Apagar texto](#apagar-texto)
-   - [Bloco marcado (selecionar/copiar/mover/apagar)](#bloco-marcado-selecionarcopiarmoverapagar)
+   - [Atalhos de teclado](#atalhos-de-teclado)
+   - [Buscar / Substituir / Ir para linha](#buscar--substituir--ir-para-linha)
    - [Arquivo](#arquivo)
    - [Desfazer / refazer](#desfazer--refazer)
-   - [Ajuda embutida (Ctrl+K H)](#ajuda-embutida-ctrlk-h)
+   - [Executar](#executar)
+   - [Criar (editores visuais)](#criar-editores-visuais)
+   - [Outros atalhos](#outros-atalhos)
+   - [Ajuda → Editor...](#ajuda--editor)
    - [Barra de status](#barra-de-status)
-   - [O que ainda não está implementado](#o-que-ainda-não-está-implementado)
 4. [MSX-BASIC clássico: converter, tokenizar e renumerar](#msx-basic-clássico-converter-tokenizar-e-renumerar)
    - [Executar → Renumerar...](#executar--renumerar)
 5. [Telas de configuração](#telas-de-configuração)
+   - [Temas](#temas)
+   - [Botões com ícones](#botões-com-ícones)
 6. [Auto completar](#auto-completar)
 7. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
    - [Menu Criar → Disco... (gerenciador gráfico)](#menu-criar--disco-gerenciador-gráfico)
@@ -231,85 +233,53 @@ referência — ver [Telas de configuração](#telas-de-configuração).
 
 ## O editor de texto
 
-### Teclado estilo WordStar/JOE
+### Atalhos de teclado
 
-O editor é baseado no [**JOE** (Joe's Own Editor)](https://joe-editor.sourceforge.io/),
-que por sua vez reproduz o teclado clássico do **WordStar** (modo `jstar` do JOE) — os
-comandos usam `Ctrl` + uma letra, muitos deles em **duas teclas** (ex.: `Ctrl+K` seguido
-de `B`), sem precisar do mouse nem das setas.
-
-Esta primeira leva implementa o conjunto **básico** do JOE (a "Basic Help Screen" que ele
-mesmo mostra com `Ctrl+J`): movimento do cursor, apagar texto, bloco marcado, arquivo e
-desfazer/refazer. Mais comandos (busca, reformatar parágrafo, etc.) entram depois — ver
-[O que ainda não está implementado](#o-que-ainda-não-está-implementado).
-
-> **Importante:** como no WordStar de verdade, `Ctrl+S` **não salva** — move o cursor para
-> a esquerda. Salvar é `Ctrl+K D` (ver [Arquivo](#arquivo)).
-
-Nos comandos de duas teclas (`Ctrl+K x`, `Ctrl+Q x`), a segunda tecla pode ser digitada
-**com ou sem** `Ctrl` — `Ctrl+K` depois `B` funciona igual a `Ctrl+K` depois `Ctrl+B`.
-
-### Movimento do cursor
+O editor usa o teclado padrão Scintilla/Windows — o mesmo estilo de VSCode, Sublime Text
+ou qualquer editor moderno. (Até uma versão anterior o editor tinha um modo próprio de
+teclado no estilo WordStar/JOE; foi removido a favor do padrão abaixo.)
 
 | Tecla | Ação |
 |---|---|
-| `Ctrl+S` | Um caractere para a esquerda |
-| `Ctrl+D` | Um caractere para a direita |
-| `Ctrl+E` | Uma linha para cima |
-| `Ctrl+X` | Uma linha para baixo |
-| `Ctrl+A` | Palavra anterior |
-| `Ctrl+F` | Próxima palavra |
-| `Ctrl+R` | Tela anterior (Page Up) |
-| `Ctrl+C` | Próxima tela (Page Down) |
-| `Ctrl+Q S` | Início da linha |
-| `Ctrl+Q D` | Fim da linha |
-| `Ctrl+Q R` | Início do arquivo |
-| `Ctrl+Q C` | Fim do arquivo |
+| Setas | Move o cursor — com `Shift`, seleciona |
+| `Ctrl+Seta esquerda/direita` | Pula uma palavra — com `Shift`, seleciona a palavra |
+| `Home` / `End` | Início / fim da linha |
+| `Ctrl+Home` / `Ctrl+End` | Início / fim do arquivo |
+| `Page Up` / `Page Down` | Rola uma tela |
+| `Ctrl+A` | Seleciona tudo |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copiar / recortar / colar |
+| `Delete` / `Backspace` | Apaga caractere — com `Ctrl`, apaga a palavra |
+| `Insert` | Alterna entre inserção e sobrescrita (ver [Barra de status](#barra-de-status)) |
+| `Tab` / `Shift+Tab` | Indenta / remove indentação da seleção |
 
-### Apagar texto
+### Buscar / Substituir / Ir para linha
 
 | Tecla | Ação |
 |---|---|
-| `Ctrl+G` | Apaga o caractere sob o cursor (para a frente) |
-| `Ctrl+H` / `Backspace` | Apaga o caractere anterior |
-| `Ctrl+T` | Apaga a palavra à direita |
-| `Ctrl+Y` | Apaga a linha inteira |
-| `Ctrl+Q Y` | Apaga até o fim da linha |
+| `Ctrl+F` | Buscar |
+| `F3` | Buscar a próxima ocorrência |
+| `Ctrl+H` | Substituir (tudo de uma vez ou confirmando ocorrência por ocorrência) |
+| `Ctrl+G` | Ir para uma linha específica |
 
-### Bloco marcado (selecionar/copiar/mover/apagar)
-
-Diferente de uma seleção comum (arrastar o mouse ou Shift+setas), o bloco do
-WordStar/JOE é marcado por **dois pontos fixos** no texto — `Ctrl+K B` (início) e
-`Ctrl+K K` (fim) — e continua destacado mesmo depois que o cursor se move para outro
-lugar (é assim que dá para marcar, navegar até o destino, e só então copiar/mover).
-
-| Tecla | Ação |
-|---|---|
-| `Ctrl+K B` | Marca o **início** do bloco na posição do cursor |
-| `Ctrl+K K` | Marca o **fim** do bloco na posição do cursor |
-| `Ctrl+K C` | **Copia** o bloco para a posição atual do cursor (o bloco original continua marcado — dá para repetir `Ctrl+K C` em vários lugares) |
-| `Ctrl+K V` | **Move** o bloco para a posição atual do cursor (cursor precisa estar fora do bloco) |
-| `Ctrl+K Y` | **Apaga** o bloco marcado |
-
-`Ctrl+K C` e `Ctrl+K V` também colocam o texto do bloco na área de transferência do
-Windows, para colar em outros programas. Não há tecla dedicada para desmarcar — marcar de
-novo (`Ctrl+K B` seguido de `Ctrl+K K` na mesma posição) produz uma marca de tamanho zero,
-que fica sem destaque.
+Também disponíveis pelo menu **Editar**.
 
 ### Arquivo
 
 | Tecla | Ação |
 |---|---|
-| `Ctrl+K D` | Salva o arquivo |
-| `Ctrl+K E` | Abre um arquivo |
-| `Ctrl+K X` | Salva e fecha a aba atual |
-| `Ctrl+K Q` | Fecha a aba atual (avisa se há alterações não salvas) |
+| `Ctrl+S` | Salva o arquivo |
+| `Ctrl+O` | Abre um arquivo |
+| `Ctrl+W` | Fecha a aba atual (avisa se há alterações não salvas) |
 | `Ctrl+Alt+S` | **Salvar Tudo** — salva todas as abas abertas e o projeto |
+| `Ctrl+Alt+N` | Novo projeto... |
+| `Ctrl+Alt+O` | Abrir projeto... |
 
-Esses comandos também estão disponíveis pelo menu **Arquivo**.
+Esses comandos também estão disponíveis pelo menu **Arquivo**. `Salvar projeto`/`Salvar projeto
+como...` não têm tecla dedicada — `Ctrl+Alt+S` (Salvar Tudo) já salva o projeto atual junto, que é
+o caso de uso comum (ver [Sistema de projeto](#sistema-de-projeto-arquivo-msxproject)).
 
 **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`) salva todas as abas abertas, uma por uma (na ordem das abas,
-pedindo "Salvar como..." pra qualquer aba ainda sem nome — igual `Ctrl+K D` faria com ela individualmente,
+pedindo "Salvar como..." pra qualquer aba ainda sem nome — igual `Ctrl+S` faria com ela individualmente,
 só que pra todas de uma vez), e depois salva o projeto atual (`.msxproject`) também, se fizer sentido: um
 projeto já salvo em arquivo permanente é sempre atualizado; um projeto ainda temporário ("noname") só é
 salvo se já tiver algo de fato dentro dele (sprite, alfabeto, som, MML, tela, sub-projeto Assembly) — do
@@ -337,16 +307,58 @@ não há um botão que monte usando esses binários em vez do motor nativo.
 
 | Tecla | Ação |
 |---|---|
-| `Ctrl+U` | Desfazer |
-| `Ctrl+Shift+6` (`Ctrl+^`) | Refazer |
-| `Ctrl+V` | Alterna entre inserção e sobrescrita (Insert/Overtype) |
+| `Ctrl+Z` | Desfazer |
+| `Ctrl+Y` | Refazer |
 
-### Ajuda embutida (Ctrl+K H)
+### Executar
 
-`Ctrl+K H` mostra, dentro da própria área do editor (como no JOE/WordStar), uma tela com
-os atalhos acima organizados por seção (Cursor, Apagar, Bloco marcado, Arquivo, Outros).
-**Qualquer tecla** (ou clique) fecha a ajuda e devolve o foco para o texto — não precisa
-ser a mesma combinação que abriu.
+| Tecla | Ação |
+|---|---|
+| `F5` | Executar BASIC no openMSX |
+| `Shift+F5` | Executar Nestor Basic |
+| `F6` | Renumerar... |
+| `Ctrl+F5` | Montar Assembly (.bin)... |
+| `Ctrl+Shift+F5` | Montar Assembly relocável (.REL)... |
+| `Ctrl+Alt+F5` | Linkar (.REL) → binário... |
+| `F7` | Editor Hexa... |
+| `F8` | openMSX (console de comandos)... |
+| `F9` | Ver MD/TXT... |
+| `Shift+F9` | Ver MD+TXT... (lado a lado) |
+
+Também disponíveis pelo menu **Executar**.
+
+### Criar (editores visuais)
+
+| Tecla | Ação |
+|---|---|
+| `Ctrl+Shift+D` | Disco... |
+| `Ctrl+Shift+P` | Sprite... |
+| `Ctrl+Shift+A` | Alfabeto Graphos III... |
+| `Ctrl+Shift+G` | Som (PSG)... |
+| `Ctrl+Shift+T` | SEE Tracker... |
+| `Ctrl+Shift+M` | Música (PLAY)... |
+| `Ctrl+Shift+2` | Draw Screen 2... |
+| `Ctrl+Shift+0` | Screen 0... |
+| `Ctrl+Shift+1` | Screen 1... |
+
+Os itens restantes do menu **Criar** — Alfabeto Aquarela, Graphos III Screen 2, Screen 1+2,
+Biblioteca Z80 (.LIB) e Assembly Sub Project — são variantes menos usadas dos editores acima e
+ficaram só no menu (não valia a pena um terceiro/quarto modificador só para caber mais uma tecla).
+
+### Outros atalhos
+
+| Tecla | Ação |
+|---|---|
+| `Ctrl+Alt+I` | Inserir → Caractere Especial... (ver [Inserir → Caractere Especial](#inserir--caractere-especial)) |
+| `Ctrl+Alt+E` | Configurar → Editor... |
+| `F1` | Ajuda → Editor... (esta referência de atalhos) |
+
+### Ajuda → Editor...
+
+O menu **Ajuda → Editor...** (também `F1`) abre uma janela à parte com a referência dos atalhos
+acima, organizada por seção (Cursor e seleção, Editar, Buscar, Arquivo, Executar, Criar, Inserir/
+Configurar/Ajuda). Diferente da antiga tela embutida no estilo WordStar/JOE, é uma janela normal —
+fecha pelo botão **Fechar** ou pelo X da janela, sem tomar o lugar do editor.
 
 ### Barra de status
 
@@ -354,20 +366,9 @@ O rodapé da janela mostra, sempre atualizado:
 
 | Campo | Conteúdo |
 |---|---|
-| Modo | `INS` (inserção) ou `SBR` (sobrescrita — `Ctrl+V`). Enquanto um comando de duas teclas está pendente (`Ctrl+K`/`Ctrl+Q` já apertado, esperando a segunda tecla), mostra `^K`/`^Q` no lugar. |
+| Modo | `INS` (inserção) ou `SBR` (sobrescrita — tecla `Insert`). |
 | Nome do arquivo | Nome da aba ativa, com `*` se houver alterações não salvas. |
 | Linha/Coluna | Posição atual do cursor no documento ativo. |
-
-### O que ainda não está implementado
-
-Fica para uma próxima etapa (o JOE tem bem mais comandos que isso — veja a referência em
-[joe-editor.sourceforge.io](https://joe-editor.sourceforge.io/)):
-
-- Busca e substituição (`Ctrl+Q F`, `Ctrl+L`)
-- Reformatar parágrafo (`Ctrl+B`)
-- Salvar bloco marcado direto num arquivo (`Ctrl+K W`)
-- Menu de opções do editor (`Ctrl+O`, no JOE — não confundir com o `Ctrl+O` de "Abrir" já
-  usado pelo menu **Arquivo** desta IDE)
 
 ---
 
@@ -399,6 +400,8 @@ MSXBAS2ROM](#suporte-a-msxbas2rom)) já é reconhecido assim, sem precisar de ne
 
 ### Executar → Renumerar...
 
+Atalho: `F6`.
+
 Equivalente nativo do comando `RENUM` real do MSX-BASIC — ao contrário dos comandos de **Arquivo**
 acima (que sempre exportam pra um arquivo novo), este **renumera o programa digitado na própria aba, no
 lugar**, exatamente como o `RENUM` faz ao vivo na máquina. Pede os mesmos 3 parâmetros do comando
@@ -420,9 +423,53 @@ modificada) — não salva sozinho, revise e salve como de costume.
 
 ## Telas de configuração
 
-- **Configurar → Editor...** — fonte (só monoespaçadas, com botão para baixar fontes
-  [Nerd Fonts](https://www.nerdfonts.com/) direto de dentro da IDE), tema claro/escuro,
+- **Configurar → Editor...** (atalho `Ctrl+Alt+E`) — fonte (só monoespaçadas, com botão para baixar fontes
+  [Nerd Fonts](https://www.nerdfonts.com/) direto de dentro da IDE), tema (7 opções — ver
+  [Temas](#temas)), fonte de ícones (opcional — ver [Botões com ícones](#botões-com-ícones)),
   estilo de abas, caminho de instalação do editor.
+
+### Temas
+
+O combo **Tema** em **Configurar → Editor...** tem 7 opções, cada uma com sua própria paleta de
+cores da área de edição, abas, régua de colunas e destaque de sintaxe:
+
+| Tema | Estilo |
+|---|---|
+| Grafite | Escuro neutro — o padrão da IDE |
+| Neve | Claro neutro |
+| Azul Profundo | Escuro, índigo com destaques em azul-céu e menta |
+| Rosé | Escuro, ameixa com rosa e lavanda |
+| Carmesim | Escuro, vinho/oxblood com dourado e verde |
+| Floresta | Escuro, verde-floresta com lima e areia |
+| Bege | Claro, papel envelhecido (estilo Solarized Light) |
+
+A troca vale só depois de **Salvar** — não tem pré-visualização ao vivo enquanto o combo está aberto.
+
+**O que muda e o que não muda**: a área do editor (Scintilla), as abas, a régua de colunas, o fundo
+de toda janela de diálogo e os próprios botões (ver [Botões com ícones](#botões-com-ícones)) seguem
+o tema escolhido de verdade. O que continua com a aparência padrão do Windows em qualquer tema —
+limitação do PureBasic, não do tema escolhido — são os controles que não dá pra redesenhar:
+combos, campos de texto, listas e checkboxes.
+
+### Botões com ícones
+
+Todas as janelas de diálogo da IDE (telas de **Configurar**, editores visuais — Sprite, Alfabetos,
+Som, SEE Tracker, Telas, Música, DRAW Screen 2 — gerenciador de disco, console do openMSX, telas
+de Ajuda, Editor Hexa etc.) tematizam seus próprios botões em vez de usar o botão nativo do Windows
+(que ignora `Color_*`) — cada um é desenhado na hora: fundo e borda na cor do tema, texto
+centralizado na mesma fonte já escolhida em **Configurar → Editor...**. A janela em si também
+segue o fundo do tema (antes ficava branca/cinza nativa, destoando do editor).
+
+Com uma [Nerd Font](https://www.nerdfonts.com/) escolhida no combo **Fonte de ícones** (mesma
+tela **Configurar → Editor...** — baixe uma pelo botão **Baixar fontes (Nerd Fonts)...** logo
+acima, ou coloque um `.ttf`/`.otf` já patcheado na pasta de fontes customizadas), os botões que
+representam uma ação universalmente reconhecível (Fechar, Salvar, Copiar, Tocar, Parar, Ejetar,
+Inserir, Limpar, Conectar/Desconectar, Voltar etc. — mais de 140 ao todo) trocam o texto por um
+ícone de verdade (não um desenho genérico à mão), com o nome continuando disponível no tooltip ao
+passar o mouse. Ações bem específicas de um módulo (ex.: "Gerar código PLAY", "Gravar disco MSX")
+ficam de propósito só com texto — um ícone genérico ali confundiria mais do que ajudaria. Sem fonte
+de ícones escolhida (padrão), todos os botões continuam com texto normalmente — nada quebra por não
+ter uma Nerd Font instalada.
 - **Configurar → Basic Options...** — liga/desliga o auto completar de abas MSX-BASIC/Dignified
   (`.dmx`/`.bas`) e ajusta quantas letras precisam ser digitadas antes dele aparecer, além da caixa
   das palavras-chave sugeridas — ver [Auto completar](#auto-completar).
@@ -523,6 +570,8 @@ em algum lugar do documento, nunca reformatados.
 
 ### Menu Criar → Disco... (gerenciador gráfico)
 
+Atalho: `Ctrl+Shift+D`.
+
 O menu **Criar → Disco...** abre uma janela com dois painéis (estilo Norton/Total Commander) para
 montar imagens de disco MSX (`.dsk`) sem sair do editor:
 
@@ -591,6 +640,8 @@ registrado vai sendo gravado nesse projeto automaticamente.
 
 ### Menu Arquivo → Novo projeto... / Abrir projeto...
 
+Atalhos: `Ctrl+Alt+N` (Novo projeto...) e `Ctrl+Alt+O` (Abrir projeto...).
+
 - **Novo projeto...** — pede um caminho (diálogo padrão do Windows, escolhe pasta e nome de uma vez) e
   troca para um projeto novo e vazio nesse local. Se o projeto atual ainda for o `noname` temporário e
   já tiver conteúdo registrado, pergunta antes se você quer salvá-lo permanentemente (cancelar esse
@@ -629,6 +680,8 @@ nada.
 ---
 
 ## Editor de sprites
+
+Atalho: `Ctrl+Shift+P` (Criar → Sprite...).
 
 ![Editor de sprites (Criar → Sprite...) com grade 16×16, paleta MSX1, barra de projeto (número, navegação, tag) e prévia em escala reduzida](../images/msxbasica-04.png)
 
@@ -695,6 +748,8 @@ fechar a janela, para não perder trabalho sem querer.
 ---
 
 ## Editor de alfabetos
+
+Atalho: `Ctrl+Shift+A` (Criar → Alfabeto Graphos III...).
 
 O menu **Criar → Alfabeto...** abre o editor de charsets (fontes de caracteres 8×8) MSX, no formato
 de arquivo **`.ALF` do [Graphos III](https://www.msx.org/wiki/Graphos)**, numa janela própria.
@@ -843,6 +898,8 @@ a cada vez que a IDE é aberta — só serve como fonte interna de conteúdo pad
 
 ## Editor de som (PSG)
 
+Atalho: `Ctrl+Shift+G` (Criar → Som (PSG)...).
+
 ![Editor de som PSG (Criar → Som (PSG)...) com os 3 canais, ruído/envelope compartilhados, lista de passos e código BASIC gerado](../images/msxbasica-06.png)
 
 O menu **Criar → Som (PSG)...** abre o editor de efeitos sonoros para o chip de som do MSX
@@ -924,6 +981,8 @@ janela, para não perder trabalho sem querer.
 ---
 
 ## Editor SEE Tracker
+
+Atalho: `Ctrl+Shift+T` (Criar → SEE Tracker...).
 
 ![Editor SEE Tracker (Criar → SEE Tracker...) com um efeito de 8 patterns tocando — cursor de playback verde no pattern 0, botões Limpar/Limpar linha/Limpar bloco e o seletor visual de forma do envelope à direita](../images/msxbasica-16.png)
 
@@ -1042,6 +1101,8 @@ Alterações não registradas pedem confirmação antes de trocar de SFX ou fech
 
 ## Editor de música (MML/PLAY)
 
+Atalho: `Ctrl+Shift+M` (Criar → Música (PLAY)...).
+
 ![Editor de música MML (Criar → Música (PLAY)...) com os 3 canais em paralelo, lista de linhas por canal e código PLAY gerado](../images/msxbasica-07.png)
 
 O menu **Criar → Música (PLAY)...** abre o editor de MML (Music Macro Language) para o comando `PLAY`
@@ -1144,6 +1205,8 @@ projeto**: não existe "Registrar alfabeto" nem número/tag — o fluxo é sempr
   registros além dos 46 editáveis são preenchidos com o byte de posição-vazia padrão do formato.
 
 ## Editor de DRAW Screen 2
+
+Atalho: `Ctrl+Shift+2` (Criar → Draw Screen 2...).
 
 O menu **Criar → Draw Screen 2...** abre um editor gráfico WYSIWYG para o modo **SCREEN 2** do MSX
 (256×192 pixels), com os comandos `PSET`, `PRESET`, `LINE`, `CIRCLE`, `PAINT`, `DRAW` e texto usando um
@@ -1785,6 +1848,8 @@ objetivo é construir um tracker de SFX nativo compatível com o formato, para u
 
 ## Editor Hexa
 
+Atalho: `F7`.
+
 Menu **Executar → Editor Hexa...** (`editor/HexEditorGui.pbi`) abre um editor hexadecimal genérico —
 diferente dos outros editores visuais da IDE, ele não trabalha com a aba de texto ativa: abre
 **qualquer arquivo** do disco (até 8 MB) e mostra offset/hex/ASCII numa grade rolável, com
@@ -1909,6 +1974,8 @@ posição proporcional clicada. A grade também rola pela roda do mouse.
 
 ## Inserir → Caractere Especial
 
+Atalho: `Ctrl+Alt+I`.
+
 Menu **Inserir → Caractere Especial...** abre um mapa de caracteres parecido com o "Mapa de
 Caracteres" do Windows (`charmap.exe`), pros **159 caracteres especiais** que a opção **Traduzir
 caracteres Unicode** (`-tr`, ver [Telas de configuração](#telas-de-configuração)) traduz pra ASCII
@@ -1951,6 +2018,8 @@ acumulando — pode digitar/editar nele normalmente também, não só clicar na 
 ![Editor Hexa reconhecendo um alfabeto Graphos III (galeria de templates) — grade hex/ASCII, painel de tipo de arquivo, barra de operações de bloco e barra de rolagem customizada](../images/msxbasica-14.png)
 
 ## Editor de tela SCREEN 0
+
+Atalho: `Ctrl+Shift+0` (Criar → Screen 0...).
 
 Este é o primeiro de uma família de 3 editores de tela de texto MSX (**Criar → Screen 0.../Screen 1.../
 Screen 1+2...**), cada um cobrindo um modo de cor de texto diferente do hardware: **SCREEN 0** (1 cor
@@ -2039,6 +2108,8 @@ numera automaticamente, começa em branco) e **Registrar** (grava a tela atual n
 tela ou criar uma nova sem ter registrado avisa antes de descartar as alterações pendentes.
 
 ## Editor de tela SCREEN 1
+
+Atalho: `Ctrl+Shift+1`.
 
 Menu **Criar → Screen 1...** abre um editor gráfico de telas de texto do modo **SCREEN 1** do MSX,
 mesmo espírito do editor SCREEN 0 acima — mas com a diferença real de cor do hardware SCREEN 1: em vez

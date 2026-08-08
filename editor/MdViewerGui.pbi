@@ -73,12 +73,14 @@ Procedure MdView_OpenSingle(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
 
   Protected TopY = 24
-  Protected G_BtnTxt = ButtonGadget(#PB_Any, 24, TopY, 90, 28, "TXT")
-  Protected G_BtnMd  = ButtonGadget(#PB_Any, 126, TopY, 90, 28, "MD")
-  Protected G_Close  = ButtonGadget(#PB_Any, WinW - 24 - 100, TopY, 100, 28, "Fechar")
+  Protected G_BtnTxt = ThemedButton(24, TopY, 90, 28, "TXT", "")
+  Protected G_BtnMd  = ThemedButton(126, TopY, 90, 28, "MD", "")
+  Protected G_Close  = ThemedButton(WinW - 24 - 100, TopY, 100, 28, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected ContentY = TopY + 28 + 16
   Protected G_Content = ScintillaGadget(#PB_Any, 24, ContentY, WinW - 48, WinH - ContentY - 24, 0)
@@ -142,6 +144,7 @@ Procedure MdView_OpenSplit(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
 
   Protected TopY = 24
@@ -154,7 +157,8 @@ Procedure MdView_OpenSplit(ParentWindow)
   Protected ContentH = ButtonY - 16 - ContentY
   Protected G_Left  = ScintillaGadget(#PB_Any, 24, ContentY, HalfW, ContentH, @MdView_HybridScintillaCallback())
   Protected G_Right = ScintillaGadget(#PB_Any, 24 + HalfW + 24, ContentY, HalfW, ContentH, 0)
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
+  Protected G_Close = ThemedButton(WinW - 24 - 110, ButtonY, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   MdView_HybridWin = Win
   MdView_HybridTargetSci = TargetSci

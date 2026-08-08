@@ -752,20 +752,23 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure HexEd_CreateArrowIcon(Size.i, PointUp.b)
-  Protected Img = CreateImage(#PB_Any, Size, Size, 24, RGB(255, 255, 255))
+  Protected Img = CreateImage(#PB_Any, Size, Size, 24, Color_TabInactive)
   If StartDrawing(ImageOutput(Img))
     DrawingMode(#PB_2DDrawing_Default)
-    Box(0, 0, Size, Size, RGB(255, 255, 255))
+    Box(0, 0, Size, Size, Color_TabInactive)
     Protected Cx = Size / 2, Half = Size / 2 - 4
     If PointUp
-      CharEd_DrawFilledVTri(Cx, Size - 4, 4, Half, #CharEd_IconInk)
+      CharEd_DrawFilledVTri(Cx, Size - 4, 4, Half, Color_TextActive)
     Else
-      CharEd_DrawFilledVTri(Cx, 4, Size - 4, Half, #CharEd_IconInk)
+      CharEd_DrawFilledVTri(Cx, 4, Size - 4, Half, Color_TextActive)
     EndIf
     StopDrawing()
   EndIf
   ProcedureReturn Img
 EndProcedure
+
+; Botoes tematizados: ver ThemedButtons.pbi (Macro ThemedButton(), constantes
+; #Icon_*) - generalizado pra la a partir do que nasceu aqui (v7.31.3).
 
 Procedure HexEd_PaintTrack(Canvas.i, ScrollTop.i, TotalRows.i, VisibleRows.i)
   If Not StartDrawing(CanvasOutput(Canvas))
@@ -802,7 +805,7 @@ EndProcedure
 ;- Inserir, Sobrepor, Excluir) - se nao houver intervalo marcado, cada
 ;- operacao pede endereco inicial/final (ou so a posicao, no caso de
 ;- Inserir/Sobrepor) por InputRequester, mesmo padrao ja usado em
-;- WordStarKeys.pbi (Ir para linha/Buscar).
+;- EditorSearch.pbi (Ir para linha/Buscar).
 ;- ------------------------------------------------------------
 
 Procedure.s HexEd_RangeText(S.i, E.i)
@@ -1080,10 +1083,13 @@ Procedure HexEd_OpenTemplateGallery(ParentWindow)
   GadgetToolTip(G_Size, "Tamanho dos dados (fim - inicio + 1), em bytes decimais - em branco = qualquer")
 
   Protected ButtonY = FormY + 50
-  Protected G_Add = ButtonGadget(#PB_Any, LeftX, ButtonY, 140, 26, "Adicionar")
-  Protected G_Remove = ButtonGadget(#PB_Any, LeftX + 150, ButtonY, 160, 26, "Remover selecionado")
+  Protected G_Add = ThemedButton(LeftX, ButtonY, 140, 26, "Adicionar", Chr(#Icon_Add))
+  GadgetToolTip(G_Add, "Adicionar")
+  Protected G_Remove = ThemedButton(LeftX + 150, ButtonY, 160, 26, "Remover selecionado", Chr(#Icon_Remove))
+  GadgetToolTip(G_Remove, "Remover selecionado")
   Protected G_Status = TextGadget(#PB_Any, LeftX + 320, ButtonY + 4, WinW - LeftX - 320 - 100, 20, "")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - LeftX - 90, ButtonY, 90, 26, "Fechar")
+  Protected G_Close = ThemedButton(WinW - LeftX - 90, ButtonY, 90, 26, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected TplEvent, Quit.b = #False
   Protected NewByte.i, NewAddr.i, NewSize.i, Sel.i, ByteText.s, AddrText.s, SizeText.s
@@ -1228,10 +1234,14 @@ Procedure HexEditor_OpenWindow(ParentWindow)
   DisableWindow(ParentWindow, #True)
   SetWindowColor(Win, Color_AppBg)
 
-  Protected G_Open = ButtonGadget(#PB_Any, LeftX, TopY, 110, 26, "Abrir arquivo...")
-  Protected G_Save = ButtonGadget(#PB_Any, LeftX + 116, TopY, 80, 26, "Salvar")
-  Protected G_SaveAs = ButtonGadget(#PB_Any, LeftX + 202, TopY, 120, 26, "Salvar como...")
-  Protected G_Templates = ButtonGadget(#PB_Any, LeftX + 328, TopY, 160, 26, "Galeria de templates...")
+  Protected G_Open = ThemedButton(LeftX, TopY, 110, 26, "Abrir arquivo...", Chr(#Icon_Open))
+  GadgetToolTip(G_Open, "Abrir arquivo...")
+  Protected G_Save = ThemedButton(LeftX + 116, TopY, 80, 26, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_SaveAs = ThemedButton(LeftX + 202, TopY, 120, 26, "Salvar como...", Chr(#Icon_SaveAs))
+  GadgetToolTip(G_SaveAs, "Salvar como...")
+  Protected G_Templates = ThemedButton(LeftX + 328, TopY, 160, 26, "Galeria de templates...", Chr(#Icon_Gallery))
+  GadgetToolTip(G_Templates, "Galeria de templates...")
   Protected G_PathLabel = TextGadget(#PB_Any, LeftX + 494, TopY + 5, CanvasX + CanvasW - LeftX - 494, 20,
                                      "(nenhum arquivo aberto)")
 
@@ -1239,19 +1249,19 @@ Procedure HexEditor_OpenWindow(ParentWindow)
   ; Preencher/Inserir/Sobrepor/Excluir usam; sem intervalo marcado, cada uma
   ; pergunta endereco/posicao na hora.
   Protected Cx = LeftX
-  Protected G_MarkStart = ButtonGadget(#PB_Any, Cx, Row2Y, 110, 26, "Marcar inicio")
+  Protected G_MarkStart = ThemedButton(Cx, Row2Y, 110, 26, "Marcar inicio", Chr(#Icon_Flag))
   Cx + 110 + 6
-  Protected G_MarkEnd = ButtonGadget(#PB_Any, Cx, Row2Y, 100, 26, "Marcar fim")
+  Protected G_MarkEnd = ThemedButton(Cx, Row2Y, 100, 26, "Marcar fim", Chr(#Icon_Bookmark))
   Cx + 100 + 6
-  Protected G_ClearRange = ButtonGadget(#PB_Any, Cx, Row2Y, 120, 26, "Limpar selecao")
+  Protected G_ClearRange = ThemedButton(Cx, Row2Y, 120, 26, "Limpar selecao", Chr(#Icon_Clear))
   Cx + 120 + 16
-  Protected G_Fill = ButtonGadget(#PB_Any, Cx, Row2Y, 110, 26, "Preencher...")
+  Protected G_Fill = ThemedButton(Cx, Row2Y, 110, 26, "Preencher...", Chr(#Icon_Fill))
   Cx + 110 + 6
-  Protected G_Insert = ButtonGadget(#PB_Any, Cx, Row2Y, 140, 26, "Inserir bloco...")
+  Protected G_Insert = ThemedButton(Cx, Row2Y, 140, 26, "Inserir bloco...", Chr(#Icon_Insert))
   Cx + 140 + 6
-  Protected G_Overwrite = ButtonGadget(#PB_Any, Cx, Row2Y, 150, 26, "Sobrepor bloco...")
+  Protected G_Overwrite = ThemedButton(Cx, Row2Y, 150, 26, "Sobrepor bloco...", Chr(#Icon_Overwrite))
   Cx + 150 + 6
-  Protected G_Delete = ButtonGadget(#PB_Any, Cx, Row2Y, 140, 26, "Excluir bloco...")
+  Protected G_Delete = ThemedButton(Cx, Row2Y, 140, 26, "Excluir bloco...", Chr(#Icon_Delete))
   GadgetToolTip(G_MarkStart, "Marca o byte selecionado na grade como inicio do intervalo")
   GadgetToolTip(G_MarkEnd, "Marca o byte selecionado na grade como fim do intervalo")
   GadgetToolTip(G_ClearRange, "Limpa o intervalo marcado")
@@ -1283,10 +1293,12 @@ Procedure HexEditor_OpenWindow(ParentWindow)
 
   TextGadget(#PB_Any, LeftX, EditBarY + 34, 90, 20, "Valor (hex):")
   Protected G_ByteValue = StringGadget(#PB_Any, LeftX + 90, EditBarY + 32, 50, 22, "", #PB_String_UpperCase)
-  Protected G_Apply = ButtonGadget(#PB_Any, LeftX + 150, EditBarY + 31, 90, 24, "Aplicar")
+  Protected G_Apply = ThemedButton(LeftX + 150, EditBarY + 31, 90, 24, "Aplicar", Chr(#Icon_Check))
+  GadgetToolTip(G_Apply, "Aplicar")
 
   Protected G_Status = TextGadget(#PB_Any, LeftX, EditBarY + 64, CanvasX + CanvasW - LeftX - 100, 20, "")
-  Protected G_Close = ButtonGadget(#PB_Any, CanvasX + CanvasW - 90, EditBarY + 61, 90, 24, "Fechar")
+  Protected G_Close = ThemedButton(CanvasX + CanvasW - 90, EditBarY + 61, 90, 24, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected SelOffset.i = -1
   Protected RangeStart.i = -1

@@ -156,6 +156,7 @@ Procedure CharMap_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -174,11 +175,16 @@ Procedure CharMap_OpenWindow(ParentWindow)
   Protected G_Field = StringGadget(#PB_Any, 24, FieldY, WinW - 48, 24, "")
 
   Protected BtnY = FieldY + 40
-  Protected G_Add = ButtonGadget(#PB_Any, 24, BtnY, 110, 28, "Adicionar")
-  Protected G_RemoveLast = ButtonGadget(#PB_Any, 146, BtnY, 130, 28, "Remover ultimo")
-  Protected G_Clear = ButtonGadget(#PB_Any, 288, BtnY, 90, 28, "Limpar")
-  Protected G_Insert = ButtonGadget(#PB_Any, WinW - 24 - 90 - 12 - 100, BtnY, 100, 28, "Inserir")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 90, BtnY, 90, 28, "Fechar")
+  Protected G_Add = ThemedButton(24, BtnY, 110, 28, "Adicionar", Chr(#Icon_Add))
+  GadgetToolTip(G_Add, "Adicionar")
+  Protected G_RemoveLast = ThemedButton(146, BtnY, 130, 28, "Remover ultimo", Chr(#Icon_Remove))
+  GadgetToolTip(G_RemoveLast, "Remover ultimo")
+  Protected G_Clear = ThemedButton(288, BtnY, 90, 28, "Limpar", Chr(#Icon_Clear))
+  GadgetToolTip(G_Clear, "Limpar")
+  Protected G_Insert = ThemedButton(WinW - 24 - 90 - 12 - 100, BtnY, 100, 28, "Inserir", Chr(#Icon_Insert))
+  GadgetToolTip(G_Insert, "Inserir")
+  Protected G_Close = ThemedButton(WinW - 24 - 90, BtnY, 90, 28, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected Selected.i = 0
   CharMap_Redraw(G_Grid, Selected)

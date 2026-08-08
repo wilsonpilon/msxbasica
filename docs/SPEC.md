@@ -65,6 +65,9 @@ servir de especificação byte-a-byte ao port nativo:
 | 24 | Editor SEE Tracker — efeitos sonoros compatíveis com .SEE (`Criar → SEE Tracker...`) | alto | **Implementado (2026-08-06), estendido (mesma sessão)** — `editor/SeeTrackerEditorGui.pbi` (janela) + `editor/SeeTrackerSynth.pbi` (modelo de dados/interpretador/gerador/**importador**) + `editor/SeeTrackerDriverAsm.pbi` (porta do driver de replay, montada em tempo real pelo assembler Z80 nativo, `editor/Z80Asm.pbi`). Integrado ao sistema de projeto (módulo 13, tabela `see_sfx`). **Importar .SEE...** lê arquivos reais do editor original (validado contra `see/FIREBIRD.SEE`, 33 SFX). Ver seção 24 |
 | 25 | Auto completar ("Palpiteiro") — MSX-BASIC/Dignified e Assembly | médio | **Implementado (2026-08-08)** — sugestões via popup nativo do Scintilla (`SCI_AUTOCSHOW`), disparadas ao digitar. Abas `.dmx`/`.bas`: palavras-chave clássicas + Dignified + MSXBAS2ROM (quando aplicável) + os 87 wrappers `.NB_*` do NestorBASIC + variáveis do documento; config em `editor/BasicOptionsSettings.pbi` (`Configurar → Basic Options...`). Abas `.asm`: mnemônicos/registradores/diretivas do Z80 (`Z80Asm.pbi`) + rótulos do documento; config em `editor/AssemblyOptionsSettings.pbi` (`Configurar → Assembly...`). Ver seção 25 |
 | 26 | Internacionalização (i18n) da UI — inglês (e depois espanhol/holandês/italiano) | alto (mecânico, incremental) | **Planejado, não iniciado (2026-08-08)** — usuário pediu pra registrar a ideia antes de decidir quando começar. Escopo inicial: só a **UI** (menus/botões/diálogos), português continua existindo como opção, inglês é o padrão sem configuração salva; documentação (`*HelpData.pbi`/`*DictData.pbi`/`*ManualData.pbi`, ~13.500 linhas de prosa) fica pra depois, de propósito. Ver seção 26 |
+| 27 | Fim do teclado WordStar/JOE + atalhos de teclado modernos | médio | **Implementado (2026-08-08)** — `editor/WordStarKeys.pbi` removido por completo (não só desligado); teclado do editor principal virou o padrão Scintilla/Windows. Buscar/Substituir/Ir para linha sobreviveram, portados pra `editor/EditorSearch.pbi` com atalhos convencionais (`Ctrl+F`/`F3`/`Ctrl+H`/`Ctrl+G`). Mais 22 atalhos novos cobrindo o resto da IDE (projeto, inserir, executar, criar). Ver seção 27 |
+| 28 | Sete temas de cores (`Configurar → Editor...`) | médio | **Implementado (2026-08-08)** — `EditorCfg\Theme` virou um de 7 IDs (Graphite/Snow/Navy/Rose/Crimson/Forest/Paper) em vez de um booleano Dark/Light; paletas desenhadas e aprovadas num mockup HTML fora do PureBasic antes de virar código. `editor_settings.json` antigo migra sozinho. Ver seção 28 |
+| 29 | Botões tematizados em toda a IDE + ícones Nerd Font opcionais | alto | **Implementado (2026-08-08)** — `editor/ThemedButtons.pbi` (novo módulo compartilhado, nasceu como piloto no Editor Hexa): 293 botões em 33 arquivos deixam de ser `ButtonGadget` nativo (chrome do Windows, ignora `Color_*`) e viram imagens desenhadas na hora, seguindo o tema; mais de 140 ganham ícone real de uma Nerd Font quando configurada. Ver seção 29 |
 
 ## Decisões fechadas
 
@@ -3532,6 +3535,9 @@ começar. Nada abaixo foi implementado.
   `MenuItem` 70, `TextGadget` 326, `ButtonGadget` 293, `CheckBoxGadget` 40, `MessageRequester` 209,
   `OpenWindow` (títulos) 113, `AddGadgetItem` 130, `SetGadgetText` 542 (parte é valor dinâmico, não
   string fixa) — mais de 1.000 pontos de string literal ao todo, espalhados em ~55 arquivos.
+  **Desatualizado a partir do módulo 29 (2026-08-08)**: os 293 `ButtonGadget` viraram `ThemedButton`
+  (mesmos rótulos, mesma contagem de string literal — só a palavra-chave de busca muda, quem for
+  levantar os pontos de string de novo procura por `ThemedButton(` em vez de `ButtonGadget(`).
 - Os arquivos de **conteúdo de Ajuda** (`BasicDignifiedHelpData.pbi`, `MsxDignifiedHelpData.pbi`,
   `NestorBasicHelpData.pbi`, `OpenMsxHelpData.pbi`, `SeeTrackerHelpData.pbi`,
   `MsxBasic2PlusDictData.pbi`, `MsxBasicDictData.pbi`, `MsxBasic2PlusManualData.pbi`,
@@ -3575,6 +3581,152 @@ número fixo.
    um arquivo `Lang_XX.pbi` a mais com as mesmas chaves traduzidas — zero mudança nos >1.000 pontos de
    chamada, que já estariam desacoplados do texto literal. O caro é a migração inicial (passo 2/3), não
    os idiomas extras depois dela.
+
+### 27. Fim do teclado WordStar/JOE + atalhos de teclado modernos — implementado (2026-08-08)
+
+Usuário investiu no teclado estilo WordStar/JOE (`editor/WordStarKeys.pbi`, ver histórico deste
+documento em 2026-07-15) mas, no dia a dia, não usa WordStar/JOE/vim — prefere Helix/JetBrains/
+VSCode/Sublime/010 Editor. Pediu pra voltar ao padrão Scintilla/Windows.
+
+**Removido por completo, não só desligado**: `editor/WordStarKeys.pbi` (982 linhas — subclass
+Win32 de teclado, comandos de duas teclas `Ctrl+K x`/`Ctrl+Q x`, bloco marcado com destaque
+persistente, tela de ajuda em tela cheia) saiu do repositório. Bloco marcado não tem substituto —
+seleção normal (mouse ou `Shift`+setas) + `Ctrl+C`/`Ctrl+X`/`Ctrl+V` (grátis, keymap padrão do
+Scintilla) cobre o mesmo caso de uso. Reformatar parágrafo (`Ctrl+B` no modo antigo) também não
+tem substituto — não estava em uso real.
+
+**O que sobreviveu**: Buscar/Buscar próxima/Substituir/Ir para linha eram a única funcionalidade
+real do modo antigo sem equivalente automático no Scintilla puro — portadas pra
+`editor/EditorSearch.pbi` (arquivo novo, incluído só no fim de `BadigEditor.pb` pelo mesmo motivo
+de ordem de `Global`/`Structure` do módulo 29 abaixo), com atalhos convencionais: `Ctrl+F`
+(buscar), `F3` (buscar próxima), `Ctrl+H` (substituir — tudo de uma vez ou confirmando ocorrência
+por ocorrência), `Ctrl+G` (ir para linha). Novo menu **Editar** no menu principal.
+
+**Atalhos de arquivo voltaram ao convencional**: `Ctrl+N` novo (era `Alt+N`), `Ctrl+S` salva (era
+mover cursor — salvar era `Ctrl+K D`), `Ctrl+W` fecha aba (era `Alt+W`).
+
+**`editor/EditorHelpGui.pbi`** (arquivo novo) — `Ajuda → Editor...` (também `F1`, convenção
+universal de ajuda) troca a antiga tela cheia por uma janela normal com a referência de atalhos,
+reaproveitando o motor de renderização markdown de `GenericMdHelpGui.pbi` (módulo 18) com conteúdo
+fixo embutido no `.exe` em vez de vir de uma pasta baixada em tempo de execução.
+
+**22 atalhos novos pro resto da IDE** (pedido separado, mesma sessão) — usuário queria não ficar
+preso navegando menu: `Ctrl+Alt+N`/`Ctrl+Alt+O` novo/abrir projeto, `Ctrl+Alt+I` caractere
+especial, `Ctrl+Alt+E` Configurar → Editor..., `Shift+F5` Nestor Basic, `F6` renumerar,
+`Ctrl+Shift+F5` montar relocável, `Ctrl+Alt+F5` linkar, `F7` Editor Hexa, `F8` console openMSX,
+`F9`/`Shift+F9` ver MD/TXT, e `Ctrl+Shift+<letra ou número da tela MSX>` pros 9 editores visuais
+mais usados do menu **Criar** (Disco/Sprite/Alfabeto/Som/Tracker/Música/Screen 0-1-2). Os 5 itens
+menos usados desse menu (Alfabeto Aquarela, Graphos III Screen 2, Screen 1+2, Biblioteca Z80,
+Assembly Sub Project) ficaram só no menu — não valia um 3º/4º modificador só pra caber mais uma
+tecla.
+
+**Achado real de arquitetura, corrigido só no módulo 29**: a essa altura `EditorSearch.pbi` já
+precisava do mesmo idioma "`Declare` no topo pra dependência circular" que `WordStarKeys.pbi` já
+usava — incluído só no fim de `BadigEditor.pb` porque usa `ActiveSciGadget()`, definido ao longo do
+arquivo. Documentado por completo só quando o mesmo problema apareceu em escala bem maior no módulo
+29 (293 botões em 33 arquivos incluídos *antes* de `Global Color_*`/`Structure EditorSettings`
+existirem).
+
+### 28. Sete temas de cores (`Configurar → Editor...`) — implementado (2026-08-08)
+
+Usuário achou os dois temas originais (Escuro/Claro) feios de verdade — "sei que o PureBasic tem
+uma baita limitação para GUIs modernas" — e pediu variações mais atraentes: azul escuro, rosa,
+vermelho, verde, bege.
+
+**Processo**: paletas desenhadas e aprovadas num **mockup HTML publicado como artifact** fora do
+PureBasic antes de virar código — iterar cor em CSS/JS é muito mais rápido que recompilar o app a
+cada ajuste. O mockup simulava a janela real (abas com aba ativa/hover, régua de colunas, código
+com números de linha, seleção e cursor destacados, todos os ~24 `Color_*` nomeados) com uma amostra
+real de código Basic Dignified, e reproduzia com honestidade o teto do PureBasic: a barra de status
+(controle nativo do Windows, `CreateStatusBar`) ficava sempre cinza em todos os 7 mockups, porque é
+assim que fica no app de verdade. Usuário aprovou todos os 7 de uma vez.
+
+**`EditorCfg\Theme`** (`editor/EditorSettings.pbi`) deixou de ser um booleano Dark/Light e virou um
+de 7 IDs: `Graphite`/`Snow` (revisão dos dois temas antigos — mais equilibrados, sem preto/branco
+puro) e os cinco novos — `Navy` "Azul Profundo" (clima Night Owl/Nord), `Rose` "Rosé" (Rosé Pine),
+`Crimson` "Carmesim" (oxblood/vinho), `Forest` "Floresta" (Everforest), `Paper` "Bege" (Solarized
+Light). `ApplyTheme()` (`BadigEditor.pb`) virou um `Select` com as 7 paletas completas (24
+`RGB()` cada) em vez do `If/Else` binário anterior.
+
+**Compatibilidade**: `EditorCfg_ThemeIndexById()`/`EditorCfg_ThemeIdByIndex()` fazem a ponte
+índice-do-combo ↔ ID persistido, e absorvem os dois IDs antigos (`"Dark"`/`"Light"`) como sinônimo
+de `Graphite`/`Snow` — `editor_settings.json` de instalações anteriores migra sozinho no primeiro
+carregamento (`EditorCfg_Load()`), sem resetar a preferência do usuário.
+
+**O que muda de verdade vs. o que não muda** (auditado no código antes de prometer): só a área do
+editor (Scintilla), as abas e a régua de colunas eram desenhadas pelo próprio app nesta época —
+controles nativos (botões, combos, diálogos) continuavam com chrome do Windows em qualquer tema.
+Essa limitação começou a cair já na mesma sessão, ver módulo 29.
+
+### 29. Botões tematizados em toda a IDE + ícones Nerd Font opcionais — implementado (2026-08-08)
+
+Usuário testou o módulo 28 e reclamou que os diálogos ainda pareciam "Windows 3.1" — "aquele mar de
+botões cinza que estragam a aparência". `ButtonGadget` é controle nativo do Windows: ignora
+`Color_*` completamente, não tem API de recoloração.
+
+**Piloto no Editor Hexa** (`editor/HexEditorGui.pbi`, `v7.31.3`): os 16 botões da janela viraram
+imagens geradas na hora (`CreateImage`/`StartDrawing`/`Box`/`DrawText`, mesma técnica já usada nos
+ícones de `CharsetEditorGui.pbi` e nas setas de rolagem customizada desta mesma janela) exibidas
+via `ButtonImageGadget` — fundo/borda a partir de `Color_TabInactive` (clareada/escurecida por
+`HexEd_ShadeColor`, não depende de qual `Color_*` é mais clara/escura em cada uma das 7 paletas),
+texto em `Color_TextActive`, na mesma fonte já escolhida em `Configurar → Editor...`
+(`EditorCfg\FontName`) em vez de "Segoe UI" fixo.
+
+**Ícones de verdade, não desenho genérico à mão**: novo campo `EditorCfg\IconFontName` + combo
+**Fonte de ícones** na tela de Configurar — com uma Nerd Font escolhida, os botões trocam o texto
+por um glifo de ícone real (pasta aberta, disquete, lixeira etc.), com tooltip mostrando o nome ao
+passar o mouse; sem fonte escolhida (padrão), continuam com texto normal. Os primeiros 15
+codepoints (Nerd Fonts vive em Private Use Area do Unicode — uma fonte comum sem esses glifos
+"remendados" mostra quadrado vazio) foram conferidos ao vivo contra o `glyphnames.json` oficial do
+projeto (`github.com/ryanoasis/nerd-fonts`, v3.5.0, baixado via `curl` + parseado com Python — não
+confiado de memória nem do primeiro resumo de busca web, que errou um codepoint:
+`fa-plus_square` como `U+F055` em vez do `U+F0FE` real).
+
+**Rollout pra IDE inteira** (`v7.31.4`, mesma sessão): usuário gostou do piloto e pediu o mesmo
+formato em todos os diálogos. `HexEd_*` generalizado pra `editor/ThemedButtons.pbi` (novo módulo
+compartilhado — `Macro ThemedButton(X,Y,W,H,Text,Icon)`, ~33 constantes `#Icon_*` verificadas
+cobrindo só ações universalmente reconhecíveis: Fechar/Salvar/Copiar/Tocar/Parar/Ejetar/Inserir/
+Limpar/Conectar-Desconectar/Voltar/etc. — ações específicas de um módulo, tipo "Gerar código PLAY"
+ou os botões de status dinâmico do console openMSX ("VSync: ?"), ficam de propósito só com texto).
+`HexEditorGui.pbi` migrado pra usar o módulo compartilhado, sem duplicar código.
+
+**Escala do rollout**: 293 botões em 33 arquivos, 40 janelas ganharam `SetWindowColor(Win,
+Color_AppBg)` (antes ficavam brancas/cinza nativas destoando do editor tematizado), mais de 140
+botões com ícone + tooltip. Nenhuma edição manual — três scripts Python descartáveis (escritos no
+scratchpad da sessão, não fazem parte do repositório) fizeram o trabalho repetitivo:
+1. Conversão mecânica `ButtonGadget(#PB_Any, ...)` → `ThemedButton(..., "")` com **parsing de
+   parênteses balanceados** (não regex ingênuo — havia chamadas com expressões `WinW - x` dentro
+   dos argumentos de posição).
+2. Inserção de `SetWindowColor(Win, Color_AppBg)` logo após o guard `If Not Win / EndIf` de cada
+   `OpenWindow`.
+3. Upgrade de ícone só pra rótulo exato batendo numa lista curada — nenhum texto ambíguo (`"Reset"`
+   verificado caso a caso primeiro; `"Cancelar"`/`"OK"`/letras soltas/botões de status dinâmico
+   deixados de propósito como texto).
+
+Recompilado (`pbcompiler.exe`, sem erros) depois de cada rodada, pra pegar erro cedo em vez de
+acumular 33 arquivos de mudança não testada.
+
+**Achado real de arquitetura**: quase todos os 33 arquivos de diálogo são incluídos bem no topo de
+`BadigEditor.pb` — antes de `Global Color_AppBg`/`Structure EditorSettings`/`Global EditorCfg`
+existirem (só declarados mais de 400 linhas depois, perto de `ApplyTheme()`). Com `EnableExplicit`
++ `XIncludeFile` só inclusão textual, isso quebra a compilação assim que qualquer um desses
+arquivos passa a chamar `ThemedButton()` (que lê `Color_*`/`EditorCfg` por dentro). Resolvido **sem
+reordenar os 33 `XIncludeFile` existentes**: as poucas linhas de `Structure EditorSettings`/`Global
+EditorCfg`/`Global Color_*` foram movidas pro topo de `BadigEditor.pb`, antes do primeiro
+`XIncludeFile` — mesmo idioma dos vários `Declare` de procedure que já ficavam ali por motivo
+parecido (dependência circular de include), só que pra dado (`Global`/`Structure`) em vez de
+código (`Procedure`). `editor/EditorSettings.pbi` manteve o resto da sua lógica (defaults, load/
+save JSON, enumeração de fontes via WinAPI, a própria janela de configuração) na posição de
+`XIncludeFile` original, sem precisar mover.
+
+**O que não entrou nesta rodada**: as demais janelas de diálogo (Configurar, SEE Tracker, editores
+visuais) usam cores próprias fixas nas suas áreas desenhadas à mão (grade de patterns, tabela de
+caracteres etc.) — não migradas pra `Color_*`. Auditado antes de prometer: `SeeTrackerEditorGui.pbi`
+tem 22 botões nativos (agora tematizados) contra só 4 áreas de canvas com cor própria;
+`CharsetEditorGui.pbi` é parecido. Estender tema pra essas áreas é projeto à parte, arquivo por
+arquivo, separando cor de "chrome" (segue o tema) de cor de "conteúdo" (ex.: a paleta MSX real
+mostrada no editor de alfabeto/sprite não pode virar rosa só porque o tema é Rosé, senão a
+ferramenta mentiria sobre a cor de verdade do hardware).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

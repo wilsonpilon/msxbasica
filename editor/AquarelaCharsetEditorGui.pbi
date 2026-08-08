@@ -407,6 +407,7 @@ Procedure AquarelaCharsetEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -434,7 +435,8 @@ Procedure AquarelaCharsetEditor_OpenWindow(ParentWindow)
   GadgetToolTip(G_SaveAs, "Salvar como...: grava o alfabeto em edicao num novo arquivo .fnt")
 
   Protected G_Table = CanvasGadget(#PB_Any, LeftX, TableY, #AqEd_TableCanvasW, #AqEd_TableCanvasH)
-  Protected G_Close = ButtonGadget(#PB_Any, LeftX, CloseY, 100, 30, "Fechar")
+  Protected G_Close = ThemedButton(LeftX, CloseY, 100, 30, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected G_CharStatus = TextGadget(#PB_Any, RightX, CharStatusY, #AqEd_EditCanvasSize, 20, "")
   Protected G_EditCanvas = CanvasGadget(#PB_Any, RightX, EditY, #AqEd_EditCanvasSize, #AqEd_EditCanvasSize)

@@ -1131,6 +1131,7 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
   AddKeyboardShortcut(Win, #PB_Shortcut_Escape, #SpriteEd_CancelShortcut)
@@ -1145,16 +1146,16 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   Protected G_SpriteNumberText = TextGadget(#PB_Any, Cx, 16, 40, 20, "#1")
   Cx + 40 + 10
 
-  Protected G_First = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9198))
+  Protected G_First = ThemedButton(Cx, 12, 28, 26, Chr(9198), "")
   GadgetToolTip(G_First, "Primeiro sprite")
   Cx + 28 + 2
-  Protected G_Prev = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9664))
+  Protected G_Prev = ThemedButton(Cx, 12, 28, 26, Chr(9664), "")
   GadgetToolTip(G_Prev, "Sprite anterior")
   Cx + 28 + 2
-  Protected G_Next = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9654))
+  Protected G_Next = ThemedButton(Cx, 12, 28, 26, Chr(9654), "")
   GadgetToolTip(G_Next, "Proximo sprite")
   Cx + 28 + 2
-  Protected G_Last = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9197))
+  Protected G_Last = ThemedButton(Cx, 12, 28, 26, Chr(9197), "")
   GadgetToolTip(G_Last, "Ultimo sprite")
   Cx + 28 + 16
 
@@ -1293,41 +1294,42 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   TextGadget(#PB_Any, Cx, ToolY2 + 6, 14, ToolH, "R")
   Cx + 14
 
-  Protected G_RotUp = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9650))
+  Protected G_RotUp = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9650), "")
   GadgetToolTip(G_RotUp, "Rotacionar linhas para cima")
   Cx + 30 + 2
 
-  Protected G_RotDown = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9660))
+  Protected G_RotDown = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9660), "")
   GadgetToolTip(G_RotDown, "Rotacionar linhas para baixo")
   Cx + 30 + 2
 
-  Protected G_RotLeft = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9668))
+  Protected G_RotLeft = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9668), "")
   GadgetToolTip(G_RotLeft, "Rotacionar colunas para a esquerda")
   Cx + 30 + 2
 
-  Protected G_RotRight = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9658))
+  Protected G_RotRight = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9658), "")
   GadgetToolTip(G_RotRight, "Rotacionar colunas para a direita")
   Cx + 30 + 16
 
   TextGadget(#PB_Any, Cx, ToolY2 + 6, 14, ToolH, "D")
   Cx + 14
 
-  Protected G_ShiftUp = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9650))
+  Protected G_ShiftUp = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9650), "")
   GadgetToolTip(G_ShiftUp, "Deslocar para cima (sem rotacionar)")
   Cx + 30 + 2
 
-  Protected G_ShiftDown = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9660))
+  Protected G_ShiftDown = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9660), "")
   GadgetToolTip(G_ShiftDown, "Deslocar para baixo (sem rotacionar)")
   Cx + 30 + 2
 
-  Protected G_ShiftLeft = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9668))
+  Protected G_ShiftLeft = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9668), "")
   GadgetToolTip(G_ShiftLeft, "Deslocar para a esquerda (sem rotacionar)")
   Cx + 30 + 2
 
-  Protected G_ShiftRight = ButtonGadget(#PB_Any, Cx, ToolY2, 30, ToolH, Chr(9658))
+  Protected G_ShiftRight = ThemedButton(Cx, ToolY2, 30, ToolH, Chr(9658), "")
   GadgetToolTip(G_ShiftRight, "Deslocar para a direita (sem rotacionar)")
 
-  Protected G_Close = ButtonGadget(#PB_Any, GridX + (#SpriteEd_CanvasSize - 100) / 2, CloseY, 100, 30, "Fechar")
+  Protected G_Close = ThemedButton(GridX + (#SpriteEd_CanvasSize - 100) / 2, CloseY, 100, 30, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   ; Coluna direita: seletor de cores em cima, previa embaixo.
   Protected RightX = GridX + #SpriteEd_CanvasSize + 20

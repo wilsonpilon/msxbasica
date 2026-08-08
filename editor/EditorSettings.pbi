@@ -11,17 +11,12 @@
 ; ------------------------------------------------------------
 ;
 
-Structure EditorSettings
-  FontName.s
-  FontSize.i
-  FontFolder.s    ; pasta com .ttf/.otf/.ttc customizados (opcional)
-  EditorPath.s    ; "onde o editor reside" (sempre termina com separador) - nao move o .exe, so serve de base para outros defaults
-  Theme.s         ; "Dark" ou "Light"
-  Style.s         ; "Modern" ou "Classic" (formato das abas)
-EndStructure
-
-Global EditorCfg.EditorSettings
-Global NewList CustomFontResources.s()   ; caminhos registrados via AddFontResourceEx, para poder remover ao trocar de pasta
+; Structure EditorSettings/Global EditorCfg/Global CustomFontResources() foram
+; movidos pro topo de BadigEditor.pb (antes do primeiro XIncludeFile) porque
+; ThemedButtons.pbi (incluido logo depois de EditorSettings.pbi na cadeia) ja
+; precisa ler EditorCfg\FontName/IconFontName - com EnableExplicit, a
+; declaracao precisa aparecer antes textualmente. Mesmo motivo dos varios
+; Declare no topo de BadigEditor.pb para dependencia circular de procedures.
 
 ;- ------------------------------------------------------------
 ;- Valores padrao
@@ -58,8 +53,43 @@ Procedure EditorCfg_SetDefaults()
   EditorCfg\FontSize = 11
   EditorCfg\FontFolder = ""
   EditorCfg\EditorPath = EditorCfg_NormalizeDir(GetPathPart(ProgramFilename()))
-  EditorCfg\Theme = "Dark"
+  EditorCfg\Theme = "Graphite"
   EditorCfg\Style = "Modern"
+  EditorCfg\IconFontName = ""
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Temas: ID persistido em JSON <-> indice do ComboBoxGadget/rotulo em PT-BR
+;- ------------------------------------------------------------
+
+; Ordem = ordem do combo na tela de Configurar -> Editor... e dos mockups
+; originais (ver docs/RELEASE_NOTES.md) - Graphite/Snow sao as revisoes do
+; escuro/claro que ja existiam; os outros 5 sao as cores novas pedidas.
+Procedure.s EditorCfg_ThemeIdByIndex(Index)
+  Select Index
+    Case 1 : ProcedureReturn "Snow"
+    Case 2 : ProcedureReturn "Navy"
+    Case 3 : ProcedureReturn "Rose"
+    Case 4 : ProcedureReturn "Crimson"
+    Case 5 : ProcedureReturn "Forest"
+    Case 6 : ProcedureReturn "Paper"
+    Default : ProcedureReturn "Graphite" ; indice 0 e qualquer coisa fora da faixa
+  EndSelect
+EndProcedure
+
+; Contraparte de EditorCfg_ThemeIdByIndex() - tambem absorve os dois IDs
+; antigos ("Dark"/"Light", unicos valores que este campo teve antes dos 7
+; temas) para nao resetar o tema de quem ja tinha um editor_settings.json.
+Procedure.i EditorCfg_ThemeIndexById(Id.s)
+  Select Id
+    Case "Snow", "Light" : ProcedureReturn 1
+    Case "Navy"          : ProcedureReturn 2
+    Case "Rose"          : ProcedureReturn 3
+    Case "Crimson"       : ProcedureReturn 4
+    Case "Forest"        : ProcedureReturn 5
+    Case "Paper"         : ProcedureReturn 6
+    Default              : ProcedureReturn 0 ; "Graphite"/"Dark"/desconhecido
+  EndSelect
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -258,6 +288,16 @@ Procedure EditorCfg_Load()
   M = GetJSONMember(Root, "EditorPath") : If M : EditorCfg\EditorPath = EditorCfg_NormalizeDir(GetJSONString(M)) : EndIf
   M = GetJSONMember(Root, "Theme")      : If M : EditorCfg\Theme = GetJSONString(M) : EndIf
   M = GetJSONMember(Root, "Style")      : If M : EditorCfg\Style = GetJSONString(M) : EndIf
+  M = GetJSONMember(Root, "IconFontName") : If M : EditorCfg\IconFontName = GetJSONString(M) : EndIf
+
+  ; settings.json de antes dos 7 temas so tinha "Dark"/"Light" - migra pros
+  ; equivalentes mais proximos (Graphite/Snow) assim que carrega, pra
+  ; ApplyTheme() (BadigEditor.pb) so precisar conhecer os 7 IDs atuais.
+  If EditorCfg\Theme = "Dark"
+    EditorCfg\Theme = "Graphite"
+  ElseIf EditorCfg\Theme = "Light"
+    EditorCfg\Theme = "Snow"
+  EndIf
 
   FreeJSON(Json)
   ProcedureReturn #True
@@ -273,6 +313,7 @@ Procedure EditorCfg_Save()
   SetJSONString(AddJSONMember(Root, "EditorPath"), EditorCfg\EditorPath)
   SetJSONString(AddJSONMember(Root, "Theme"), EditorCfg\Theme)
   SetJSONString(AddJSONMember(Root, "Style"), EditorCfg\Style)
+  SetJSONString(AddJSONMember(Root, "IconFontName"), EditorCfg\IconFontName)
 
   SaveJSON(Json, EditorCfg_FilePath(), #PB_JSON_PrettyPrint)
   FreeJSON(Json)
@@ -289,12 +330,13 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
   ; (pedido explicito do usuario pra tirar a cara "Windows 95" compacta dos
   ; dialogos). Todo campo/combo/botao usa a mesma altura (24px, 32px so nos
   ; botoes principais Salvar/Cancelar) para o alinhamento ficar consistente.
-  Protected WinW = 620, WinH = 420
+  Protected WinW = 620, WinH = 470
   Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do Editor",
                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn #False
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
@@ -323,21 +365,26 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
 
   TextGadget(#PB_Any, 24, 72, 400, 20, "Pasta de fontes customizadas (opcional)")
   Protected G_FontFolder = StringGadget(#PB_Any, 24, 100, 512, 24, EditorCfg\FontFolder)
-  Protected G_FontFolderBrowse = ButtonGadget(#PB_Any, 546, 100, 50, 24, "...")
-  Protected G_FontDownload = ButtonGadget(#PB_Any, 24, 140, 300, 24, "Baixar fontes (Nerd Fonts)...")
+  Protected G_FontFolderBrowse = ThemedButton(546, 100, 50, 24, "...", "")
+  Protected G_FontDownload = ThemedButton(24, 140, 300, 24, "Baixar fontes (Nerd Fonts)...", "")
 
   TextGadget(#PB_Any, 24, 190, 400, 20, "Caminho de instalacao do editor")
   Protected G_EditorPath = StringGadget(#PB_Any, 24, 218, 512, 24, EditorCfg\EditorPath)
-  Protected G_EditorPathBrowse = ButtonGadget(#PB_Any, 546, 218, 50, 24, "...")
+  Protected G_EditorPathBrowse = ThemedButton(546, 218, 50, 24, "...", "")
   TextGadget(#PB_Any, 24, 254, 572, 36,
     "Usado como base do diretorio padrao do Basic Dignified Suite - util para manter" + Chr(10) +
     "instalacoes separadas do editor (ex.: estavel e beta).")
 
   TextGadget(#PB_Any, 24, 314, 70, 20, "Tema")
-  Protected G_Theme = ComboBoxGadget(#PB_Any, 108, 311, 160, 24)
-  AddGadgetItem(G_Theme, -1, "Escuro")
-  AddGadgetItem(G_Theme, -1, "Claro")
-  SetGadgetState(G_Theme, Bool(EditorCfg\Theme = "Light"))
+  Protected G_Theme = ComboBoxGadget(#PB_Any, 108, 311, 190, 24)
+  AddGadgetItem(G_Theme, -1, "Grafite (escuro)")
+  AddGadgetItem(G_Theme, -1, "Neve (claro)")
+  AddGadgetItem(G_Theme, -1, "Azul Profundo")
+  AddGadgetItem(G_Theme, -1, "Rose")
+  AddGadgetItem(G_Theme, -1, "Carmesim")
+  AddGadgetItem(G_Theme, -1, "Floresta")
+  AddGadgetItem(G_Theme, -1, "Bege (claro)")
+  SetGadgetState(G_Theme, EditorCfg_ThemeIndexById(EditorCfg\Theme))
 
   TextGadget(#PB_Any, 320, 314, 110, 20, "Estilo de abas")
   Protected G_Style = ComboBoxGadget(#PB_Any, 444, 311, 152, 24)
@@ -345,8 +392,33 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
   AddGadgetItem(G_Style, -1, "Classico")
   SetGadgetState(G_Style, Bool(EditorCfg\Style = "Classic"))
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
+  ; Fonte separada da de codigo (acima) porque precisa ser especificamente uma
+  ; Nerd Font (glifos de icone vivem em codepoints da Private Use Area - uma
+  ; fonte comum nao tem esses desenhos, so mostra quadradinho vazio). "" =
+  ; usa texto nos botoes tematizados (ver HexEd_CreateButtonImage,
+  ; HexEditorGui.pbi) - unica janela que ja usa isso por enquanto.
+  TextGadget(#PB_Any, 24, 360, 220, 20, "Fonte de icones (Nerd Font, opcional)")
+  Protected G_IconFont = ComboBoxGadget(#PB_Any, 260, 357, 270, 24)
+  AddGadgetItem(G_IconFont, -1, "(Nenhuma - usa texto)")
+
+  Protected IconFontIndex = 0, IconIdx = 1
+  ForEach Fonts()
+    AddGadgetItem(G_IconFont, -1, Fonts())
+    If Fonts() = EditorCfg\IconFontName
+      IconFontIndex = IconIdx
+    EndIf
+    IconIdx + 1
+  Next
+  If IconFontIndex = 0 And EditorCfg\IconFontName <> ""
+    AddGadgetItem(G_IconFont, -1, EditorCfg\IconFontName)
+    IconFontIndex = CountGadgetItems(G_IconFont) - 1
+  EndIf
+  SetGadgetState(G_IconFont, IconFontIndex)
+  GadgetToolTip(G_IconFont, "Baixe uma Nerd Font acima (ou coloque na pasta de fontes customizadas) e escolha aqui pra trocar o texto dos botoes por icones")
+
+  Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Saved = #False, Pick.s
 
@@ -404,16 +476,18 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
     EndIf
     EditorCfg\EditorPath = EditorCfg_NormalizeDir(NewEditorPath)
 
-    If GetGadgetState(G_Theme) = 1
-      EditorCfg\Theme = "Light"
-    Else
-      EditorCfg\Theme = "Dark"
-    EndIf
+    EditorCfg\Theme = EditorCfg_ThemeIdByIndex(GetGadgetState(G_Theme))
 
     If GetGadgetState(G_Style) = 1
       EditorCfg\Style = "Classic"
     Else
       EditorCfg\Style = "Modern"
+    EndIf
+
+    If GetGadgetState(G_IconFont) = 0
+      EditorCfg\IconFontName = ""
+    Else
+      EditorCfg\IconFontName = GetGadgetText(G_IconFont)
     EndIf
 
     EditorCfg_Save()

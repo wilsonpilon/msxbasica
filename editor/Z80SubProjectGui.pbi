@@ -53,6 +53,7 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -63,16 +64,16 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
   Protected G_NumberText = TextGadget(#PB_Any, Cx, 16, 40, 20, "#1")
   Cx + 40 + 10
 
-  Protected G_First = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9198))
+  Protected G_First = ThemedButton(Cx, 12, 28, 26, Chr(9198), "")
   GadgetToolTip(G_First, "Primeiro subprojeto")
   Cx + 28 + 2
-  Protected G_Prev = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9664))
+  Protected G_Prev = ThemedButton(Cx, 12, 28, 26, Chr(9664), "")
   GadgetToolTip(G_Prev, "Subprojeto anterior")
   Cx + 28 + 2
-  Protected G_Next = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9654))
+  Protected G_Next = ThemedButton(Cx, 12, 28, 26, Chr(9654), "")
   GadgetToolTip(G_Next, "Proximo subprojeto")
   Cx + 28 + 2
-  Protected G_Last = ButtonGadget(#PB_Any, Cx, 12, 28, 26, Chr(9197))
+  Protected G_Last = ThemedButton(Cx, 12, 28, 26, Chr(9197), "")
   GadgetToolTip(G_Last, "Ultimo subprojeto")
   Cx + 28 + 16
 
@@ -102,12 +103,15 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
                                        #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
 
   Protected AsmBtnY = ListY + 22 + ListH + 10
-  Protected G_AsmAdd    = ButtonGadget(#PB_Any, AsmX, AsmBtnY, 95, 26, "Adicionar...")
-  Protected G_AsmRemove = ButtonGadget(#PB_Any, AsmX + 100, AsmBtnY, 95, 26, "Remover")
-  Protected G_AsmUp     = ButtonGadget(#PB_Any, AsmX + 200, AsmBtnY, 95, 26, "Subir")
-  Protected G_AsmDown   = ButtonGadget(#PB_Any, AsmX + 300, AsmBtnY, 95, 26, "Descer")
+  Protected G_AsmAdd    = ThemedButton(AsmX, AsmBtnY, 95, 26, "Adicionar...", Chr(#Icon_Add))
+  GadgetToolTip(G_AsmAdd, "Adicionar...")
+  Protected G_AsmRemove = ThemedButton(AsmX + 100, AsmBtnY, 95, 26, "Remover", "")
+  Protected G_AsmUp     = ThemedButton(AsmX + 200, AsmBtnY, 95, 26, "Subir", Chr(#Icon_ArrowUp))
+  GadgetToolTip(G_AsmUp, "Subir")
+  Protected G_AsmDown   = ThemedButton(AsmX + 300, AsmBtnY, 95, 26, "Descer", Chr(#Icon_ArrowDown))
+  GadgetToolTip(G_AsmDown, "Descer")
 
-  Protected G_GenLib = ButtonGadget(#PB_Any, AsmX, AsmBtnY + 32, AsmW, 28, "Gerar biblioteca a partir dos .ASM selecionados...")
+  Protected G_GenLib = ThemedButton(AsmX, AsmBtnY + 32, AsmW, 28, "Gerar biblioteca a partir dos .ASM selecionados...", Chr(#Icon_Hammer))
   GadgetToolTip(G_GenLib, "Sem nada marcado na lista acima, usa TODOS os .asm do subprojeto")
 
   ; --- Lista de bibliotecas (direita) ---
@@ -117,8 +121,9 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
                                        #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
 
   Protected LibBtnY = AsmBtnY
-  Protected G_LibAdd    = ButtonGadget(#PB_Any, LibX, LibBtnY, LibW / 2 - 3, 26, "Adicionar biblioteca...")
-  Protected G_LibRemove = ButtonGadget(#PB_Any, LibX + LibW / 2 + 3, LibBtnY, LibW / 2 - 3, 26, "Remover biblioteca")
+  Protected G_LibAdd    = ThemedButton(LibX, LibBtnY, LibW / 2 - 3, 26, "Adicionar biblioteca...", "")
+  Protected G_LibRemove = ThemedButton(LibX + LibW / 2 + 3, LibBtnY, LibW / 2 - 3, 26, "Remover biblioteca", Chr(#Icon_Remove))
+  GadgetToolTip(G_LibRemove, "Remover biblioteca")
 
   TextGadget(#PB_Any, LibX, LibBtnY + 34, LibW, 40,
              "Cada .REQUEST no .asm precisa bater com o nome do arquivo (sem extensao) de uma biblioteca desta lista.")
@@ -128,8 +133,10 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
   Protected G_Status = TextGadget(#PB_Any, 24, StatusY, WinW - 48, 40, "")
 
   Protected ButtonY = WinH - 56
-  Protected G_Build = ButtonGadget(#PB_Any, 24, ButtonY, 220, 32, "Montar tudo (Build)...")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
+  Protected G_Build = ThemedButton(24, ButtonY, 220, 32, "Montar tudo (Build)...", Chr(#Icon_Hammer))
+  GadgetToolTip(G_Build, "Montar tudo (Build)...")
+  Protected G_Close = ThemedButton(WinW - 24 - 110, ButtonY, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   ; --- Estado ---
   Protected SubProjNumber.i = 1

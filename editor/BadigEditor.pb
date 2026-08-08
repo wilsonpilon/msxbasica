@@ -43,6 +43,43 @@ Declare OpenMsxHelp_OpenWindow(ParentWindow)
 ; abaixo neste arquivo) - mesmo motivo das declaracoes acima.
 Declare RunBasicFromActiveTab()
 
+; Structure EditorSettings/Global EditorCfg (definidos "de verdade" em
+; EditorSettings.pbi, incluido logo abaixo) e os globais Color_* (tab bar/
+; regua/sintaxe da area de edicao, preenchidos por ApplyTheme() mais adiante
+; neste arquivo de acordo com EditorCfg\Theme) precisam estar aqui, ANTES do
+; primeiro XIncludeFile - com EnableExplicit, ThemedButtons.pbi (incluido
+; logo depois de EditorSettings.pbi) ja le EditorCfg\FontName/IconFontName e
+; os Color_* dentro de ThemedUI_CreateButtonImage(), e a declaracao Global
+; precisa aparecer antes textualmente (XIncludeFile e so inclusao textual -
+; mesmo motivo dos Declare de procedure acima, so que pra Global/Structure).
+Structure EditorSettings
+  FontName.s
+  FontSize.i
+  FontFolder.s    ; pasta com .ttf/.otf/.ttc customizados (opcional)
+  EditorPath.s    ; "onde o editor reside" (sempre termina com separador) - nao move o .exe, so serve de base para outros defaults
+  Theme.s         ; um dos 7 IDs de EditorCfg_ThemeIdByIndex() (Graphite/Snow/Navy/Rose/Crimson/Forest/Paper)
+  Style.s         ; "Modern" ou "Classic" (formato das abas)
+  IconFontName.s  ; nome de uma Nerd Font (da mesma FontFolder) usada pra desenhar icones
+                  ; em botoes tematizados (ver ThemedUI_CreateButtonImage, ThemedButtons.pbi) -
+                  ; "" (padrao) = sem icones, botoes ficam com texto
+EndStructure
+
+Global EditorCfg.EditorSettings
+Global NewList CustomFontResources.s()   ; caminhos registrados via AddFontResourceEx, para poder remover ao trocar de pasta
+
+Global Color_AppBg, Color_EditorBg, Color_TabInactive, Color_TabHover
+Global Color_TextActive, Color_TextInactive, Color_Accent, Color_CloseHover
+Global Color_RulerBg, Color_RulerText, Color_RulerTick
+
+Global Color_Syntax_Default, Color_Syntax_Comment, Color_Syntax_String
+Global Color_Syntax_Statement, Color_Syntax_Operator, Color_Syntax_Function
+Global Color_Syntax_Number, Color_Syntax_Label, Color_Syntax_DignifiedStmt
+Global Color_Syntax_Remtag, Color_Caret, Color_SelBack, Color_LineNumberFore
+
+; Primeiro de todos os XIncludeFile de proposito: precisa vir antes de
+; qualquer arquivo de janela/dialogo (todos usam a Macro ThemedButton() pra
+; nao ficar com chrome nativo do Windows - ver ThemedButtons.pbi).
+XIncludeFile "ThemedButtons.pbi"
 
 XIncludeFile "MsxTokenizer.pbi"
 XIncludeFile "DignifiedPreprocessor.pbi"
@@ -98,6 +135,7 @@ XIncludeFile "SeeTrackerHelpGui.pbi"
 XIncludeFile "OpenMsxHelpData.pbi"
 XIncludeFile "OpenMsxHelpGui.pbi"
 XIncludeFile "GenericMdHelpGui.pbi"
+XIncludeFile "EditorHelpGui.pbi"
 XIncludeFile "ExternalToolDownload.pbi"
 XIncludeFile "MsxBas2RomSupport.pbi"
 XIncludeFile "N80Support.pbi"
@@ -360,7 +398,6 @@ EndEnumeration
 Enumeration Gadgets
   #TabBarGadget
   #RulerGadget
-  #HelpGadget      ; ver WordStarKeys.pbi (Ctrl+K H) - ocupa o lugar do Scintilla ativo
 EndEnumeration
 
 Enumeration StatusBars
@@ -391,6 +428,10 @@ Enumeration MenuItems
   #Menu_DignifiedToTokenized
   #Menu_CloseTab
   #Menu_Exit
+  #Menu_Find
+  #Menu_FindNext
+  #Menu_Replace
+  #Menu_GotoLine
   #Menu_CreateDisk
   #Menu_CreateSprite
   #Menu_CreateAlphabet
@@ -423,7 +464,7 @@ Enumeration MenuItems
   #Menu_ConfigureMsxBas2Rom
   #Menu_ConfigureN80
   #Menu_ConfigureOpenMSX
-  #Menu_HelpCommands
+  #Menu_HelpEditor
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
   #Menu_HelpBasicDignified
@@ -456,9 +497,6 @@ EndEnumeration
 
 #Event_Rehighlight = #PB_Event_FirstCustomValue
 #Event_UpdateUI    = #PB_Event_FirstCustomValue + 1
-; Usado por WordStarKeys.pbi (^KX/^KQ) para adiar o fechamento da aba ativa -
-; ver comentario no proprio arquivo.
-#Event_WS_CloseTab = #PB_Event_FirstCustomValue + 2
 ; Disparado de ScintillaCallBack (#SCN_CHARADDED) e tratado no loop principal -
 ; nao pode chamar ScintillaSendMessage direto de dentro da notificacao (ver
 ; comentario em ScintillaCallBack), entao o trabalho real (montar a lista e
@@ -512,81 +550,208 @@ CompilerEndIf
 #Tab_CloseGap    = 10
 #Tab_Gap         = 2
 
-; Cores da tab bar/regua/sintaxe (RGB() e uma funcao em tempo de execucao no
-; PureBasic, entao essas nao podem ser #Constantes - sao globais, atribuidas
-; por ApplyTheme() de acordo com EditorCfg\Theme (ver EditorSettings.pbi),
-; chamada antes de qualquer janela/gadget ser criado e de novo sempre que o
-; usuario troca o tema em Configurar -> Editor...
-Global Color_AppBg, Color_EditorBg, Color_TabInactive, Color_TabHover
-Global Color_TextActive, Color_TextInactive, Color_Accent, Color_CloseHover
-Global Color_RulerBg, Color_RulerText, Color_RulerTick
-
-Global Color_Syntax_Default, Color_Syntax_Comment, Color_Syntax_String
-Global Color_Syntax_Statement, Color_Syntax_Operator, Color_Syntax_Function
-Global Color_Syntax_Number, Color_Syntax_Label, Color_Syntax_DignifiedStmt
-Global Color_Syntax_Remtag, Color_Caret, Color_SelBack, Color_LineNumberFore
-
-; So pode entrar aqui (nao junto com os demais XIncludeFile no topo) porque
-; usa os globais Color_* acima - com EnableExplicit a declaracao Global
-; precisa aparecer antes textualmente, ja que XIncludeFile e so inclusao
-; textual (mesmo caso do XIncludeFile "WordStarKeys.pbi" no fim do arquivo).
+; Global Color_* (tab bar/regua/sintaxe) e Structure EditorSettings/Global
+; EditorCfg moveram pro topo deste arquivo (antes do primeiro XIncludeFile) -
+; ThemedButtons.pbi ja usa os dois desde bem cedo na cadeia de includes. Ver
+; comentario la em cima.
 XIncludeFile "HexEditorGui.pbi"
 
-; Preenche todos os globais Color_* acima de acordo com EditorCfg\Theme.
+; Preenche todos os globais Color_* acima de acordo com EditorCfg\Theme (um
+; dos 7 IDs de EditorCfg_ThemeIdByIndex() em EditorSettings.pbi). Paletas
+; desenhadas e aprovadas fora do PureBasic (mockup HTML) antes de virar
+; codigo - ver docs/RELEASE_NOTES.md pela origem/inspiracao de cada uma.
+; Default (tema desconhecido/settings.json corrompido) cai em Graphite.
 Procedure ApplyTheme()
-  If EditorCfg\Theme = "Light"
-    Color_AppBg        = RGB(245, 246, 248)
-    Color_EditorBg      = RGB(255, 255, 255)
-    Color_TabInactive   = RGB(230, 231, 235)
-    Color_TabHover      = RGB(220, 222, 228)
-    Color_TextActive    = RGB(40, 42, 48)
-    Color_TextInactive  = RGB(120, 124, 132)
-    Color_Accent        = RGB(64, 120, 192)
-    Color_CloseHover    = RGB(200, 60, 70)
-    Color_RulerBg       = RGB(238, 239, 242)
-    Color_RulerText     = RGB(120, 124, 132)
-    Color_RulerTick     = RGB(200, 202, 208)
+  Select EditorCfg\Theme
+    Case "Snow"
+      Color_AppBg        = RGB(242, 243, 245)
+      Color_EditorBg      = RGB(255, 255, 255)
+      Color_TabInactive   = RGB(230, 232, 236)
+      Color_TabHover      = RGB(217, 220, 226)
+      Color_TextActive    = RGB(38, 42, 51)
+      Color_TextInactive  = RGB(107, 114, 128)
+      Color_Accent        = RGB(52, 104, 192)
+      Color_CloseHover    = RGB(194, 59, 82)
+      Color_RulerBg       = RGB(237, 238, 241)
+      Color_RulerText     = RGB(118, 124, 136)
+      Color_RulerTick     = RGB(213, 216, 222)
 
-    Color_Syntax_Default       = RGB(56, 58, 66)
-    Color_Syntax_Comment       = RGB(160, 161, 167)
-    Color_Syntax_String        = RGB(80, 161, 79)
-    Color_Syntax_Statement     = RGB(166, 38, 164)
-    Color_Syntax_Operator      = RGB(228, 86, 73)
-    Color_Syntax_Function      = RGB(64, 120, 192)
-    Color_Syntax_Number        = RGB(152, 104, 1)
-    Color_Syntax_Label         = RGB(196, 143, 0)
-    Color_Syntax_DignifiedStmt = RGB(202, 57, 84)
-    Color_Syntax_Remtag        = RGB(178, 120, 0)
-    Color_Caret                = RGB(0, 0, 0)
-    Color_SelBack               = RGB(198, 214, 251)
-    Color_LineNumberFore       = RGB(140, 144, 152)
-  Else
-    Color_AppBg        = RGB(15, 16, 21)   ; um pouco mais escuro que o fundo do editor, para dar profundidade
-    Color_EditorBg      = RGB(24, 26, 34)  ; mesma cor de fundo do ScintillaGadget
-    Color_TabInactive   = RGB(30, 32, 40)
-    Color_TabHover      = RGB(38, 41, 52)
-    Color_TextActive    = RGB(220, 223, 230)
-    Color_TextInactive  = RGB(140, 145, 160)
-    Color_Accent        = RGB(97, 175, 239) ; mesmo azul de #Style_Function
-    Color_CloseHover    = RGB(224, 108, 117); mesmo vermelho de #Style_Operator
-    Color_RulerBg       = RGB(20, 21, 28)
-    Color_RulerText     = RGB(110, 116, 130)
-    Color_RulerTick     = RGB(60, 64, 76)
+      Color_Syntax_Default       = RGB(43, 47, 56)
+      Color_Syntax_Comment       = RGB(138, 143, 156)
+      Color_Syntax_String        = RGB(47, 125, 79)
+      Color_Syntax_Statement     = RGB(154, 63, 160)
+      Color_Syntax_Operator      = RGB(194, 59, 82)
+      Color_Syntax_Function      = RGB(52, 104, 192)
+      Color_Syntax_Number        = RGB(176, 106, 18)
+      Color_Syntax_Label         = RGB(156, 124, 10)
+      Color_Syntax_DignifiedStmt = RGB(195, 61, 111)
+      Color_Syntax_Remtag        = RGB(165, 118, 12)
+      Color_Caret                = RGB(0, 0, 0)
+      Color_SelBack               = RGB(207, 224, 251)
+      Color_LineNumberFore       = RGB(144, 152, 166)
 
-    Color_Syntax_Default       = RGB(220, 223, 230)
-    Color_Syntax_Comment       = RGB(98, 114, 142)
-    Color_Syntax_String        = RGB(152, 195, 121)
-    Color_Syntax_Statement     = RGB(198, 120, 221)
-    Color_Syntax_Operator      = RGB(224, 108, 117)
-    Color_Syntax_Function      = RGB(97, 175, 239)
-    Color_Syntax_Number        = RGB(209, 154, 102)
-    Color_Syntax_Label         = RGB(229, 181, 103)
-    Color_Syntax_DignifiedStmt = RGB(230, 126, 144)
-    Color_Syntax_Remtag        = RGB(255, 203, 107)
-    Color_Caret                = RGB(255, 255, 255)
-    Color_SelBack               = RGB(60, 80, 110)
-    Color_LineNumberFore       = RGB(100, 106, 122)
-  EndIf
+    Case "Navy"
+      Color_AppBg        = RGB(11, 18, 32)
+      Color_EditorBg      = RGB(16, 24, 44)
+      Color_TabInactive   = RGB(22, 32, 58)
+      Color_TabHover      = RGB(28, 41, 71)
+      Color_TextActive    = RGB(214, 226, 240)
+      Color_TextInactive  = RGB(124, 141, 179)
+      Color_Accent        = RGB(90, 169, 230)
+      Color_CloseHover    = RGB(224, 99, 122)
+      Color_RulerBg       = RGB(13, 21, 38)
+      Color_RulerText     = RGB(107, 123, 160)
+      Color_RulerTick     = RGB(38, 49, 79)
+
+      Color_Syntax_Default       = RGB(207, 220, 242)
+      Color_Syntax_Comment       = RGB(95, 114, 146)
+      Color_Syntax_String        = RGB(127, 217, 185)
+      Color_Syntax_Statement     = RGB(165, 140, 255)
+      Color_Syntax_Operator      = RGB(239, 143, 174)
+      Color_Syntax_Function      = RGB(90, 169, 230)
+      Color_Syntax_Number        = RGB(242, 184, 102)
+      Color_Syntax_Label         = RGB(255, 212, 121)
+      Color_Syntax_DignifiedStmt = RGB(255, 158, 203)
+      Color_Syntax_Remtag        = RGB(255, 207, 140)
+      Color_Caret                = RGB(255, 255, 255)
+      Color_SelBack               = RGB(35, 74, 120)
+      Color_LineNumberFore       = RGB(74, 92, 130)
+
+    Case "Rose"
+      Color_AppBg        = RGB(26, 18, 25)
+      Color_EditorBg      = RGB(34, 24, 36)
+      Color_TabInactive   = RGB(44, 32, 48)
+      Color_TabHover      = RGB(56, 41, 62)
+      Color_TextActive    = RGB(240, 223, 232)
+      Color_TextInactive  = RGB(160, 132, 160)
+      Color_Accent        = RGB(232, 138, 176)
+      Color_CloseHover    = RGB(224, 91, 111)
+      Color_RulerBg       = RGB(29, 21, 31)
+      Color_RulerText     = RGB(140, 111, 140)
+      Color_RulerTick     = RGB(58, 44, 64)
+
+      Color_Syntax_Default       = RGB(236, 219, 229)
+      Color_Syntax_Comment       = RGB(138, 114, 144)
+      Color_Syntax_String        = RGB(184, 209, 138)
+      Color_Syntax_Statement     = RGB(199, 146, 234)
+      Color_Syntax_Operator      = RGB(242, 143, 163)
+      Color_Syntax_Function      = RGB(232, 166, 208)
+      Color_Syntax_Number        = RGB(240, 176, 112)
+      Color_Syntax_Label         = RGB(244, 207, 122)
+      Color_Syntax_DignifiedStmt = RGB(255, 136, 173)
+      Color_Syntax_Remtag        = RGB(246, 197, 137)
+      Color_Caret                = RGB(255, 255, 255)
+      Color_SelBack               = RGB(74, 47, 78)
+      Color_LineNumberFore       = RGB(110, 88, 114)
+
+    Case "Crimson"
+      Color_AppBg        = RGB(26, 14, 17)
+      Color_EditorBg      = RGB(36, 19, 24)
+      Color_TabInactive   = RGB(48, 26, 32)
+      Color_TabHover      = RGB(61, 33, 41)
+      Color_TextActive    = RGB(242, 221, 224)
+      Color_TextInactive  = RGB(169, 124, 131)
+      Color_Accent        = RGB(226, 83, 106)
+      Color_CloseHover    = RGB(255, 107, 74)
+      Color_RulerBg       = RGB(28, 16, 19)
+      Color_RulerText     = RGB(151, 112, 122)
+      Color_RulerTick     = RGB(60, 35, 42)
+
+      Color_Syntax_Default       = RGB(239, 217, 220)
+      Color_Syntax_Comment       = RGB(143, 107, 113)
+      Color_Syntax_String        = RGB(155, 201, 138)
+      Color_Syntax_Statement     = RGB(224, 135, 158)
+      Color_Syntax_Operator      = RGB(255, 140, 107)
+      Color_Syntax_Function      = RGB(232, 161, 92)
+      Color_Syntax_Number        = RGB(242, 192, 120)
+      Color_Syntax_Label         = RGB(255, 207, 107)
+      Color_Syntax_DignifiedStmt = RGB(255, 111, 145)
+      Color_Syntax_Remtag        = RGB(255, 179, 122)
+      Color_Caret                = RGB(255, 255, 255)
+      Color_SelBack               = RGB(86, 37, 48)
+      Color_LineNumberFore       = RGB(124, 89, 96)
+
+    Case "Forest"
+      Color_AppBg        = RGB(16, 26, 21)
+      Color_EditorBg      = RGB(22, 33, 28)
+      Color_TabInactive   = RGB(28, 41, 33)
+      Color_TabHover      = RGB(36, 53, 42)
+      Color_TextActive    = RGB(220, 232, 220)
+      Color_TextInactive  = RGB(127, 161, 137)
+      Color_Accent        = RGB(158, 209, 90)
+      Color_CloseHover    = RGB(226, 99, 122)
+      Color_RulerBg       = RGB(18, 28, 23)
+      Color_RulerText     = RGB(110, 144, 120)
+      Color_RulerTick     = RGB(38, 58, 45)
+
+      Color_Syntax_Default       = RGB(215, 229, 215)
+      Color_Syntax_Comment       = RGB(108, 138, 117)
+      Color_Syntax_String        = RGB(224, 201, 136)
+      Color_Syntax_Statement     = RGB(126, 196, 209)
+      Color_Syntax_Operator      = RGB(224, 138, 107)
+      Color_Syntax_Function      = RGB(158, 209, 90)
+      Color_Syntax_Number        = RGB(224, 169, 94)
+      Color_Syntax_Label         = RGB(240, 207, 110)
+      Color_Syntax_DignifiedStmt = RGB(217, 143, 194)
+      Color_Syntax_Remtag        = RGB(238, 194, 122)
+      Color_Caret                = RGB(255, 255, 255)
+      Color_SelBack               = RGB(44, 74, 55)
+      Color_LineNumberFore       = RGB(86, 122, 96)
+
+    Case "Paper"
+      Color_AppBg        = RGB(236, 225, 204)
+      Color_EditorBg      = RGB(244, 236, 220)
+      Color_TabInactive   = RGB(227, 213, 184)
+      Color_TabHover      = RGB(216, 200, 165)
+      Color_TextActive    = RGB(60, 50, 37)
+      Color_TextInactive  = RGB(138, 122, 92)
+      Color_Accent        = RGB(181, 101, 29)
+      Color_CloseHover    = RGB(179, 69, 47)
+      Color_RulerBg       = RGB(232, 220, 192)
+      Color_RulerText     = RGB(138, 122, 92)
+      Color_RulerTick     = RGB(211, 193, 156)
+
+      Color_Syntax_Default       = RGB(60, 50, 37)
+      Color_Syntax_Comment       = RGB(156, 138, 104)
+      Color_Syntax_String        = RGB(92, 122, 60)
+      Color_Syntax_Statement     = RGB(154, 78, 158)
+      Color_Syntax_Operator      = RGB(179, 69, 47)
+      Color_Syntax_Function      = RGB(47, 111, 143)
+      Color_Syntax_Number        = RGB(181, 101, 29)
+      Color_Syntax_Label         = RGB(151, 131, 31)
+      Color_Syntax_DignifiedStmt = RGB(161, 61, 99)
+      Color_Syntax_Remtag        = RGB(138, 109, 31)
+      Color_Caret                = RGB(0, 0, 0)
+      Color_SelBack               = RGB(217, 196, 143)
+      Color_LineNumberFore       = RGB(165, 148, 110)
+
+    Default ; "Graphite" e qualquer valor desconhecido/legado
+      Color_AppBg        = RGB(20, 22, 27)
+      Color_EditorBg      = RGB(28, 31, 38)
+      Color_TabInactive   = RGB(34, 37, 45)
+      Color_TabHover      = RGB(43, 47, 57)
+      Color_TextActive    = RGB(227, 230, 238)
+      Color_TextInactive  = RGB(136, 144, 160)
+      Color_Accent        = RGB(107, 179, 240)
+      Color_CloseHover    = RGB(224, 104, 122)
+      Color_RulerBg       = RGB(23, 25, 31)
+      Color_RulerText     = RGB(115, 123, 140)
+      Color_RulerTick     = RGB(47, 51, 61)
+
+      Color_Syntax_Default       = RGB(221, 225, 234)
+      Color_Syntax_Comment       = RGB(107, 115, 133)
+      Color_Syntax_String        = RGB(147, 196, 125)
+      Color_Syntax_Statement     = RGB(197, 134, 239)
+      Color_Syntax_Operator      = RGB(240, 113, 120)
+      Color_Syntax_Function      = RGB(107, 179, 240)
+      Color_Syntax_Number        = RGB(224, 164, 100)
+      Color_Syntax_Label         = RGB(240, 198, 116)
+      Color_Syntax_DignifiedStmt = RGB(242, 143, 176)
+      Color_Syntax_Remtag        = RGB(245, 205, 140)
+      Color_Caret                = RGB(255, 255, 255)
+      Color_SelBack               = RGB(46, 75, 110)
+      Color_LineNumberFore       = RGB(86, 95, 112)
+  EndSelect
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -604,8 +769,6 @@ Structure Document
   TabX2.i
   CloseX1.i         ; retangulo do botao "x" de fechar, dentro da aba
   CloseX2.i
-  MarkBegin.i       ; posicao (bytes) do bloco marcado no estilo WordStar/JOE
-  MarkEnd.i         ; (^KB/^KK, ver WordStarKeys.pbi) - -1 quando nao ha marca
 EndStructure
 
 Global NewList Docs.Document()
@@ -614,12 +777,6 @@ Global NestorBasicUntitledCount = 0   ; contador separado pra "nbasic1.dmx", "nb
 Global ActiveTabPosition.i = -1
 Global HoverTabPosition.i = -1
 Global HoverCloseTabPosition.i = -1
-
-; Estado do teclado WordStar/JOE (ver WordStarKeys.pbi) - declarados aqui (e
-; nao no proprio WordStarKeys.pbi, incluido so no fim do arquivo) porque
-; UpdateStatusBar() [abaixo] precisa deles e e definida bem antes disso.
-Global WS_ChordPrefix.i = 0      ; 0 = nenhum, Asc("K")/Asc("Q") = prefixo pendente
-Global WS_SwallowChar.b = #False ; engole o proximo WM_CHAR (par do WM_KEYDOWN ja tratado)
 
 ; Enquanto verdadeiro, mudancas de texto no Scintilla nao marcam o
 ; documento como modificado (usado ao carregar conteudo programaticamente).
@@ -698,11 +855,10 @@ Declare.s ApplyKeywordCase(Word.s, Prefix.s, CaseMode.s)
 Declare.i AutoCompleteMinCharsForGadget(Sci)
 Declare   ShowAutoComplete(Sci)
 Declare   HandleAutoCompleteCharAdded(Sci, CharCode)
-Declare   WS_AttachSubclass(Sci)   ; WordStarKeys.pbi (incluido no fim do arquivo)
-Declare   WS_SetupIndicator(Sci)
-Declare   WS_CreateHelpGadget()
-Declare   WS_SetupHelpStyles()
-Declare   WS_ShowHelp()
+Declare   Editor_Find()   ; EditorSearch.pbi (incluido no fim do arquivo)
+Declare   Editor_FindNext()
+Declare   Editor_Replace()
+Declare   Editor_GotoLine()
 Declare   MdView_OpenSingle(ParentWindow)  ; MdViewerGui.pbi (incluido no fim do arquivo)
 Declare   MdView_OpenSplit(ParentWindow)
 Declare.s ComputeTabCaption(Position)
@@ -1649,8 +1805,6 @@ Procedure SetupEditorStyles(Sci)
   ; ShowAutoComplete monta sem se preocupar com ordem.
   ScintillaSendMessage(Sci, #SCI_AUTOCSETIGNORECASE, #True)
   ScintillaSendMessage(Sci, #SCI_AUTOCSETORDER, #SC_ORDER_PERFORMSORT)
-
-  WS_SetupIndicator(Sci)
 EndProcedure
 
 ; Recalcula a largura da margem de numeros de linha com base na quantidade de
@@ -2101,7 +2255,6 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
 
   Sci = ScintillaGadget(#PB_Any, 0, #TabBar_Height + #Ruler_Height, InnerW, InnerH, @ScintillaCallBack())
   SetupEditorStyles(Sci)
-  WS_AttachSubclass(Sci)
 
   ; Se Path foi informado (abrindo um arquivo existente), o modo e detectado
   ; pela extensao, ignorando o parametro Mode (que so vale para "Novo"/"Novo
@@ -2125,9 +2278,6 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
   Docs()\Mode      = DocMode
   Docs()\Modified  = #False
   Docs()\SciGadget = Sci
-  Docs()\MarkBegin = -1
-  Docs()\MarkEnd   = -1
-
   If Path = ""
     Protected UntitledExt.s = ".dmx"
     If DocMode = "ASM"
@@ -2171,22 +2321,17 @@ Procedure FindDocumentByGadget(GadgetNum)
   ProcedureReturn -1
 EndProcedure
 
-; Atualiza a barra de status (rodape): campo 0 = modo (INS/SBR) ou prefixo de
-; comando WordStar pendente (^K/^Q, ver WordStarKeys.pbi); campo 1 = nome do
-; arquivo da aba ativa; campo 2 = linha/coluna do cursor.
+; Atualiza a barra de status (rodape): campo 0 = modo (INS/SBR); campo 1 =
+; nome do arquivo da aba ativa; campo 2 = linha/coluna do cursor.
 Procedure UpdateStatusBar()
   Protected ModeText.s = "", NameText.s = "", PosText.s = ""
 
-  If WS_ChordPrefix <> 0
-    ModeText = "^" + Chr(WS_ChordPrefix)
-  Else
-    Protected Sci = ActiveSciGadget()
-    If Sci
-      If ScintillaSendMessage(Sci, #SCI_GETOVERTYPE)
-        ModeText = "SBR"
-      Else
-        ModeText = "INS"
-      EndIf
+  Protected Sci = ActiveSciGadget()
+  If Sci
+    If ScintillaSendMessage(Sci, #SCI_GETOVERTYPE)
+      ModeText = "SBR"
+    Else
+      ModeText = "INS"
     EndIf
   EndIf
 
@@ -3731,7 +3876,6 @@ Procedure ResizeInterface()
   ForEach Docs()
     ResizeGadget(Docs()\SciGadget, 0, #TabBar_Height + #Ruler_Height, FullW, InnerH)
   Next
-  ResizeGadget(#HelpGadget, 0, #TabBar_Height + #Ruler_Height, FullW, InnerH)
 
   RedrawTabBar()
   RedrawRuler()
@@ -3796,18 +3940,18 @@ App_ApplyWindowIcon(#MainWindow)
 
 CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
-    MenuItem(#Menu_New,      "Novo" + Chr(9) + "Alt+N")
+    MenuItem(#Menu_New,      "Novo" + Chr(9) + "Ctrl+N")
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
     MenuItem(#Menu_NewNestorBasic, "Novo Nestor Basic...")
     MenuItem(#Menu_NewMsxBas2Rom, "Novo MSXBas2Rom...")
     MenuItem(#Menu_NewMD, "Novo MD...")
-    MenuItem(#Menu_NewProject, "Novo projeto...")
-    MenuItem(#Menu_OpenProject, "Abrir projeto...")
+    MenuItem(#Menu_NewProject, "Novo projeto..." + Chr(9) + "Ctrl+Alt+N")
+    MenuItem(#Menu_OpenProject, "Abrir projeto..." + Chr(9) + "Ctrl+Alt+O")
     MenuItem(#Menu_SaveProject, "Salvar projeto")
     MenuItem(#Menu_SaveProjectAs, "Salvar projeto como...")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
-    MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+K D")
+    MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+S")
     MenuItem(#Menu_SaveAs,   "Salvar como..." + Chr(9) + "Ctrl+Shift+S")
     MenuItem(#Menu_SaveAll,  "Salvar Tudo" + Chr(9) + "Ctrl+Alt+S")
     MenuBar()
@@ -3817,52 +3961,58 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_TokenizeNative, "ASCII classico ja aberto -> tokenizado nativo (.bmx)...")
     MenuItem(#Menu_RenumberToBas, "ASCII classico ja aberto -> renumerar e criar .BAS...")
     MenuBar()
-    MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Alt+W")
+    MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Ctrl+W")
     MenuBar()
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
+  MenuTitle("Editar")
+    MenuItem(#Menu_Find,     "Buscar..." + Chr(9) + "Ctrl+F")
+    MenuItem(#Menu_FindNext, "Buscar proxima" + Chr(9) + "F3")
+    MenuItem(#Menu_Replace,  "Substituir..." + Chr(9) + "Ctrl+H")
+    MenuBar()
+    MenuItem(#Menu_GotoLine, "Ir para linha..." + Chr(9) + "Ctrl+G")
   MenuTitle("Criar")
-    MenuItem(#Menu_CreateDisk, "Disco...")
-    MenuItem(#Menu_CreateSprite, "Sprite...")
-    MenuItem(#Menu_CreateAlphabet, "Alfabeto Graphos III...")
+    MenuItem(#Menu_CreateDisk, "Disco..." + Chr(9) + "Ctrl+Shift+D")
+    MenuItem(#Menu_CreateSprite, "Sprite..." + Chr(9) + "Ctrl+Shift+P")
+    MenuItem(#Menu_CreateAlphabet, "Alfabeto Graphos III..." + Chr(9) + "Ctrl+Shift+A")
     MenuItem(#Menu_CreateAlphabetAquarela, "Alfabeto Aquarela...")
-    MenuItem(#Menu_CreateSound, "Som (PSG)...")
-    MenuItem(#Menu_CreateSeeTracker, "SEE Tracker...")
-    MenuItem(#Menu_CreateMml, "Musica (PLAY)...")
-    MenuItem(#Menu_CreateScreen2, "Draw Screen 2...")
+    MenuItem(#Menu_CreateSound, "Som (PSG)..." + Chr(9) + "Ctrl+Shift+G")
+    MenuItem(#Menu_CreateSeeTracker, "SEE Tracker..." + Chr(9) + "Ctrl+Shift+T")
+    MenuItem(#Menu_CreateMml, "Musica (PLAY)..." + Chr(9) + "Ctrl+Shift+M")
+    MenuItem(#Menu_CreateScreen2, "Draw Screen 2..." + Chr(9) + "Ctrl+Shift+2")
     MenuItem(#Menu_CreateGraphosScreen, "Graphos III Screen 2...")
-    MenuItem(#Menu_CreateScreen0, "Screen 0...")
-    MenuItem(#Menu_CreateScreen1, "Screen 1...")
+    MenuItem(#Menu_CreateScreen0, "Screen 0..." + Chr(9) + "Ctrl+Shift+0")
+    MenuItem(#Menu_CreateScreen1, "Screen 1..." + Chr(9) + "Ctrl+Shift+1")
     MenuItem(#Menu_CreateScreen12, "Screen 1+2...")
     MenuItem(#Menu_CreateZ80Lib, "Biblioteca Z80 (.LIB)...")
     MenuItem(#Menu_CreateAsmSubProject, "Assembly Sub Project...")
   MenuTitle("Inserir")
-    MenuItem(#Menu_InsertSpecialChar, "Caractere Especial...")
+    MenuItem(#Menu_InsertSpecialChar, "Caractere Especial..." + Chr(9) + "Ctrl+Alt+I")
   MenuTitle("Executar")
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
-    MenuItem(#Menu_RunNestorBasic, "Nestor Basic")
+    MenuItem(#Menu_RunNestorBasic, "Nestor Basic" + Chr(9) + "Shift+F5")
     MenuBar()
-    MenuItem(#Menu_RenumberBasic, "Renumerar...")
+    MenuItem(#Menu_RenumberBasic, "Renumerar..." + Chr(9) + "F6")
     MenuBar()
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
-    MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)...")
-    MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario...")
+    MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)..." + Chr(9) + "Ctrl+Shift+F5")
+    MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario..." + Chr(9) + "Ctrl+Alt+F5")
     MenuBar()
-    MenuItem(#Menu_HexEditor, "Editor Hexa...")
+    MenuItem(#Menu_HexEditor, "Editor Hexa..." + Chr(9) + "F7")
     MenuBar()
-    MenuItem(#Menu_OpenMSXConsole, "openMSX (console de comandos)...")
+    MenuItem(#Menu_OpenMSXConsole, "openMSX (console de comandos)..." + Chr(9) + "F8")
     MenuBar()
-    MenuItem(#Menu_ViewMdTxt, "Ver MD/TXT...")
-    MenuItem(#Menu_ViewMdTxtSplit, "Ver MD+TXT...")
+    MenuItem(#Menu_ViewMdTxt, "Ver MD/TXT..." + Chr(9) + "F9")
+    MenuItem(#Menu_ViewMdTxtSplit, "Ver MD+TXT..." + Chr(9) + "Shift+F9")
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
-    MenuItem(#Menu_ConfigureEditor, "Editor...")
+    MenuItem(#Menu_ConfigureEditor, "Editor..." + Chr(9) + "Ctrl+Alt+E")
     MenuItem(#Menu_ConfigureBasicOptions, "Basic Options...")
     MenuItem(#Menu_ConfigureAssemblyOptions, "Assembly...")
     MenuItem(#Menu_ConfigureMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_ConfigureN80, "N80...")
     MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
   MenuTitle("Ajuda")
-    MenuItem(#Menu_HelpCommands, "Comandos..." + Chr(9) + "Ctrl+K H")
+    MenuItem(#Menu_HelpEditor, "Editor..." + Chr(9) + "F1")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
     MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
     MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
@@ -3872,29 +4022,65 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpN80, "N80...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
-; Novo/Fechar aba usam Alt (nao Ctrl) porque Ctrl+N e Ctrl+W tem funcao propria
-; no teclado WordStar/JOE (^N = quebra de linha, ^W = scroll da tela para cima -
-; ver WordStarKeys.pbi) e nao podem ficar reservados para o app.
-AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_N, #Menu_New)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_N, #Menu_NewAssembly)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Open)
-; Ctrl+S NAO fica com "Salvar" - no teclado WordStar/JOE (ver WordStarKeys.pbi)
-; Ctrl+S move o cursor para a esquerda. Salvar passou a ser Ctrl+K D.
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_S, #Menu_Save)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_S, #Menu_SaveAll)
-AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_W, #Menu_CloseTab)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_W, #Menu_CloseTab)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F5, #Menu_RunBasic)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_F5, #Menu_AssembleZ80)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_F, #Menu_Find)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F3, #Menu_FindNext)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_H, #Menu_Replace)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_G, #Menu_GotoLine)
+
+; Projeto (Ctrl+Alt+<letra igual ao equivalente de arquivo>) e Inserir/Configurar
+; (Ctrl+Alt+<mnemonico>) - prefixo reservado pra acoes "de segundo nivel" que nao
+; cabiam nos atalhos de arquivo/edicao ja ocupados.
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_N, #Menu_NewProject)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_O, #Menu_OpenProject)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_I, #Menu_InsertSpecialChar)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_E, #Menu_ConfigureEditor)
+
+; Executar - F5 already Executar BASIC/Montar Assembly; resto do grupo F5 (variantes
+; de rodar/montar/linkar) e F6-F9 (ferramentas de um clique so).
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Shift | #PB_Shortcut_F5, #Menu_RunNestorBasic)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_F5, #Menu_AssembleZ80Rel)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_F5, #Menu_LinkZ80)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F6, #Menu_RenumberBasic)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F7, #Menu_HexEditor)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F8, #Menu_OpenMSXConsole)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F9, #Menu_ViewMdTxt)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Shift | #PB_Shortcut_F9, #Menu_ViewMdTxtSplit)
+
+; Criar (editores visuais) - Ctrl+Shift+<mnemonico ou numero da tela MSX>. So os
+; itens citados pelo usuario/mais usados ganharam tecla; Alfabeto Aquarela, Graphos
+; III Screen 2, Screen 1+2, Biblioteca Z80 e Assembly Sub Project ficam so no menu
+; (variantes menos usadas dos editores acima - nao valia a pena um 3o/4o modificador
+; so pra caber mais uma tecla).
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_D, #Menu_CreateDisk)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_P, #Menu_CreateSprite)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_A, #Menu_CreateAlphabet)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_G, #Menu_CreateSound)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_T, #Menu_CreateSeeTracker)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_M, #Menu_CreateMml)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_2, #Menu_CreateScreen2)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_0, #Menu_CreateScreen0)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_1, #Menu_CreateScreen1)
+
+; Ajuda -> Editor... tambem no classico F1 (alem do menu) - convencao universal de "ajuda".
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F1, #Menu_HelpEditor)
 
 CanvasGadget(#TabBarGadget, 0, 0, WindowWidth(#MainWindow), #TabBar_Height)
 CanvasGadget(#RulerGadget, 0, #TabBar_Height, WindowWidth(#MainWindow), #Ruler_Height)
 
 CreateStatusBar(#MainStatusBar, WindowID(#MainWindow))
-  AddStatusBarField(70)          ; modo (INS/SBR) ou prefixo de comando pendente (^K/^Q)
+  AddStatusBarField(70)          ; modo (INS/SBR)
   AddStatusBarField(#PB_Ignore)  ; nome do arquivo
   AddStatusBarField(160)         ; linha/coluna
 
-WS_CreateHelpGadget()
 AddDocumentTab()
 ResizeInterface()
 
@@ -3980,6 +4166,18 @@ Repeat
 
         Case #Menu_CloseTab
           CloseTab(ActiveTabPosition)
+
+        Case #Menu_Find
+          Editor_Find()
+
+        Case #Menu_FindNext
+          Editor_FindNext()
+
+        Case #Menu_Replace
+          Editor_Replace()
+
+        Case #Menu_GotoLine
+          Editor_GotoLine()
 
         Case #Menu_Exit
           Quit = 1
@@ -4070,7 +4268,6 @@ Repeat
               SetupEditorStyles(Docs()\SciGadget)
               HighlightDocument(Docs()\SciGadget)
             Next
-            WS_SetupHelpStyles()
             ResizeInterface()
           EndIf
 
@@ -4089,8 +4286,8 @@ Repeat
         Case #Menu_ConfigureOpenMSX
           OpenMsxCfg_OpenSettingsWindow(#MainWindow)
 
-        Case #Menu_HelpCommands
-          WS_ShowHelp()
+        Case #Menu_HelpEditor
+          EditorHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpNestorBasic
           NestorBasicHelp_OpenWindow(#MainWindow)
@@ -4210,18 +4407,6 @@ Repeat
     Case #Event_AutoComplete
       HandleAutoCompleteCharAdded(EventGadget(), EventData())
 
-    Case #Event_WS_CloseTab
-      ; ^KX (salvar e fechar) / ^KQ (fechar) do teclado WordStar/JOE - ver
-      ; WordStarKeys.pbi. Adiado para aqui (fora da subclass do Scintilla) por
-      ; causa do FreeGadget dentro de CloseTab.
-      If EventData()
-        If SaveDocument(#False)
-          CloseTab(ActiveTabPosition)
-        EndIf
-      Else
-        CloseTab(ActiveTabPosition)
-      EndIf
-
   EndSelect
 
   If Quit
@@ -4254,7 +4439,7 @@ Until Quit = 1
 ProjectDB::Close()
 End
 
-; Mesmo motivo do XIncludeFile "WordStarKeys.pbi" logo abaixo: usa
+; Mesmo motivo do XIncludeFile "EditorSearch.pbi" logo abaixo: usa
 ; Docs()/ActiveTabPosition/ReadSciText/WriteSciText/HighlightMarkdownText/
 ; SetupEditorStyles, todos definidos ao longo deste arquivo - ver Declare de
 ; MdView_OpenSingle/MdView_OpenSplit perto do topo para a chamada em
@@ -4262,7 +4447,7 @@ End
 XIncludeFile "MdViewerGui.pbi"
 
 ; Incluido so aqui no fim (nao junto com os demais XIncludeFile no topo) porque
-; usa Docs()/SaveDocument()/OpenDocumentDialog()/CloseTab()/Color_Accent, todos
-; definidos ao longo deste arquivo - ver Declare de WS_AttachSubclass/
-; WS_SetupIndicator perto do topo para as poucas chamadas na direcao inversa.
-XIncludeFile "WordStarKeys.pbi"
+; usa ActiveSciGadget(), definido ao longo deste arquivo - ver Declare de
+; Editor_Find/Editor_FindNext/Editor_Replace/Editor_GotoLine perto do topo
+; para as poucas chamadas na direcao inversa.
+XIncludeFile "EditorSearch.pbi"

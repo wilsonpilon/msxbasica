@@ -1281,6 +1281,7 @@ Procedure GraphosScr_OpenZoomWindow(ParentWin, Array PatternBit.a(2), Array RowF
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWin, #True)
 
@@ -1294,7 +1295,8 @@ Procedure GraphosScr_OpenZoomWindow(ParentWin, Array PatternBit.a(2), Array RowF
   Dim ZPenGadgets.i(1)
   ZPenGadgets(0) = G_ZPencil
   ZPenGadgets(1) = G_ZEraser
-  Protected G_ZClose = ButtonGadget(#PB_Any, CanvasW - 85, CanvasH + 25, 100, 30, "Fechar")
+  Protected G_ZClose = ThemedButton(CanvasW - 85, CanvasH + 25, 100, 30, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_ZClose, "Fechar")
 
   Protected ZPenMode.i = #GraphosPenMode_Insert
   SetGadgetState(G_ZPencil, #True)
@@ -1594,6 +1596,7 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -1942,7 +1945,7 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   ; (pedido explicito do usuario) - na mesma linha do Shape se estendiam
   ; demais em X (ate' a previa), quase encostando na coluna direita.
   Cx = CanvasX
-  Protected G_ShapeMark = ButtonGadget(#PB_Any, Cx, ShapeMarkRowY, 110, #CharEd_IconBtnH + 4, "Marcar area...")
+  Protected G_ShapeMark = ThemedButton(Cx, ShapeMarkRowY, 110, #CharEd_IconBtnH + 4, "Marcar area...", Chr(#Icon_Flag))
   GadgetToolTip(G_ShapeMark, "Marque 2 pontos no canvas (igual RETANGULO) pra capturar aquele recorte como o shape atual - clique direito cancela")
   Cx + 110 + 16
   Protected G_ShapePreview = CanvasGadget(#PB_Any, Cx, ShapeMarkRowY, #GraphosScr_ShapePrevW, #GraphosScr_ShapePrevH)
@@ -1971,10 +1974,11 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
   Protected G_TextStr = StringGadget(#PB_Any, CanvasX + 75, TextStrRowY, 350, 22, "")
   GadgetToolTip(G_TextStr, "Texto a imprimir")
 
-  Protected G_TextPlace = ButtonGadget(#PB_Any, CanvasX, TextBtnRowY, 200, 26, "Posicionar TEXTO...")
+  Protected G_TextPlace = ThemedButton(CanvasX, TextBtnRowY, 200, 26, "Posicionar TEXTO...", "")
   GadgetToolTip(G_TextPlace, "Arma o modo de posicionamento - mova o mouse ate o lugar certo e clique no canvas (direito cancela)")
 
-  Protected G_Close = ButtonGadget(#PB_Any, CanvasX, CloseY, 100, 30, "Fechar")
+  Protected G_Close = ThemedButton(CanvasX, CloseY, 100, 30, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   ; --- Estado ---
   Dim PatternBit.a(#Scr2_Height - 1, #Scr2_Width - 1)

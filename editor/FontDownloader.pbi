@@ -203,6 +203,7 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
   If Not Win
     ProcedureReturn ""
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
@@ -214,20 +215,23 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
 
   TextGadget(#PB_Any, 24, 88, 300, 20, "Pasta de destino")
   Protected G_TargetDir = StringGadget(#PB_Any, 24, 116, 464, 24, DefaultDir)
-  Protected G_TargetDirBrowse = ButtonGadget(#PB_Any, 496, 116, 80, 24, "...")
+  Protected G_TargetDirBrowse = ThemedButton(496, 116, 80, 24, "...", "")
 
   Protected G_List = ListIconGadget(#PB_Any, 24, 156, WinW - 48, 250, "Fonte", WinW - 68,
                                      #PB_ListIcon_CheckBoxes | #PB_ListIcon_GridLines | #PB_ListIcon_FullRowSelect)
 
   Protected G_Status = TextGadget(#PB_Any, 24, 422, WinW - 48, 20, "Carregando lista de fontes...")
 
-  Protected G_SelectAll = ButtonGadget(#PB_Any, 24, 458, 140, 28, "Selecionar todas")
-  Protected G_SelectNone = ButtonGadget(#PB_Any, 176, 458, 140, 28, "Limpar selecao")
-  Protected G_Reload = ButtonGadget(#PB_Any, 328, 458, 110, 28, "Recarregar lista")
+  Protected G_SelectAll = ThemedButton(24, 458, 140, 28, "Selecionar todas", "")
+  Protected G_SelectNone = ThemedButton(176, 458, 140, 28, "Limpar selecao", Chr(#Icon_Clear))
+  GadgetToolTip(G_SelectNone, "Limpar selecao")
+  Protected G_Reload = ThemedButton(328, 458, 110, 28, "Recarregar lista", Chr(#Icon_Refresh))
+  GadgetToolTip(G_Reload, "Recarregar lista")
 
-  Protected G_DownloadSelected = ButtonGadget(#PB_Any, 24, 502, 180, 32, "Baixar selecionadas")
-  Protected G_DownloadAll = ButtonGadget(#PB_Any, 216, 502, 130, 32, "Baixar todas")
-  Protected G_Close = ButtonGadget(#PB_Any, WinW - 24 - 100, 502, 100, 32, "Fechar")
+  Protected G_DownloadSelected = ThemedButton(24, 502, 180, 32, "Baixar selecionadas", "")
+  Protected G_DownloadAll = ThemedButton(216, 502, 130, 32, "Baixar todas", "")
+  Protected G_Close = ThemedButton(WinW - 24 - 100, 502, 100, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   FontDownloader_FlushEvents()
   If FontDownloader_FetchList()

@@ -518,6 +518,7 @@ Procedure.i Scr0Ed_AskWidth(ParentWindow)
   If Not Win
     ProcedureReturn 0
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -527,8 +528,8 @@ Procedure.i Scr0Ed_AskWidth(ParentWindow)
   Protected G_W80 = OptionGadget(#PB_Any, 190, 76, 150, 22, "80 colunas (MSX2+)")
   SetGadgetState(G_W40, #True)
 
-  Protected G_Ok = ButtonGadget(#PB_Any, WinW - 24 - 234, WinH - 56, 110, 32, "OK")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 24 - 110, WinH - 56, 110, 32, "Cancelar")
+  Protected G_Ok = ThemedButton(WinW - 24 - 234, WinH - 56, 110, 32, "OK", "")
+  Protected G_Cancel = ThemedButton(WinW - 24 - 110, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Result = 0
   Repeat
@@ -649,6 +650,7 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -764,9 +766,10 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
   ; Botoes de acao ao lado do painel de abas (nao mais abaixo dele),
   ; empilhados verticalmente na mesma faixa de altura do painel.
   Protected ButtonsX = LeftX + #Scr0Ed_ToolPanelW + 24
-  Protected G_Inject = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY, 180, 32, "Injetar no cursor")
-  Protected G_Copy = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY + 40, 180, 32, "Copiar")
-  Protected G_Close = ButtonGadget(#PB_Any, ButtonsX, ToolPanelY + 80, 180, 32, "Fechar")
+  Protected G_Inject = ThemedButton(ButtonsX, ToolPanelY, 180, 32, "Injetar no cursor", Chr(#Icon_Insert))
+  Protected G_Copy = ThemedButton(ButtonsX, ToolPanelY + 40, 180, 32, "Copiar", Chr(#Icon_Copy))
+  Protected G_Close = ThemedButton(ButtonsX, ToolPanelY + 80, 180, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
   GadgetToolTip(G_Inject, "Gera o codigo BASIC (SCREEN 0/WIDTH/COLOR/LOCATE+PRINT, mais os carregadores de fonte/Cor 2 se houver) e injeta na aba de texto ativa")
   GadgetToolTip(G_Copy, "Gera o mesmo codigo e copia pra area de transferencia")
 

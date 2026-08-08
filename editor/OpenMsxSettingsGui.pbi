@@ -26,6 +26,7 @@ Procedure OpenMsxCfg_OpenSettingsWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -33,8 +34,9 @@ Procedure OpenMsxCfg_OpenSettingsWindow(ParentWindow)
   BadigCfg_CreateEmulatorGadgets(0, @EmuG)
   BadigCfg_ApplyEmulatorDefaults(@EmuG)
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
+  Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Saved = #False
 

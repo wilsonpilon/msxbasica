@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.29.5** ("`PALPITEIRO`") — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.31.4** ("`ADEUS WINDOWS 3.1`") — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -14,7 +14,7 @@ usuário final.
 
 > Documento vivo. O detalhe completo da especificação (escopo, decisões de arquitetura, módulos
 > planejados) está em [`docs/SPEC.md`](docs/SPEC.md) — é a fonte de verdade do projeto. Para
-> compilar, executar e usar o editor de texto (atalhos estilo WordStar/JOE), veja
+> compilar, executar e usar o editor de texto (atalhos de teclado, busca/substituir), veja
 > [`docs/MANUAL.md`](docs/MANUAL.md).
 
 ## Sobre o projeto
@@ -33,11 +33,20 @@ Python — que serve de referência de comportamento a ser portada, não de depe
 - **Editor** (`editor/BadigEditor.pb`) — `ScintillaGadget` com lexer próprio para o dialeto Dignified
   e outro para **Z80 Assembly** (`.asm`, dialeto do assembler
   [N80/Nestor80](https://github.com/Konamiman/Nestor80)), abas customizadas (fechar, hover, arrastar
-  visual), régua de colunas, margem de números de linha dinâmica, tema claro/escuro e estilo de abas
-  moderno/clássico configuráveis. Menu **Arquivo → Novo** (`.dmx`) e **Novo Assembly** (`.asm`,
-  `Ctrl+Shift+N`) — cada aba detecta e lembra seu próprio tipo.
+  visual), régua de colunas, margem de números de linha dinâmica, **7 temas de cores** (`Configurar →
+  Editor...`) e estilo de abas moderno/clássico configuráveis. Teclado padrão Scintilla/Windows (sem
+  modo próprio, ver [Changelog](#changelog-resumido) 2026-08-08) — Buscar/Substituir/Ir para linha
+  (`Ctrl+F`/`H`/`G`) e mais de 30 atalhos cobrindo o resto da IDE, ver `docs/MANUAL.md`. Menu
+  **Arquivo → Novo** (`.dmx`) e **Novo Assembly** (`.asm`, `Ctrl+Shift+N`) — cada aba detecta e lembra
+  seu próprio tipo.
 
   ![Aba de Assembly Z80 com syntax highlight (mnemônicos, registradores, diretivas, rótulos)](images/msxbasica-02.png)
+- **Botões tematizados em toda a IDE, com ícones Nerd Font opcionais** (`editor/ThemedButtons.pbi`) —
+  botão nativo do Windows (`ButtonGadget`) ignora completamente a cor do tema; os 293 botões da IDE
+  (todas as telas de Configurar, editores visuais, gerenciador de disco, console do openMSX, telas de
+  Ajuda) são desenhados na hora seguindo o tema escolhido, e mais de 140 trocam o texto por um ícone
+  real de uma Nerd Font quando uma está configurada (`Configurar → Editor... → Fonte de ícones`), com
+  tooltip mostrando o nome ao passar o mouse. Sem fonte de ícones, todos continuam com texto normal.
 - **Pré-processador Dignified nativo** (`editor/DignifiedPreprocessor.pbi`) — **cobre 100% do escopo
   do `badig.py` original**: labels, loop labels, `EXIT`, `DEFINE` recursivo, `DECLARE` com redução
   automática de nomes longos, comentários/blocos de comentário, `TRUE`/`FALSE`, operadores compostos,
@@ -1745,6 +1754,76 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   Codinome **"PALPITEIRO"** — gíria brasileira pra quem "dá palpite" sem ser convidado, exatamente o que
   um motor de auto completar faz (e de bom humor, já que ele acerta na maioria das vezes). Detalhe
   completo em `docs/RELEASE_NOTES.md` e `docs/SPEC.md` (módulo 25, mais 1b para o Salvar Tudo).
+- **2026-08-08 (mesma sessão) — fim do teclado WordStar/JOE, codinome `APOSENTADORIA` (`7.31.0`)**:
+  usuário pediu pra trocar o jeito de digitar do editor principal pelo padrão Scintilla/Windows (setas,
+  `Ctrl+C/V/X/Z/Y`, `Home`/`End` etc.) — não usa mais WordStar/JOE/vim no dia a dia, prefere
+  Helix/JetBrains/VSCode/Sublime/010 Editor. `editor/WordStarKeys.pbi` (subclass Win32, comandos de
+  duas teclas, bloco marcado com destaque persistente, tela de ajuda em tela cheia) foi removido por
+  completo, não só desligado por padrão. As únicas peças do modo antigo sem equivalente automático no
+  Scintilla puro — Buscar, Buscar próxima, Substituir, Ir para linha — viraram um arquivo novo e
+  portátil (`editor/EditorSearch.pbi`) com atalhos convencionais (`Ctrl+F`/`F3`/`Ctrl+H`/`Ctrl+G`,
+  também no novo menu **Editar**). Arquivo/aba voltaram ao padrão (`Ctrl+N` novo, `Ctrl+S` salva,
+  `Ctrl+W` fecha aba). `Ajuda → Editor...` (`editor/EditorHelpGui.pbi`) troca a antiga tela cheia por
+  uma janela normal com a referência de atalhos, reaproveitando o motor de markdown de
+  `GenericMdHelpGui.pbi`. Detalhe completo em `docs/RELEASE_NOTES.md`.
+- **2026-08-08 (mesma sessão) — atalhos pro resto da IDE, codinome `ATALHO DE TUDO` (`7.31.1`)**:
+  usuário pediu atalhos pras outras funções do editor pra não ficar preso navegando menu — 22 novos:
+  `Ctrl+Alt+N`/`Ctrl+Alt+O` novo/abrir projeto; `Ctrl+Alt+I` caractere especial; `Ctrl+Alt+E`
+  Configurar → Editor...; no menu **Executar**, `Shift+F5` Nestor Basic, `F6` renumerar,
+  `Ctrl+Shift+F5` montar relocável, `Ctrl+Alt+F5` linkar, `F7` Editor Hexa, `F8` console openMSX,
+  `F9`/`Shift+F9` ver MD/TXT; no menu **Criar**, `Ctrl+Shift+D` disco, `Ctrl+Shift+P` sprite,
+  `Ctrl+Shift+A` alfabeto Graphos III, `Ctrl+Shift+G` som PSG, `Ctrl+Shift+T` SEE Tracker,
+  `Ctrl+Shift+M` música, `Ctrl+Shift+2`/`0`/`1` Draw Screen 2/Screen 0/Screen 1; e `F1` abre
+  `Ajuda → Editor...` (convenção universal de ajuda). Os itens menos usados do menu **Criar**
+  (Alfabeto Aquarela, Graphos III Screen 2, Screen 1+2, Biblioteca Z80, Assembly Sub Project)
+  ficaram só no menu — não valia um 3º/4º modificador só pra caber mais uma tecla. `Ajuda →
+  Editor...` (`F1`) ganhou as seções novas e a janela cresceu (`680×760`). Detalhe completo em
+  `docs/RELEASE_NOTES.md`.
+- **2026-08-08 (mesma sessão) — de 2 pra 7 temas, codinome `CAMALEÃO` (`7.31.2`)**: usuário achou
+  os temas Escuro/Claro atuais feios e pediu variações mais atraentes (azul escuro, rosa,
+  vermelho, verde, bege). Paletas desenhadas e aprovadas num mockup HTML fora do PureBasic antes
+  de virar código (iterar cor em CSS é muito mais rápido que recompilar o app a cada ajuste).
+  Resultado: **Configurar → Editor...** agora tem 7 opções — **Grafite**/**Neve** (revisão dos
+  dois atuais) mais **Azul Profundo** (Night Owl/Nord), **Rosé** (Rosé Pine), **Carmesim**
+  (oxblood), **Floresta** (Everforest) e **Bege** (Solarized Light). `EditorCfg\Theme` virou um
+  dos 7 IDs em vez de um booleano Dark/Light; `editor_settings.json` antigo migra sozinho. Também
+  investigado (e documentado, sem implementar ainda): as outras janelas (SEE Tracker, editores de
+  Alfabeto/Sprite/Som/Telas) usam cores próprias fixas e controles nativos do Windows — estender
+  tema pra elas é um projeto à parte, arquivo por arquivo, separando cor de "chrome" de cor de
+  "conteúdo" (ex.: paleta MSX real não pode mudar com o tema). Detalhe completo em
+  `docs/RELEASE_NOTES.md`.
+- **2026-08-08 (mesma sessão) — botões tematizados + ícones Nerd Font, codinome `NERD DE VERDADE`
+  (`7.31.3`)**: usuário reclamou que os diálogos ainda pareciam "Windows 3.1" mesmo com os 7 temas
+  — "aquele mar de botões cinza que estragam a aparência" (botão nativo do Windows ignora
+  `Color_*`). Piloto no **Editor Hexa** (`F7`): os 16 botões da janela viraram imagens desenhadas
+  na hora (fundo + borda na cor do tema, texto centralizado) em vez de chrome nativo. Usuário
+  também pediu pra reaproveitar fontes `.ttf` baixadas/instaladas na interface, e ícones de verdade
+  em vez de "ícones genéricos desenhados desleixadamente" — resultado: os botões já usam a mesma
+  fonte escolhida em **Configurar → Editor...** em vez de "Segoe UI" fixo, e um novo combo **Fonte
+  de ícones** (mesma tela) troca o texto dos botões por glifos reais de uma Nerd Font quando
+  configurado (com tooltip mostrando o nome ao passar o mouse; sem fonte escolhida, continua
+  mostrando texto normalmente). Os 15 codepoints usados foram conferidos ao vivo contra o
+  `glyphnames.json` oficial do projeto Nerd Fonts antes de entrar no código — achado real no
+  processo: um resumo de IA de uma busca web errou um codepoint (`fa-plus_square` como `U+F055` em
+  vez do `U+F0FE` real), só pego porque o JSON bruto foi conferido depois. Vale só pro Editor Hexa
+  por enquanto; as outras ~10 janelas de diálogo ficam pra uma próxima rodada. Detalhe completo em
+  `docs/RELEASE_NOTES.md`.
+- **2026-08-08 (mesma sessão) — o mesmo formato de botão em toda a IDE, codinome `ADEUS WINDOWS
+  3.1` (`7.31.4`)**: usuário gostou do piloto no Editor Hexa e pediu pra replicar em todos os
+  diálogos/módulos. 293 botões em 33 arquivos convertidos numa sessão só (267 mecanicamente de
+  `ButtonGadget`→`ThemedButton`, mais de 140 deles ganhando ícone Nerd Font verificado e tooltip),
+  40 janelas ganharam `SetWindowColor(Win, Color_AppBg)` (antes ficavam brancas/cinzas nativas
+  destoando do editor tematizado). O que nasceu específico do Editor Hexa (`HexEd_*`, `7.31.3`)
+  virou `editor/ThemedButtons.pbi` — módulo compartilhado (`Macro ThemedButton()`, constantes
+  `#Icon_*`) usado por todos os 33 arquivos, incluindo o próprio Editor Hexa migrado pra ele (sem
+  duplicar código). Achado real de arquitetura no processo: quase todos os diálogos são incluídos
+  bem no topo de `BadigEditor.pb`, antes de `Global Color_*`/`Structure EditorSettings` existirem
+  (`EnableExplicit` + `XIncludeFile` textual exige declaração antes do uso) — resolvido movendo só
+  essas poucas linhas de `Structure`/`Global` pro topo do arquivo, mesmo idioma dos `Declare` de
+  procedure que já ficavam lá por motivo parecido, sem precisar reordenar os 33 `XIncludeFile`
+  existentes. Nenhuma das ~400 edições foi manual — três scripts Python descartáveis (parsing de
+  parênteses balanceados, não regex ingênuo) fizeram a conversão mecânica, com recompilação a cada
+  rodada pra pegar erro cedo. Detalhe completo em `docs/RELEASE_NOTES.md`.
 
 ## Ferramentas e ambiente
 

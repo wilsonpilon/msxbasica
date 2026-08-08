@@ -94,6 +94,7 @@ Procedure.b AssemblyOptionsCfg_OpenSettingsWindow(ParentWindow)
   If Not Win
     ProcedureReturn #False
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
 
   DisableWindow(ParentWindow, #True)
@@ -120,8 +121,9 @@ Procedure.b AssemblyOptionsCfg_OpenSettingsWindow(ParentWindow)
     "N80/Nestor80) e rotulos ja usados no documento atual (sempre com a" + Chr(10) +
     "grafia original). Enter escolhe a primeira opcao, setas navegam e Esc cancela.")
 
-  Protected G_Save = ButtonGadget(#PB_Any, WinW - 256, WinH - 56, 110, 32, "Salvar")
-  Protected G_Cancel = ButtonGadget(#PB_Any, WinW - 134, WinH - 56, 110, 32, "Cancelar")
+  Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
+  GadgetToolTip(G_Save, "Salvar")
+  Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
 
   Protected Event, Quit = #False, Saved = #False
 

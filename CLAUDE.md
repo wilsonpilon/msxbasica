@@ -43,24 +43,6 @@ fully end-to-end — not yet audited.
   `ExamineKeyboard()`/`KeyboardPushed(#PB_Key_LeftControl) Or KeyboardPushed(#PB_Key_RightControl)`
   (PureBasic's own cross-platform Keyboard library). Compiles clean on Windows; not yet confirmed on
   Linux.
-- `editor/WordStarKeys.pbi` (WordStar/JOE keybindings) is **structurally** Windows-only in its
-  interception mechanism: it subclasses each `ScintillaGadget`'s raw HWND (`SetWindowLongPtr_`/
-  `CallWindowProc_`/`#WM_KEYDOWN`/`#WM_CHAR`/`#VK_*`) to catch keys *before* Scintilla consumes them —
-  the only way to implement multi-key chords (`^K` then a letter) and swallow/redirect arbitrary keys,
-  since Scintilla's own `SCI_ASSIGNCMDKEY` only remaps single keys to Scintilla's *own* built-in
-  commands, not arbitrary host actions. The command logic itself (mark block, search, cursor movement,
-  paragraph reformat, etc.) is **already portable** — it only talks to Scintilla via
-  `ScintillaSendMessage`, same library on every OS. Fixed for the immediate Linux build error by
-  guarding just the OS-specific subclass/WndProc procedures with
-  `CompilerIf #PB_Compiler_OS = #PB_OS_Windows` (`WS_AttachSubclass` gets a no-op stub on other OSes,
-  since `BadigEditor.pb` calls it unconditionally; `WS_ShowHelp()` shows an explanatory message instead
-  of opening a help screen it couldn't close, since closing it also depended on the same subclass).
-  **Still open**: a real non-Windows equivalent needs low-level per-backend widget hooking (GTK
-  `key-press-event`/`g_signal_connect` on Linux, presumably Cocoa on Mac) — this is real systems
-  programming that cannot be written and validated from here without a live Linux+GTK+PureBasic
-  environment to compile/run against; treat any attempt at it as a draft requiring the user's live
-  WSL testing loop, not a one-shot fix.
-
 **Real bugs found on Windows with the currently-installed `pbcompiler.exe` (PureBasic 6.40, 2026-08-04)**
 — neither is cross-platform, both are worth knowing before assuming a fresh compile "just works":
 - **`CopyMap()` crashes (access violation) when the source map is empty and its element type is
@@ -155,6 +137,21 @@ editor\BadigEditor.exe --diskmanipulator create|list|add|extract|delete disco.ds
 into one `.exe`. `MSXDisk.pbi` is the one file using a real `DeclareModule`/`Module` (`MSXDisk::`), so
 its calls are qualified.
 
+**`EnableExplicit` + textual inclusion means declaration order is load-bearing.** Every `Global`/
+`Structure` a later-included file reads must appear textually *before* that file's `XIncludeFile` line —
+PureBasic does not hoist them. `BadigEditor.pb` already forward-`Declare`s a handful of procedures at
+the very top for exactly this reason (dialog files included early need a procedure only defined much
+later in the file). The same rule bit `Structure EditorSettings`/`Global EditorCfg` and the `Global
+Color_*` tab/syntax colors (v7.31.4): almost every dialog `.pbi` is included near the top of the file
+(before `EditorCfg`/`Color_*` used to be declared), but `ThemedButtons.pbi` (see below) — included right
+after them, before any dialog file — needs both. Fix was to move the `Structure`/two `Global` blocks
+themselves to the very top of `BadigEditor.pb`, before the first `XIncludeFile`, leaving the rest of
+`EditorSettings.pbi`'s logic (defaults, load/save, the font-enum WinAPI code, the settings window) at its
+normal include position — same idiom as the procedure `Declare`s already there, just for
+`Global`/`Structure` instead of `Procedure`. If a future `.pbi` needs a `Global`/`Structure` that's
+currently declared "further down" in `BadigEditor.pb`, this is the pattern: hoist the bare declaration,
+not the logic that depends on it.
+
 ```
 editor/BadigEditor.pb          main window, menus, tab/document management, event loop, all XIncludeFile wiring
 editor/DignifiedPreprocessor.pbi   Dignified source -> classic ASCII pipeline (see below)
@@ -163,7 +160,9 @@ editor/MSXDisk.pbi                 FAT12 .dsk image read/write (DeclareModule MS
 editor/DiskManagerGui.pbi          "Criar -> Disco..." dual-pane disk manager window
 editor/BadigSettings.pbi           "Configurar -> Basic Dignified..." settings + JSON persistence
 editor/EditorSettings.pbi          "Configurar -> Editor..." settings (font/theme/tabs) + JSON persistence
-editor/WordStarKeys.pbi            WordStar/JOE-style keybindings for the Scintilla editor
+editor/EditorSearch.pbi            Buscar/Substituir/Ir para linha (Ctrl+F/H/G, F3) - editor keybindings otherwise are plain Scintilla/Windows defaults
+editor/EditorHelpGui.pbi           "Ajuda -> Editor..." static shortcuts reference window
+editor/ThemedButtons.pbi           Macro ThemedButton()/#Icon_* - every dialog's buttons (ButtonGadget is native Win32 chrome, ignores Color_*) render as theme-colored images instead, with an optional real Nerd Font glyph icon
 editor/FontDownloader.pbi          Nerd Fonts download picker
 editor/tools/*Cli.pb               standalone console test harnesses, see Commands above
 ```

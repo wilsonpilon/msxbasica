@@ -1464,6 +1464,7 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -1575,7 +1576,8 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
   GadgetToolTip(G_PasteBlock, "Colar bloco: cola o intervalo copiado a partir do caractere selecionado, e marca o destino como o novo bloco")
   Protected G_BlockStatus = TextGadget(#PB_Any, LeftX, BlockBarY3, #CharEd_TableCanvasW, 20, "")
 
-  Protected G_Close = ButtonGadget(#PB_Any, LeftX, CloseY, 100, 30, "Fechar")
+  Protected G_Close = ThemedButton(LeftX, CloseY, 100, 30, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected G_CharStatus = TextGadget(#PB_Any, RightX, TableY, RightW, 20, "")
   Protected G_EditCanvas = CanvasGadget(#PB_Any, RightX, EditY, #CharEd_EditCanvasSize, #CharEd_EditCanvasSize)

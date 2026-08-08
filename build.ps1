@@ -75,7 +75,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "7.29.5"
+$Version = "7.31.4"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
 $Distribute = $false

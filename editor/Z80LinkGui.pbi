@@ -40,6 +40,7 @@ Procedure Z80LinkGui_OpenWindow(ParentWindow)
   If Not Win
     ProcedureReturn
   EndIf
+  SetWindowColor(Win, Color_AppBg)
   App_ApplyWindowIcon(Win)
   DisableWindow(ParentWindow, #True)
 
@@ -48,20 +49,25 @@ Procedure Z80LinkGui_OpenWindow(ParentWindow)
                                     #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
 
   Protected BtnX = 508
-  Protected G_Add    = ButtonGadget(#PB_Any, BtnX, 52, 130, 28, "Adicionar...")
-  Protected G_Remove = ButtonGadget(#PB_Any, BtnX, 88, 130, 28, "Remover")
-  Protected G_Up     = ButtonGadget(#PB_Any, BtnX, 124, 130, 28, "Subir")
-  Protected G_Down   = ButtonGadget(#PB_Any, BtnX, 160, 130, 28, "Descer")
+  Protected G_Add    = ThemedButton(BtnX, 52, 130, 28, "Adicionar...", Chr(#Icon_Add))
+  GadgetToolTip(G_Add, "Adicionar...")
+  Protected G_Remove = ThemedButton(BtnX, 88, 130, 28, "Remover", "")
+  Protected G_Up     = ThemedButton(BtnX, 124, 130, 28, "Subir", Chr(#Icon_ArrowUp))
+  GadgetToolTip(G_Up, "Subir")
+  Protected G_Down   = ThemedButton(BtnX, 160, 130, 28, "Descer", Chr(#Icon_ArrowDown))
+  GadgetToolTip(G_Down, "Descer")
 
   TextGadget(#PB_Any, 24, 258, 380, 20, "Pasta de biblioteca (.REQUEST, opcional):")
   Protected G_LibDir = StringGadget(#PB_Any, 24, 286, 524, 24, "", #PB_String_ReadOnly)
-  Protected G_LibBrowse = ButtonGadget(#PB_Any, 556, 286, 80, 24, "...")
+  Protected G_LibBrowse = ThemedButton(556, 286, 80, 24, "...", "")
 
   Protected G_Status = TextGadget(#PB_Any, 24, 330, WinW - 48, 50, "")
 
   Protected ButtonY = WinH - 56
-  Protected G_LinkBtn = ButtonGadget(#PB_Any, 24, ButtonY, 150, 32, "Linkar...")
-  Protected G_Close   = ButtonGadget(#PB_Any, WinW - 24 - 110, ButtonY, 110, 32, "Fechar")
+  Protected G_LinkBtn = ThemedButton(24, ButtonY, 150, 32, "Linkar...", Chr(#Icon_Link))
+  GadgetToolTip(G_LinkBtn, "Linkar...")
+  Protected G_Close   = ThemedButton(WinW - 24 - 110, ButtonY, 110, 32, "Fechar", Chr(#Icon_Close))
+  GadgetToolTip(G_Close, "Fechar")
 
   Protected NewList RelPaths.s()
 
