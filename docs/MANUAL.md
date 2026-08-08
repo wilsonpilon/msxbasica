@@ -33,20 +33,21 @@
 4. [MSX-BASIC clássico: converter, tokenizar e renumerar](#msx-basic-clássico-converter-tokenizar-e-renumerar)
    - [Executar → Renumerar...](#executar--renumerar)
 5. [Telas de configuração](#telas-de-configuração)
-6. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
+6. [Auto completar](#auto-completar)
+7. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
    - [Menu Criar → Disco... (gerenciador gráfico)](#menu-criar--disco-gerenciador-gráfico)
    - [Linha de comando (`--diskmanipulator`)](#linha-de-comando---diskmanipulator)
-7. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
+8. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
    - [Projeto implícito "noname"](#projeto-implícito-noname)
    - [Menu Arquivo → Novo projeto... / Abrir projeto...](#menu-arquivo--novo-projeto--abrir-projeto)
    - [Menu Arquivo → Salvar projeto / Salvar projeto como...](#menu-arquivo--salvar-projeto--salvar-projeto-como)
    - [Cópia das abas de texto e diretório de trabalho](#cópia-das-abas-de-texto-e-diretório-de-trabalho)
    - [Ao sair](#ao-sair)
-8. [Editor de sprites](#editor-de-sprites)
+9. [Editor de sprites](#editor-de-sprites)
    - [Grade, tamanho e modo de cor](#grade-tamanho-e-modo-de-cor)
    - [Ferramentas de desenho](#ferramentas-de-desenho)
    - [Barra de projeto (registrar, navegar, copiar/colar)](#barra-de-projeto-registrar-navegar-copiarcolar)
-9. [Editor de alfabetos](#editor-de-alfabetos)
+10. [Editor de alfabetos](#editor-de-alfabetos)
    - [Tabela de caracteres e grade de edição](#tabela-de-caracteres-e-grade-de-edição)
    - [Marcar bloco (aplicar um efeito num intervalo de caracteres de uma vez)](#marcar-bloco-aplicar-um-efeito-num-intervalo-de-caracteres-de-uma-vez)
    - [Desfazer / refazer](#desfazer--refazer-1)
@@ -54,29 +55,29 @@
    - [Copiar/colar um alfabeto inteiro](#copiarcolar-um-alfabeto-inteiro)
    - [Arquivo .ALF (Graphos III)](#arquivo-alf-graphos-iii)
    - [Barra de projeto e o alfabeto padrão ("projeto 0")](#barra-de-projeto-e-o-alfabeto-padrão-projeto-0)
-10. [Editor de som (PSG)](#editor-de-som-psg)
+11. [Editor de som (PSG)](#editor-de-som-psg)
     - [Canais A/B/C, ruído e envelope](#canais-abc-ruído-e-envelope)
     - [Sequência de passos](#sequência-de-passos)
     - [Tocar / Parar](#tocar--parar)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor)
     - [Barra de projeto](#barra-de-projeto)
-11. [Editor SEE Tracker](#editor-see-tracker)
+12. [Editor SEE Tracker](#editor-see-tracker)
     - [A grade e o painel de edição](#a-grade-e-o-painel-de-edição)
     - [Patterns: inserir, apagar, mover, copiar](#patterns-inserir-apagar-mover-copiar)
     - [Tocar / Parar](#tocar--parar-1)
     - [Gerar código, Injetar no cursor, Copiar](#gerar-código-injetar-no-cursor-copiar)
     - [Importar .SEE...](#importar-see)
     - [Barra de projeto](#barra-de-projeto-1)
-12. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
+13. [Editor de música (MML/PLAY)](#editor-de-música-mmlplay)
     - [Montando uma linha](#montando-uma-linha)
     - [Lista de linhas por canal](#lista-de-linhas-por-canal)
     - [Tocar / Parar](#tocar--parar-2)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-1)
     - [Barra de projeto](#barra-de-projeto-2)
-13. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
+14. [Editor de alfabetos Aquarela](#editor-de-alfabetos-aquarela)
     - [Tabela de 46 caracteres e grade 16x16](#tabela-de-46-caracteres-e-grade-16x16)
     - [Arquivo .FNT](#arquivo-fnt)
-14. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
+15. [Editor de DRAW Screen 2](#editor-de-draw-screen-2)
     - [Canvas, paleta e cor de tinta/fundo](#canvas-paleta-e-cor-de-tintafundo)
     - [Ferramentas de desenho](#ferramentas-de-desenho-1)
     - [Parâmetros STEP e LINE -(x,y)](#parâmetros-step-e-line--xy)
@@ -84,10 +85,10 @@
     - [Lista de comandos e mini buffers](#lista-de-comandos-e-mini-buffers)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-2)
     - [Barra de projeto](#barra-de-projeto-3)
-15. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
+16. [Graphos III — Tela SCREEN 2](#graphos-iii--tela-screen-2)
     - [Canvas e color clash](#canvas-e-color-clash)
     - [Paleta INK/PAPER e ferramentas](#paleta-inkpaper-e-ferramentas)
-16. [Assembler Z80](#assembler-z80)
+17. [Assembler Z80](#assembler-z80)
     - [Aba Assembly (.asm)](#aba-assembly-asm)
     - [Montar (Ctrl+F5)](#montar-ctrlf5)
     - [O que já é suportado](#o-que-já-é-suportado)
@@ -96,44 +97,44 @@
     - [Biblioteca Z80 (.LIB)](#biblioteca-z80-lib)
     - [Assembly Sub Project (Makefile primitivo)](#assembly-sub-project-makefile-primitivo)
     - [O que ainda não é suportado](#o-que-ainda-não-é-suportado)
-17. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
+18. [Ajuda MSX BASIC (dicionário e manual, MSX1 e MSX2+)](#ajuda-msx-basic-dicionário-e-manual-msx1-e-msx2)
     - [Abrindo e navegando](#abrindo-e-navegando)
     - [O que está coberto](#o-que-está-coberto)
-18. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
+19. [Suporte a NestorBASIC](#suporte-a-nestorbasic)
     - [Arquivo → Novo Nestor Basic...](#arquivo--novo-nestor-basic)
     - [Executar → Nestor Basic](#executar--nestor-basic)
     - [Ajuda → Nestor Basic...](#ajuda--nestor-basic)
-19. [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)
+20. [Suporte a MSXBAS2ROM](#suporte-a-msxbas2rom)
     - [Arquivo → Novo MSXBas2Rom...](#arquivo--novo-msxbas2rom)
     - [Configurar → MSXBas2Rom...](#configurar--msxbas2rom)
     - [Ajuda → MSXBas2Rom...](#ajuda--msxbas2rom)
-20. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
+21. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
     - [Configurar → N80...](#configurar--n80)
     - [Ajuda → N80...](#ajuda--n80)
-21. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
+22. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
     - [O que está coberto](#o-que-está-coberto-1)
-22. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
+23. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
     - [O que está coberto](#o-que-está-coberto-2)
-23. [Editor Hexa](#editor-hexa)
+24. [Editor Hexa](#editor-hexa)
     - [Abrir/Salvar e a grade hex/ASCII](#abrirsalvar-e-a-grade-hexascii)
     - [Reconhecimento de formato](#reconhecimento-de-formato)
     - [Galeria de templates](#galeria-de-templates)
     - [Intervalo marcado e operações de bloco](#intervalo-marcado-e-operações-de-bloco)
     - [Barra de rolagem](#barra-de-rolagem)
-24. [Inserir → Caractere Especial](#inserir--caractere-especial)
+25. [Inserir → Caractere Especial](#inserir--caractere-especial)
     - [A grade e a prévia](#a-grade-e-a-prévia)
     - [Campo acumulador e o botão Inserir](#campo-acumulador-e-o-botão-inserir)
-25. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
+26. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
     - [Largura, fonte e cor (INK/PAPER único pra tela inteira)](#largura-fonte-e-cor-inkpaper-único-pra-tela-inteira)
     - [Ferramentas](#ferramentas)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-3)
     - [Barra de projeto](#barra-de-projeto-4)
-26. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
+27. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
     - [Fonte e a tabela ASCII do alfabeto (cor por octeto)](#fonte-e-a-tabela-ascii-do-alfabeto-cor-por-octeto)
     - [Ferramentas](#ferramentas-2)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-4)
     - [Barra de projeto](#barra-de-projeto-5)
-27. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
+28. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
     - [3 alfabetos, um por terço da tela](#3-alfabetos-um-por-terço-da-tela)
     - [Cor por linha de scanline (o modo mais complexo)](#cor-por-linha-de-scanline-o-modo-mais-complexo)
     - [Ferramentas](#ferramentas-3)
@@ -303,8 +304,19 @@ que fica sem destaque.
 | `Ctrl+K E` | Abre um arquivo |
 | `Ctrl+K X` | Salva e fecha a aba atual |
 | `Ctrl+K Q` | Fecha a aba atual (avisa se há alterações não salvas) |
+| `Ctrl+Alt+S` | **Salvar Tudo** — salva todas as abas abertas e o projeto |
 
 Esses comandos também estão disponíveis pelo menu **Arquivo**.
+
+**Arquivo → Salvar Tudo** (`Ctrl+Alt+S`) salva todas as abas abertas, uma por uma (na ordem das abas,
+pedindo "Salvar como..." pra qualquer aba ainda sem nome — igual `Ctrl+K D` faria com ela individualmente,
+só que pra todas de uma vez), e depois salva o projeto atual (`.msxproject`) também, se fizer sentido: um
+projeto já salvo em arquivo permanente é sempre atualizado; um projeto ainda temporário ("noname") só é
+salvo se já tiver algo de fato dentro dele (sprite, alfabeto, som, MML, tela, sub-projeto Assembly) — do
+contrário "Salvar Tudo" não fica forçando um diálogo "Salvar projeto como..." vazio toda vez que você só
+quer salvar uns arquivos de texto soltos. Se você cancelar o diálogo "Salvar como..." de alguma aba sem
+nome, as demais abas (e o projeto) continuam sendo salvos normalmente — não trava tudo por causa de uma
+aba cancelada.
 
 **Tipos de arquivo**: o menu **Arquivo** tem três comandos de "criar novo" que definem o tipo da aba —
 **Novo** (`Ctrl+N`, MSX-BASIC/Dignified, `.dmx`), **Novo Assembly** (`Ctrl+Shift+N`, Z80 Assembly,
@@ -411,6 +423,13 @@ modificada) — não salva sozinho, revise e salve como de costume.
 - **Configurar → Editor...** — fonte (só monoespaçadas, com botão para baixar fontes
   [Nerd Fonts](https://www.nerdfonts.com/) direto de dentro da IDE), tema claro/escuro,
   estilo de abas, caminho de instalação do editor.
+- **Configurar → Basic Options...** — liga/desliga o auto completar de abas MSX-BASIC/Dignified
+  (`.dmx`/`.bas`) e ajusta quantas letras precisam ser digitadas antes dele aparecer, além da caixa
+  das palavras-chave sugeridas — ver [Auto completar](#auto-completar).
+- **Configurar → Assembly...** — a mesma coisa, mas para abas Assembly (`.asm`): liga/desliga,
+  quantidade de letras, caixa dos mnemônicos/diretivas sugeridos. Independente da tela acima —
+  cada modo guarda sua própria preferência de caixa (útil pra quem gosta de BASIC em minúsculas e
+  Assembly em maiúsculas, ou vice-versa) — ver [Auto completar](#auto-completar).
 - **Configurar → Basic Dignified...** — três abas:
   - **Basic Dignified** — opções do pré-processador/tokenizador e diretório de instalação do
     toolchain Python de referência (com botão para baixar via `git clone` ou `.zip` do GitHub).
@@ -435,6 +454,68 @@ modificada) — não salva sozinho, revise e salve como de costume.
   LibStor80](#n80-linkstor80-e-libstor80)).
 - **Ajuda → Sobre...** — versão, build e data de compilação (ver
   [Versão e build](#versão-e-build)).
+
+---
+
+## Auto completar
+
+Enquanto você digita numa aba MSX-BASIC/Dignified (`.dmx`/`.bas`) ou Assembly (`.asm`), a IDE mostra
+uma lista de sugestões assim que a palavra que você está digitando atinge um número mínimo de letras
+(3 por padrão). A lista some sozinha se você continuar digitando um trecho que não bate com nada, ou se
+apagar letras até ficar abaixo do mínimo de novo.
+
+**Navegação** (comportamento nativo do Scintilla, não precisa decorar nada novo):
+
+| Tecla | Ação |
+|---|---|
+| `Enter` | Aceita a opção destacada (a primeira da lista, por padrão) |
+| `Tab` | Igual `Enter` |
+| `↑` / `↓` / `Page Up` / `Page Down` | Navega pela lista |
+| `Esc` | Cancela e fecha a lista, sem inserir nada |
+| (continuar digitando) | A lista se estreita sozinha conforme mais letras batem com o que sobrou |
+
+Liga/desliga e o mínimo de letras são configurados separadamente para BASIC e Assembly (ver
+[Telas de configuração](#telas-de-configuração)):
+
+- **`Configurar → Basic Options...`** — vale para abas `.dmx`/`.bas`.
+- **`Configurar → Assembly...`** — vale para abas `.asm`.
+
+Cada tela também tem uma opção de **caixa** (maiúsculas/minúsculas) para as palavras-chave sugeridas:
+
+| Opção | Efeito |
+|---|---|
+| **Como digitado** (padrão) | Acompanha a caixa do que você já digitou — `pri` sugere `print`, `PRI` sugere `PRINT`. Se a caixa do que foi digitado for ambígua/mista (ex.: `Pri`), cai em maiúsculas. |
+| **Sempre maiúsculas** | Sugestões sempre em maiúsculas, não importa como foi digitado. |
+| **Sempre minúsculas** | Sugestões sempre em minúsculas, não importa como foi digitado. |
+
+Essa opção de caixa só afeta **palavras-chave/mnemônicos** — variáveis, rótulos Assembly e os
+wrappers `.NB_*` do NestorBASIC (ver abaixo) sempre aparecem exatamente com a grafia que você já usou
+em algum lugar do documento, nunca reformatados.
+
+### O que é sugerido em abas BASIC/Dignified (`.dmx`/`.bas`)
+
+- Palavras-chave clássicas do MSX-BASIC (`PRINT`, `FOR`, `GOTO`, `INPUT`...) e funções (`LEFT$`,
+  `MID$`, `ABS`...).
+- Instruções exclusivas do Basic Dignified (`DEFINE`, `DECLARE`, `INCLUDE`, `FUNC`, `RET`, `EXIT`...).
+- Em abas `.bas` (projeto MSXBAS2ROM), também os comandos/funções estendidos do MSXBAS2ROM
+  (`CMD TURBO`, `HEAP()`, `COLLISION()` etc.) — não aparecem numa aba `.dmx` comum, pra não confundir
+  com uma variável qualquer chamada `TURBO`.
+- Os 87 wrappers **`.NB_*` do NestorBASIC** (`.NB_ReadByte`, `.NB_FillVram`... — mesma lista de
+  `Ajuda → NestorBASIC...`), disponíveis em qualquer aba `.dmx`. Como o `.` não faz parte do que o
+  Scintilla considera "palavra", basta digitar a partir do `N` (ex. `.NB_Rea` já sugere depois de
+  digitar `Rea`) — o `.` que você já tinha digitado não é tocado.
+- **Variáveis** — qualquer identificador que já apareça em algum lugar do documento e não seja
+  palavra-chave reservada, coletado ao vivo do texto da aba (não precisa ter sido declarado com
+  `DECLARE`).
+
+### O que é sugerido em abas Assembly (`.asm`)
+
+- Mnemônicos Z80 (`LD`, `PUSH`, `CALL`...), registradores/condições de desvio (`A`, `HL`, `NZ`...) e
+  diretivas do assembler nativo desta IDE, incluindo as com ponto do dialeto N80 (`.PHASE`, `.RADIX`
+  etc. — mesma observação do `.NB_*` acima: digite a partir da letra depois do ponto).
+- **Rótulos** já definidos no documento (`MYLABEL:`, `.local`), pela mesma regra clássica MACRO-80/Z80
+  que o destaque de sintaxe já usa: a primeira palavra de uma linha que não é mnemônico/registrador/
+  diretiva conhecido é rótulo.
 
 ---
 

@@ -39,7 +39,7 @@ servir de especificação byte-a-byte ao port nativo:
 
 | # | Módulo | Esforço relativo | Status da spec |
 |---|--------|-------------------|-----------------|
-| 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`) |
+| 1 | Editor MSX BASIC (base) | — | **Em código** (`editor/BadigEditor.pb`). **Arquivo → Salvar Tudo implementado (2026-08-08)**, ver seção 1b |
 | 2 | Assembler Z80 (2 passes, nativo) | médio-alto | **Completo (2026-07-25)** — motor `editor/Z80Asm.pbi` (opcodes/expressões/diretivas/condicionais/macros básicas, saída absoluta e relocável `.REL`), validado byte-a-byte contra os oráculos `N80.exe`/`LK80.exe`/`LB80.exe` (Nestor80). Menu completo: **Executar → Montar Assembly (.bin)/relocável (.REL)/Linkar (.REL) → binário**, **Criar → Biblioteca Z80 (.LIB)/Assembly Sub Project** ("Makefile primitivo" — vários `.asm` + libs numa lista ordenada, monta tudo de uma vez, ver módulo 2d). Saída consumível por MSX-BASIC e MSX-DOS (`.bin`/`.com`/disco `.dsk`/listing `DATA`+`POKE`, módulo 2c) e sistema de projeto (`asm_builds`/`asm_subprojects` em `ProjectDB.pbi`). Detalhe em `docs/resumo-asm.md`, módulos 2b/2c/2d abaixo |
 | 3 | Basic Dignified reescrito nativo | depende do escopo do original | **Completo (2026-07-15)** — `editor/DignifiedPreprocessor.pbi`, incluindo `INCLUDE` e remtags, ver módulo 3g |
 | 4 | Editor sprite/char | baixo | **Sprite e alfabeto implementados (2026-07-19)** — `editor/SpriteEditorGui.pbi`/`editor/CharsetEditorGui.pbi`, ambos integrados ao sistema de projeto (módulo 13), ver seção 4. **Editor de alfabetos Aquarela (.FNT) implementado (2026-07-23)** — `editor/AquarelaCharsetEditorGui.pbi`, ferramenta autocontida baseada em arquivo, sem integração com o sistema de projeto, ver seção 4b. **Editor de alfabetos Graphos III ganhou 13 efeitos de edição em lote (2026-07-23)** — desfazer/refazer, marcar tudo, espelhar/girar/apagar/estreitar/itálico/negrito/largo (+ variantes bold e largo-bold), ver seção 4c. Tile (além do charset/fonte 8×8) ainda não iniciado |
@@ -63,6 +63,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 22 | Editor de tela SCREEN 1+2 — Color Table real do SCREEN 2, 3 alfabetos, cor por linha de scanline (`Criar → Screen 1+2...`) | alto | **Implementado (2026-08-05), estendido (mesma sessão)** — `editor/Screen12EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen12_screens`). Terceira e mais complexa da família: `SCREEN 2` de verdade, 3 alfabetos (1 por terço de 8 linhas de tela) e cor por LINHA DE SCANLINE de cada código (8 cores/glifo, color clash real do hardware). Correção de UX real (linha-guia + seletor de terço acompanhando o clique no canvas) e escolha de bloco por 2 cliques na tabela ASCII + botões de reset de cor, ambos no mesmo dia do lançamento. Ver seção 22 |
 | 23 | Ajuda SEE Tracker — estudo do formato SEE/.SEE (`Ajuda → SEE Tracker...`) | baixo (estudo) | **Implementado (2026-08-06)** — `editor/SeeTrackerHelpData.pbi`/`SeeTrackerHelpGui.pbi`, manual original + formato de arquivo `.SEE` + mecanismo real do driver de replay (`see/SEE3PLAY.ASC`). Preparou o terreno pro tracker de verdade, construído na sequência da mesma sessão — ver módulo 24 |
 | 24 | Editor SEE Tracker — efeitos sonoros compatíveis com .SEE (`Criar → SEE Tracker...`) | alto | **Implementado (2026-08-06), estendido (mesma sessão)** — `editor/SeeTrackerEditorGui.pbi` (janela) + `editor/SeeTrackerSynth.pbi` (modelo de dados/interpretador/gerador/**importador**) + `editor/SeeTrackerDriverAsm.pbi` (porta do driver de replay, montada em tempo real pelo assembler Z80 nativo, `editor/Z80Asm.pbi`). Integrado ao sistema de projeto (módulo 13, tabela `see_sfx`). **Importar .SEE...** lê arquivos reais do editor original (validado contra `see/FIREBIRD.SEE`, 33 SFX). Ver seção 24 |
+| 25 | Auto completar ("Palpiteiro") — MSX-BASIC/Dignified e Assembly | médio | **Implementado (2026-08-08)** — sugestões via popup nativo do Scintilla (`SCI_AUTOCSHOW`), disparadas ao digitar. Abas `.dmx`/`.bas`: palavras-chave clássicas + Dignified + MSXBAS2ROM (quando aplicável) + os 87 wrappers `.NB_*` do NestorBASIC + variáveis do documento; config em `editor/BasicOptionsSettings.pbi` (`Configurar → Basic Options...`). Abas `.asm`: mnemônicos/registradores/diretivas do Z80 (`Z80Asm.pbi`) + rótulos do documento; config em `editor/AssemblyOptionsSettings.pbi` (`Configurar → Assembly...`). Ver seção 25 |
 
 ## Decisões fechadas
 
@@ -101,6 +102,30 @@ servir de especificação byte-a-byte ao port nativo:
   pré-processador nem de tabela de símbolos separada.
 
 ## Detalhe por módulo
+
+### 1b. Arquivo → Salvar Tudo — implementado (2026-08-08)
+
+`Ctrl+Alt+S` / **Arquivo → Salvar Tudo** (`#Menu_SaveAll`, `SaveAllDocuments()` em `editor/BadigEditor.pb`)
+salva todas as abas abertas mais o projeto atual numa ação só.
+
+- **Cada aba**: `SaveDocument(SaveAs.b = #False)` já existente só opera na aba **ativa no momento**
+  (usa `ActiveTabPosition` direto, sem parâmetro pra apontar pra outra aba) — `SaveAllDocuments()`
+  percorre `Docs()` chamando `SetActiveTab(Position)` antes de cada `SaveDocument(#False)`, e restaura
+  a aba que estava ativa antes no final. Abas sem nome ainda pedem "Salvar como..." normalmente (mesmo
+  caminho de `SaveDocument`); se o usuário cancelar esse diálogo numa aba, o loop continua salvando as
+  demais em vez de abortar tudo (melhor esforço) — o retorno de `SaveAllDocuments()` indica se **tudo**
+  foi salvo com sucesso.
+- **Projeto**: só chama `SaveProject(#False)` se o projeto já tiver arquivo `.msxproject` permanente
+  (nesse caso é barato/silencioso — mesmo guard interno de `SaveProject`) **ou** se o projeto ainda
+  temporário ("noname") já tiver conteúdo de verdade (`ProjectDB::HasUnsavedContent()`, mesmo critério
+  usado por `OfferSaveProject()`) — sem essa checagem, "Salvar Tudo" num projeto temporário vazio
+  forçaria sempre um diálogo "Salvar projeto como..." só para salvar arquivos de texto soltos, o que
+  seria surpreendente. Deliberadamente **sem** o diálogo de confirmação Sim/Não que `OfferSaveProject()`
+  mostra antes de salvar — aqui o usuário já pediu explicitamente "salvar tudo", perguntar de novo
+  "quer salvar?" seria redundante.
+- Sem harness de teste dedicado — validado por compilação limpa + revisão de código (a lógica reusa
+  inteiramente `SaveDocument`/`SaveProject`/`SetActiveTab` já existentes e testados, só a orquestração
+  do loop é nova).
 
 ### 2. Assembler Z80
 - Dois passes: (1) tokeniza + resolve labels/símbolos + calcula endereços; (2) gera código de máquina.
@@ -3403,6 +3428,89 @@ mesmo padrão dos demais editores desta IDE (uma screenshot real por seção de 
 feature em `README.md` atualizada pra mencionar o cursor de playback, o seletor visual de forma e os
 três botões de limpeza, que não estavam cobertos no texto original (escrito antes deles existirem).
 
+### 25. Auto completar ("Palpiteiro") — implementado (2026-08-08)
+
+Popup de sugestões enquanto o usuário digita, em abas `.dmx`/`.bas` (MSX-BASIC/Basic Dignified) e
+`.asm` (Z80 Assembly). Mecanismo de exibição é 100% nativo do Scintilla (`SCI_AUTOCSHOW`/
+`SCI_AUTOCACTIVE`/`SCI_AUTOCCANCEL`) — Enter/Tab aceitam, setas/Page Up/Page Down navegam, Esc cancela,
+e a lista se estreita sozinha conforme mais letras são digitadas, tudo sem nenhuma tecla nova
+interceptada (confirmado sem conflito com o teclado WordStar/JOE de `WordStarKeys.pbi`, que só
+intercepta combinações com Ctrl).
+
+**Disparo e reentrância**: `ScintillaCallBack()` recebe `#SCN_CHARADDED` a cada caractere inserido, mas
+— igual ao padrão já estabelecido por `#SCN_MODIFIED`/`#Event_Rehighlight` — não chama `ScintillaSend-
+Message` direto de dentro da notificação (ainda em andamento dentro do próprio `SendMessage` que a
+disparou); em vez disso faz `PostEvent(#Event_AutoComplete, ...)` e o trabalho real acontece em
+`HandleAutoCompleteCharAdded()`, já fora da notificação, no loop principal. A lista só é remontada
+(`ShowAutoComplete()`) no exato instante em que a palavra sendo digitada atinge o mínimo de letras
+configurado — depois disso o próprio Scintilla filtra o popup já aberto a cada tecla nova, sem precisar
+rechamar `ShowAutoComplete()` (que varre o documento inteiro atrás de variáveis/rótulos) a cada
+caractere. Backspace encolhendo a palavra abaixo do mínimo cancela o popup via checagem em
+`#Event_UpdateUI` (que já disparava a cada movimento de caret/backspace) — `#SCN_CHARADDED` só dispara
+em inserção, não em remoção.
+
+**Vocabulário — abas `.dmx`/`.bas`** (`ShowAutoComplete()`, ramo `Else`):
+- Mapas `Kw*` já existentes (usados pelo destaque de sintaxe): `KwStatement`/`KwFunctionPlain`/
+  `KwFunctionDollar`/`KwOperatorWord`/`KwDignifiedStmt`/`KwBoolean`, mais `KwMsxBas2Rom*` quando o
+  modo do documento é `"BAS"`.
+- **`KwNestorBasic`** (novo) — os 87 nomes de wrapper `.NB_*` do NestorBASIC (módulo 9), construído em
+  `InitKeywordMaps()` a partir de `NBHelp_Topics()\Wrapper` (mesma fonte de dados de `Ajuda →
+  NestorBASIC...`, nunca diverge dela) — `NBHelp_BuildData()` é idempotente, então chamá-la aqui é
+  seguro mesmo que a janela de ajuda nunca tenha sido aberta na sessão. Guardado **sem** o `.` inicial:
+  como `.` não faz parte do conjunto de "caracteres de palavra" do Scintilla, a fronteira de palavra já
+  para exatamente depois dele — o usuário digita a partir do `N` (`.NB_Rea` → prefixo detectado é
+  `Rea`) e a inserção do Scintilla só substitui a partir daí, sem tocar no `.` já digitado. Mesmo
+  truque, sem código extra, funciona pra rótulos relativos Z80 (`.loop`) e diretivas com ponto
+  (`.PHASE`).
+- **Variáveis do documento** — `CollectDocumentVariables()`: varredura leve (não um tokenizador
+  completo) do texto da aba, coletando qualquer identificador que não seja palavra reservada
+  (`IsReservedKeyword()`, reaproveitando os mesmos mapas `Kw*` acima).
+
+**Vocabulário — abas `.asm`** (`ShowAutoComplete()`, ramo `If DocMode = "ASM"`):
+- `Z80Asm.pbi` ganhou 4 novos procedimentos **exportados** (`MnemonicList()`/`RegisterList()`/
+  `DirectiveList()`/`OperatorWordList()`, retornando string espaço-separada) — os mapas de verdade
+  (`KwMnemonic`/`KwRegister`/`KwDirective`/`KwOperatorWord`) são privados dentro do `Module Z80Asm`
+  (declarados no corpo do módulo, não no `DeclareModule`), então não dava pra fazer `ForEach
+  Z80Asm::KwMnemonic()` de fora; os novos exports espelham o mesmo vocabulário que já alimentava
+  `Z80Asm::IsMnemonic()`/`IsRegister()`/etc. (usados pelo destaque de sintaxe `HighlightZ80Text()`) sem
+  duplicar a lista em `BadigEditor.pb` — só copiada uma vez pra mapas locais (`KwZ80Mnemonic` etc.) em
+  `InitKeywordMaps()`.
+- **Rótulos do documento** — `CollectZ80Labels()`: mesma regra clássica MACRO-80/Z80 que
+  `HighlightZ80Text()` já usa pra destacar rótulos (a primeira palavra de cada linha que não bate com
+  `Z80Asm::IsDirective`/`IsMnemonic`/`IsRegister`/`IsOperatorWord` é rótulo, com ou sem `:` no final;
+  rótulos relativos `.nome` também contam) — varredura mais simples que o highlighter de verdade
+  (não tokeniza string/comentário token a token no resto da linha) porque só precisa do primeiro token
+  de cada linha, o resto é só pulado até a próxima quebra.
+
+**Caixa das sugestões**: `ApplyKeywordCase(Word, Prefix, CaseMode)` — três modos ("AsTyped"/"Upper"/
+"Lower"). "AsTyped" (padrão) decide pela caixa do próprio `Prefix` já digitado (não a versão
+uppercased usada só pra comparação): prefixo todo minúsculo → sugestão minúscula, todo maiúsculo →
+sugestão maiúscula, caixa mista/ambígua (ex. `"Pri"`) → mantém maiúsculas (grafia como os mapas
+guardam). Só se aplica a palavras-chave/mnemônicos — variáveis, rótulos e nomes `.NB_*` sempre mantêm
+a grafia exata que já aparece no documento, nunca reformatados. Alternativa descartada: detectar
+estatisticamente a caixa predominante já usada no documento inteiro — rejeitada por ser menos
+previsível (o que aparece depende de todo o histórico do arquivo, não da tecla que acabou de ser
+digitada) e mais cara (recalcular a cada sugestão em vez de olhar só o prefixo atual).
+
+**Configuração** — duas telas **independentes** (cada modo guarda sua própria preferência de caixa,
+útil pra quem gosta de BASIC minúsculo e Assembly maiúsculo, ou vice-versa), mesmo padrão JSON de
+`EditorSettings.pbi`/`BadigSettings.pbi`:
+- `editor/BasicOptionsSettings.pbi` (`BasicOptionsCfg`, `basic_options_settings.json`) —
+  `Configurar → Basic Options...`, vale pra abas `.dmx`/`.bas`.
+- `editor/AssemblyOptionsSettings.pbi` (`AssemblyOptionsCfg`, `assembly_options_settings.json`) —
+  `Configurar → Assembly...`, vale pra abas `.asm`.
+- Ambas: habilitar/desabilitar, mínimo de letras pra ativar (padrão 3, 1-20), caixa das sugestões
+  (`"AsTyped"`/`"Upper"`/`"Lower"`).
+
+**Validação**: compilação limpa (`pbcompiler.exe`, sem erros/avisos) + smoke test de abertura do `.exe`
+(sobe e fica de pé sem crash). Sem harness de console dedicado (`editor/tools/*Cli.pb`) e sem teste de
+interação real (digitar → ver popup → navegar com seta → aceitar) — a automação de GUI disponível neste
+ambiente de desenvolvimento é só de browser (`claude-in-chrome`), não alcança janelas Win32 nativas; ver
+nota equivalente já registrada no guia de verificação deste projeto (`CLAUDE.md`, "Verification
+approach"). Recomendado testar manualmente antes de confiar às cegas: abrir uma aba `.dmx`/`.asm` real,
+digitar um prefixo de 3+ letras e conferir a lista, a navegação por teclado e o efeito de cada opção de
+caixa.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
@@ -3446,6 +3554,38 @@ três botões de limpeza, que não estavam cobertos no texto original (escrito a
   módulo 12 acima (revelou abordagem mais simples que o plano original).
 
 ## Próximos passos em aberto
+
+**Estado ao fim de 2026-08-08 (sessão seguinte a "TORRE DE CONTROLE") — auto completar ("PALPITEIRO")
+e Arquivo → Salvar Tudo (v7.29.5)**: sessão pedida pelo usuário em três rodadas. Ver módulo 25 (seção
+25 abaixo) e módulo 1b para o detalhe técnico completo; resumo aqui:
+- **Auto completar em abas `.dmx`/`.bas`**: popup nativo do Scintilla (`SCI_AUTOCSHOW`), disparado
+  quando a palavra digitada atinge um mínimo configurável de letras (`Configurar → Basic Options...`).
+  Sugere palavras-chave clássicas + Dignified + MSXBAS2ROM (quando aplicável) + variáveis coletadas ao
+  vivo do texto do documento.
+- **Caixa das sugestões configurável** ("Como digitado"/maiúsculas/minúsculas) — escolhido em vez de
+  detectar estatisticamente a caixa predominante já digitada no documento (opção descartada por ser
+  menos previsível e mais cara de recalcular a cada sugestão); "Como digitado" cobre o caso comum sem
+  esse custo.
+- **Os 87 wrappers `.NB_*` do NestorBASIC** entraram na lista de sugestões, fonte única com
+  `Ajuda → NestorBASIC...` via `NBHelp_Topics()\Wrapper` (nunca diverge da ajuda).
+- **Auto completar chegou nas abas Assembly (`.asm`)**: mnemônicos/registradores/diretivas do Z80
+  (`Z80Asm.pbi` ganhou `MnemonicList()`/`RegisterList()`/`DirectiveList()`/`OperatorWordList()`,
+  expondo pra fora do módulo o vocabulário que já alimentava o destaque de sintaxe) + rótulos já
+  definidos no documento (mesma regra clássica MACRO-80/Z80 do highlighter). Config própria e
+  independente em `Configurar → Assembly...`.
+- **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`, módulo 1b): salva todas as abas abertas + o projeto atual
+  numa ação só.
+
+**Em aberto nessa frente, pra decisão/trabalho futuro**:
+- `CollectDocumentVariables()`/`CollectZ80Labels()` (varreduras que alimentam as sugestões de
+  variável/rótulo) são varreduras leves, não um tokenizador completo — não distinguem com precisão
+  texto dentro de comentário/string do resto do código (mesmo trade-off deliberado já aceito em outras
+  varreduras "melhor esforço" desta IDE, ver módulo 3h). Na prática, pouco ruído real: nomes de
+  variável/rótulo plausíveis raramente aparecem por acaso dentro de comentários ou literais de string.
+- Nenhum teste automatizado dedicado (`editor/tools/*Cli.pb`) foi criado pra essa frente — validado só
+  por compilação limpa + smoke test de abertura do `.exe` (não há como automatizar "digitar no editor e
+  ver o popup aparecer" neste ambiente sem GUI automation nativa Win32, só a de browser está
+  disponível).
 
 **Estado ao fim de 2026-08-06 — estudo do formato SEE concluído (cabeçalho resolvido), tracker ainda
 não iniciado**: ver módulo 23 acima para o material já registrado em `Ajuda → SEE Tracker...` (manual

@@ -45,6 +45,17 @@ DeclareModule Z80Asm
   Declare.i IsDirective(Word.s)
   Declare.i IsOperatorWord(Word.s)
 
+  ; Listas achatadas (uma palavra por espaco, maiusculas) do vocabulario
+  ; acima - KwMnemonic()/KwRegister()/KwDirective()/KwOperatorWord() sao
+  ; Maps privados do Module (nao aparecem aqui dentro do DeclareModule),
+  ; entao quem precisa enumerar tudo (ex.: auto completar do modo "ASM" em
+  ; BadigEditor.pb) usa isso em vez de acessar os Maps direto - mesmo formato
+  ; que FillKeywordMap() ja consome do lado de fora.
+  Declare.s MnemonicList()
+  Declare.s RegisterList()
+  Declare.s DirectiveList()
+  Declare.s OperatorWordList()
+
   ; Avaliador de expressao + tabela de simbolos (ver docs/reference/nestor80-language.md)
   Declare   ResetState()
   Declare   SetCurrentLocation(Value.u)
@@ -219,6 +230,46 @@ Module Z80Asm
   Procedure.i IsOperatorWord(Word.s)
     InitKeywordMaps()
     ProcedureReturn Bool(FindMapElement(KwOperatorWord(), UCase(Word)))
+  EndProcedure
+
+  Procedure.s MnemonicList()
+    InitKeywordMaps()
+    Protected Result.s = ""
+    ForEach KwMnemonic()
+      If Result <> "" : Result + " " : EndIf
+      Result + MapKey(KwMnemonic())
+    Next
+    ProcedureReturn Result
+  EndProcedure
+
+  Procedure.s RegisterList()
+    InitKeywordMaps()
+    Protected Result.s = ""
+    ForEach KwRegister()
+      If Result <> "" : Result + " " : EndIf
+      Result + MapKey(KwRegister())
+    Next
+    ProcedureReturn Result
+  EndProcedure
+
+  Procedure.s DirectiveList()
+    InitKeywordMaps()
+    Protected Result.s = ""
+    ForEach KwDirective()
+      If Result <> "" : Result + " " : EndIf
+      Result + MapKey(KwDirective())
+    Next
+    ProcedureReturn Result
+  EndProcedure
+
+  Procedure.s OperatorWordList()
+    InitKeywordMaps()
+    Protected Result.s = ""
+    ForEach KwOperatorWord()
+      If Result <> "" : Result + " " : EndIf
+      Result + MapKey(KwOperatorWord())
+    Next
+    ProcedureReturn Result
   EndProcedure
 
   ;- ------------------------------------------------------------

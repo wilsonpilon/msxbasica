@@ -49,6 +49,8 @@ XIncludeFile "DignifiedPreprocessor.pbi"
 XIncludeFile "Z80Asm.pbi"
 XIncludeFile "EditorSettings.pbi"
 XIncludeFile "BadigSettings.pbi"
+XIncludeFile "BasicOptionsSettings.pbi"
+XIncludeFile "AssemblyOptionsSettings.pbi"
 XIncludeFile "OpenMsxSettingsGui.pbi"
 XIncludeFile "FontDownloader.pbi"
 XIncludeFile "CharMapGui.pbi"
@@ -382,6 +384,7 @@ Enumeration MenuItems
   #Menu_Open
   #Menu_Save
   #Menu_SaveAs
+  #Menu_SaveAll
   #Menu_TokenizeNative
   #Menu_RenumberToBas
   #Menu_DignifiedToAscii
@@ -415,6 +418,8 @@ Enumeration MenuItems
   #Menu_ViewMdTxtSplit
   #Menu_ConfigureBadig
   #Menu_ConfigureEditor
+  #Menu_ConfigureBasicOptions
+  #Menu_ConfigureAssemblyOptions
   #Menu_ConfigureMsxBas2Rom
   #Menu_ConfigureN80
   #Menu_ConfigureOpenMSX
@@ -454,6 +459,11 @@ EndEnumeration
 ; Usado por WordStarKeys.pbi (^KX/^KQ) para adiar o fechamento da aba ativa -
 ; ver comentario no proprio arquivo.
 #Event_WS_CloseTab = #PB_Event_FirstCustomValue + 2
+; Disparado de ScintillaCallBack (#SCN_CHARADDED) e tratado no loop principal -
+; nao pode chamar ScintillaSendMessage direto de dentro da notificacao (ver
+; comentario em ScintillaCallBack), entao o trabalho real (montar a lista e
+; mandar SCI_AUTOCSHOW) e adiado igual ao #Event_Rehighlight.
+#Event_AutoComplete = #PB_Event_FirstCustomValue + 3
 
 #App_Title      = "Basic Dignified Editor"
 #App_SplashW    = 600  ; splash na abertura (msxbasica.png, 3:2) - ver App_ShowSplash/App_CloseSplash
@@ -481,7 +491,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.13.0"
+  #App_Version = "7.29.5"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -624,6 +634,18 @@ Global NewMap KwOperatorWord.b()
 Global NewMap KwDignifiedStmt.b()
 Global NewMap KwBoolean.b()
 
+; Nomes dos wrappers ".NB_*" do NestorBASIC (ver NestorBasicSupport.pbi/
+; NestorBasicHelpData.pbi) - guardados SEM o "." inicial (o "." nao entra na
+; nocao de "palavra" do Scintilla, entao o prefixo digitado que dispara o
+; auto completar ja chega sem ele, ver ShowAutoComplete) - preenchido em
+; InitKeywordMaps() a partir de NBHelp_Topics()\Wrapper, fonte unica com a
+; janela de ajuda (evita manter uma segunda lista igual e desalinhada).
+; NestorBASIC nao tem um Mode proprio (o template "Novo Nestor Basic..." cria
+; um documento "DMX" comum, so com o texto dos wrappers ja colado dentro) -
+; entao esses nomes ficam sempre disponiveis em documentos DMX, igual
+; KwDignifiedStmt.
+Global NewMap KwNestorBasic.b()
+
 ; Extensoes de vocabulario do MSXBAS2ROM (github.com/amaurycarvalho/msxbas2rom
 ; - ver editor/MsxBas2RomSupport.pbi), so usadas quando o documento esta em
 ; modo "BAS" (ver HighlightDocument/HighlightDignifiedText) - um programa
@@ -639,7 +661,14 @@ Global NewMap KwMsxBas2RomFunctionPlain.b()
 ; Vocabulario do lexer de Z80 Assembly (modo "ASM" dos documentos) mora em
 ; Z80Asm.pbi (Z80Asm::IsMnemonic()/IsRegister()/IsDirective()/IsOperatorWord(),
 ; Z80Asm::InitKeywordMaps()) - fonte unica compartilhada com o motor do
-; assembler, ver docs/resumo-asm.md.
+; assembler, ver docs/resumo-asm.md. Copias locais abaixo (preenchidas em
+; InitKeywordMaps() via Z80Asm::MnemonicList()/RegisterList()/DirectiveList()/
+; OperatorWordList()) sao so pro auto completar (ShowAutoComplete) - os Maps
+; de verdade continuam privados dentro do Module, ver comentario deles la.
+Global NewMap KwZ80Mnemonic.b()
+Global NewMap KwZ80Register.b()
+Global NewMap KwZ80Directive.b()
+Global NewMap KwZ80OperatorWord.b()
 
 ;- ------------------------------------------------------------
 ;- Declaracoes
@@ -663,6 +692,12 @@ Declare   UpdateLineNumberMargin(Sci)
 Declare   ActiveSciGadget()
 Declare   UpdateStatusBar()
 Declare   ScintillaCallBack(Gadget, *scinotify.SCNotification)
+Declare.b IsReservedKeyword(WordUpper.s, IsMsxBas2Rom.b = #False)
+Declare.s GetSciTextRange(Sci, StartPos, EndPos)
+Declare.s ApplyKeywordCase(Word.s, Prefix.s, CaseMode.s)
+Declare.i AutoCompleteMinCharsForGadget(Sci)
+Declare   ShowAutoComplete(Sci)
+Declare   HandleAutoCompleteCharAdded(Sci, CharCode)
 Declare   WS_AttachSubclass(Sci)   ; WordStarKeys.pbi (incluido no fim do arquivo)
 Declare   WS_SetupIndicator(Sci)
 Declare   WS_CreateHelpGadget()
@@ -682,6 +717,7 @@ Declare.b SaveDocument(SaveAs.b = #False)
 Declare.b ConfirmDiscard(Text.s)
 Declare.b SaveProject(SaveAsFlag.b = #False)
 Declare.b OfferSaveProject()
+Declare.b SaveAllDocuments()
 Declare   CloseTab(Position)
 Declare   SaveAsTokenizedNative()
 Declare   SaveAsAsciiFromDignified()
@@ -738,6 +774,30 @@ Procedure InitKeywordMaps()
   ; Booleanos do Basic Dignified
   FillKeywordMap(KwBoolean(), "TRUE FALSE")
 
+  ; Wrappers ".NB_*" do NestorBASIC - NBHelp_BuildData() e idempotente (so
+  ; monta NBHelp_Topics() na primeira chamada, ver seu proprio guard), entao
+  ; chamar aqui garante a lista pronta mesmo se a janela de ajuda nunca foi
+  ; aberta nesta sessao. Wrapper.s vem com o "." na frente e, em topicos com
+  ; mais de uma variante (ex.: funcoes 50/51), varios nomes separados por
+  ; " / " - separa tudo, tira o "." e ignora topicos sem wrapper (introducao/
+  ; grupo, Wrapper.s = "").
+  NBHelp_BuildData()
+  ClearMap(KwNestorBasic())
+  Protected NBTopic.i, NBPart.i, NBName.s
+  ForEach NBHelp_Topics()
+    If NBHelp_Topics()\Wrapper <> ""
+      For NBPart = 1 To CountString(NBHelp_Topics()\Wrapper, "/") + 1
+        NBName = Trim(StringField(NBHelp_Topics()\Wrapper, NBPart, "/"))
+        If Left(NBName, 1) = "."
+          NBName = Mid(NBName, 2)
+        EndIf
+        If NBName <> ""
+          KwNestorBasic(NBName) = #True
+        EndIf
+      Next
+    EndIf
+  Next
+
   ; MSXBAS2ROM - diretivas de recurso (compile-time, mesmo estilo visual das
   ; diretivas Dignified - INCLUDE ja e compartilhado com KwDignifiedStmt)
   FillKeywordMap(KwMsxBas2RomDirective(), "FILE TEXT")
@@ -760,6 +820,13 @@ Procedure InitKeywordMaps()
   FillKeywordMap(KwMsxBas2RomFunctionPlain(),
     "HEAP MSX NTSC TURBO MAKER IPEEK PSG COLLISION RESOURCE RESOURCESIZE " +
     "PLYSTATUS TILE USR0 USR1 USR2 USR3")
+
+  ; Vocabulario do Z80 (modo "ASM") - copia local achatada, ver comentario
+  ; dos Maps KwZ80* acima.
+  FillKeywordMap(KwZ80Mnemonic(), Z80Asm::MnemonicList())
+  FillKeywordMap(KwZ80Register(), Z80Asm::RegisterList())
+  FillKeywordMap(KwZ80Directive(), Z80Asm::DirectiveList())
+  FillKeywordMap(KwZ80OperatorWord(), Z80Asm::OperatorWordList())
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -1576,6 +1643,13 @@ Procedure SetupEditorStyles(Sci)
   ScintillaSendMessage(Sci, #SCI_SETMARGINWIDTHN, 2, 0)
   UpdateLineNumberMargin(Sci)
 
+  ; Auto completar (ver #SCN_CHARADDED em ScintillaCallBack e Configurar ->
+  ; Basic Options...) - ignora maiusculas/minusculas na filtragem (o MSX-BASIC
+  ; nao diferencia) e deixa o proprio Scintilla ordenar a lista alfabetica que
+  ; ShowAutoComplete monta sem se preocupar com ordem.
+  ScintillaSendMessage(Sci, #SCI_AUTOCSETIGNORECASE, #True)
+  ScintillaSendMessage(Sci, #SCI_AUTOCSETORDER, #SC_ORDER_PERFORMSORT)
+
   WS_SetupIndicator(Sci)
 EndProcedure
 
@@ -1611,7 +1685,357 @@ Procedure ScintillaCallBack(Gadget, *scinotify.SCNotification)
       ; disparado em scroll/mudanca de selecao/caret - mantem a regua de colunas
       ; e a margem de numeros de linha alinhadas com o que esta sendo exibido
       PostEvent(#Event_UpdateUI, #MainWindow, Gadget, 0, 0)
+
+    Case #SCN_CHARADDED
+      ; ver comentario de #Event_AutoComplete - so adia pra la, nao mexe no
+      ; Scintilla aqui dentro
+      PostEvent(#Event_AutoComplete, #MainWindow, Gadget, 0, *scinotify\ch)
   EndSelect
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Auto completar (Configurar -> Basic Options...) - palavras-chave do
+;- MSX-BASIC/Basic Dignified (mapas Kw*, ver InitKeywordMaps) e variaveis
+;- usadas no documento ativo, disparado por #SCN_CHARADDED/#Event_AutoComplete
+;- ------------------------------------------------------------
+
+; Layout esperado pelo SCI_GETTEXTRANGE nativo do Scintilla (usado por
+; GetSciTextRange, abaixo).
+Structure Sci_TextRange
+  cpMin.l
+  cpMax.l
+  lpstrText.i
+EndStructure
+
+; Testa se WordUpper (ja em maiusculas) e uma palavra reservada do dialeto -
+; mesmos mapas usados pelo realce de sintaxe (KwFunctionDollar guarda so o
+; nome base, sem o "$", entao o sufixo e removido antes de checar). Quando
+; IsMsxBas2Rom, inclui tambem o vocabulario estendido do MSXBAS2ROM (so faz
+; sentido oferecer/excluir essas palavras em documentos modo "BAS").
+Procedure.b IsReservedKeyword(WordUpper.s, IsMsxBas2Rom.b = #False)
+  Protected Base.s = WordUpper
+  Protected HasDollarSuffix.b = #False
+  If Right(WordUpper, 1) = "$"
+    Base = Left(WordUpper, Len(WordUpper) - 1)
+    HasDollarSuffix = #True
+  EndIf
+
+  If FindMapElement(KwStatement(), WordUpper)      : ProcedureReturn #True : EndIf
+  If FindMapElement(KwFunctionPlain(), WordUpper)  : ProcedureReturn #True : EndIf
+  If HasDollarSuffix And FindMapElement(KwFunctionDollar(), Base) : ProcedureReturn #True : EndIf
+  If FindMapElement(KwOperatorWord(), WordUpper)   : ProcedureReturn #True : EndIf
+  If FindMapElement(KwDignifiedStmt(), WordUpper)  : ProcedureReturn #True : EndIf
+  If FindMapElement(KwBoolean(), WordUpper)        : ProcedureReturn #True : EndIf
+
+  If IsMsxBas2Rom
+    If FindMapElement(KwMsxBas2RomDirective(), WordUpper)    : ProcedureReturn #True : EndIf
+    If FindMapElement(KwMsxBas2RomStatement(), WordUpper)    : ProcedureReturn #True : EndIf
+    If FindMapElement(KwMsxBas2RomFunctionPlain(), WordUpper) : ProcedureReturn #True : EndIf
+  EndIf
+
+  ProcedureReturn #False
+EndProcedure
+
+; Le o trecho [StartPos, EndPos) do buffer do Scintilla (posicoes em bytes,
+; UTF-8) via SCI_GETTEXTRANGE - seguro decodificar como UTF-8 mesmo em meio
+; ao documento porque os limites usados por ShowAutoComplete/CollectDocument-
+; Variables sempre caem em fronteira de caractere ASCII (letra/digito/"_"),
+; nunca no meio de uma sequencia multi-byte.
+Procedure.s GetSciTextRange(Sci, StartPos, EndPos)
+  Protected Length = EndPos - StartPos
+  If Length <= 0
+    ProcedureReturn ""
+  EndIf
+
+  Protected *Buffer = AllocateMemory(Length + 1)
+  If Not *Buffer
+    ProcedureReturn ""
+  EndIf
+
+  Protected TR.Sci_TextRange
+  TR\cpMin = StartPos
+  TR\cpMax = EndPos
+  TR\lpstrText = *Buffer
+
+  ScintillaSendMessage(Sci, #SCI_GETTEXTRANGE, 0, @TR)
+  Protected Result.s = PeekS(*Buffer, -1, #PB_UTF8)
+  FreeMemory(*Buffer)
+
+  ProcedureReturn Result
+EndProcedure
+
+; Acrescenta Word a Cand() se seu prefixo (ate o tamanho do que ja foi
+; digitado) bater com PrefixUpper, ignorando maiusculas/minusculas - a chave
+; do mapa e o proprio texto exibido no popup, entao duplicatas (mesma
+; palavra-chave/variavel vista mais de uma vez) sao descartadas de graca.
+Procedure AddIfPrefixMatch(Map Cand.b(), Word.s, PrefixUpper.s)
+  If Left(UCase(Word), Len(PrefixUpper)) = PrefixUpper
+    Cand(Word) = #True
+  EndIf
+EndProcedure
+
+; Varre o texto do documento (mesma logica de IsAlphaChar/IsWordChar usada no
+; realce) coletando identificadores que nao sejam palavra reservada - vira a
+; lista de "variaveis conhecidas" oferecida junto com as palavras-chave.
+; Guarda so a primeira grafia (maiuscula/minuscula) encontrada de cada nome.
+Procedure CollectDocumentVariables(Sci, Map VarDisplay.s(), IsMsxBas2Rom.b)
+  Protected Text.s = ReadSciText(Sci)
+  Protected TextLen = Len(Text)
+  Protected Pos = 1, WStart, C.s, Word.s
+
+  While Pos <= TextLen
+    C = Mid(Text, Pos, 1)
+    If IsAlphaChar(C)
+      WStart = Pos
+      Pos + 1
+      While Pos <= TextLen And IsWordChar(Mid(Text, Pos, 1))
+        Pos + 1
+      Wend
+      If Pos <= TextLen And FindString("$%!#", Mid(Text, Pos, 1))
+        Pos + 1
+      EndIf
+
+      Word = Mid(Text, WStart, Pos - WStart)
+      If Not IsReservedKeyword(UCase(Word), IsMsxBas2Rom) And Not FindMapElement(VarDisplay(), UCase(Word))
+        VarDisplay(UCase(Word)) = Word
+      EndIf
+    Else
+      Pos + 1
+    EndIf
+  Wend
+EndProcedure
+
+; Varre o documento (modo "ASM") coletando rotulos - mesma regra classica
+; MACRO-80/Z80 do highlighter de verdade (HighlightZ80Text, mais acima): o
+; primeiro token de cada linha que nao bate com nenhuma tabela reservada
+; (Z80Asm::IsDirective/IsMnemonic/IsRegister/IsOperatorWord) e rotulo, com ou
+; sem ":" no final; rotulos relativos ".nome" tambem contam (guardados SEM o
+; "." - mesmo motivo do "." do NestorBASIC em ShowAutoComplete, a fronteira
+; de palavra do Scintilla ja para antes dele). Verificacao mais simples que a
+; do highlighter de verdade (nao trata string/comentario no resto da linha
+; com precisao de token a token) porque so precisa do primeiro token de cada
+; linha - o resto da linha e so pulado ate a proxima quebra.
+Procedure CollectZ80Labels(Sci, Map LabelDisplay.s())
+  Protected Text.s = ReadSciText(Sci)
+  Protected TextLen = Len(Text)
+  Protected Pos = 1, C.s, WStart, Word.s, WordUpper.s
+
+  While Pos <= TextLen
+    While Pos <= TextLen And (Mid(Text, Pos, 1) = " " Or Mid(Text, Pos, 1) = Chr(9))
+      Pos + 1
+    Wend
+
+    If Pos <= TextLen
+      C = Mid(Text, Pos, 1)
+
+      If C = "." And Pos < TextLen And Z80_IsWordStartChar(Mid(Text, Pos + 1, 1))
+        WStart = Pos + 1
+        Pos + 2
+        While Pos <= TextLen And Z80_IsWordChar(Mid(Text, Pos, 1))
+          Pos + 1
+        Wend
+        Word = Mid(Text, WStart, Pos - WStart)
+        WordUpper = UCase(Word)
+        If Not Z80Asm::IsDirective(WordUpper) And Not FindMapElement(LabelDisplay(), WordUpper)
+          LabelDisplay(WordUpper) = Word
+        EndIf
+      ElseIf Z80_IsWordStartChar(C)
+        WStart = Pos
+        Pos + 1
+        While Pos <= TextLen And Z80_IsWordChar(Mid(Text, Pos, 1))
+          Pos + 1
+        Wend
+        Word = Mid(Text, WStart, Pos - WStart)
+        WordUpper = UCase(Word)
+        If Not Z80Asm::IsDirective(WordUpper) And Not Z80Asm::IsMnemonic(WordUpper) And
+           Not Z80Asm::IsRegister(WordUpper) And Not Z80Asm::IsOperatorWord(WordUpper) And
+           Not FindMapElement(LabelDisplay(), WordUpper)
+          LabelDisplay(WordUpper) = Word
+        EndIf
+      EndIf
+    EndIf
+
+    While Pos <= TextLen And Mid(Text, Pos, 1) <> Chr(13) And Mid(Text, Pos, 1) <> Chr(10)
+      Pos + 1
+    Wend
+    While Pos <= TextLen And (Mid(Text, Pos, 1) = Chr(13) Or Mid(Text, Pos, 1) = Chr(10))
+      Pos + 1
+    Wend
+  Wend
+EndProcedure
+
+; Ajusta a caixa de uma palavra-chave (os mapas Kw* guardam tudo em
+; maiusculas) conforme CaseMode ("AsTyped"/"Upper"/"Lower" - BasicOptionsCfg
+; ou AssemblyOptionsCfg dependendo do modo do documento, ver ShowAutoComplete)
+; - "AsTyped" acompanha a caixa do prefixo que o usuario ja digitou (Prefix,
+; na grafia original, nao a versao uppercased usada so pra comparar); se o
+; prefixo for ambiguo/misto (ex.: "Pri"), mantem maiusculas (grafia como o
+; mapa guarda). So se aplica a palavras-chave/mnemonicos - variaveis
+; (CollectDocumentVariables) e rotulos (CollectZ80Labels) ficam sempre com a
+; grafia que ja aparece no documento.
+Procedure.s ApplyKeywordCase(Word.s, Prefix.s, CaseMode.s)
+  Select CaseMode
+    Case "Upper"
+      ProcedureReturn UCase(Word)
+    Case "Lower"
+      ProcedureReturn LCase(Word)
+    Default ; "AsTyped"
+      If Prefix <> "" And Prefix = LCase(Prefix) And Prefix <> UCase(Prefix)
+        ProcedureReturn LCase(Word)
+      ElseIf Prefix <> "" And Prefix = UCase(Prefix) And Prefix <> LCase(Prefix)
+        ProcedureReturn UCase(Word)
+      Else
+        ProcedureReturn Word
+      EndIf
+  EndSelect
+EndProcedure
+
+; Monta a lista de sugestoes e manda SCI_AUTOCSHOW - so chamada de dentro do
+; loop principal (HandleAutoCompleteCharAdded), nunca direto da notificacao
+; do Scintilla. Ramifica em duas fontes de vocabulario completamente
+; diferentes conforme o modo do documento: "ASM" usa Z80Asm::* (mnemonicos/
+; registradores/diretivas/operadores + rotulos do documento, config em
+; AssemblyOptionsCfg); "DMX"/"BAS" usa os mapas Kw* de MSX-BASIC/Dignified +
+; NestorBASIC + variaveis do documento (config em BasicOptionsCfg) - mesma
+; logica de antes, so reorganizada pra dentro do ramo Else.
+Procedure ShowAutoComplete(Sci)
+  Protected Pos = ScintillaSendMessage(Sci, #SCI_GETCURRENTPOS)
+  Protected WStart = ScintillaSendMessage(Sci, #SCI_WORDSTARTPOSITION, Pos, #True)
+  Protected WLen = Pos - WStart
+
+  Protected DocPos = FindDocumentByGadget(Sci)
+  Protected DocMode.s = ""
+  If DocPos >= 0 And SelectElement(Docs(), DocPos)
+    DocMode = Docs()\Mode
+  EndIf
+
+  Protected Prefix.s = GetSciTextRange(Sci, WStart, Pos)
+  Protected PrefixUpper.s = UCase(Prefix)
+
+  NewMap Candidates.b()
+
+  If DocMode = "ASM"
+    If WLen < AssemblyOptionsCfg\AutoCompleteMinChars
+      ProcedureReturn
+    EndIf
+
+    ForEach KwZ80Mnemonic()     : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwZ80Mnemonic()), Prefix, AssemblyOptionsCfg\AutoCompleteCase), PrefixUpper)     : Next
+    ForEach KwZ80Register()     : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwZ80Register()), Prefix, AssemblyOptionsCfg\AutoCompleteCase), PrefixUpper)     : Next
+    ForEach KwZ80Directive()    : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwZ80Directive()), Prefix, AssemblyOptionsCfg\AutoCompleteCase), PrefixUpper)    : Next
+    ForEach KwZ80OperatorWord() : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwZ80OperatorWord()), Prefix, AssemblyOptionsCfg\AutoCompleteCase), PrefixUpper) : Next
+
+    NewMap LabelDisplay.s()
+    CollectZ80Labels(Sci, LabelDisplay())
+    ForEach LabelDisplay()
+      AddIfPrefixMatch(Candidates(), LabelDisplay(), PrefixUpper)
+    Next
+  Else
+    If WLen < BasicOptionsCfg\AutoCompleteMinChars
+      ProcedureReturn
+    EndIf
+
+    Protected IsMsxBas2Rom.b = Bool(DocMode = "BAS")
+
+    ForEach KwStatement()      : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwStatement()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper)     : Next
+    ForEach KwFunctionPlain()  : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwFunctionPlain()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper) : Next
+    ForEach KwFunctionDollar() : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwFunctionDollar()) + "$", Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper) : Next
+    ForEach KwOperatorWord()   : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwOperatorWord()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper)  : Next
+    ForEach KwDignifiedStmt()  : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwDignifiedStmt()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper) : Next
+    ForEach KwBoolean()        : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwBoolean()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper)       : Next
+
+    ; Wrappers .NB_* do NestorBASIC - grafia canonica preservada (sem
+    ; ApplyKeywordCase), ver comentario do Map KwNestorBasic().
+    ForEach KwNestorBasic() : AddIfPrefixMatch(Candidates(), MapKey(KwNestorBasic()), PrefixUpper) : Next
+
+    If IsMsxBas2Rom
+      ForEach KwMsxBas2RomDirective()     : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwMsxBas2RomDirective()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper)     : Next
+      ForEach KwMsxBas2RomStatement()     : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwMsxBas2RomStatement()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper)     : Next
+      ForEach KwMsxBas2RomFunctionPlain() : AddIfPrefixMatch(Candidates(), ApplyKeywordCase(MapKey(KwMsxBas2RomFunctionPlain()), Prefix, BasicOptionsCfg\AutoCompleteCase), PrefixUpper) : Next
+    EndIf
+
+    NewMap VarDisplay.s()
+    CollectDocumentVariables(Sci, VarDisplay(), IsMsxBas2Rom)
+    ForEach VarDisplay()
+      AddIfPrefixMatch(Candidates(), VarDisplay(), PrefixUpper)
+    Next
+  EndIf
+
+  Protected List.s = ""
+  ForEach Candidates()
+    If List <> "" : List + " " : EndIf
+    List + MapKey(Candidates())
+  Next
+
+  If List = ""
+    ProcedureReturn
+  EndIf
+
+  Protected *ListBuf = UTF8(List)
+  ScintillaSendMessage(Sci, #SCI_AUTOCSHOW, WLen, *ListBuf)
+  FreeMemory(*ListBuf)
+EndProcedure
+
+; Minimo de letras configurado para o documento dono de Sci (BasicOptionsCfg
+; ou AssemblyOptionsCfg conforme o modo) - usado tanto por
+; HandleAutoCompleteCharAdded quanto pelo cancelamento por backspace em
+; #Event_UpdateUI, pra nao duplicar a mesma decisao de modo em dois lugares.
+Procedure.i AutoCompleteMinCharsForGadget(Sci)
+  Protected DocPos = FindDocumentByGadget(Sci)
+  If DocPos < 0 Or Not SelectElement(Docs(), DocPos)
+    ProcedureReturn 1
+  EndIf
+  If Docs()\Mode = "ASM"
+    ProcedureReturn AssemblyOptionsCfg\AutoCompleteMinChars
+  EndIf
+  ProcedureReturn BasicOptionsCfg\AutoCompleteMinChars
+EndProcedure
+
+; Tratador de #Event_AutoComplete (adiado de #SCN_CHARADDED) - CharCode e o
+; caractere que acabou de ser inserido (ver *scinotify\ch em ScintillaCall-
+; Back). Documentos "DMX"/"BAS" usam BasicOptionsCfg; "ASM" usa
+; AssemblyOptionsCfg (Configurar -> Assembly...); markdown fica de fora, sem
+; vocabulario. So chama ShowAutoComplete no exato instante em que a palavra
+; sendo digitada atinge o minimo configurado - depois disso o proprio
+; Scintilla filtra o popup ja aberto conforme mais letras entram, sem
+; precisar remontar a lista (que varre o documento inteiro atras de
+; variaveis/rotulos) a cada tecla. O conjunto de "caracteres de palavra" que
+; conta pro gatilho tambem muda por modo: Z80_IsWordChar (asm, aceita
+; $/./?/@) vs IsWordChar (basic, alnum+"_").
+Procedure HandleAutoCompleteCharAdded(Sci, CharCode)
+  Protected DocPos = FindDocumentByGadget(Sci)
+  If DocPos < 0 Or Not SelectElement(Docs(), DocPos)
+    ProcedureReturn
+  EndIf
+
+  Protected DocMode.s = Docs()\Mode
+  Protected Ch.s = Chr(CharCode)
+  Protected IsWordCh.b, Enabled.b
+
+  If DocMode = "ASM"
+    IsWordCh = Z80_IsWordChar(Ch)
+    Enabled  = AssemblyOptionsCfg\AutoCompleteEnabled
+  ElseIf DocMode = "DMX" Or DocMode = "BAS"
+    IsWordCh = IsWordChar(Ch)
+    Enabled  = BasicOptionsCfg\AutoCompleteEnabled
+  Else
+    ProcedureReturn
+  EndIf
+
+  If Not Enabled
+    ProcedureReturn
+  EndIf
+
+  Protected MinChars = AutoCompleteMinCharsForGadget(Sci)
+
+  If IsWordCh
+    Protected Pos = ScintillaSendMessage(Sci, #SCI_GETCURRENTPOS)
+    Protected WStart = ScintillaSendMessage(Sci, #SCI_WORDSTARTPOSITION, Pos, #True)
+    If Pos - WStart = MinChars
+      ShowAutoComplete(Sci)
+    EndIf
+  ElseIf ScintillaSendMessage(Sci, #SCI_AUTOCACTIVE)
+    ScintillaSendMessage(Sci, #SCI_AUTOCCANCEL)
+  EndIf
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -2487,6 +2911,48 @@ Procedure.b OfferSaveProject()
   ProcedureReturn SaveProject(#True)
 EndProcedure
 
+; Arquivo -> Salvar Tudo: salva cada aba aberta (na ordem) mais o projeto,
+; numa acao so. SaveDocument() so opera na aba ATIVA no momento (ver seu
+; comentario) - nao tem parametro pra apontar pra uma aba especifica -
+; entao o loop abaixo alterna a aba ativa a cada iteracao via SetActiveTab()
+; e restaura a aba que estava ativa antes no final. Continua salvando as
+; abas seguintes mesmo se o usuario cancelar o dialogo "Salvar como..." de
+; uma aba ainda sem nome (melhor esforco, uma aba cancelada nao deve travar
+; o salvamento das outras); o retorno indica se TUDO foi salvo com sucesso.
+;
+; O projeto so e salvo se: ja tem um arquivo .msxproject permanente (nesse
+; caso SaveProject(#False) e barato/silencioso, ver seu proprio guard) OU e
+; o projeto temporario mas com conteudo de verdade (sprites/alfabetos/sons/
+; etc, mesmo criterio de OfferSaveProject() via
+; ProjectDB::HasUnsavedContent()) - sem isso, "Salvar Tudo" num projeto
+; temporario vazio forçaria sempre um dialogo "Salvar projeto como..." so
+; pra salvar dois arquivos de texto soltos, o que seria surpreendente; e
+; sem o dialogo de confirmacao do OfferSaveProject() porque aqui o usuario
+; ja pediu explicitamente pra salvar tudo, perguntar de novo seria redundante.
+Procedure.b SaveAllDocuments()
+  Protected SavedActive = ActiveTabPosition
+  Protected Position, AllOK.b = #True
+
+  For Position = 0 To ListSize(Docs()) - 1
+    SetActiveTab(Position)
+    If Not SaveDocument(#False)
+      AllOK = #False
+    EndIf
+  Next
+
+  If SavedActive >= 0 And SavedActive < ListSize(Docs())
+    SetActiveTab(SavedActive)
+  EndIf
+
+  If Not ProjectDB::IsTemp() Or ProjectDB::HasUnsavedContent()
+    If Not SaveProject(#False)
+      AllOK = #False
+    EndIf
+  EndIf
+
+  ProcedureReturn AllOK
+EndProcedure
+
 ; Versao/build/data sao constantes de compilacao injetadas pelo build.ps1
 ; (via /CONSTANT) - ver fallback no topo do arquivo para compilacao direto
 ; pela IDE do PureBasic.
@@ -3305,6 +3771,8 @@ EditorCfg_Load()
 EditorCfg_LoadCustomFonts()
 ApplyTheme()
 BadigCfg_Load()
+BasicOptionsCfg_Load()
+AssemblyOptionsCfg_Load()
 
 ; Sem nenhum parametro de linha de comando (uso normal, clicando no .exe),
 ; ja abre o projeto implicito "noname.msxproject" de cara, pra qualquer
@@ -3341,6 +3809,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuBar()
     MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+K D")
     MenuItem(#Menu_SaveAs,   "Salvar como..." + Chr(9) + "Ctrl+Shift+S")
+    MenuItem(#Menu_SaveAll,  "Salvar Tudo" + Chr(9) + "Ctrl+Alt+S")
     MenuBar()
     MenuItem(#Menu_DignifiedToAscii, "Dignified -> ASCII nativo (.amx)...")
     MenuItem(#Menu_DignifiedToTokenized, "Dignified -> tokenizado nativo (.bmx)...")
@@ -3387,6 +3856,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Configurar")
     MenuItem(#Menu_ConfigureBadig, "Basic Dignified...")
     MenuItem(#Menu_ConfigureEditor, "Editor...")
+    MenuItem(#Menu_ConfigureBasicOptions, "Basic Options...")
+    MenuItem(#Menu_ConfigureAssemblyOptions, "Assembly...")
     MenuItem(#Menu_ConfigureMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_ConfigureN80, "N80...")
     MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
@@ -3410,6 +3881,7 @@ AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_O, #Menu_Op
 ; Ctrl+S NAO fica com "Salvar" - no teclado WordStar/JOE (ver WordStarKeys.pbi)
 ; Ctrl+S move o cursor para a esquerda. Salvar passou a ser Ctrl+K D.
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_S, #Menu_SaveAs)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_S, #Menu_SaveAll)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Alt | #PB_Shortcut_W, #Menu_CloseTab)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F5, #Menu_RunBasic)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_F5, #Menu_AssembleZ80)
@@ -3426,7 +3898,7 @@ WS_CreateHelpGadget()
 AddDocumentTab()
 ResizeInterface()
 
-Define Event, Quit, Position, AllSaved, Discard, ChangedGadget, DocPos
+Define Event, Quit, Position, AllSaved, Discard, ChangedGadget, DocPos, AcPos, AcStart
 Define MouseX, MouseY, HitPos, NewHoverTab, NewHoverClose
 
 Repeat
@@ -3490,6 +3962,9 @@ Repeat
 
         Case #Menu_SaveAs
           SaveDocument(#True)
+
+        Case #Menu_SaveAll
+          SaveAllDocuments()
 
         Case #Menu_TokenizeNative
           SaveAsTokenizedNative()
@@ -3599,6 +4074,12 @@ Repeat
             ResizeInterface()
           EndIf
 
+        Case #Menu_ConfigureBasicOptions
+          BasicOptionsCfg_OpenSettingsWindow(#MainWindow)
+
+        Case #Menu_ConfigureAssemblyOptions
+          AssemblyOptionsCfg_OpenSettingsWindow(#MainWindow)
+
         Case #Menu_ConfigureMsxBas2Rom
           MsxBas2RomSettings_OpenWindow(#MainWindow)
 
@@ -3700,6 +4181,16 @@ Repeat
         RedrawRuler()
         UpdateStatusBar()
       EndIf
+      ; Apaga o popup de auto completar se um backspace derrubou a palavra
+      ; sendo digitada abaixo do minimo de letras configurado (SCN_CHARADDED
+      ; so dispara ao inserir, entao o encolhimento e pego aqui).
+      If ScintillaSendMessage(ChangedGadget, #SCI_AUTOCACTIVE)
+        AcPos = ScintillaSendMessage(ChangedGadget, #SCI_GETCURRENTPOS)
+        AcStart = ScintillaSendMessage(ChangedGadget, #SCI_WORDSTARTPOSITION, AcPos, #True)
+        If AcPos - AcStart < AutoCompleteMinCharsForGadget(ChangedGadget)
+          ScintillaSendMessage(ChangedGadget, #SCI_AUTOCCANCEL)
+        EndIf
+      EndIf
 
     Case #Event_Rehighlight
       ChangedGadget = EventGadget()
@@ -3715,6 +4206,9 @@ Repeat
         EndIf
       EndIf
       HighlightDocument(ChangedGadget)
+
+    Case #Event_AutoComplete
+      HandleAutoCompleteCharAdded(EventGadget(), EventData())
 
     Case #Event_WS_CloseTab
       ; ^KX (salvar e fechar) / ^KQ (fechar) do teclado WordStar/JOE - ver

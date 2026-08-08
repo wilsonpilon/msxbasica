@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.27.3** ("`TORRE DE CONTROLE`") — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.29.5** ("`PALPITEIRO`") — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -82,6 +82,17 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   - `Configurar → Editor...` (`editor/EditorSettings.pbi`) — fonte (só monoespaçadas, com suporte a
     pasta de fontes customizadas carregadas em memória), tema, estilo de abas, caminho de instalação do
     editor.
+  - `Configurar → Basic Options...` (`editor/BasicOptionsSettings.pbi`) e `Configurar → Assembly...`
+    (`editor/AssemblyOptionsSettings.pbi`) — liga/desliga o auto completar (ver item abaixo), quantidade
+    de letras pra ativar e caixa das sugestões, uma tela por modo (BASIC/Dignified e Assembly guardam
+    preferência independente).
+- **Auto completar** — sugere, conforme você digita, palavras-chave do MSX-BASIC/Basic Dignified
+  (incluindo os 87 wrappers `.NB_*` do NestorBASIC) e variáveis já usadas no documento em abas
+  `.dmx`/`.bas`; mnemônicos/registradores/diretivas do Z80 e rótulos já definidos no documento em abas
+  `.asm`. Navegação 100% nativa do Scintilla (Enter aceita, setas navegam, Esc cancela, digitar mais
+  estreita a lista sozinho) — nenhuma tecla nova pra aprender. Caixa das sugestões configurável
+  (maiúsculas/minúsculas/"como digitado") separadamente para BASIC e Assembly; variáveis/rótulos/
+  `.NB_*` sempre mantêm a grafia original do documento. Ver [`docs/MANUAL.md`](docs/MANUAL.md#auto-completar).
 - **CLI de teste de regressão** (`editor/tools/DigTestCli.pb`) — roda o pipeline completo
   (Dignified → ASCII → tokenizado) fora do editor, para validar mudanças no pré-processador/tokenizador.
 - **Gerenciador de disco MSX** — `editor/MSXDisk.pbi` (FAT12, incorporado de vez ao editor — o
@@ -112,6 +123,8 @@ Python — que serve de referência de comportamento a ser portada, não de depe
   IDE pergunta se quer salvar (e onde, com nome definitivo) antes de fechar. O projeto também guarda
   uma cópia sempre atualizada do conteúdo de cada aba de texto já salva em disco e o diretório de
   trabalho (pasta do último arquivo salvo, ou o diretório corrente enquanto nada foi salvo ainda).
+  **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`) salva todas as abas abertas (uma por uma, na ordem, pedindo
+  "Salvar como..." pras que ainda não têm nome) e o projeto atual numa ação só.
 - **Editor de sprites** (`editor/SpriteEditorGui.pbi`, menu **Criar → Sprite...**) — grade clicável
   8×8 ou 16×16 com a **palheta original de 16 cores do MSX1** (TMS9918), e radios **MSX1** (sprite
   inteiro com uma única cor) / **MSX2** (uma cor por linha, aplicada automaticamente conforme o
@@ -1704,6 +1717,34 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   Clear) e Status Info (log passivo de tudo que o openMSX reporta). Detalhe completo em
   `docs/RELEASE_NOTES.md` e `docs/SPEC.md` (módulo 12). Codinome **"TORRE DE CONTROLE"** — o usuário
   escolheu entre algumas opções temáticas de "sala de controle" propostas.
+- **2026-08-08 (mesma sessão) — auto completar + Arquivo → Salvar Tudo, codinome `PALPITEIRO`
+  (`7.29.5`)**: pedido do usuário em três rodadas. Primeiro, **auto completar em abas MSX-BASIC/
+  Dignified**: mostra sugestões (palavras-chave clássicas, instruções do Basic Dignified e variáveis já
+  usadas no documento, coletadas ao vivo do texto) assim que a palavra digitada atinge um mínimo de
+  letras configurável, com uma tela nova `Configurar → Basic Options...` (habilitar, mínimo de letras,
+  caixa das sugestões). Navegação inteira é comportamento nativo do popup do Scintilla (Enter aceita a
+  primeira opção, setas navegam, Esc cancela) — nenhuma tecla nova precisou ser interceptada, e não há
+  conflito com o teclado WordStar/JOE (que só intercepta combinações com Ctrl). Segundo, o usuário
+  perguntou se dava pra detectar estatisticamente se o usuário digita em maiúsculas ou minúsculas; a
+  alternativa escolhida foi um campo de configuração explícito ("Como digitado"/"Sempre maiúsculas"/
+  "Sempre minúsculas") em vez de heurística sobre o documento inteiro — mais previsível, e "Como
+  digitado" já cobre o caso comum (`pri` sugere `print`, `PRI` sugere `PRINT`) sem precisar escanear
+  nada. Terceiro, dois pedidos numa mensagem só: **os 87 wrappers `.NB_*` do NestorBASIC** entraram na
+  lista de sugestões (fonte única com `Ajuda → NestorBASIC...`, via `NBHelp_Topics()\Wrapper` — nunca
+  diverge da ajuda), e **auto completar chegou também nas abas Assembly (`.asm`)** — mnemônicos/
+  registradores/diretivas do Z80 (`Z80Asm.pbi` ganhou `MnemonicList()`/`RegisterList()`/
+  `DirectiveList()`/`OperatorWordList()`, expondo pra fora do módulo o vocabulário que já alimentava o
+  destaque de sintaxe) e rótulos já definidos no documento (mesma regra clássica MACRO-80/Z80 do
+  highlighter: primeira palavra da linha que não é reservada = rótulo), com tela própria
+  `Configurar → Assembly...` (mesmos três campos de `Basic Options...`, mas independente — cada modo
+  guarda sua própria preferência de caixa). Por último, **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`): salva
+  todas as abas abertas (na ordem, pedindo "Salvar como..." só pras que ainda não têm nome, sem travar
+  as demais se uma for cancelada) e o projeto atual numa ação só — só grava o projeto se ele já tiver
+  arquivo permanente ou se o projeto temporário tiver conteúdo de verdade (mesmo critério de
+  `OfferSaveProject()`, mas sem o diálogo de confirmação — pedir "Salvar Tudo" já é a confirmação).
+  Codinome **"PALPITEIRO"** — gíria brasileira pra quem "dá palpite" sem ser convidado, exatamente o que
+  um motor de auto completar faz (e de bom humor, já que ele acerta na maioria das vezes). Detalhe
+  completo em `docs/RELEASE_NOTES.md` e `docs/SPEC.md` (módulo 25, mais 1b para o Salvar Tudo).
 
 ## Ferramentas e ambiente
 

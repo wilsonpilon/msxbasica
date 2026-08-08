@@ -6,6 +6,83 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.29.5 — "PALPITEIRO" (2026-08-08)
+
+**Tema da versão**: o editor aprendeu a "dar palpite" — auto completar de verdade, tanto em BASIC/
+Basic Dignified quanto em Assembly, mais um jeito de salvar tudo de uma vez sem precisar passar aba por
+aba.
+
+### Novidades
+
+- **Auto completar em abas `.dmx`/`.bas`** — sugere palavras-chave clássicas do MSX-BASIC, instruções
+  do Basic Dignified, comandos MSXBAS2ROM (quando aplicável) e variáveis já usadas no documento
+  (coletadas ao vivo do texto, sem precisar de `DECLARE`), assim que a palavra digitada atinge um
+  mínimo configurável de letras. Nova tela **`Configurar → Basic Options...`** (habilitar, mínimo de
+  letras, caixa das sugestões).
+- **Os 87 wrappers `.NB_*` do NestorBASIC** entraram na lista de sugestões — fonte única com
+  `Ajuda → NestorBASIC...`, nunca diverge dela. Basta digitar a partir da letra depois do `.`
+  (`.NB_Rea` já sugere).
+- **Auto completar em abas Assembly (`.asm`)** — mnemônicos, registradores/condições e diretivas do
+  Z80 (incluindo as com ponto do dialeto N80), mais rótulos já definidos no documento, pela mesma
+  regra clássica MACRO-80/Z80 que o destaque de sintaxe já usa. Nova tela própria
+  **`Configurar → Assembly...`**, independente da tela de BASIC (cada modo guarda sua própria caixa).
+- **Caixa das sugestões configurável** — "Como digitado" (`pri` sugere `print`, `PRI` sugere `PRINT`),
+  sempre maiúsculas ou sempre minúsculas. Variáveis, rótulos e nomes `.NB_*` sempre mantêm a grafia
+  original do documento, nunca reformatados.
+- **Navegação 100% nativa do Scintilla** — Enter/Tab aceitam a opção destacada, setas navegam, Esc
+  cancela, digitar mais estreita a lista sozinha. Nenhuma tecla nova foi interceptada; sem conflito com
+  o teclado WordStar/JOE (que só usa combinações com Ctrl).
+- **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`) — salva todas as abas abertas (na ordem, pedindo "Salvar
+  como..." só pras que ainda não têm nome, sem travar as demais se uma for cancelada) e o projeto atual
+  numa ação só. Só grava o projeto se ele já tiver arquivo permanente ou se o projeto temporário tiver
+  conteúdo de verdade — não força um diálogo "Salvar projeto como..." vazio à toa.
+
+### Bugs corrigidos nesta versão
+
+- Nenhum — versão inteira de recursos novos, sem correção de regressão conhecida.
+
+### Documentação nova
+
+- `docs/MANUAL.md` ganhou a seção **Auto completar** (nova, com tabela de navegação e o que é sugerido
+  em cada modo) e a entrada de **Salvar Tudo** na seção Arquivo; `docs/SPEC.md` ganhou os módulos **25**
+  (Auto completar) e **1b** (Salvar Tudo); `README.md` atualizado (versão, feature list, changelog).
+
+### Bastidores
+
+- **Por que um campo de configuração em vez de detectar a caixa predominante do documento**: o usuário
+  perguntou diretamente se dava pra "ver estatisticamente" se a maioria dos comandos já digitados
+  estava em maiúsculo ou minúsculo. A alternativa de detecção estatística foi descartada — precisaria
+  reescanear o documento inteiro a cada sugestão (custo), e o resultado dependeria do histórico inteiro
+  do arquivo em vez da última coisa digitada (menos previsível). "Como digitado" resolve o caso comum
+  sem nenhum dos dois problemas.
+- **Por que os mapas de palavra-chave do Z80 não estavam acessíveis de fora do módulo**: `Z80Asm.pbi`
+  usa `DeclareModule`/`Module` de verdade (não só prefixo de nome, ver módulo 2 do `SPEC.md`) — os
+  `Global NewMap KwMnemonic()` etc. são declarados dentro do `Module`, não do `DeclareModule`, então
+  ficam privados por escopo do PureBasic. Resolvido com 4 novos procedimentos exportados
+  (`MnemonicList()`/`RegisterList()`/`DirectiveList()`/`OperatorWordList()`) que devolvem o vocabulário
+  como string espaço-separada — mesmo formato que `FillKeywordMap()` já consome do lado de fora,
+  nenhuma abstração nova precisou ser inventada.
+- **Por que o "." do `.NB_*`/rótulos relativos não precisou de tratamento especial**: o conjunto de
+  "caracteres de palavra" que o Scintilla usa pra decidir onde uma palavra começa não inclui `.` — a
+  fronteira de palavra já para exatamente depois do ponto sozinha, então guardar os nomes sem o `.` no
+  mapa de candidatos e deixar o Scintilla substituir só a partir dali já produz o resultado certo, sem
+  nenhum código extra pra detectar/preservar o `.` manualmente.
+- Codinome **"PALPITEIRO"** — gíria brasileira pra quem "dá palpite" sem ser convidado, exatamente o
+  que um motor de auto completar faz por natureza (torcendo pra acertar na maioria das vezes).
+
+### Ainda pendente
+
+- `CollectDocumentVariables()`/`CollectZ80Labels()` são varreduras leves (não um tokenizador completo)
+  — não distinguem com precisão texto dentro de comentário/string do resto do código. Na prática, pouco
+  ruído real (nomes de variável/rótulo plausíveis raramente aparecem por acaso dentro de comentários ou
+  literais de string), mas é uma limitação conhecida, não testada exaustivamente contra casos extremos.
+- Sem harness de teste automatizado dedicado (`editor/tools/*Cli.pb`) para essa frente — validado só
+  por compilação limpa e smoke test de abertura do `.exe`; teste de interação real (digitar, ver o
+  popup, navegar, aceitar uma sugestão) não foi automatizado neste ambiente (sem GUI automation nativa
+  Win32 disponível, só a de browser) — recomendado testar manualmente antes de confiar às cegas.
+
+---
+
 ## 7.27.3 — "TORRE DE CONTROLE" (2026-08-08)
 
 **Tema da versão**: o controle remoto do openMSX deixou de ser um console de comando avulso e virou um
