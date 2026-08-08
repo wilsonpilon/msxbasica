@@ -64,6 +64,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 23 | Ajuda SEE Tracker — estudo do formato SEE/.SEE (`Ajuda → SEE Tracker...`) | baixo (estudo) | **Implementado (2026-08-06)** — `editor/SeeTrackerHelpData.pbi`/`SeeTrackerHelpGui.pbi`, manual original + formato de arquivo `.SEE` + mecanismo real do driver de replay (`see/SEE3PLAY.ASC`). Preparou o terreno pro tracker de verdade, construído na sequência da mesma sessão — ver módulo 24 |
 | 24 | Editor SEE Tracker — efeitos sonoros compatíveis com .SEE (`Criar → SEE Tracker...`) | alto | **Implementado (2026-08-06), estendido (mesma sessão)** — `editor/SeeTrackerEditorGui.pbi` (janela) + `editor/SeeTrackerSynth.pbi` (modelo de dados/interpretador/gerador/**importador**) + `editor/SeeTrackerDriverAsm.pbi` (porta do driver de replay, montada em tempo real pelo assembler Z80 nativo, `editor/Z80Asm.pbi`). Integrado ao sistema de projeto (módulo 13, tabela `see_sfx`). **Importar .SEE...** lê arquivos reais do editor original (validado contra `see/FIREBIRD.SEE`, 33 SFX). Ver seção 24 |
 | 25 | Auto completar ("Palpiteiro") — MSX-BASIC/Dignified e Assembly | médio | **Implementado (2026-08-08)** — sugestões via popup nativo do Scintilla (`SCI_AUTOCSHOW`), disparadas ao digitar. Abas `.dmx`/`.bas`: palavras-chave clássicas + Dignified + MSXBAS2ROM (quando aplicável) + os 87 wrappers `.NB_*` do NestorBASIC + variáveis do documento; config em `editor/BasicOptionsSettings.pbi` (`Configurar → Basic Options...`). Abas `.asm`: mnemônicos/registradores/diretivas do Z80 (`Z80Asm.pbi`) + rótulos do documento; config em `editor/AssemblyOptionsSettings.pbi` (`Configurar → Assembly...`). Ver seção 25 |
+| 26 | Internacionalização (i18n) da UI — inglês (e depois espanhol/holandês/italiano) | alto (mecânico, incremental) | **Planejado, não iniciado (2026-08-08)** — usuário pediu pra registrar a ideia antes de decidir quando começar. Escopo inicial: só a **UI** (menus/botões/diálogos), português continua existindo como opção, inglês é o padrão sem configuração salva; documentação (`*HelpData.pbi`/`*DictData.pbi`/`*ManualData.pbi`, ~13.500 linhas de prosa) fica pra depois, de propósito. Ver seção 26 |
 
 ## Decisões fechadas
 
@@ -3510,6 +3511,70 @@ nota equivalente já registrada no guia de verificação deste projeto (`CLAUDE.
 approach"). Recomendado testar manualmente antes de confiar às cegas: abrir uma aba `.dmx`/`.asm` real,
 digitar um prefixo de 3+ letras e conferir a lista, a navegação por teclado e o efeito de cada opção de
 caixa.
+
+### 26. Internacionalização (i18n) da UI — planejado, não iniciado (2026-08-08)
+
+Usuário perguntou a viabilidade de ter a UI também em inglês (português continua existindo), com um
+olho em espanhol/holandês/italiano depois — idiomas comuns em software de MSX da época. Pediu só pra
+**estudar** por enquanto (sem código); registrado aqui pra não perder a ideia até decidir quando
+começar. Nada abaixo foi implementado.
+
+**Escopo decidido com o usuário**:
+- Só a **UI** (menus, botões, diálogos, rótulos) por enquanto. Documentação (`Ajuda → ...`) fica pra
+  **bem depois**, deliberadamente — é uma frente maior que a UI inteira (ver levantamento abaixo).
+- Português continua existindo como opção — não é substituição, é adição.
+- Sem arquivo de configuração salvo ainda (primeira execução), o idioma inicial é **inglês**.
+
+**Levantamento feito no código real (2026-08-08)**, antes de decidir arquitetura:
+- **Nenhuma infraestrutura de i18n existe hoje** — zero tabela de string, zero `Global Map` de
+  tradução, tudo é literal em português espalhado pelo código-fonte.
+- `editor/*.pb`/`*.pbi`: 65 arquivos, ~61.600 linhas. Ocorrências de chamadas que carregam texto de UI:
+  `MenuItem` 70, `TextGadget` 326, `ButtonGadget` 293, `CheckBoxGadget` 40, `MessageRequester` 209,
+  `OpenWindow` (títulos) 113, `AddGadgetItem` 130, `SetGadgetText` 542 (parte é valor dinâmico, não
+  string fixa) — mais de 1.000 pontos de string literal ao todo, espalhados em ~55 arquivos.
+- Os arquivos de **conteúdo de Ajuda** (`BasicDignifiedHelpData.pbi`, `MsxDignifiedHelpData.pbi`,
+  `NestorBasicHelpData.pbi`, `OpenMsxHelpData.pbi`, `SeeTrackerHelpData.pbi`,
+  `MsxBasic2PlusDictData.pbi`, `MsxBasicDictData.pbi`, `MsxBasic2PlusManualData.pbi`,
+  `MsxBasicManualData.pbi`) somam sozinhos **13.507 linhas** de prosa em português — quase 1/4 do
+  código do editor. Confirma que documentação é mesmo uma frente separada e maior, correto adiar.
+
+**Arquitetura recomendada (não implementada)**:
+1. `Global NewMap UIText.s()` preenchido a partir de um arquivo por idioma (`Lang_PT.pbi`,
+   `Lang_EN.pbi`, depois `Lang_ES.pbi`/`Lang_NL.pbi`/`Lang_IT.pbi`) — mesmo estilo de arquivo de dados
+   já usado em `NBHelp_Add()`/`*DictData.pbi`, só que chave (ID estável, ex. `"Menu_Save"`) → texto
+   naquele idioma, em vez de struct de tópico de ajuda.
+2. Helper `UI(Key.s)` fazendo o lookup, com fallback pro português (ou pra própria chave) se a
+   tradução não existir — permite rollout **parcial**: chrome principal em inglês enquanto uma tela de
+   editor mais obscura ainda mostra português, sem quebrar nada.
+3. Cada um dos >1.000 pontos levantados acima precisa trocar a string literal por `UI("Algum_Id")` —
+   esse é o trabalho mecânico grande, arquivo por arquivo. É o único jeito de a arquitetura funcionar;
+   não tem atalho.
+4. **Troca de idioma exige reiniciar o app** (decisão recomendada, não implementada) — PureBasic não
+   tem "re-skin ao vivo" de gadget; teria que fechar/reconstruir todas as ~40 janelas abertas sob
+   demanda pra trocar em tempo real, custo desproporcional ao benefício. Reiniciar é trivial.
+5. Config de idioma: só mais um campo de settings (JSON, mesmo padrão de `EditorSettings.pbi`), zero
+   complexidade extra.
+
+**Risco identificado, não só custo de tradução**: este código posiciona gadgets em **coordenadas pixel
+fixas e literais** (`TextGadget(#PB_Any, 24, 100, 60, 24, ...)`, confirmado no próprio código de
+`BasicOptionsSettings.pbi`/`AssemblyOptionsSettings.pbi`, módulo 25). Holandês e italiano tendem a
+gerar texto mais longo que português/inglês pra mesma frase — um botão/rótulo dimensionado exatos pro
+texto em PT pode cortar texto em outro idioma. Não trava o projeto, mas significa que parte da migração
+não é só trocar string — alguns gadgets vão precisar de largura calculada (`TextWidth()`) em vez de
+número fixo.
+
+**Estratégia incremental sugerida** (não decidida com o usuário ainda, só a ideia registrada):
+1. Infraestrutura (tabela + helper + tela de idioma) — pequeno, contido.
+2. Chrome sempre visível: menu principal + diálogos comuns de salvar/abrir/erro — maior valor por
+   esforço, ~150-250 strings.
+3. Cada editor/tela de configuração, um por vez (Sprite, Alfabeto, Screen 0/1/2, PSG, MML, SEE Tracker,
+   Disco, Hexa, telas de configuração...) — mesmo ritmo módulo-por-módulo-por-sessão que este projeto já
+   usa pra construir cada editor (ver histórico deste `docs/SPEC.md`), só que "traduzir módulo X" vira
+   mais um tipo de tarefa ao lado de "construir módulo X".
+4. Espanhol/Holandês/Italiano depois: uma vez a arquitetura (passo 1) em pé, cada idioma novo é **só**
+   um arquivo `Lang_XX.pbi` a mais com as mesmas chaves traduzidas — zero mudança nos >1.000 pontos de
+   chamada, que já estariam desacoplados do texto literal. O caro é a migração inicial (passo 2/3), não
+   os idiomas extras depois dela.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
