@@ -367,6 +367,7 @@ Module Z80Lib
       EndIf
       If FLen < 1 Or PeekA(BufAddr\P + FLen - 1) <> $9E
         FreeMemory(BufAddr\P)
+        ForEach Chunks() : FreeMemory(Chunks()\Ptr) : Next
         LBLastError = Path + " nao parece um .REL valido (nao termina no item Fim de Arquivo)"
         ProcedureReturn #False
       EndIf
@@ -374,6 +375,7 @@ Module Z80Lib
       Protected NewList TheseProgs.Z80LibProgramRange()
       If Not IndexLibraryBuffer(BufAddr\P, FLen, TheseProgs())
         FreeMemory(BufAddr\P)
+        ForEach Chunks() : FreeMemory(Chunks()\Ptr) : Next
         LBLastError = Path + ": erro fazendo parse (formato estendido esperado)"
         ProcedureReturn #False
       EndIf
@@ -388,6 +390,7 @@ Module Z80Lib
         EndIf
         If Dup
           FreeMemory(BufAddr\P)
+          ForEach Chunks() : FreeMemory(Chunks()\Ptr) : Next
           LBLastError = "Programa '" + TheseProgs()\Name + "' ja existe na biblioteca ou esta duplicado nos arquivos de entrada"
           ProcedureReturn #False
         EndIf

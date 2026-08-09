@@ -472,14 +472,11 @@ Procedure Screen1Editor_OpenWindow(ParentWindow)
   Protected WinW = RightX + RightColW + 24
   Protected WinH = ToolPanelY + #Scr1Ed_ToolPanelH + 20
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Tela MSX (SCREEN 1)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Tela MSX (SCREEN 1)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected G_Canvas = CanvasGadget(#PB_Any, LeftX, CanvasY, CanvasW, CanvasH)
 
@@ -679,15 +676,13 @@ Procedure Screen1Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected InkIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If InkIdx >= 0 And InkIdx <= 15
-                  OctetInk(CurrentByte >> 3) = InkIdx
-                  Dirty = #True
-                  Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkIdx, Palette())
-                  Scr1Ed_RedrawCanvas(G_Canvas, GridBytes(), CharsetBytes(), OctetInk(), OctetPaper(), Palette())
-                  Scr1Ed_DrawCharPicker(G_CharPicker, CharsetBytes(), OctetInk(), OctetPaper(), Palette(), CurrentByte)
-                EndIf
+              Protected InkIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If InkIdx >= 0
+                OctetInk(CurrentByte >> 3) = InkIdx
+                Dirty = #True
+                Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkIdx, Palette())
+                Scr1Ed_RedrawCanvas(G_Canvas, GridBytes(), CharsetBytes(), OctetInk(), OctetPaper(), Palette())
+                Scr1Ed_DrawCharPicker(G_CharPicker, CharsetBytes(), OctetInk(), OctetPaper(), Palette(), CurrentByte)
               EndIf
             EndIf
 
@@ -695,15 +690,13 @@ Procedure Screen1Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected PaperIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If PaperIdx >= 0 And PaperIdx <= 15
-                  OctetPaper(CurrentByte >> 3) = PaperIdx
-                  Dirty = #True
-                  Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperIdx, Palette())
-                  Scr1Ed_RedrawCanvas(G_Canvas, GridBytes(), CharsetBytes(), OctetInk(), OctetPaper(), Palette())
-                  Scr1Ed_DrawCharPicker(G_CharPicker, CharsetBytes(), OctetInk(), OctetPaper(), Palette(), CurrentByte)
-                EndIf
+              Protected PaperIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If PaperIdx >= 0
+                OctetPaper(CurrentByte >> 3) = PaperIdx
+                Dirty = #True
+                Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperIdx, Palette())
+                Scr1Ed_RedrawCanvas(G_Canvas, GridBytes(), CharsetBytes(), OctetInk(), OctetPaper(), Palette())
+                Scr1Ed_DrawCharPicker(G_CharPicker, CharsetBytes(), OctetInk(), OctetPaper(), Palette(), CurrentByte)
               EndIf
             EndIf
 
@@ -877,6 +870,5 @@ Procedure Screen1Editor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

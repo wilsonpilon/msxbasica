@@ -89,15 +89,11 @@ EndProcedure
 
 Procedure.b AssemblyOptionsCfg_OpenSettingsWindow(ParentWindow)
   Protected WinW = 460, WinH = 370
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Assembly Options",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Assembly Options",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn #False
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-
-  DisableWindow(ParentWindow, #True)
 
   Protected G_Enabled = CheckBoxGadget(#PB_Any, 24, 24, 412, 24, "Habilitar auto completar")
   SetGadgetState(G_Enabled, AssemblyOptionsCfg\AutoCompleteEnabled)
@@ -162,8 +158,7 @@ Procedure.b AssemblyOptionsCfg_OpenSettingsWindow(ParentWindow)
     AssemblyOptionsCfg_Save()
   EndIf
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 
   ProcedureReturn Saved
 EndProcedure

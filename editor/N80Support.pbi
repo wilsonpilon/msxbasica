@@ -331,14 +331,11 @@ Procedure N80Settings_OpenWindow(ParentWindow)
   N80Cfg_Load()
 
   Protected WinW = 640, WinH = 336
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configurar - N80",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configurar - N80",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, WinW - 48, 40,
             "N80 (Nestor80), LinkStor80 e LibStor80 - assembler/linker/biblioteca Z80" + Chr(10) +
@@ -386,6 +383,5 @@ Procedure N80Settings_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

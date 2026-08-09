@@ -1459,14 +1459,11 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
     WinW = Cx
   EndIf
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar alfabeto MSX (Graphos III)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar alfabeto MSX (Graphos III)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   ; Barra de projeto: numero do alfabeto atual, navegacao entre os alfabetos
   ; ja registrados no projeto, tag (nome curto) e os botoes Novo/Registrar -
@@ -2331,6 +2328,42 @@ Procedure CharsetEditor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
+  FreeImage(FirstIcon)
+  FreeImage(PrevIcon)
+  FreeImage(NextIcon)
+  FreeImage(LastIcon)
+  FreeImage(NewAlphaIcon)
+  FreeImage(RegisterAlphaIcon)
+  FreeImage(CopyAlphaIcon)
+  FreeImage(PasteAlphaIcon)
+  FreeImage(OpenIcon)
+  FreeImage(SaveAsIcon)
+  FreeImage(GenLoopIcon)
+  FreeImage(GenDataIcon)
+  FreeImage(SaveBinIcon)
+  FreeImage(MarkStartIcon)
+  FreeImage(MarkEndIcon)
+  FreeImage(SelectAllIcon)
+  FreeImage(ClearBlockIcon)
+  FreeImage(CopyBlockIcon)
+  FreeImage(PasteBlockIcon)
+  FreeImage(RegisterIcon)
+  FreeImage(ClearIcon)
+  FreeImage(InvertIcon)
+  FreeImage(CopyCharIcon)
+  FreeImage(PasteCharIcon)
+  FreeImage(UndoIcon)
+  FreeImage(RedoIcon)
+  FreeImage(FlipHIcon)
+  FreeImage(FlipVIcon)
+  FreeImage(RotateIcon)
+  FreeImage(EraseAllIcon)
+  FreeImage(NarrowIcon)
+  FreeImage(ItalicIcon)
+  FreeImage(BoldIcon)
+  FreeImage(WideIcon)
+  FreeImage(BoldLeftIcon)
+  FreeImage(BoldRightIcon)
+  FreeImage(WideBoldIcon)
 EndProcedure

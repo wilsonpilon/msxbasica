@@ -1126,14 +1126,11 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   Protected ToolY2 = ToolY + ToolH + 8
   Protected CloseY = ToolY2 + ToolH + 14
   Protected WinH = CloseY + 30 + 15
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar sprite MSX",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar sprite MSX",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
   AddKeyboardShortcut(Win, #PB_Shortcut_Escape, #SpriteEd_CancelShortcut)
 
   ; Barra de projeto: numero do sprite atual, navegacao entre os sprites ja
@@ -1950,8 +1947,7 @@ Procedure SpriteEditor_OpenWindow(ParentWindow)
   Until Quit
 
   RemoveWindowTimer(Win, #SpriteEd_BlinkTimer)
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
   FreeImage(ClearIcon)
   FreeImage(InvertIcon)
   FreeImage(PencilIcon)

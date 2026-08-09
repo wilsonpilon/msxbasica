@@ -292,14 +292,29 @@ EndProcedure
 ; um StartDrawing/StopDrawing ja aberto pelo chamador (nao abre o proprio).
 Procedure Scr0Ed_DrawGlyphBitmap(Array CharsetBytes.a(2), ByteCode.i, X.i, Y.i, Zoom.i, InkRGB.l, PaperRGB.l)
   Box(X, Y, 8 * Zoom, 8 * Zoom, PaperRGB)
-  Protected PxRow, PxCol, ByteVal.a
+  ; Funde pixels de tinta adjacentes na mesma linha num Box() so (mesma
+  ; tecnica de Scr2Ed_RedrawCanvas, Screen2EditorGui.pbi) em vez de um
+  ; Box() por pixel - chamada por celula num redesenho de tela inteira
+  ; (ate #Scr0Ed_MaxCells celulas), entao o numero de Box() por glifo
+  ; importa no total.
+  Protected PxRow, PxCol, ByteVal.a, RunStart, InRun.b
   For PxRow = 0 To 7
     ByteVal = CharsetBytes(ByteCode, PxRow)
+    InRun = #False
     For PxCol = 0 To 7
       If ByteVal & (1 << (7 - PxCol))
-        Box(X + PxCol * Zoom, Y + PxRow * Zoom, Zoom, Zoom, InkRGB)
+        If Not InRun
+          RunStart = PxCol
+          InRun = #True
+        EndIf
+      ElseIf InRun
+        Box(X + RunStart * Zoom, Y + PxRow * Zoom, (PxCol - RunStart) * Zoom, Zoom, InkRGB)
+        InRun = #False
       EndIf
     Next
+    If InRun
+      Box(X + RunStart * Zoom, Y + PxRow * Zoom, (8 - RunStart) * Zoom, Zoom, InkRGB)
+    EndIf
   Next
 EndProcedure
 
@@ -513,14 +528,11 @@ EndProcedure
 ; decidir o que fazer com o conteudo excedente, deixado de fora deste v1).
 Procedure.i Scr0Ed_AskWidth(ParentWindow)
   Protected WinW = 380, WinH = 180
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Nova tela SCREEN 0",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Nova tela SCREEN 0",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn 0
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, WinW - 48, 40,
     "Escolha a largura da tela (WIDTH). 40 colunas e o padrao MSX1; 80 colunas precisa de MSX2+.")
@@ -552,8 +564,7 @@ Procedure.i Scr0Ed_AskWidth(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
   ProcedureReturn Result
 EndProcedure
 
@@ -645,14 +656,11 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
   Protected WinW = RightX + RightColW + 24
   Protected WinH = ToolPanelY + #Scr0Ed_ToolPanelH + 20
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Tela MSX (SCREEN 0)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Tela MSX (SCREEN 0)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   ; --- Canvas (largura fixa na tela, zoom se ajusta - ver Scr0Ed_ZoomForWidth) ---
   Protected G_Canvas = CanvasGadget(#PB_Any, LeftX, CanvasY, CanvasWRef, CanvasHMax)
@@ -891,15 +899,13 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected InkIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If InkIdx >= 0 And InkIdx <= 15
-                  Ink = InkIdx
-                  Dirty = #True
-                  Scr2Ed_RedrawMiniPalette(G_PaletteInk, Ink, Palette())
-                  Zoom = Scr0Ed_ZoomForWidth(Width)
-                  Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
-                EndIf
+              Protected InkIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If InkIdx >= 0
+                Ink = InkIdx
+                Dirty = #True
+                Scr2Ed_RedrawMiniPalette(G_PaletteInk, Ink, Palette())
+                Zoom = Scr0Ed_ZoomForWidth(Width)
+                Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
               EndIf
             EndIf
 
@@ -907,15 +913,13 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected PaperIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If PaperIdx >= 0 And PaperIdx <= 15
-                  Paper = PaperIdx
-                  Dirty = #True
-                  Scr2Ed_RedrawMiniPalette(G_PalettePaper, Paper, Palette())
-                  Zoom = Scr0Ed_ZoomForWidth(Width)
-                  Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
-                EndIf
+              Protected PaperIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If PaperIdx >= 0
+                Paper = PaperIdx
+                Dirty = #True
+                Scr2Ed_RedrawMiniPalette(G_PalettePaper, Paper, Palette())
+                Zoom = Scr0Ed_ZoomForWidth(Width)
+                Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
               EndIf
             EndIf
 
@@ -923,15 +927,13 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown And Width = 80
               MouseX = GetGadgetAttribute(G_PaletteInk2, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PaletteInk2, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected Ink2Idx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If Ink2Idx >= 0 And Ink2Idx <= 15
-                  Ink2 = Ink2Idx
-                  Dirty = #True
-                  Scr2Ed_RedrawMiniPalette(G_PaletteInk2, Ink2, Palette())
-                  Zoom = Scr0Ed_ZoomForWidth(Width)
-                  Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
-                EndIf
+              Protected Ink2Idx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If Ink2Idx >= 0
+                Ink2 = Ink2Idx
+                Dirty = #True
+                Scr2Ed_RedrawMiniPalette(G_PaletteInk2, Ink2, Palette())
+                Zoom = Scr0Ed_ZoomForWidth(Width)
+                Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
               EndIf
             EndIf
 
@@ -939,15 +941,13 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown And Width = 80
               MouseX = GetGadgetAttribute(G_PalettePaper2, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PalettePaper2, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected Paper2Idx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If Paper2Idx >= 0 And Paper2Idx <= 15
-                  Paper2 = Paper2Idx
-                  Dirty = #True
-                  Scr2Ed_RedrawMiniPalette(G_PalettePaper2, Paper2, Palette())
-                  Zoom = Scr0Ed_ZoomForWidth(Width)
-                  Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
-                EndIf
+              Protected Paper2Idx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If Paper2Idx >= 0
+                Paper2 = Paper2Idx
+                Dirty = #True
+                Scr2Ed_RedrawMiniPalette(G_PalettePaper2, Paper2, Palette())
+                Zoom = Scr0Ed_ZoomForWidth(Width)
+                Scr0Ed_RedrawCanvas(G_Canvas, GridCodes(), GridAttrs(), Width, CharsetBytes(), Zoom, Palette(Ink), Palette(Paper), Palette(Ink2), Palette(Paper2))
               EndIf
             EndIf
 
@@ -1123,67 +1123,15 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
                                     Ink2, Paper2, BlinkOn, BlinkOff, GridCodes(), GridAttrs())
             Dirty = #False
 
-          Case G_First
+          Case G_First, G_Prev, G_Next, G_Last
             If Not Dirty Or Scr0Ed_ConfirmDiscard()
               ProjectDB::ListScreen0Numbers(Nav())
-              NavTarget = SpriteEd_FindNavTarget(Nav(), 0, ScreenNumber)
-              If NavTarget >= 0
-                ScreenNumber = NavTarget
-                ProjectDB::FetchScreen0(ScreenNumber, GridCodes(), GridAttrs())
-                Width = ProjectDB::LastScreen0Width() : Ink = ProjectDB::LastScreen0Ink() : Paper = ProjectDB::LastScreen0Paper()
-                AlphabetNumber = ProjectDB::LastScreen0AlphabetNumber()
-                Ink2 = ProjectDB::LastScreen0Ink2() : Paper2 = ProjectDB::LastScreen0Paper2()
-                BlinkOn = ProjectDB::LastScreen0BlinkOn() : BlinkOff = ProjectDB::LastScreen0BlinkOff()
-                MarkCol = -1 : MarkRow = -1 : Dirty = #False
-                Scr0Ed_RefreshUI(G_Canvas, G_ScreenNumberText, G_Tag, G_WidthText, G_FontCombo, G_PaletteInk, G_PalettePaper,
-                                 G_PaletteInk2, G_PalettePaper2, G_BlinkOnField, G_BlinkOffField,
-                                 ScreenNumber, ProjectDB::LastScreen0Tag(), Width, Ink, Paper, AlphabetNumber, Ink2, Paper2, BlinkOn, BlinkOff,
-                                 GridCodes(), GridAttrs(), CharsetBytes(), Palette())
-              EndIf
-            EndIf
-
-          Case G_Prev
-            If Not Dirty Or Scr0Ed_ConfirmDiscard()
-              ProjectDB::ListScreen0Numbers(Nav())
-              NavTarget = SpriteEd_FindNavTarget(Nav(), 1, ScreenNumber)
-              If NavTarget >= 0
-                ScreenNumber = NavTarget
-                ProjectDB::FetchScreen0(ScreenNumber, GridCodes(), GridAttrs())
-                Width = ProjectDB::LastScreen0Width() : Ink = ProjectDB::LastScreen0Ink() : Paper = ProjectDB::LastScreen0Paper()
-                AlphabetNumber = ProjectDB::LastScreen0AlphabetNumber()
-                Ink2 = ProjectDB::LastScreen0Ink2() : Paper2 = ProjectDB::LastScreen0Paper2()
-                BlinkOn = ProjectDB::LastScreen0BlinkOn() : BlinkOff = ProjectDB::LastScreen0BlinkOff()
-                MarkCol = -1 : MarkRow = -1 : Dirty = #False
-                Scr0Ed_RefreshUI(G_Canvas, G_ScreenNumberText, G_Tag, G_WidthText, G_FontCombo, G_PaletteInk, G_PalettePaper,
-                                 G_PaletteInk2, G_PalettePaper2, G_BlinkOnField, G_BlinkOffField,
-                                 ScreenNumber, ProjectDB::LastScreen0Tag(), Width, Ink, Paper, AlphabetNumber, Ink2, Paper2, BlinkOn, BlinkOff,
-                                 GridCodes(), GridAttrs(), CharsetBytes(), Palette())
-              EndIf
-            EndIf
-
-          Case G_Next
-            If Not Dirty Or Scr0Ed_ConfirmDiscard()
-              ProjectDB::ListScreen0Numbers(Nav())
-              NavTarget = SpriteEd_FindNavTarget(Nav(), 2, ScreenNumber)
-              If NavTarget >= 0
-                ScreenNumber = NavTarget
-                ProjectDB::FetchScreen0(ScreenNumber, GridCodes(), GridAttrs())
-                Width = ProjectDB::LastScreen0Width() : Ink = ProjectDB::LastScreen0Ink() : Paper = ProjectDB::LastScreen0Paper()
-                AlphabetNumber = ProjectDB::LastScreen0AlphabetNumber()
-                Ink2 = ProjectDB::LastScreen0Ink2() : Paper2 = ProjectDB::LastScreen0Paper2()
-                BlinkOn = ProjectDB::LastScreen0BlinkOn() : BlinkOff = ProjectDB::LastScreen0BlinkOff()
-                MarkCol = -1 : MarkRow = -1 : Dirty = #False
-                Scr0Ed_RefreshUI(G_Canvas, G_ScreenNumberText, G_Tag, G_WidthText, G_FontCombo, G_PaletteInk, G_PalettePaper,
-                                 G_PaletteInk2, G_PalettePaper2, G_BlinkOnField, G_BlinkOffField,
-                                 ScreenNumber, ProjectDB::LastScreen0Tag(), Width, Ink, Paper, AlphabetNumber, Ink2, Paper2, BlinkOn, BlinkOff,
-                                 GridCodes(), GridAttrs(), CharsetBytes(), Palette())
-              EndIf
-            EndIf
-
-          Case G_Last
-            If Not Dirty Or Scr0Ed_ConfirmDiscard()
-              ProjectDB::ListScreen0Numbers(Nav())
-              NavTarget = SpriteEd_FindNavTarget(Nav(), 3, ScreenNumber)
+              Select EventGadget()
+                Case G_First : NavTarget = SpriteEd_FindNavTarget(Nav(), 0, ScreenNumber)
+                Case G_Prev  : NavTarget = SpriteEd_FindNavTarget(Nav(), 1, ScreenNumber)
+                Case G_Next  : NavTarget = SpriteEd_FindNavTarget(Nav(), 2, ScreenNumber)
+                Case G_Last  : NavTarget = SpriteEd_FindNavTarget(Nav(), 3, ScreenNumber)
+              EndSelect
               If NavTarget >= 0
                 ScreenNumber = NavTarget
                 ProjectDB::FetchScreen0(ScreenNumber, GridCodes(), GridAttrs())
@@ -1218,6 +1166,5 @@ Procedure Screen0Editor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

@@ -68,13 +68,11 @@ Procedure MdView_OpenSingle(ParentWindow)
   Protected RawText.s = ReadSciText(Docs()\SciGadget)
 
   Protected WinW = 800, WinH = 600
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ver MD/TXT",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ver MD/TXT",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
 
   Protected TopY = 24
   Protected G_BtnTxt = ThemedButton(24, TopY, 90, 28, "TXT", "")
@@ -128,7 +126,7 @@ Procedure MdView_OpenSingle(ParentWindow)
     EndSelect
   Until Quit
 
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure
 
 Procedure MdView_OpenSplit(ParentWindow)
@@ -139,13 +137,11 @@ Procedure MdView_OpenSplit(ParentWindow)
   Protected RawText.s = ReadSciText(TargetSci)
 
   Protected WinW = 1100, WinH = 650
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ver MD+TXT",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ver MD+TXT",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
 
   Protected TopY = 24
   Protected HalfW = (WinW - 72) / 2
@@ -198,5 +194,5 @@ Procedure MdView_OpenSplit(ParentWindow)
 
   MdView_HybridWin = 0
   MdView_HybridTargetSci = 0
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure

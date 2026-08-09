@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.31.4** ("`ADEUS WINDOWS 3.1`") — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.33.1** — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -1824,6 +1824,24 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   existentes. Nenhuma das ~400 edições foi manual — três scripts Python descartáveis (parsing de
   parênteses balanceados, não regex ingênuo) fizeram a conversão mecânica, com recompilação a cada
   rodada pra pegar erro cedo. Detalhe completo em `docs/RELEASE_NOTES.md`.
+- **2026-08-09 — revisão geral: bugs, coesão de módulos, performance e temas (`7.33.1`)**: sessão de
+  auditoria ampla (7 revisões paralelas por área do código) seguida de correção. 8 bugs reais
+  corrigidos, entre eles: fechar uma aba não-ativa trocava o documento visível errado; vazamento de
+  handles GDI em dois editores gráficos; `ProjectDB::SaveAs` podia abandonar o projeto silenciosamente
+  se o reabrir falhasse; `MSXDisk::ExtractFile` reportava sucesso numa extração truncada; downloads
+  parciais deixavam lixo no diretório temporário; vazamento de buffer em `Z80Lib::CreateOrAddLibrary`;
+  thread do pipe do openMSX nunca fechada; loop labels aninhados sem limite no pré-processador podiam
+  corromper heap. Coesão: helper de janela compartilhado (`OpenModelessChildWindow`/
+  `CloseModelessChildWindow`) extraído e migrado em 35 arquivos, ~150 linhas de boilerplate repetido a
+  menos; hit-test de paleta e `FontDownloader` desduplicados. Performance: tokenizer deixou de ser
+  O(n²) por linha; redraw de glifo em Screen0/1/12 e o redraw do Graphos/Screen2 otimizados. **Achado
+  maior da sessão**: os 7 temas (desde `7.31.2`) tinham o modo escuro nativo do Windows sempre
+  desligado — 8 pontos comparavam contra um `"Dark"` legado que a própria migração pros 7 temas já
+  tornava inatingível, deixando barra de título/rótulos/campos de texto sempre com chrome nativo claro
+  do Windows, mesmo nos 5 temas escuros. Corrigido com `EditorCfg_ThemeIsDark()` (`EditorSettings.pbi`)
+  e tratamento de `WM_CTLCOLORSTATIC` (rótulos ficavam sem essa cobertura desde sempre, achado
+  documentado como "abandonado" no próprio código) — confirmado com screenshot real da IDE rodando
+  contra um tema escuro, não só leitura de código.
 
 ## Ferramentas e ambiente
 

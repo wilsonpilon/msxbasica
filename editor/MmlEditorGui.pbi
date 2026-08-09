@@ -101,14 +101,11 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
   Protected BelowY = TopY + ColH + 10
   Protected WinH = BelowY + 28 + 10 + 26 + 10 + 100 + 10 + 28 + 15
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar musica PLAY (MML)",
-                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar musica PLAY (MML)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   If Not MmlEd_SoundSystemReady
     InitSound()
@@ -718,6 +715,5 @@ Procedure MmlEditor_OpenWindow(ParentWindow)
     StopSound(SoundHandle)
     FreeSound(SoundHandle)
   EndIf
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

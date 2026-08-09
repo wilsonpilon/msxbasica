@@ -21,14 +21,11 @@ Procedure OpenMsxCfg_OpenSettingsWindow(ParentWindow)
   ; (512 + 8 + 64 = 584 de conteudo util, mais as margens de 24 dos dois
   ; lados) sem quebrar layout - identico ao WinW de BadigCfg_OpenSettingsWindow().
   Protected WinW = 680, WinH = 592
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do openMSX",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configuracoes do openMSX",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected EmuG.BadigCfg_EmuGadgets
   BadigCfg_CreateEmulatorGadgets(0, @EmuG)
@@ -68,6 +65,5 @@ Procedure OpenMsxCfg_OpenSettingsWindow(ParentWindow)
     BadigCfg_SyncEmulatorIni()
   EndIf
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

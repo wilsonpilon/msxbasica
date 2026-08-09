@@ -119,13 +119,11 @@ Procedure SeeTrackerHelp_OpenWindow(ParentWindow)
   SeeHelpGui_BuildRows()
 
   Protected WinW = 940, WinH = 620
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ajuda - SEE Tracker",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ajuda - SEE Tracker",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
   SeeHelpGui_WinID = Win
 
   Protected TopY = 24
@@ -241,5 +239,5 @@ Procedure SeeTrackerHelp_OpenWindow(ParentWindow)
   Until Quit
 
   SeeHelpGui_WinID = -1
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure

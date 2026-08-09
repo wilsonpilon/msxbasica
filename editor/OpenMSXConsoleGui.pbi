@@ -229,22 +229,15 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   EndIf
 
   Protected WinW = 940, WinH = 766
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "openMSX",
-                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "openMSX",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  ; Mesmo motivo de toda outra janela secundaria deste app (ver
-  ; DiskManagerGui.pbi, HexEditorGui.pbi, etc.): o loop de eventos e
-  ; compartilhado (WaitWindowEvent() pega evento de QUALQUER janela aberta),
-  ; entao sem desabilitar a janela principal os cliques/teclas nela ficariam
-  ; "perdidos" (chegam neste loop, que nao sabe tratar os gadgets dela) em
-  ; vez de irem pro loop principal - a janela ficaria parecendo travada. O
-  ; openMSX (processo a parte) continua rodando normalmente enquanto isso;
-  ; so a EDICAO fica bloqueada ate fechar este console.
-  DisableWindow(ParentWindow, #True)
+  ; O openMSX (processo a parte) continua rodando normalmente enquanto esta
+  ; janela bloqueia a principal (ver motivo do DisableWindow em
+  ; OpenModelessChildWindow(), BadigEditor.pb) - so a EDICAO fica bloqueada
+  ; ate fechar este console.
 
   ; Indicador de estado (Ligado/Desligado, Rodando/Pausado) - ver OMSX_StatusText() em
   ; OpenMSXBridge.pbi. Alimentado por "<update type="setting" ...>" (assinado no boot,
@@ -1091,6 +1084,5 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   If OMSX_IsRunning()
     RemoveWindowTimer(Win, #OMSXGui_PollTimer)
   EndIf
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

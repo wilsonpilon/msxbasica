@@ -40,7 +40,7 @@
 #   ./build.sh
 #   ./build.sh -C "/home/usuario/pb/compilers/pbcompiler"
 #   ./build.sh --compiler "/home/usuario/pb/compilers/pbcompiler" --run
-#   ./build.sh -V "7.7.1" -R
+#   ./build.sh -V "7.33.1" -R
 #   ./build.sh -H
 #   ./build.sh -D
 
@@ -62,7 +62,7 @@ Opcoes:
                               proximas execucoes.
   -R, --run                  Executa o programa apos compilar com sucesso.
   -H, --help                 Mostra esta ajuda e sai.
-  -V, --version <versao>     Versao embutida no executavel (padrao: 7.7.1).
+  -V, --version <versao>     Versao embutida no executavel (padrao: 7.33.1).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                               (padrao: editor/BadigEditor.pb).
   -o, --outputexe <arquivo>  Caminho do executavel de saida
@@ -76,7 +76,7 @@ Exemplos:
   ./build.sh
   ./build.sh -C "/home/usuario/pb/compilers/pbcompiler"
   ./build.sh --compiler "/home/usuario/pb/compilers/pbcompiler" --run
-  ./build.sh -V "7.7.1" -R
+  ./build.sh -V "7.33.1" -R
   ./build.sh -D
 EOF
 }
@@ -85,7 +85,7 @@ EOF
 HELP=0
 COMPILER=""
 RUN=0
-VERSION="7.7.1"
+VERSION="7.33.1"
 SOURCE_FILE="$SCRIPT_DIR/editor/BadigEditor.pb"
 OUTPUT_EXE="$SCRIPT_DIR/editor/BadigEditor"
 DISTRIBUTE=0

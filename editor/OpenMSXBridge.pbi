@@ -223,6 +223,10 @@ Procedure OMSX_ResetState()
     CloseHandle_(OMSX_PipeHandle)
     OMSX_PipeHandle = 0
   EndIf
+  If OMSX_PipeThread
+    CloseHandle_(OMSX_PipeThread)
+    OMSX_PipeThread = 0
+  EndIf
   OMSX_PipeConnected = #False
   OMSX_PowerKnown = #False
   OMSX_PausedKnown = #False

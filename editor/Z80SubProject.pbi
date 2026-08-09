@@ -41,6 +41,12 @@ EndProcedure
 ; de linha CRLF, mesmo padrao de OpenDocumentDialog() em BadigEditor.pb) -
 ; precisa ser independente de qualquer aba aberta, porque o subprojeto monta
 ; arquivos direto do disco, nao do editor.
+; NOTA: parece um loop linha-a-linha (e por isso um audit anterior marcou
+; isto como concatenacao O(n^2)), mas NAO e - ReadString(FileNum,
+; #PB_File_IgnoreEOL) SEM parametro Length le o restante do arquivo INTEIRO
+; numa unica chamada (confirmado na pratica: loop roda exatamente 1x
+; independente do tamanho do arquivo), entao isto ja e O(n). Mantido como
+; estava.
 Procedure.s Z80SubProj_ReadTextFile(Path.s)
   Protected FileNum = ReadFile(#PB_Any, Path, #PB_File_BOM)
   If Not FileNum

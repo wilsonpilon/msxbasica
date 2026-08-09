@@ -120,13 +120,11 @@ Procedure BasicDignifiedHelp_OpenWindow(ParentWindow)
   BDHelpGui_BuildRows()
 
   Protected WinW = 940, WinH = 620
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ajuda - Basic Dignified",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ajuda - Basic Dignified",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
   BDHelpGui_WinID = Win
 
   Protected TopY = 24
@@ -242,5 +240,5 @@ Procedure BasicDignifiedHelp_OpenWindow(ParentWindow)
   Until Quit
 
   BDHelpGui_WinID = -1
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure

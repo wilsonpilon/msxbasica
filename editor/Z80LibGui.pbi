@@ -40,14 +40,11 @@ EndProcedure
 
 Procedure Z80LibGui_OpenWindow(ParentWindow)
   Protected WinW = 660, WinH = 470
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Biblioteca Z80 (.LIB)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Biblioteca Z80 (.LIB)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, 80, 20, "Biblioteca:")
   Protected G_LibPathText = StringGadget(#PB_Any, 112, 22, 323, 24, "", #PB_String_ReadOnly)
@@ -150,6 +147,5 @@ Procedure Z80LibGui_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

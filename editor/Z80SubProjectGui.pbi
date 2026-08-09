@@ -48,14 +48,11 @@ EndProcedure
 
 Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
   Protected WinW = 760, WinH = 560
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Subprojeto de Assembly",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Subprojeto de Assembly",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   ; --- Barra de projeto (mesmo padrao de Psg/Mml/Screen2EditorGui.pbi) ---
   Protected Cx = 15
@@ -381,6 +378,5 @@ Procedure Z80SubProjectGui_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

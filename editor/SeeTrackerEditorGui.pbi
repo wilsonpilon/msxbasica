@@ -70,7 +70,7 @@ Procedure SeeEd_DrawGrid(Canvas, Array PB.a(1), NumPatterns.i, ScrollTop.i, Sele
   ; no meio de uma janela escura) e cores de letra bem mais claras/vivas -
   ; as cores escuras saturadas originais (ex.: RGB(0,0,150) navy) ficavam
   ; ilegiveis contra qualquer fundo escuro.
-  Protected IsDark.b = Bool(EditorCfg\Theme = "Dark")
+  Protected IsDark.b = EditorCfg_ThemeIsDark(EditorCfg\Theme)
   Protected ColBg.l, ColSel.l, ColOutline.l, ColPlay.l
   Protected ColIdx.l, ColEvt.l, ColFreq.l, ColNoiseOn.l, ColNoiseOff.l, ColVol.l, ColEnv.l
   If IsDark
@@ -188,7 +188,7 @@ Procedure SeeEd_DrawHeader(Canvas)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
-  Protected IsDark.b = Bool(EditorCfg\Theme = "Dark")
+  Protected IsDark.b = EditorCfg_ThemeIsDark(EditorCfg\Theme)
   Protected ColBg.l, ColText.l
   If IsDark
     ColBg = RGB(38, 40, 48) : ColText = RGB(210, 213, 220)
@@ -251,7 +251,7 @@ Procedure SeeEd_DrawEnvShapeIcon(Canvas, Shape.a)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
-  Protected IsDark.b = Bool(EditorCfg\Theme = "Dark")
+  Protected IsDark.b = EditorCfg_ThemeIsDark(EditorCfg\Theme)
   Protected ColBg.l, ColLine.l, ColOutline.l
   If IsDark
     ColBg = RGB(48, 51, 60) : ColLine = RGB(140, 190, 255) : ColOutline = RGB(72, 76, 88)
@@ -276,7 +276,7 @@ Procedure SeeEd_DrawEnvShapeCell(Canvas, Shape.a, IsCurrent.b)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
-  Protected IsDark.b = Bool(EditorCfg\Theme = "Dark")
+  Protected IsDark.b = EditorCfg_ThemeIsDark(EditorCfg\Theme)
   Protected ColBg.l, ColLine.l, ColOutline.l, ColSel.l, ColLabel.l
   If IsDark
     ColBg = RGB(48, 51, 60) : ColLine = RGB(140, 190, 255) : ColOutline = RGB(72, 76, 88)
@@ -309,14 +309,11 @@ Procedure.i SeeEd_PickEnvShape(ParentWindow, CurrentShape.a)
   Protected Cols = 4, Rows = 4, CellW = 90, CellH = 68, Pad = 10
   Protected WinW = Pad * 2 + Cols * CellW
   Protected WinH = Pad * 2 + Rows * CellH + 46
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Escolher forma do envelope PSG (reg. 13)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Escolher forma do envelope PSG (reg. 13)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn -1
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Dim G_Cell.i(15)
   Protected s, CellX, CellY, Col, Row
@@ -350,8 +347,7 @@ Procedure.i SeeEd_PickEnvShape(ParentWindow, CurrentShape.a)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
   ProcedureReturn Result
 EndProcedure
 
@@ -413,14 +409,11 @@ EndProcedure
 ; Devolve #True/#False (Cancelar); StartPattern sai via *OutStartPattern.
 Procedure.b SeeEd_PickSfxFromFile(ParentWindow, List SfxNums.i(), List StartPats.i(), *OutStartPattern)
   Protected WinW = 360, WinH = 420
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Importar .SEE - escolha o SFX",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Importar .SEE - escolha o SFX",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn #False
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 20, 16, WinW - 40, 20, "SFX definidos neste arquivo (" + Str(ListSize(SfxNums())) + "):")
   Protected G_List = ListIconGadget(#PB_Any, 20, 40, WinW - 40, WinH - 96, "SFX", 80, #PB_ListIcon_FullRowSelect)
@@ -473,8 +466,7 @@ Procedure.b SeeEd_PickSfxFromFile(ParentWindow, List SfxNums.i(), List StartPats
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
   ProcedureReturn Result
 EndProcedure
 
@@ -489,14 +481,11 @@ EndProcedure
 ; vez de travar ou dar erro.
 Procedure.b SeeEd_AskPatternRange(ParentWindow, DefaultLo.i, DefaultHi.i, MaxIdx.i, *OutLo, *OutHi)
   Protected WinW = 320, WinH = 150
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Limpar bloco de patterns",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Limpar bloco de patterns",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn #False
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 20, 20, 280, 20, "Patterns de 0 a " + Str(MaxIdx) + " (zera os dados, sem remover as linhas):")
   TextGadget(#PB_Any, 20, 58, 30, 20, "De:")
@@ -536,8 +525,7 @@ Procedure.b SeeEd_AskPatternRange(ParentWindow, DefaultLo.i, DefaultHi.i, MaxIdx
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
   ProcedureReturn Result
 EndProcedure
 
@@ -605,14 +593,11 @@ Procedure SeeTrackerEditor_OpenWindow(ParentWindow)
   Protected ProjBarRow2Y = ProjBarY + #CharEd_IconBtnH + 6
   Protected WinH = ProjBarRow2Y + #CharEd_IconBtnH + 40
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "SEE Tracker",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "SEE Tracker",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   ; Sem isso, LoadSound() falha (devolve 0) silenciosamente e "Tocar" nao
   ; faz NADA visivel (nem toca, nem erro) - mesmo Global+guard "so uma vez"
@@ -1343,6 +1328,5 @@ Procedure SeeTrackerEditor_OpenWindow(ParentWindow)
     StopSound(SoundHandle)
     FreeSound(SoundHandle)
   EndIf
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

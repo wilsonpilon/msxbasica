@@ -73,6 +73,30 @@ fully end-to-end — not yet audited.
   often does not); files with only ASCII content are unaffected either way, so adding a BOM defensively
   never hurts.
 
+**Real bug found during a general bug/cohesion/performance review (2026-08-09, v7.33.1)** — the app's
+native Windows dark-mode subsystem (`App_ApplyWindowIcon`/`App_DarkModeWindowProc`, `BadigEditor.pb`)
+was silently dead on every theme since the 7-theme system replaced the old binary Dark/Light model
+(`7.31.2`): `EditorCfg_Load()` migrates any legacy `"Dark"`/`"Light"` value away on load, but 8 call
+sites (`BadigEditor.pb` + `SeeTrackerEditorGui.pbi`) still compared `EditorCfg\Theme = "Dark"` literally
+— a value that could never occur again post-migration. Effect: `DWMWA_USE_IMMERSIVE_DARK_MODE` (dark
+title bar), `SetWindowTheme_` "DarkMode_Explorer", and `WM_CTLCOLOREDIT`/`WM_CTLCOLORLISTBOX` field
+coloring never activated on any of the 5 dark themes. Fixed with `EditorCfg_ThemeIsDark(ThemeId.s)`
+(`EditorSettings.pbi`) instead of the string-literal comparison — **if you ever add a check against a
+specific theme name, grep for `EditorCfg_ThemeIsDark` or the theme's exact string first**, since a
+typo'd/stale literal like this fails silently (no compile error, no crash, just permanently-wrong
+behavior that only shows up in a screenshot, not in code review). Also fixed a second, related bug the
+code itself had marked as "abandoned": dialog labels (`TextGadget`) never got dark-mode text/background
+colors because the attempted fix (`SetGadgetColor()` after looking up the gadget via
+`GetDlgCtrlID_(hWnd)` in the `EnumChildWindows_` callback) doesn't work — `GetDlgCtrlID_` does not
+return the PureBasic gadget number in that context, it returns something else entirely (internal struct
+addresses, from the look of it). The actual fix needs no gadget number at all: handle `#WM_CTLCOLORSTATIC`
+in the same window-proc subclass that already handles `#WM_CTLCOLOREDIT`/`#WM_CTLCOLORLISTBOX`
+(`App_DarkModeWindowProc`) — standard Win32 technique, resolves at the message level, covers every
+label in every dialog automatically. Both fixes verified with a real screenshot of the running `.exe`
+(`PrintWindow` via a throwaway PowerShell P/Invoke driver — no project automation skill existed for
+this native Win32 GUI, so one-off scripting was necessary), not just code inspection — this class of bug
+does not show up from reading the source, per the project's own `7.31.4` history.
+
 ```powershell
 # Compile editor\BadigEditor.pb -> editor\BadigEditor.exe (finds pbcompiler.exe automatically,
 # or pass -C once and it's remembered in build.config.json, gitignored/machine-local)

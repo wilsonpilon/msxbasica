@@ -72,17 +72,31 @@
 ; em cada uma das 8 linhas. Chamada de dentro de um StartDrawing/StopDrawing
 ; ja aberto pelo chamador (mesmo padrao de Scr0Ed_DrawGlyphBitmap).
 Procedure Scr12Ed_DrawGlyphRows(Array CharsetBytes.a(2), ByteCode.i, X.i, Y.i, Zoom.i, Third.i, Array ColorInk.a(3), Array ColorPaper.a(3), Array Palette.l(1))
-  Protected PxRow, PxCol, ByteVal.a, InkRGB.l, PaperRGB.l
+  ; Funde pixels de tinta adjacentes na mesma linha num Box() so (mesma
+  ; tecnica de Scr2Ed_RedrawCanvas, Screen2EditorGui.pbi) em vez de um
+  ; Box() por pixel - chamada por celula num redesenho de tela inteira,
+  ; entao o numero de Box() por glifo importa no total.
+  Protected PxRow, PxCol, ByteVal.a, InkRGB.l, PaperRGB.l, RunStart, InRun.b
   For PxRow = 0 To 7
     InkRGB = Palette(ColorInk(Third, ByteCode, PxRow))
     PaperRGB = Palette(ColorPaper(Third, ByteCode, PxRow))
     Box(X, Y + PxRow * Zoom, 8 * Zoom, Zoom, PaperRGB)
     ByteVal = CharsetBytes(ByteCode, PxRow)
+    InRun = #False
     For PxCol = 0 To 7
       If ByteVal & (1 << (7 - PxCol))
-        Box(X + PxCol * Zoom, Y + PxRow * Zoom, Zoom, Zoom, InkRGB)
+        If Not InRun
+          RunStart = PxCol
+          InRun = #True
+        EndIf
+      ElseIf InRun
+        Box(X + RunStart * Zoom, Y + PxRow * Zoom, (PxCol - RunStart) * Zoom, Zoom, InkRGB)
+        InRun = #False
       EndIf
     Next
+    If InRun
+      Box(X + RunStart * Zoom, Y + PxRow * Zoom, (8 - RunStart) * Zoom, Zoom, InkRGB)
+    EndIf
   Next
 EndProcedure
 
@@ -217,14 +231,11 @@ Procedure Scr12Ed_ColorEditor_OpenWindow(ParentWindow, Array CharsetBytes.a(2), 
     Title = "Cores em bloco #" + Str(ByteStart) + "-" + Str(ByteEnd) + " - Terco " + Str(Third + 1)
   EndIf
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, Title,
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, Title,
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected PreviewX = (WinW - #Scr12Ed_PreviewSize) / 2
   Protected PreviewY = 40
@@ -273,14 +284,12 @@ Procedure Scr12Ed_ColorEditor_OpenWindow(ParentWindow, Array CharsetBytes.a(2), 
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_RowInk(R), #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_RowInk(R), #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                ClickIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If ClickIdx >= 0 And ClickIdx <= 15
-                  For Cd = ByteStart To ByteEnd
-                    ColorInk(Third, Cd, R) = ClickIdx
-                  Next
-                  Scr12Ed_ColorPopupRedraw(G_Preview, G_RowInk(), G_RowPaper(), CharsetBytes(), Palette(), Third, ByteStart, ColorInk(), ColorPaper())
-                EndIf
+              ClickIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If ClickIdx >= 0
+                For Cd = ByteStart To ByteEnd
+                  ColorInk(Third, Cd, R) = ClickIdx
+                Next
+                Scr12Ed_ColorPopupRedraw(G_Preview, G_RowInk(), G_RowPaper(), CharsetBytes(), Palette(), Third, ByteStart, ColorInk(), ColorPaper())
               EndIf
             EndIf
             Break
@@ -289,14 +298,12 @@ Procedure Scr12Ed_ColorEditor_OpenWindow(ParentWindow, Array CharsetBytes.a(2), 
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_RowPaper(R), #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_RowPaper(R), #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                ClickIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If ClickIdx >= 0 And ClickIdx <= 15
-                  For Cd = ByteStart To ByteEnd
-                    ColorPaper(Third, Cd, R) = ClickIdx
-                  Next
-                  Scr12Ed_ColorPopupRedraw(G_Preview, G_RowInk(), G_RowPaper(), CharsetBytes(), Palette(), Third, ByteStart, ColorInk(), ColorPaper())
-                EndIf
+              ClickIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If ClickIdx >= 0
+                For Cd = ByteStart To ByteEnd
+                  ColorPaper(Third, Cd, R) = ClickIdx
+                Next
+                Scr12Ed_ColorPopupRedraw(G_Preview, G_RowInk(), G_RowPaper(), CharsetBytes(), Palette(), Third, ByteStart, ColorInk(), ColorPaper())
               EndIf
             EndIf
             Break
@@ -312,8 +319,7 @@ Procedure Scr12Ed_ColorEditor_OpenWindow(ParentWindow, Array CharsetBytes.a(2), 
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure
 
 ; --- Geracao de codigo: SCREEN 2 + Color Table completa dos 3 tercos
@@ -479,14 +485,11 @@ Procedure Screen12Editor_OpenWindow(ParentWindow)
   Protected WinW = RightX + RightColW + 24
   Protected WinH = ToolPanelY + #Scr12Ed_ToolPanelH + 20
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Tela MSX (SCREEN 1+2)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Tela MSX (SCREEN 1+2)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected G_Canvas = CanvasGadget(#PB_Any, LeftX, CanvasY, CanvasW, CanvasH)
 
@@ -1122,6 +1125,5 @@ Procedure Screen12Editor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

@@ -235,14 +235,11 @@ EndProcedure
 
 Procedure PsgEditor_OpenWindow(ParentWindow)
   Protected WinW = 755, WinH = 758
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar som PSG (SOUND)",
-                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar som PSG (SOUND)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   If Not PsgEd_SoundSystemReady
     InitSound()
@@ -685,6 +682,5 @@ Procedure PsgEditor_OpenWindow(ParentWindow)
     StopSound(SoundHandle)
     FreeSound(SoundHandle)
   EndIf
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

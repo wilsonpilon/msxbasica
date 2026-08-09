@@ -1045,14 +1045,11 @@ Procedure HexEd_OpenTemplateGallery(ParentWindow)
   Protected WinW = 620, WinH = 420
   Protected LeftX = 15, TopY = 15
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Galeria de templates - Editor Hexa",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Galeria de templates - Editor Hexa",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
-  SetWindowColor(Win, Color_AppBg)
 
   Protected G_List = ListIconGadget(#PB_Any, LeftX, TopY, WinW - 2 * LeftX, 220, "Nome", 220,
                                      #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
@@ -1160,8 +1157,7 @@ Procedure HexEd_OpenTemplateGallery(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -1225,14 +1221,11 @@ Procedure HexEditor_OpenWindow(ParentWindow)
   EndIf
   Protected WinH = EditBarY + 3 * 30 + 15
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Editor Hexa MSX",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Editor Hexa MSX",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
-  SetWindowColor(Win, Color_AppBg)
 
   Protected G_Open = ThemedButton(LeftX, TopY, 110, 26, "Abrir arquivo...", Chr(#Icon_Open))
   GadgetToolTip(G_Open, "Abrir arquivo...")
@@ -1631,6 +1624,5 @@ Procedure HexEditor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

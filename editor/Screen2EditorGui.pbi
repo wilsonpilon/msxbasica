@@ -30,6 +30,22 @@
 #Scr2Ed_PaletteRows   = 4
 #Scr2Ed_PaletteSize   = #Scr2Ed_PaletteSwatch * #Scr2Ed_PaletteCols ; 72
 
+; Converte coordenadas de mouse (relativas ao canvas de uma mini-paleta
+; #Scr2Ed_PaletteRows x #Scr2Ed_PaletteCols) no indice de cor 0-15 clicado,
+; ou -1 se fora da grade - usado por todos os editores de tela (Screen0/1/2/
+; 12) que tem paleta de tinta/papel, evitando repetir a mesma formula +
+; checagem de faixa em cada um.
+Procedure.i Scr2Ed_PaletteHitTest(MouseX.i, MouseY.i)
+  If MouseX < 0 Or MouseY < 0
+    ProcedureReturn -1
+  EndIf
+  Protected Idx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
+  If Idx < 0 Or Idx > 15
+    ProcedureReturn -1
+  EndIf
+  ProcedureReturn Idx
+EndProcedure
+
 ; Cores nomeadas/paleta MSX1 identicas as do editor de sprites - reaproveita
 ; SpriteEd_FillPalette (editor/SpriteEditorGui.pbi) em vez de duplicar os
 ; 16 RGB() literais.
@@ -63,12 +79,19 @@ Procedure Scr2Ed_RedrawCanvas(Canvas, Array PatternBit.a(2), Array RowFG.a(2), A
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
+  ; Le PatternBit/RowFG/RowBG direto (em vez de Scr2_GetPixelColor) - os
+  ; limites dos loops abaixo ja garantem X/Y validos, entao a checagem de
+  ; fronteira e a chamada de procedure daquela funcao (necessarias pro uso
+  ; geral dela, consulta de pixel avulso) sao custo puro aqui: esta e a
+  ; chamada mais quente de todo o Graphos/Screen2 (todo mouse-move durante
+  ; arraste de ferramenta redesenha a tela inteira via
+  ; GraphosScr_RedrawCanvasFull -> aqui).
   Protected Y, X, RunStart, RunColor, C
   For Y = 0 To #Scr2_Height - 1
     RunStart = 0
-    RunColor = Scr2_GetPixelColor(PatternBit(), RowFG(), RowBG(), 0, Y)
+    If PatternBit(Y, 0) : RunColor = RowFG(Y, 0) : Else : RunColor = RowBG(Y, 0) : EndIf
     For X = 1 To #Scr2_Width - 1
-      C = Scr2_GetPixelColor(PatternBit(), RowFG(), RowBG(), X, Y)
+      If PatternBit(Y, X) : C = RowFG(Y, X / 8) : Else : C = RowBG(Y, X / 8) : EndIf
       If C <> RunColor
         Box(RunStart * #Scr2Ed_Zoom, Y * #Scr2Ed_Zoom, (X - RunStart) * #Scr2Ed_Zoom, #Scr2Ed_Zoom, Palette(RunColor))
         RunStart = X
@@ -576,14 +599,11 @@ Procedure Screen2Editor_OpenWindow(ParentWindow)
   Protected WinW = RightX + PanelW + 15
   Protected WinH = CodeOutY + CodeOutH + 15
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar tela MSX (SCREEN 2)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar tela MSX (SCREEN 2)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   ; --- Barra de projeto (mesmo padrao de numero/tag/navegacao/Registrar/
   ; Novo/Copiar/Colar dos demais editores - icones reaproveitados de
@@ -905,12 +925,10 @@ Procedure Screen2Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected InkIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If InkIdx >= 0 And InkIdx <= 15
-                  InkColor = InkIdx
-                  Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkColor, Palette())
-                EndIf
+              Protected InkIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If InkIdx >= 0
+                InkColor = InkIdx
+                Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkColor, Palette())
               EndIf
             EndIf
 
@@ -918,12 +936,10 @@ Procedure Screen2Editor_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Protected PaperIdx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If PaperIdx >= 0 And PaperIdx <= 15
-                  PaperColor = PaperIdx
-                  Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperColor, Palette())
-                EndIf
+              Protected PaperIdx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If PaperIdx >= 0
+                PaperColor = PaperIdx
+                Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperColor, Palette())
               EndIf
             EndIf
 
@@ -1502,6 +1518,5 @@ Procedure Screen2Editor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

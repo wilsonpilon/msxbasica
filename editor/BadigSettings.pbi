@@ -360,6 +360,7 @@ Procedure BadigCfg_DownloadViaZip(TargetDir.s)
   If Not ReceiveHTTPFile(#BadigSuite_ZipUrl, TmpZip)
     MessageRequester("Erro", "Falha ao baixar o arquivo ZIP do GitHub." + Chr(10) + "Verifique sua conexao com a internet.",
                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    If FileSize(TmpZip) >= 0 : DeleteFile(TmpZip) : EndIf
     ProcedureReturn
   EndIf
 
@@ -463,13 +464,11 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
   EndIf
 
   Protected WinW = 420, WinH = 460
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, Title,
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, Title,
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #True, #False)
   If Not Win
     ProcedureReturn ""
   EndIf
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected G_List = ListViewGadget(#PB_Any, 24, 24, WinW - 48, WinH - 96)
   Protected SelectIndex = -1, i.i = 0
@@ -519,8 +518,7 @@ Procedure.s BadigCfg_PickXmlName(ParentWindow, Title.s, Dir.s, CurrentValue.s)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
   ProcedureReturn Result
 EndProcedure
 
@@ -696,14 +694,11 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
   ; 24px de margem externa, 24px de altura de campo, 8px entre um rotulo e o
   ; campo logo abaixo dele, ~26-30px entre grupos distintos.
   Protected WinW = 680, WinH = 744
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do Basic Dignified",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configuracoes do Basic Dignified",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #True, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  App_ApplyWindowIcon(Win)
-
-  DisableWindow(ParentWindow, #True)
 
   Protected Panel = PanelGadget(#PB_Any, 24, 24, WinW - 48, 640)
 
@@ -905,6 +900,5 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
     BadigCfg_SyncEmulatorIni()
   EndIf
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

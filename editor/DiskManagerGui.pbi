@@ -150,14 +150,11 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   ; 24px de margem externa, ~26-30px entre grupos - janela alargada (900->956)
   ; pra compensar a margem maior sem espremer os dois paineis de lista.
   Protected WinW = 956, WinH = 596
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar disco MSX",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar disco MSX",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected LeftW = 380, MidW = 110, RightW = 366
   Protected LeftX = 24, MidX = LeftX + LeftW + 24, RightX = MidX + MidW + 24
@@ -487,6 +484,5 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
     DeleteFile(TempPath)
   EndIf
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

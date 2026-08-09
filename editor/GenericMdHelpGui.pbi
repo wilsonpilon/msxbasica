@@ -393,14 +393,12 @@ Procedure GenMdHelp_OpenWindow(ParentWindow, Title.s, FolderPath.s)
   EndIf
 
   Protected WinW = 940, WinH = 620
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, Title,
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, Title,
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     FreeStructure(*State)
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
 
   Protected TopY = 24
   TextGadget(#PB_Any, 24, TopY + 4, 55, 20, "Buscar:")
@@ -511,5 +509,5 @@ Procedure GenMdHelp_OpenWindow(ParentWindow, Title.s, FolderPath.s)
   Until Quit
 
   FreeStructure(*State)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure

@@ -554,12 +554,13 @@ Module MSXDisk
     
     If size > 0
       SetError("Warning: File was truncated, disk image might be corrupt.")
+      ProcedureReturn #False
     EndIf
-    
+
     ; Set modification date
     Protected pbDate = MSXTimeToPBDate(*de\d_time, *de\d_date)
     SetFileDate(DestPath$, #PB_Date_Modified, pbDate)
-    
+
     ProcedureReturn #True
   EndProcedure
 

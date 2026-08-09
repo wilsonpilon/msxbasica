@@ -418,20 +418,24 @@ EndProcedure
 ;- ------------------------------------------------------------
 
 Procedure.s Tok_TokenizeLineBody(Body.s, LineNum.i)
-  Protected out.s, pos.i = 1, remaining.s, upperRemaining.s
+  Protected out.s, pos.i = 1
   Protected matched.b, ti.i, cmd.s, hx.s, cmdLen.i
   Protected c.s, c2.s
   Protected inDataLiteral.b = #False
+  ; UCase(Body) calculado uma vez so fora do loop, em vez de um Mid() do
+  ; restante da linha + UCase() a cada posicao (O(n) por posicao, O(n^2) no
+  ; total pra linha inteira) - olhar so os cmdLen caracteres necessarios em
+  ; UpperBody, ja maiusculo, e O(1) por checagem de palavra-chave.
+  Protected UpperBody.s = UCase(Body)
+  Protected BodyLen.i = Len(Body)
 
-  While pos <= Len(Body)
-    remaining = Mid(Body, pos, Len(Body) - pos + 1)
-    upperRemaining = UCase(remaining)
+  While pos <= BodyLen
     matched = #False
 
     For ti = 0 To Tok_Count - 1
       cmd = Tok_Cmd(ti)
       cmdLen = Len(cmd)
-      If cmdLen <= Len(upperRemaining) And Left(upperRemaining, cmdLen) = cmd
+      If cmdLen <= BodyLen - pos + 1 And Mid(UpperBody, pos, cmdLen) = cmd
         hx = Tok_Hex(ti)
         out + hx
         pos + cmdLen
@@ -799,17 +803,20 @@ EndProcedure
 ; reimplementar essa deteccao do zero arriscaria remapear o numero errado ou
 ; deixar um GOTO sem corrigir.
 Procedure.s Tok_RenumberLineBody(Body.s, LineNum.i, Map OldToNew.i())
-  Protected out.s, pos.i = 1, remaining.s, upperRemaining.s
+  Protected out.s, pos.i = 1
   Protected matched.b, ti.i, cmd.s, cmdLen.i
   Protected c.s, c2.s
+  ; Mesma otimizacao de Tok_TokenizeLineBody acima: UCase(Body) uma vez so
+  ; fora do loop, em vez de recomputar o restante da linha + UCase() a cada
+  ; posicao (O(n^2) no total pra linha inteira).
+  Protected UpperBody.s = UCase(Body)
+  Protected BodyLen.i = Len(Body)
 
-  While pos <= Len(Body)
-    remaining = Mid(Body, pos, Len(Body) - pos + 1)
-    upperRemaining = UCase(remaining)
+  While pos <= BodyLen
     matched = #False
 
     If Mid(Body, pos, 1) = " "
-      While pos <= Len(Body) And Mid(Body, pos, 1) = " "
+      While pos <= BodyLen And Mid(Body, pos, 1) = " "
         pos + 1
       Wend
       out + " "
@@ -819,7 +826,7 @@ Procedure.s Tok_RenumberLineBody(Body.s, LineNum.i, Map OldToNew.i())
     For ti = 0 To Tok_Count - 1
       cmd = Tok_Cmd(ti)
       cmdLen = Len(cmd)
-      If cmdLen <= Len(upperRemaining) And Left(upperRemaining, cmdLen) = cmd
+      If cmdLen <= BodyLen - pos + 1 And Mid(UpperBody, pos, cmdLen) = cmd
         out + cmd
         pos + cmdLen
         matched = #True

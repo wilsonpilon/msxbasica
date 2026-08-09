@@ -1275,15 +1275,12 @@ Procedure GraphosScr_OpenZoomWindow(ParentWin, Array PatternBit.a(2), Array RowF
   If ZoomFactor > 24 : ZoomFactor = 24 : EndIf
   Protected CanvasW = RegionW * ZoomFactor, CanvasH = RegionH * ZoomFactor
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, CanvasW + 30, CanvasH + 70,
-                             "Zoom (" + Str(RegionW) + "x" + Str(RegionH) + ")",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWin, 0, 0, CanvasW + 30, CanvasH + 70,
+                                          "Zoom (" + Str(RegionW) + "x" + Str(RegionH) + ")",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWin, #True)
 
   Protected G_ZCanvas = CanvasGadget(#PB_Any, 15, 15, CanvasW, CanvasH)
   Protected PencilIcon = SpriteEd_CreatePencilIcon(22)
@@ -1363,8 +1360,7 @@ Procedure GraphosScr_OpenZoomWindow(ParentWin, Array PatternBit.a(2), Array RowF
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWin, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWin, Win)
 EndProcedure
 
 ; --- Icones do menu MISCELANEA (F5, fase 7) -------------------------------
@@ -1591,14 +1587,11 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
     WinH = CloseBottom + 20
   EndIf
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Graphos III - Tela (SCREEN 2)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Graphos III - Tela (SCREEN 2)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, CanvasX, 16, CanvasW, 20,
              "SCREEN 2 (256x192) - color clash identico ao MSX: 2 cores por faixa de 8 pixels")
@@ -2097,12 +2090,10 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PaletteInk, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Idx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If Idx >= 0 And Idx <= 15
-                  InkColor = Idx
-                  Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkColor, Palette())
-                EndIf
+              Idx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If Idx >= 0
+                InkColor = Idx
+                Scr2Ed_RedrawMiniPalette(G_PaletteInk, InkColor, Palette())
               EndIf
             EndIf
 
@@ -2110,12 +2101,10 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
             If EventType() = #PB_EventType_LeftButtonDown
               MouseX = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(G_PalettePaper, #PB_Canvas_MouseY)
-              If MouseX >= 0 And MouseY >= 0
-                Idx = (MouseY / #Scr2Ed_PaletteSwatch) * #Scr2Ed_PaletteCols + (MouseX / #Scr2Ed_PaletteSwatch)
-                If Idx >= 0 And Idx <= 15
-                  PaperColor = Idx
-                  Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperColor, Palette())
-                EndIf
+              Idx = Scr2Ed_PaletteHitTest(MouseX, MouseY)
+              If Idx >= 0
+                PaperColor = Idx
+                Scr2Ed_RedrawMiniPalette(G_PalettePaper, PaperColor, Palette())
               EndIf
             EndIf
 
@@ -2968,6 +2957,38 @@ Procedure GraphosScreenGui_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
+  FreeImage(TracoIcon)
+  FreeImage(RaioIcon)
+  FreeImage(PinturaIcon)
+  FreeImage(SprayIcon)
+  FreeImage(SalvarIcon)
+  FreeImage(RestaurarIcon)
+  FreeImage(InverteVideoIcon)
+  FreeImage(InverteAtributosIcon)
+  FreeImage(RetiraVideoIcon)
+  FreeImage(RepoeVideoIcon)
+  FreeImage(RetiraAtributosIcon)
+  FreeImage(RepoeAtributosIcon)
+  FreeImage(Step1Icon)
+  FreeImage(Step8Icon)
+  FreeImage(RotateModeIcon)
+  FreeImage(ArrowUpIcon)
+  FreeImage(ArrowDownIcon)
+  FreeImage(ArrowLeftIcon)
+  FreeImage(ArrowRightIcon)
+  FreeImage(ZoomIcon)
+  FreeImage(StampMascaraIcon)
+  FreeImage(StampAndIcon)
+  FreeImage(StampOrIcon)
+  FreeImage(StampXorIcon)
+  FreeImage(StampIcon)
+  FreeImage(CorteMarkIcon)
+  FreeImage(CorteInvertIcon)
+  FreeImage(CorteMirrorHIcon)
+  FreeImage(CorteMirrorVIcon)
+  FreeImage(GridIcon)
+  FreeImage(ScreenNativeIcon)
+  FreeImage(LayoutNativeIcon)
+  FreeImage(ShapeNativeIcon)
 EndProcedure

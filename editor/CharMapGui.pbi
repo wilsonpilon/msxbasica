@@ -151,14 +151,11 @@ Procedure CharMap_OpenWindow(ParentWindow)
   CharMap_EnsureFonts()
 
   Protected WinW = 780, WinH = 536
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Inserir Caractere Especial",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Inserir Caractere Especial",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, WinW - 48, 20,
     "Clique para selecionar um caractere, duplo clique (ou 'Adicionar') para colocar no campo abaixo.")
@@ -249,6 +246,5 @@ Procedure CharMap_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

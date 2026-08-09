@@ -76,6 +76,47 @@ Global Color_Syntax_Statement, Color_Syntax_Operator, Color_Syntax_Function
 Global Color_Syntax_Number, Color_Syntax_Label, Color_Syntax_DignifiedStmt
 Global Color_Syntax_Remtag, Color_Caret, Color_SelBack, Color_LineNumberFore
 
+; Abre uma janela filha com o chrome padrao da IDE (cor de fundo + icone via
+; App_ApplyWindowIcon, ainda so forward-declarada aqui - Declare acima cobre
+; isso) - toda janela "Criar -> X.../Configurar -> X..." repetia essa mesma
+; sequencia de 4 linhas antes de cada uma. Devolve 0 em caso de falha, mesmo
+; contrato de OpenWindow(). Com Modal=#True (padrao), tambem desabilita
+; ParentWindow - use Modal=#False pra uma janela nao-bloqueante (ex.:
+; visualizador que pode ficar aberto junto com o resto da IDE, ver
+; MdViewerGui.pbi). O motivo do DisableWindow(ParentWindow) em si (nao so
+; deste helper, de toda janela secundaria do app): o loop de eventos e
+; compartilhado (WaitWindowEvent() pega evento de QUALQUER janela aberta),
+; entao sem desabilitar a janela principal os cliques/teclas nela ficariam
+; "perdidos" (chegam no loop da janela secundaria, que nao sabe tratar os
+; gadgets dela) em vez de irem pro loop principal - pareceria travada.
+; CloseModelessChildWindow() desfaz simetricamente no fechamento - precisa
+; vir ANTES do primeiro XIncludeFile (mesmo motivo dos Declare/Global/
+; Structure acima: EnableExplicit + inclusao textual exige declaracao antes
+; de qualquer arquivo que a use). ApplyBg=#False cobre a unica excecao real
+; (BadigCfg_ChooseXmlName, BadigSettings.pbi - uma janela picker pequena
+; dominada por uma ListViewGadget que nunca chamou SetWindowColor()).
+Procedure.i OpenModelessChildWindow(ParentWindow, X, Y, WinW, WinH, Title.s, Flags, Modal.b = #True, ApplyBg.b = #True)
+  Protected Win = OpenWindow(#PB_Any, X, Y, WinW, WinH, Title, Flags)
+  If Not Win
+    ProcedureReturn 0
+  EndIf
+  If ApplyBg
+    SetWindowColor(Win, Color_AppBg)
+  EndIf
+  App_ApplyWindowIcon(Win)
+  If Modal
+    DisableWindow(ParentWindow, #True)
+  EndIf
+  ProcedureReturn Win
+EndProcedure
+
+Procedure CloseModelessChildWindow(ParentWindow, Win, Modal.b = #True)
+  If Modal
+    DisableWindow(ParentWindow, #False)
+  EndIf
+  CloseWindow(Win)
+EndProcedure
+
 ; Primeiro de todos os XIncludeFile de proposito: precisa vir antes de
 ; qualquer arquivo de janela/dialogo (todos usam a Macro ThemedButton() pra
 ; nao ficar com chrome nativo do Windows - ver ThemedButtons.pbi).
@@ -89,6 +130,10 @@ XIncludeFile "BadigSettings.pbi"
 XIncludeFile "BasicOptionsSettings.pbi"
 XIncludeFile "AssemblyOptionsSettings.pbi"
 XIncludeFile "OpenMsxSettingsGui.pbi"
+; Precisa vir antes de FontDownloader.pbi - reaproveita ExtTool_HttpGetText/
+; ExtTool_DownloadAndExtractZip/ExtTool_FlushEvents em vez de duplica-las (so
+; depende de BadigCfg_ExtractZip, ja incluido acima via BadigSettings.pbi).
+XIncludeFile "ExternalToolDownload.pbi"
 XIncludeFile "FontDownloader.pbi"
 XIncludeFile "CharMapGui.pbi"
 XIncludeFile "MSXDisk.pbi"
@@ -136,7 +181,6 @@ XIncludeFile "OpenMsxHelpData.pbi"
 XIncludeFile "OpenMsxHelpGui.pbi"
 XIncludeFile "GenericMdHelpGui.pbi"
 XIncludeFile "EditorHelpGui.pbi"
-XIncludeFile "ExternalToolDownload.pbi"
 XIncludeFile "MsxBas2RomSupport.pbi"
 XIncludeFile "N80Support.pbi"
 
@@ -529,7 +573,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.29.5"
+  #App_Version = "7.33.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2829,7 +2873,7 @@ CompilerIf #PB_Compiler_OS = #PB_OS_Windows
     EndIf
 
     If App_DarkModeSupported
-      If EditorCfg\Theme = "Dark"
+      If EditorCfg_ThemeIsDark(EditorCfg\Theme)
         SetWindowTheme_(hWnd, @"DarkMode_Explorer", #Null)
       Else
         SetWindowTheme_(hWnd, #Null, #Null)
@@ -2858,6 +2902,31 @@ CompilerIf #PB_Compiler_OS = #PB_OS_Windows
     ProcedureReturn Cached
   EndProcedure
 
+  ; Mesmo cache de App_EditorBgBrush() acima, mas pro fundo do proprio
+  ; dialogo (Color_AppBg) - usado por WM_CTLCOLORSTATIC (ver
+  ; App_DarkModeWindowProc) pra rotulos (TextGadget) nao ficarem com uma
+  ; "placa" clara atras do texto: sem isso, o Windows pinta o fundo do
+  ; controle STATIC com a cor de janela padrao do tema do SO (clara),
+  ; mesmo com SetWindowColor(Win, Color_AppBg) ja aplicado na janela em
+  ; volta - texto marrom escuro sobre fundo claro, destoando do resto
+  ; escuro do dialogo (achado real via screenshot, nao so leitura de
+  ; codigo - ver comentario de App_StyleChildCallback acima. A tentativa
+  ; anterior de resolver isso via SetGadgetColor()+GetDlgCtrlID_ falhava
+  ; porque GetDlgCtrlID_ nao devolve o numero do gadget PB neste contexto;
+  ; WM_CTLCOLORSTATIC resolve no nivel de mensagem, sem precisar do numero
+  ; do gadget, e cobre TextGadget/GroupBox/static de qualquer dialogo
+  ; automaticamente - nao so os ja tratados via WM_CTLCOLOREDIT/LISTBOX
+  ; acima).
+  Procedure App_AppBgBrush()
+    Static Cached.i, CachedRGB.i = -1
+    If CachedRGB <> Color_AppBg
+      If Cached : DeleteObject_(Cached) : EndIf
+      Cached = CreateSolidBrush_(Color_AppBg)
+      CachedRGB = Color_AppBg
+    EndIf
+    ProcedureReturn Cached
+  EndProcedure
+
   Procedure App_DarkModeWindowProc(hWnd, uMsg, wParam, lParam)
     ; So prime em WM_PAINT (nao na primeira mensagem qualquer): mensagens
     ; como WM_PARENTNOTIFY chegam SINCRONAMENTE durante a criacao de cada
@@ -2875,12 +2944,16 @@ CompilerIf #PB_Compiler_OS = #PB_OS_Windows
       EndIf
     EndIf
 
-    If App_DarkModeSupported And EditorCfg\Theme = "Dark"
+    If App_DarkModeSupported And EditorCfg_ThemeIsDark(EditorCfg\Theme)
       Select uMsg
         Case #WM_CTLCOLOREDIT, #WM_CTLCOLORLISTBOX
           SetTextColor_(wParam, Color_TextActive)
           SetBkColor_(wParam, Color_EditorBg)
           ProcedureReturn App_EditorBgBrush()
+        Case #WM_CTLCOLORSTATIC
+          SetTextColor_(wParam, Color_TextActive)
+          SetBkColor_(wParam, Color_AppBg)
+          ProcedureReturn App_AppBgBrush()
       EndSelect
     EndIf
     ProcedureReturn #PB_ProcessPureBasicEvents
@@ -2933,7 +3006,7 @@ Procedure App_ApplyWindowIcon(WinNum)
     ; "esta janela permite controles escuros" que comctl32 consulta na
     ; ancestral ao pintar esses controles.
     If App_DarkModeSupported
-      App_pAllowDarkModeForWindow(WindowID(WinNum), Bool(EditorCfg\Theme = "Dark"))
+      App_pAllowDarkModeForWindow(WindowID(WinNum), EditorCfg_ThemeIsDark(EditorCfg\Theme))
     EndIf
 
     If WinNum <> #MainWindow
@@ -2947,7 +3020,7 @@ Procedure App_ApplyWindowIcon(WinNum)
     EndIf
 
     Protected DarkModeFlag.l
-    If EditorCfg\Theme = "Dark"
+    If EditorCfg_ThemeIsDark(EditorCfg\Theme)
       DarkModeFlag = #True
     Else
       DarkModeFlag = #False
@@ -3124,6 +3197,8 @@ Procedure CloseTab(Position)
     EndIf
   EndIf
 
+  Protected WasActive = ActiveTabPosition
+
   FreeGadget(Docs()\SciGadget)
   DeleteElement(Docs())
 
@@ -3132,7 +3207,18 @@ Procedure CloseTab(Position)
     ProcedureReturn
   EndIf
 
-  Protected NewActive = Position
+  ; Fechar uma aba que nao e a ativa nao deve trocar o documento visivel -
+  ; mantem a mesma aba ativa de antes, so ajustando o indice se a fechada
+  ; estava antes dela na lista (todo mundo depois desliza um indice pra tras).
+  Protected NewActive
+  If Position = WasActive
+    NewActive = Position
+  ElseIf Position < WasActive
+    NewActive = WasActive - 1
+  Else
+    NewActive = WasActive
+  EndIf
+
   If NewActive >= ListSize(Docs())
     NewActive = ListSize(Docs()) - 1
   EndIf

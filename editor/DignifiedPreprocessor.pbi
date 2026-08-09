@@ -1701,6 +1701,15 @@ Procedure.s Dig_ExtractLeadingLabel(Line.s, *LabelOut.String)
     Protected np2.i
     Protected name2.s = Dig_ReadIdent(Line, 1, @np2)
     If Mid(Line, np2, 1) = "{" And name2 <> ""
+      ; Checagem de limite antes de escrever no array Dim'd de tamanho fixo -
+      ; sem isso, mais de ArraySize(Dig_LoopStack())+1 labels de loop
+      ; aninhados corrompe heap silenciosamente em vez de falhar limpo (como
+      ; todo outro limite estrutural deste arquivo: profundidade de include,
+      ; contagem de variaveis, tamanho de linha).
+      If Dig_LoopStackTop >= ArraySize(Dig_LoopStack())
+        Dig_Fail(0, "Labels de loop aninhados demais (limite: " + Str(ArraySize(Dig_LoopStack()) + 1) + ")")
+        ProcedureReturn ""
+      EndIf
       *LabelOut\s = Dig_CurrentPrefix + LCase(name2)
       Dig_LoopStackTop + 1
       Dig_LoopStack(Dig_LoopStackTop) = Dig_CurrentPrefix + LCase(name2)
@@ -2348,6 +2357,7 @@ Procedure Dig_ProcessSource(SourceText.s, Prefix.s, OwnBasePath.s, IsMainFile.b,
 
     Protected labelOut.String
     Protected rest.s = Dig_ExtractLeadingLabel(l5(), @labelOut)
+    If Dig_HasError : ProcedureReturn : EndIf
     Protected thisLabel.s = labelOut\s
 
     If rest = "" And thisLabel <> ""

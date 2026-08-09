@@ -35,14 +35,11 @@ EndProcedure
 
 Procedure Z80LinkGui_OpenWindow(ParentWindow)
   Protected WinW = 660, WinH = 460
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Linkar (.REL) -> binario",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Linkar (.REL) -> binario",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, 400, 20, "Arquivos .REL (na ordem de link):")
   Protected G_List = ListIconGadget(#PB_Any, 24, 52, 460, 180, "Arquivo", 450,
@@ -164,6 +161,5 @@ Procedure Z80LinkGui_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

@@ -402,14 +402,11 @@ Procedure AquarelaCharsetEditor_OpenWindow(ParentWindow)
     WinH = BtnY2 + 28 + 15
   EndIf
 
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Criar alfabeto MSX (Aquarela)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Criar alfabeto MSX (Aquarela)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected Cx = LeftX
   Protected G_FileLabel = TextGadget(#PB_Any, Cx, FileBarY + 5, 260, 20, "")
@@ -642,6 +639,14 @@ Procedure AquarelaCharsetEditor_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
+  FreeImage(NewIcon)
+  FreeImage(OpenIcon)
+  FreeImage(RegisterIconFile)
+  FreeImage(SaveAsIcon)
+  FreeImage(RegisterIcon)
+  FreeImage(ClearIcon)
+  FreeImage(InvertIcon)
+  FreeImage(CopyCharIcon)
+  FreeImage(PasteCharIcon)
 EndProcedure

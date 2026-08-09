@@ -246,14 +246,11 @@ Procedure Z80Out_ShowListing(Array Bytes.a(1), NBytes.i, StartAddr.u, ParentWind
   Protected ListingText.s = Z80Gen_BasicLoader(Bytes(), NBytes, StartAddr)
 
   Protected WinW = 580, WinH = 460
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Listing BASIC (DATA/POKE)",
-                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Listing BASIC (DATA/POKE)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected G_Text = EditorGadget(#PB_Any, 24, 24, WinW - 48, 364)
   SetGadgetText(G_Text, ListingText)
@@ -285,8 +282,7 @@ Procedure Z80Out_ShowListing(Array Bytes.a(1), NBytes.i, StartAddr.u, ParentWind
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure
 
 ; Janela pequena de escolha, reaproveitada por "Montar Assembly (.bin)"
@@ -298,14 +294,11 @@ EndProcedure
 ; chave estavel, ex. aba ainda sem salvar).
 Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, StartAddr.u, EndAddr.u, SourceKey.s, BuildKind.s, ParentWindow.i)
   Protected WinW = 400, WinH = 276
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Saida da montagem",
-                              #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Saida da montagem",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   Protected InfoTxt.s = Str(NBytes) + " bytes, endereco " + Hex(StartAddr, #PB_Word) + "h-" + Hex(EndAddr, #PB_Word) + "h."
   TextGadget(#PB_Any, 24, 24, WinW - 48, 20, InfoTxt)
@@ -344,6 +337,5 @@ Procedure Z80Out_ChooseAndExport(SuggestBaseName.s, Array Bytes.a(1), NBytes.i, 
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

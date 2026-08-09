@@ -557,6 +557,12 @@ Module ProjectDB
 
     If Not OpenDatabase(#DB, NewPath, "", "")
       LastError = "Nao foi possivel reabrir: " + NewPath
+      ; Reabre o banco antigo pra nao deixar IsOpen/CurrentPath inconsistentes -
+      ; sem isso, EnsureOpen() (chamado por quase todo o resto do modulo) nao
+      ; olha CurrentPath e criaria um novo projeto temporario do zero,
+      ; abandonando o projeto real do usuario silenciosamente.
+      OpenDatabase(#DB, OldPath, "", "")
+      IsOpen = #True
       ProcedureReturn #False
     EndIf
 

@@ -5,10 +5,13 @@
 ;  obtida em tempo real via uma requisicao HTTP simples (ReceiveHTTPMemory) +
 ;  expressao regular sobre o HTML - sem precisar embutir/manter uma lista fixa
 ;  de nomes ou a versao do release do GitHub (ex.: v3.4.0) no codigo.
-;  Cada .zip baixado e descompactado direto na pasta de destino (reaproveita
-;  BadigCfg_ExtractZip(), definida em BadigSettings.pbi) e depois apagado -
-;  os arquivos das fontes (.ttf/.otf) ficam prontos para uso em "Pasta de
-;  fontes customizadas" (ver EditorSettings.pbi).
+;  GET de pagina/download+extracao de .zip/bombeio de eventos reaproveitam os
+;  helpers de ExtTool_* (ExternalToolDownload.pbi, ja usados por
+;  MsxBas2RomSupport.pbi/N80Support.pbi) em vez de duplica-los - inclusive a
+;  criacao recursiva de pasta de destino (ExtTool_CreateDirectoryRecursive),
+;  que a versao antiga daqui nao tinha. Os arquivos das fontes (.ttf/.otf)
+;  ficam prontos para uso em "Pasta de fontes customizadas" (ver
+;  EditorSettings.pbi).
 ; ------------------------------------------------------------
 ;
 
@@ -25,22 +28,12 @@ Global NewList NerdFontEntries.NerdFontEntry()
 ;- Lista de fontes disponiveis (obtida da pagina da Nerd Fonts)
 ;- ------------------------------------------------------------
 
-Procedure.s FontDownloader_FetchPage(Url.s)
-  Protected *Buffer = ReceiveHTTPMemory(Url)
-  If Not *Buffer
-    ProcedureReturn ""
-  EndIf
-  Protected Result.s = PeekS(*Buffer, MemorySize(*Buffer), #PB_UTF8 | #PB_ByteLength)
-  FreeMemory(*Buffer)
-  ProcedureReturn Result
-EndProcedure
-
 ; Preenche NerdFontEntries() com nomes unicos (ordenados) e a URL do .zip de
 ; cada fonte, lendo direto da pagina de downloads (sem versao fixa embutida).
 Procedure.b FontDownloader_FetchList()
   ClearList(NerdFontEntries())
 
-  Protected Html.s = FontDownloader_FetchPage(#NerdFonts_PageUrl)
+  Protected Html.s = ExtTool_HttpGetText(#NerdFonts_PageUrl)
   If Html = ""
     ProcedureReturn #False
   EndIf
@@ -85,24 +78,6 @@ Procedure.b FontDownloader_FetchList()
 EndProcedure
 
 ;- ------------------------------------------------------------
-;- Download + extracao de uma fonte
-;- ------------------------------------------------------------
-
-; Baixa Url para um .zip temporario, descompacta em TargetDir (via
-; BadigCfg_ExtractZip, ja usada para o Basic Dignified Suite) e apaga o .zip.
-Procedure.b FontDownloader_DownloadOne(Url.s, TargetDir.s)
-  Protected TmpZip.s = GetTemporaryDirectory() + "nerdfont-" + Str(Random(999999999)) + ".zip"
-
-  If Not ReceiveHTTPFile(Url, TmpZip)
-    ProcedureReturn #False
-  EndIf
-
-  Protected Ok.b = BadigCfg_ExtractZip(TmpZip, TargetDir)
-  DeleteFile(TmpZip)
-  ProcedureReturn Ok
-EndProcedure
-
-;- ------------------------------------------------------------
 ;- Janela de download
 ;- ------------------------------------------------------------
 
@@ -111,14 +86,6 @@ Procedure FontDownloader_PopulateListGadget(ListGadget)
   ForEach NerdFontEntries()
     AddGadgetItem(ListGadget, -1, NerdFontEntries()\Name)
   Next
-EndProcedure
-
-; Esvazia a fila de eventos pendente (sem bloquear) para o texto de status
-; ser repintado antes de uma chamada de rede bloqueante (ReceiveHTTPFile /
-; ReceiveHTTPMemory nao cedem tempo para a interface).
-Procedure FontDownloader_FlushEvents()
-  Repeat
-  Until WindowEvent() = 0
 EndProcedure
 
 Procedure FontDownloader_SetBusy(StatusGadget, ListGadget, Btn1, Btn2, Btn3, Btn4, Btn5, Btn6, Btn7, Busy.b)
@@ -135,7 +102,7 @@ Procedure FontDownloader_SetBusy(StatusGadget, ListGadget, Btn1, Btn2, Btn3, Btn
   Else
     SetGadgetText(StatusGadget, "")
   EndIf
-  FontDownloader_FlushEvents()
+  ExtTool_FlushEvents()
 EndProcedure
 
 ; Baixa as fontes da lista de indices (posicoes em NerdFontEntries(), na mesma
@@ -147,10 +114,6 @@ Procedure.i FontDownloader_RunDownloads(Win, StatusGadget, List Indexes.i(), Tar
     ProcedureReturn 0
   EndIf
 
-  If FileSize(TargetDir) <> -2
-    CreateDirectory(TargetDir)
-  EndIf
-
   Protected Idx, Done = 0, Ok = 0, Fail = 0
   Protected FailNames.s = ""
 
@@ -159,9 +122,9 @@ Procedure.i FontDownloader_RunDownloads(Win, StatusGadget, List Indexes.i(), Tar
     Done + 1
     If SelectElement(NerdFontEntries(), Idx)
       SetGadgetText(StatusGadget, "Baixando " + Str(Done) + "/" + Str(Total) + ": " + NerdFontEntries()\Name + "...")
-      FontDownloader_FlushEvents()
+      ExtTool_FlushEvents()
 
-      If FontDownloader_DownloadOne(NerdFontEntries()\Url, TargetDir)
+      If ExtTool_DownloadAndExtractZip(NerdFontEntries()\Url, TargetDir)
         Ok + 1
       Else
         Fail + 1
@@ -198,15 +161,11 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
   EndIf
 
   Protected WinW = 600, WinH = 558
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Baixar Fontes (Nerd Fonts)",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Baixar Fontes (Nerd Fonts)",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn ""
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, WinW - 48, 48,
     "Baixa fontes da colecao Nerd Fonts (nerdfonts.com), extraindo automaticamente" + Chr(10) +
@@ -233,7 +192,7 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
   Protected G_Close = ThemedButton(WinW - 24 - 100, 502, 100, 32, "Fechar", Chr(#Icon_Close))
   GadgetToolTip(G_Close, "Fechar")
 
-  FontDownloader_FlushEvents()
+  ExtTool_FlushEvents()
   If FontDownloader_FetchList()
     FontDownloader_PopulateListGadget(G_List)
     SetGadgetText(G_Status, Str(ListSize(NerdFontEntries())) + " fonte(s) disponivel(is).")
@@ -269,7 +228,7 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
 
           Case G_Reload
             SetGadgetText(G_Status, "Recarregando lista de fontes...")
-            FontDownloader_FlushEvents()
+            ExtTool_FlushEvents()
             If FontDownloader_FetchList()
               FontDownloader_PopulateListGadget(G_List)
               SetGadgetText(G_Status, Str(ListSize(NerdFontEntries())) + " fonte(s) disponivel(is).")
@@ -333,8 +292,7 @@ Procedure.s FontDownloader_OpenWindow(ParentWindow, InitialFolder.s)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 
   ProcedureReturn DownloadedDir
 EndProcedure

@@ -92,6 +92,26 @@ Procedure.i EditorCfg_ThemeIndexById(Id.s)
   EndSelect
 EndProcedure
 
+; #True para os 5 temas de fundo escuro (Graphite/Navy/Rose/Crimson/Forest,
+; ver Color_AppBg de cada Case em ApplyTheme(), BadigEditor.pb), #False para
+; os 2 de fundo claro (Snow/Paper) - usado pra decidir quando acionar as
+; APIs nativas de "modo escuro" do Windows (DWMWA_USE_IMMERSIVE_DARK_MODE,
+; SetWindowTheme_ "DarkMode_Explorer", WM_CTLCOLOREDIT/LISTBOX) em vez do
+; antigo "EditorCfg\Theme = 'Dark'" literal, que era um resquicio do sistema
+; binario Dark/Light anterior aos 7 temas - EditorCfg_Load() ja migra
+; qualquer "Dark"/"Light" legado pra "Graphite"/"Snow" assim que carrega
+; (ver comentario la), entao aquela comparacao nunca mais podia dar certo:
+; o modo escuro nativo ficava sempre desligado, em qualquer tema, inclusive
+; nos 5 escuros.
+Procedure.b EditorCfg_ThemeIsDark(ThemeId.s)
+  Select ThemeId
+    Case "Snow", "Paper"
+      ProcedureReturn #False
+    Default
+      ProcedureReturn #True ; Graphite/Navy/Rose/Crimson/Forest + desconhecido
+  EndSelect
+EndProcedure
+
 ;- ------------------------------------------------------------
 ;- Enumeracao de fontes monoespacadas instaladas (WinAPI)
 ;- ------------------------------------------------------------
@@ -331,15 +351,11 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
   ; dialogos). Todo campo/combo/botao usa a mesma altura (24px, 32px so nos
   ; botoes principais Salvar/Cancelar) para o alinhamento ficar consistente.
   Protected WinW = 620, WinH = 470
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configuracoes do Editor",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configuracoes do Editor",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn #False
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, 180, 20, "Fonte (monoespacada)")
   Protected G_Font = ComboBoxGadget(#PB_Any, 214, 21, 270, 24)
@@ -497,8 +513,7 @@ Procedure.b EditorCfg_OpenSettingsWindow(ParentWindow)
     EndIf
   EndIf
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 
   ProcedureReturn Saved
 EndProcedure

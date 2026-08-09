@@ -256,14 +256,11 @@ Procedure MsxBas2RomSettings_OpenWindow(ParentWindow)
   MsxBas2RomCfg_Load()
 
   Protected WinW = 580, WinH = 304
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Configurar - MSXBas2Rom",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configurar - MSXBas2Rom",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
-  DisableWindow(ParentWindow, #True)
 
   TextGadget(#PB_Any, 24, 24, WinW - 48, 40,
             "MSXBAS2ROM compila programas MSX-BASIC classicos (.bas) direto em ROM." + Chr(10) +
@@ -307,6 +304,5 @@ Procedure MsxBas2RomSettings_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  DisableWindow(ParentWindow, #False)
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win)
 EndProcedure

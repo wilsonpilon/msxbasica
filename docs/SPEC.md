@@ -3772,6 +3772,51 @@ ferramenta mentiria sobre a cor de verdade do hardware).
 
 ## Próximos passos em aberto
 
+**Estado ao fim de 2026-08-09 — revisão geral: bugs, coesão de módulos, performance e temas (v7.33.1,
+sem codinome)**: sessão de auditoria ampla pedida pelo usuário (7 revisões paralelas por área do
+código: pipeline/tokenizer, toolchain Z80, shell principal, editores gráficos, editores de tela texto,
+áudio/tracker, settings/integrações externas), seguida de correção do que valia a pena. Resumo (sem
+detalhe de release notes cumulativo, pedido explícito do usuário):
+- **8 bugs reais corrigidos**: aba errada ativada ao fechar uma aba não-ativa (`BadigEditor.pb`);
+  vazamento de handles GDI em `CharsetEditorGui.pbi`/`GraphosScreenGui.pbi`/
+  `AquarelaCharsetEditorGui.pbi`; `ProjectDB::SaveAs` podia abandonar o projeto silenciosamente se o
+  reabrir do banco novo falhasse; `MSXDisk::ExtractFile` reportava sucesso numa extração truncada;
+  downloads parciais sem limpeza em `BadigSettings.pbi`/`FontDownloader.pbi`; vazamento de buffer em
+  `Z80Lib::CreateOrAddLibrary`; thread do pipe do openMSX nunca fechada (`OpenMSXBridge.pbi`); loop
+  labels aninhados sem limite no pré-processador podiam corromper heap (`DignifiedPreprocessor.pbi`,
+  `Dig_LoopStack`).
+- **Coesão**: helper de janela compartilhado (`OpenModelessChildWindow`/`CloseModelessChildWindow`,
+  `BadigEditor.pb`) extraído e migrado em 35 arquivos de diálogo, ~150 linhas de boilerplate repetido a
+  menos; hit-test de paleta (`Scr2Ed_PaletteHitTest`) desduplicado entre Screen0/1/2/12 e Graphos;
+  `FontDownloader.pbi` passou a reusar `ExternalToolDownload.pbi` em vez de duplicá-lo.
+- **Performance**: `Tok_TokenizeLineBody`/`Tok_RenumberLineBody` (`MsxTokenizer.pbi`) deixaram de
+  recomputar `UCase()` do restante da linha a cada posição (O(n²) → O(n) por linha), verificado
+  byte-idêntico contra `sample/teste.dmx`; redraw de glifo em Screen0/1/12 funde pixels de tinta
+  adjacentes num só `Box()` (verificado pixel-a-pixel contra os 256 padrões de byte possíveis);
+  `Scr2Ed_RedrawCanvas` (Graphos + Screen2, chamado a cada mouse-move durante desenho) leu o pixel
+  direto do array em vez de por uma função de consulta com checagem de fronteira redundante.
+- **Achado maior da sessão — modo escuro nativo sempre desligado**: os 7 temas (`7.31.2` em diante)
+  substituíram um modelo binário antigo "Dark"/"Light", e `EditorCfg_Load()` já migra qualquer valor
+  legado assim que carrega — mas 8 pontos em `BadigEditor.pb`/`SeeTrackerEditorGui.pbi` continuavam
+  comparando `EditorCfg\Theme = "Dark"` literalmente, um valor inatingível depois dessa migração.
+  Resultado: `DWMWA_USE_IMMERSIVE_DARK_MODE` (barra de título escura), `SetWindowTheme_`
+  "DarkMode_Explorer" e a coloração de campos via `WM_CTLCOLOREDIT`/`WM_CTLCOLORLISTBOX` nunca
+  ativavam, em nenhum tema — inclusive nos 5 escuros (Graphite/Navy/Rose/Crimson/Forest). Corrigido com
+  `EditorCfg_ThemeIsDark()` (`EditorSettings.pbi`). Um segundo bug relacionado, documentado como
+  "abandonado" no próprio código-fonte (tentativa anterior de colorir rótulos via `SetGadgetColor`+
+  `GetDlgCtrlID_` não funcionava porque `GetDlgCtrlID_` não devolve o número do gadget do PureBasic
+  nesse contexto): rótulos (`TextGadget`) ficavam sempre com fundo claro/texto escuro nativo do Windows
+  mesmo em tema escuro. Resolvido tratando `WM_CTLCOLORSTATIC` no mesmo subclass de janela
+  (`App_DarkModeWindowProc`) que já tratava `WM_CTLCOLOREDIT`/`LISTBOX` — resolve no nível de mensagem,
+  sem precisar do número do gadget, cobre todo diálogo automaticamente. Ambos confirmados com
+  screenshot real da IDE rodando (`PrintWindow`) contra o tema `Rose` já salvo nas configurações reais
+  do usuário, não só leitura de código — mesmo cuidado do achado de `7.31.4`.
+- **Adiado de propósito** (risco/esforço maior do que o pedido desta sessão comportava, ver conversa):
+  unificação de caixa/sombra/preenchimento entre `Screen0EditorGui.pbi`/`Screen1EditorGui.pbi`;
+  desduplicação do padrão Store/Fetch/Has/List em `ProjectDB.pbi` (~14 repetições); dirty-rect de
+  verdade no Graphos (só o redraw completo foi otimizado, não a invalidação parcial por ferramenta);
+  rede síncrona na UI thread (`BadigSettings.pbi`/`ExternalToolDownload.pbi`/`FontDownloader.pbi`).
+
 **Estado ao fim de 2026-08-08 (sessão seguinte a "TORRE DE CONTROLE") — auto completar ("PALPITEIRO")
 e Arquivo → Salvar Tudo (v7.29.5)**: sessão pedida pelo usuário em três rodadas. Ver módulo 25 (seção
 25 abaixo) e módulo 1b para o detalhe técnico completo; resumo aqui:

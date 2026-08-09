@@ -216,13 +216,11 @@ Procedure NestorBasicHelp_OpenWindow(ParentWindow)
   NBHelp_BuildData()
 
   Protected WinW = 940, WinH = 620
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ajuda - NestorBASIC",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ajuda - NestorBASIC",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
   NBHelpGui_WinID = Win
 
   Protected TopY = 24
@@ -338,5 +336,5 @@ Procedure NestorBasicHelp_OpenWindow(ParentWindow)
   Until Quit
 
   NBHelpGui_WinID = -1
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure

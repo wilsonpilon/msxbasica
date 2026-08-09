@@ -75,13 +75,11 @@ EndProcedure
 
 Procedure EditorHelp_OpenWindow(ParentWindow)
   Protected WinW = 680, WinH = 760
-  Protected Win = OpenWindow(#PB_Any, 0, 0, WinW, WinH, "Ajuda - Editor",
-                             #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ajuda - Editor",
+                                          #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #False)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, Color_AppBg)
-  App_ApplyWindowIcon(Win)
 
   Protected ButtonY = WinH - 56
   Protected G_Content = ScintillaGadget(#PB_Any, 24, 24, WinW - 48, ButtonY - 40, 0)
@@ -106,5 +104,5 @@ Procedure EditorHelp_OpenWindow(ParentWindow)
     EndSelect
   Until Quit
 
-  CloseWindow(Win)
+  CloseModelessChildWindow(ParentWindow, Win, #False)
 EndProcedure
