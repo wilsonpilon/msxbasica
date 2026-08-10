@@ -14,9 +14,9 @@ msxbas2rom --history
 ---
 
 ## Online Resources
-- [Official Wiki Home](Home);
-- [Getting Started Guide](Gettingstarted);
-- [Usage Guide](Usage).
+- [Official Wiki Home](https://github.com/amaurycarvalho/msxbas2rom/wiki/Home);
+- [Getting Started Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Gettingstarted);
+- [Usage Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Usage).
 
 ---
 
@@ -29,4 +29,4 @@ msxbas2rom --history
   - **[Question]** or **[Discussion]**: Clarification or open-ended talk;
   - **[Asset]**: For new assets to be added to the project (ex: images, demos, games);
   - **[Task]**: General to-do or implementation detail.
-- Contribute fixes or docs via [Contributing](Contributing).
+- Contribute fixes or docs via [Contributing](https://github.com/amaurycarvalho/msxbas2rom/wiki/Contributing).

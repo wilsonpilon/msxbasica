@@ -9,10 +9,14 @@
 ;  qualquer .dmx/.amx.
 ;
 ;  Uso:
-;    DigTestCli.exe <entrada.dmx> <saida> [tok]
+;    DigTestCli.exe <entrada.dmx> <saida> [tok|msxbas2rom]
 ;      <entrada.dmx>  arquivo Dignified (ou ja ASCII classico) a processar
 ;      <saida>        prefixo do arquivo de saida (".amx" e opcionalmente ".bmx")
 ;      tok            se presente, tambem tokeniza o resultado (gera <saida>.bmx)
+;      msxbas2rom     roda Dig_Preprocess em modo MSXBAS2ROM (vocabulario
+;                     estendido protegido contra encurtamento, FILE/TEXT sem
+;                     numero de linha) em vez do modo classico - incompativel
+;                     com "tok" (MSXBAS2ROM nunca tokeniza)
 ;
 ;  Compilar com:
 ;    "C:\Basic\Compilers\pbcompiler.exe" editor\tools\DigTestCli.pb /EXE editor\tools\DigTestCli.exe /CONSOLE
@@ -46,7 +50,8 @@ While Not Eof(fnum)
 Wend
 CloseFile(fnum)
 
-Define ascii.s = Dig_Preprocess(content, GetPathPart(InPath))
+Define IsMsxBas2Rom.b = Bool(DoTokenize = "msxbas2rom")
+Define ascii.s = Dig_Preprocess(content, GetPathPart(InPath), IsMsxBas2Rom)
 
 If Dig_HasError
   PrintN("DIGERROR linha " + Str(Dig_ErrorLine) + ": " + Dig_ErrorMsg)

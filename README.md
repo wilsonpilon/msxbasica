@@ -4,7 +4,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.33.1** — versão e build (data/hora UTC de compilação, em hexadecimal)
+**Versão atual: 7.33.1** ("`PENTE FINO`") — versão e build (data/hora UTC de compilação, em hexadecimal)
 são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -1824,7 +1824,8 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   existentes. Nenhuma das ~400 edições foi manual — três scripts Python descartáveis (parsing de
   parênteses balanceados, não regex ingênuo) fizeram a conversão mecânica, com recompilação a cada
   rodada pra pegar erro cedo. Detalhe completo em `docs/RELEASE_NOTES.md`.
-- **2026-08-09 — revisão geral: bugs, coesão de módulos, performance e temas (`7.33.1`)**: sessão de
+- **2026-08-09 — revisão geral: bugs, coesão de módulos, performance e temas, codinome `PENTE FINO`
+  (`7.33.1`)**: sessão de
   auditoria ampla (7 revisões paralelas por área do código) seguida de correção. 8 bugs reais
   corrigidos, entre eles: fechar uma aba não-ativa trocava o documento visível errado; vazamento de
   handles GDI em dois editores gráficos; `ProjectDB::SaveAs` podia abandonar o projeto silenciosamente
@@ -1842,6 +1843,114 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   e tratamento de `WM_CTLCOLORSTATIC` (rótulos ficavam sem essa cobertura desde sempre, achado
   documentado como "abandonado" no próprio código) — confirmado com screenshot real da IDE rodando
   contra um tema escuro, não só leitura de código.
+- **2026-08-09 (mesma sessão) — `Configurar → MSXBas2Rom...` redesenhada (`7.33.2`)**: pedido explícito
+  do usuário — reforçou que o `msxbas2rom` nunca é incorporado ao projeto, é sempre um `.exe` externo
+  chamado por caminho. O único botão "Baixar" (que baixava executável + Ajuda juntos) virou três
+  controles independentes: **"Baixar versão mais recente"** (`MsxBas2Rom_DownloadExe()`) baixa só o
+  executável da release mais atual do GitHub pra `tools/msxbas2rom/` (subpasta da instalação do
+  msxbasica); um **campo de caminho editável** com botão "..." cobre o caso de o usuário já ter o
+  `msxbas2rom` instalado em outro lugar, pré-preenchido com o local onde a IDE baixou (ou, se ainda
+  vazio, com o resultado de uma busca na pasta padrão) e só persistido no `Salvar`/`Cancelar` da janela;
+  e **"Atualizar documentação"** é por ora um placeholder proposital que só mostra uma mensagem de
+  status — a geração de Ajuda a partir da wiki oficial (extraída do botão único antigo) fica pro próximo
+  passo.
+- **2026-08-09 (mesma sessão) — "Atualizar documentação" implementado, guia de referência prático
+  (`7.33.3`)**: pedido explícito do usuário — baixar o conteúdo de
+  `github.com/amaurycarvalho/msxbas2rom/wiki/Documentation` e estruturar dentro de **Ajuda →
+  MSXBas2Rom...** com a mesma organização da wiki real do projeto. Clonei
+  `amaurycarvalho/msxbas2rom.wiki.git` pra ler a estrutura de verdade em vez de adivinhar: `Home.md`
+  (tabela "Quick Reference") e `Documentation.md` (hub "Reference Guide", 12 sub-páginas) definiram os
+  três grupos baixados — **Primeiros passos** (visão geral/instalação/primeiros passos/uso), **Guia de
+  referência** (as 12 páginas do hub: limitações de compilação, diretivas de recursos, comandos/funções
+  estendidos, suporte a música/MTF/nMSXTiles/Tiny Sprite, integração VSCode + manual de configuração
+  manual, depuração com openMSX, arquitetura do compilador, como obter ajuda) e **Exemplos** — 19
+  páginas no total, mais o `-h` do executável configurado. `Games`/`Contributing`/`Branding` ficaram de
+  fora de propósito (conteúdo de comunidade/créditos, não guia de uso do dialeto, conforme pedido do
+  usuário). Bug em potencial evitado antes de acontecer: links internos da wiki (`[Instalação](Install)`,
+  forma normal de link relativo entre páginas do GitHub) são reescritos pra URL absoluta
+  (`MsxBas2Rom_RewriteWikiLinks()`) antes de salvar — sem isso, o clique (que a janela de Ajuda genérica
+  manda cru pro `explorer.exe`) tentaria abrir um arquivo local inexistente em vez da página real,
+  inclusive pras páginas propositalmente não baixadas.
+- **2026-08-09 (mesma sessão) — fonte grande/desalinhada em TODA janela de Ajuda (`7.33.4`)**: bug
+  reportado pelo usuário testando a nova Ajuda do MSXBas2Rom ("a fonte do HELP está muito grande, o
+  texto aparece desalinhado, quebra em linhas desconexas") — mas a causa era comum às **8** janelas de
+  Ajuda da IDE, não só a nova. `NBHelpGui_SetupStyles()`/`GenMdHelp_SetupStyles()` (as duas bases
+  compartilhadas por Nestor Basic/MSX BASIC/Basic Dignified/SEE Tracker/openMSX/Editor/MD Viewer/
+  MSXBas2Rom+N80) renderizavam o corpo do texto (prosa) com a fonte do **editor de código** do usuário
+  (`EditorCfg\FontName`/`FontSize`) — tipicamente monoespaçada por design, o que faz prosa parecer maior
+  do que o tamanho configurado e quebrar linha (`SC_WRAP_WORD`) com muita mais frequência do que uma
+  fonte proporcional do mesmo tamanho nominal. Só ficou óbvio agora porque o conteúdo baixado da wiki
+  tem parágrafos de prosa de verdade, ao contrário da maioria dos outros Helps (escritos à mão, já mais
+  compactos). Corrigido com Segoe UI 10pt fixo pro corpo do texto no Windows (desacoplado do
+  `EditorCfg` do usuário), mesmo "toque moderno" já usado nos controles nativos de toda janela
+  secundária (`App_ApplyWindowIcon()`).
+- **2026-08-10 — cor própria pro vocabulário estendido do MSXBAS2ROM (`7.33.6`)**: pedido explícito do
+  usuário — o destaque de sintaxe do MSXBAS2ROM (implementado em `2026-08-01`) reaproveitava as cores
+  já existentes de statement/função/diretiva do MSX-BASIC/Dignified; agora as 3 categorias (`CMD
+  TURBO`, `HEAP()`, `FILE`/`TEXT`...) caem todas na MESMA cor nova (`#Style_MsxBas2Rom`, negrito),
+  numa família teal/ciano ajustada em cada um dos 7 temas pra não repetir nenhuma cor de sintaxe já
+  usada. Só a cor mudou, o vocabulário reconhecido é o mesmo de antes. Pedido do usuário também deixou
+  registrado o próximo passo (bem mais complexo, de propósito adiado): fazer o pré-processador Basic
+  Dignified reconhecer as palavras-chave do MSXBAS2ROM como tal, em vez de deixá-las livres pra virar
+  nome de variável.
+- **2026-08-09 (mesma sessão) — exemplos reais de código em Ajuda → MSXBas2Rom..., codinome
+  `BIBLIOTECA` (`7.33.5`)**: pedido explícito do usuário — baixar a pasta `demo/` oficial do
+  `amaurycarvalho/msxbas2rom` (link direto `.../tree/master/demo`) e, se possível, também os jogos
+  completos de `amaurycarvalho/msxbasic`, pro disco, navegáveis/legíveis dentro do Ajuda como exemplos
+  de programação reais. Dois botões novos: **"Baixar exemplos (demo)"** baixa só a pasta `demo/` (zip
+  do repositório inteiro filtrado por prefixo antes de extrair — código C++ do compilador nem chega a
+  tocar o disco) pra `tools/msxbas2rom/demo/`; **"Baixar jogos completos"** baixa
+  `amaurycarvalho/msxbasic` inteiro (zip pequeno, ~2,4 MB) pra `tools/msxbas2rom/games/` — 10 jogos MSX
+  BASIC completos, cada um com seu próprio `README.md`. Ambos baixam TODOS os arquivos (imagens, ROMs,
+  sprites, música), mas só `.bas`/`.md` entram na árvore de Ajuda, um grupo por pasta de jogo/demo
+  (`"Demo: scroll1"`, `"Jogo: Fortknox"`...), preservando a estrutura real dos repositórios. Validei o
+  algoritmo (extração filtrada + varredura recursiva) contra os zips reais dos dois repositórios num
+  harness isolado antes de integrar: 81 arquivos/12 tópicos pro `demo/`, 317 arquivos/23 tópicos pro
+  `msxbasic`, casos de borda conferidos (jogo sem `README.md`, arquivo `.bas` dentro de subpasta,
+  extensão `.BAS` maiúscula). Abrir um `.bas` na Ajuda não passa mais pelo parser de markdown — um
+  despachante novo (`GenMdHelp_RenderTopic()`) decide pela extensão e mostra código real verbatim
+  (`GenMdHelp_RenderPlainCode()`), já que BASIC usa `**`/`` ` ``/`[]()` legitimamente e o parser de
+  markdown corromperia a exibição. Três botões diferentes agora gravam tópicos no mesmo índice de Ajuda
+  (`Atualizar documentação`/`Baixar exemplos`/`Baixar jogos`) sem se atropelarem
+  (`GenMdHelp_MergeIndex()` — cada download só substitui os grupos que ele mesmo gera).
+- **2026-08-10 — motor Dignified com modo MSXBAS2ROM, compilação pra ROM e config por projeto
+  (`7.33.7`)**: pedido explícito do usuário — programas MSXBAS2ROM escritos em Dignified (labels,
+  `DEFINE`, `FUNC`/`RET`) agora protegem o vocabulário exclusivo (`FILE`/`TEXT`, sub-comandos de `CMD`/
+  `SET`/`GET`, `HEAP()`/`TILE()`/`TURBO()`...) contra o encurtamento automático de variáveis — antes,
+  usar essas palavras como identificador virava candidato a renomeio (`TURBO` → `ZX`), corrompendo o
+  programa. Decisão confirmada com o usuário: em vez de duplicar o motor Dignified inteiro (~2500 linhas
+  testadas) num arquivo separado, ele ganhou um **modo** (`Dig_Preprocess(..., IsMsxBas2Rom)`) que
+  reaproveita os mesmos 3 mapas de vocabulário já usados pelo destaque de sintaxe. `FILE`/`TEXT` (diretivas
+  de recurso, confirmado na documentação oficial) saem sem número de linha, preservando a ordem que
+  define o índice do recurso. Validado com um teste isolado: em modo clássico, `FILE`/`TURBO`/`HEAP`
+  saíam renomeados e corrompiam o programa (bug real, confirmado); em modo novo, saem intactos. Novo
+  **Executar → Compilar ROM (MSXBas2Rom)...** gera o `.bas` e chama o `msxbas2rom.exe` configurado de
+  verdade (nenhum caminho existia antes pra isso — só o downloader). Também, pedido do usuário: nova
+  **Configurar → Projeto...**, permitindo que Basic Dignified/N80/MSXBas2Rom usem uma configuração
+  própria de cada projeto em vez da global — sem duplicar nenhuma das 3 telas existentes, só um
+  parâmetro novo (`OverridePath`) que redireciona onde cada uma lê/grava.
+- **2026-08-10 (mesma sessão) — projeto `.msxproject` autocontido/portátil (`7.33.8`)**: pedido explícito
+  do usuário — levar só o arquivo de projeto de um PC pro outro e os fontes BASIC/Assembly "irem junto".
+  O `.msxproject` já guardava uma cópia de cada aba salva, mas sem garantia de estar sempre fresca nem
+  nada que reconstituísse os arquivos numa máquina nova. Agora, **"Salvar projeto"/"Salvar Tudo"/
+  encerrar o programa** resincronizam o projeto com o conteúdo REAL do disco de todo fonte que ele
+  conhece (`ResyncProjectDocumentsFromDisk()`); **abrir um projeto** cujo arquivo esperado não existe
+  (o caso normal de outra máquina) extrai o conteúdo de volta pro disco, sempre ao lado do
+  `.msxproject` sendo aberto — não do caminho absoluto antigo, que só fazia sentido na máquina original
+  (`RestoreMissingDocumentsToDisk()`). Escopo intencionalmente limitado a fontes de texto (BASIC/
+  Assembly) — sprites/telas/sons/músicas já vivem nativamente no SQLite. Dois helpers novos em
+  `ProjectDB.pbi` (`ListDocumentPaths()`/`DeleteDocument()`), testados no harness de regressão do
+  módulo (`ProjectDBTestCli.pb`) junto com todos os testes existentes.
+- **2026-08-10 (mesma sessão) — opções de linha de comando do msxbas2rom na tela de configuração
+  (`7.33.9`)**: pedido explícito do usuário, com a lista de flags colada direto de `msxbas2rom -h` —
+  nova página "Opções de compilação" em `Configurar → MSXBas2Rom...` (e `Configurar → Projeto...`, de
+  graça, já que é a mesma janela): modo de compilação (ROM simples/automático/4 variantes de MegaROM,
+  `-c`/`-a`/`-x`/`-6`/`-7`/`-4`/`-k`), silencioso/debug (`-q`/`-d`), caminhos de entrada/saída (`-i`/
+  `-o`), geração de símbolos de depuração em 4 formatos (`-s`/`--cdb`/`--symbol`/`--omds`), gravar
+  números de linha no binário (`--lin`) e inicializar projeto VSCode (`--vscode`). "Compilar ROM" passa
+  a montar esses argumentos de verdade (antes só passava o `.bas`, sem nenhuma flag). Os 4 flags só-leem-
+  e-saem (`-h`/`-D`/`-H`/`-v`) ficaram de propósito como botões de ação única em vez de checkbox
+  persistente — teriam como travar silenciosamente o botão de compilar se esquecidos ligados.
 
 ## Ferramentas e ambiente
 

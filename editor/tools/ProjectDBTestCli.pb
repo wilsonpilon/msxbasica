@@ -162,6 +162,27 @@ CheckTrue(ProjectDB::StoreDocument(DocPath2, "ASM", DocContent2), "StoreDocument
 ProjectDB::FetchDocument(DocPath2)
 CheckTrue(Bool(ProjectDB::LastDocumentContent() = DocContent2), "Documento: aspas simples preservadas (escape correto)")
 
+; 8c-ii) ListDocumentPaths/DeleteDocument - usados por ResyncProjectDocumentsFromDisk()/
+; RestoreMissingDocumentsToDisk() (BadigEditor.pb, pedido do usuario de
+; 2026-08-10: levar o .msxproject de uma maquina pra outra com os fontes).
+NewList ListedPaths.s()
+ProjectDB::ListDocumentPaths(ListedPaths())
+CheckTrue(Bool(ListSize(ListedPaths()) = 2), "ListDocumentPaths() lista os 2 documentos guardados")
+Define FoundPath1.b = #False, FoundPath2.b = #False
+ForEach ListedPaths()
+  If ListedPaths() = DocPath1 : FoundPath1 = #True : EndIf
+  If ListedPaths() = DocPath2 : FoundPath2 = #True : EndIf
+Next
+CheckTrue(FoundPath1, "ListDocumentPaths() inclui fonte1.dmx")
+CheckTrue(FoundPath2, "ListDocumentPaths() inclui fonte2.asm")
+
+ProjectDB::DeleteDocument(DocPath1)
+CheckTrue(Bool(ProjectDB::FetchDocument(DocPath1) = #False), "DeleteDocument(fonte1.dmx) remove a linha (FetchDocument falha depois)")
+ProjectDB::ListDocumentPaths(ListedPaths())
+CheckTrue(Bool(ListSize(ListedPaths()) = 1), "ListDocumentPaths() reflete a remocao (so fonte2.asm sobra)")
+; devolve fonte1.dmx pro estado esperado pelos testes de SaveAs/OpenExisting mais abaixo
+CheckTrue(ProjectDB::StoreDocument(DocPath1, "DMX", DocContent1b), "StoreDocument(fonte1.dmx) restaurado apos teste de DeleteDocument")
+
 ; 8d) StoreAlphabet/FetchAlphabet - alfabetos (charset 256x8) do projeto,
 ; mesmo padrao Store/Fetch/List dos sprites.
 Procedure FillAlphaPattern(Array CharsetBytes.a(2), Seed.i)

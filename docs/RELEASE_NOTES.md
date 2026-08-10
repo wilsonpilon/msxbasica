@@ -6,6 +6,114 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.33.9 — "CARTUCHO DE VERDADE" (2026-08-10)
+
+**Tema da versão**: o `msxbas2rom` (compilador de terceiro que gera ROM de verdade a partir de
+MSX-BASIC) deixou de ser só um executável baixado — agora faz parte do fluxo de trabalho de ponta a
+ponta da IDE, e o projeto inteiro (com todos os fontes) ficou portátil entre máquinas.
+
+### Novidades
+
+- **Basic Dignified entende o dialeto do MSXBAS2ROM**: programas escritos com labels/`DEFINE`/`FUNC`/
+  `RET` (em vez de BASIC clássico numerado) agora protegem o vocabulário exclusivo do compilador
+  (`FILE`/`TEXT`, sub-comandos de `CMD`/`SET`/`GET`, `HEAP()`/`TILE()`/`TURBO()`...) contra o
+  encurtamento automático de variáveis — antes, usar essas palavras como identificador corrompia o
+  programa silenciosamente.
+- **Executar → Compilar ROM (MSXBas2Rom)...**: gera o `.bas` e chama o `msxbas2rom.exe` de verdade,
+  produzindo um `.rom` — antes só existia o downloader do executável, nenhum caminho de fato o usava.
+- **Configurar → MSXBas2Rom...** ganhou uma tela completa de opções de compilação (modo ROM simples/
+  MegaROM em 5 variantes, silencioso/debug, caminhos de entrada/saída, geração de símbolos de
+  depuração, números de linha no binário, projeto VSCode) — espelhando 1:1 as opções reais do
+  compilador.
+- **Configurar → Projeto...**: Basic Dignified, N80 e MSXBas2Rom agora podem usar uma configuração
+  própria de cada projeto em vez da global da máquina.
+- **Projeto `.msxproject` portátil**: os fontes BASIC/Assembly são resincronizados automaticamente com
+  o disco ao salvar o projeto e restaurados sozinhos ao abrir num local novo — leva só o arquivo de
+  projeto de um PC pro outro e o código-fonte vai junto.
+- **Ajuda → MSXBas2Rom...**: passou a incluir os exemplos oficiais do compilador (pasta `demo/`) e os
+  10 jogos completos de `amaurycarvalho/msxbasic`, navegáveis com destaque de código de verdade, além
+  da documentação da wiki oficial já baixada automaticamente. Destaque de sintaxe do dialeto ganhou uma
+  cor própria, em vez de reaproveitar as cores do MSX-BASIC clássico.
+
+### Bastidores
+
+- O motor Dignified (`DignifiedPreprocessor.pbi`) ganhou um **modo**, não um segundo parser — evita
+  duplicar ~2500 linhas testadas de labels/loops/`INCLUDE`/remtags que teriam que evoluir em paralelo.
+- As 3 telas de configuração (Basic Dignified/N80/MSXBas2Rom) não mudaram de conteúdo pra virar
+  "por projeto" — só ganharam um caminho de arquivo alternativo, reaproveitado tanto pela tela global
+  quanto pela nova tela de projeto.
+
+---
+
+## 7.33.1 — "PENTE FINO" (2026-08-09)
+
+**Tema da versão**: usuário pediu uma revisão geral do programa — bugs, unidade dos módulos,
+performance e integração. Sete auditorias paralelas (uma por área do código: pipeline/tokenizer,
+toolchain Z80, shell principal, editores gráficos, editores de tela texto, áudio/tracker, settings/
+integrações externas) levantaram uma lista de achados; esta versão fecha os que valiam a pena corrigir
+nesta rodada.
+
+### Novidades
+
+- **Helper de janela compartilhado** (`OpenModelessChildWindow`/`CloseModelessChildWindow`,
+  `BadigEditor.pb`) — a mesma sequência de abrir/fechar diálogo (cor de fundo, ícone, desabilitar
+  janela principal) que se repetia em ~30 arquivos virou duas chamadas, migrado em 35 arquivos.
+- **Modo escuro nativo do Windows, de verdade** — barra de título, campos de texto/lista e agora
+  também rótulos (`TextGadget`) seguem o tema escolhido nos 5 temas escuros (Graphite/Navy/Rose/
+  Crimson/Forest); antes disso o mecanismo existia mas nunca acionava, ver "Bastidores".
+
+### Bugs corrigidos nesta versão
+
+- Fechar uma aba **não-ativa** (pelo próprio "x") trocava o documento visível pra aba errada.
+- Vazamento de handles GDI (ícones de toolbar nunca liberados) em `CharsetEditorGui.pbi`,
+  `GraphosScreenGui.pbi` e `AquarelaCharsetEditorGui.pbi`.
+- `ProjectDB::SaveAs` podia abandonar o projeto do usuário silenciosamente se copiar o arquivo desse
+  certo mas reabrir o banco no novo local falhasse.
+- `MSXDisk::ExtractFile` reportava sucesso numa extração de disco truncada.
+- Download de zip parcial (ZIP incompleto por queda de rede) não era apagado em `BadigSettings.pbi`/
+  `FontDownloader.pbi`.
+- Vazamento de buffer em `Z80Lib::CreateOrAddLibrary` quando uma entrada `.REL` posterior falhava a
+  validação.
+- Thread do pipe de comando do openMSX nunca fechada (`OpenMSXBridge.pbi`).
+- Loop labels aninhados sem limite no pré-processador Dignified podiam corromper heap silenciosamente
+  em vez de falhar limpo (`Dig_LoopStack`, `DignifiedPreprocessor.pbi`).
+- **O achado maior**: 8 pontos comparando `EditorCfg\Theme = "Dark"` literalmente — valor legado que a
+  própria migração pros 7 temas (`7.31.2`) já tornava inatingível — deixavam o modo escuro nativo do
+  Windows sempre desligado, em qualquer tema.
+
+### Documentação nova
+
+- `CLAUDE.md` ganhou uma nota técnica sobre o bug do tema morto e a técnica `WM_CTLCOLORSTATIC`.
+- `docs/SPEC.md`: nova entrada em "Próximos passos em aberto" com o resumo completo, incluindo o que
+  foi adiado de propósito (unificação Screen0/Screen1, dedup do `ProjectDB`, dirty-rect do Graphos,
+  rede síncrona na UI thread).
+
+### Bastidores
+
+- **Por que o modo escuro nunca funcionava**: o sistema de 7 temas substituiu um modelo binário antigo
+  "Dark"/"Light" — `EditorCfg_Load()` já migra qualquer valor legado assim que carrega, mas 8 lugares
+  em `BadigEditor.pb`/`SeeTrackerEditorGui.pbi` continuavam comparando contra o literal `"Dark"` que a
+  própria migração tornava impossível de ocorrer. Corrigido com um helper novo,
+  `EditorCfg_ThemeIsDark()`, em vez da comparação direta.
+- **O bug dos rótulos que o próprio código já tinha marcado como "abandonado"**: uma tentativa anterior
+  de colorir `TextGadget` via `SetGadgetColor()` + `GetDlgCtrlID_(hWnd)` (dentro do callback de
+  `EnumChildWindows_`) não funcionava porque `GetDlgCtrlID_` não devolve o número do gadget do
+  PureBasic nesse contexto. A correção não precisa do número do gadget: tratar `#WM_CTLCOLORSTATIC` no
+  mesmo subclass de janela que já tratava `#WM_CTLCOLOREDIT`/`#WM_CTLCOLORLISTBOX` resolve no nível de
+  mensagem Win32, cobrindo todo rótulo de todo diálogo automaticamente.
+- **Verificado com screenshot real, não só leitura de código** — mesmo cuidado do achado de `7.31.4`:
+  como não existe automação de GUI pronta pra este app nativo Win32, foi escrito um driver PowerShell
+  descartável (P/Invoke: `EnumWindows`/`GetMenu`/`PostMessage`/`PrintWindow`) que abre o `.exe` de
+  verdade, navega o menu real, abre um diálogo e captura a imagem — confirmado contra o tema `Rose` já
+  salvo nas configurações reais do usuário.
+- **Um "bug" que não era bug**: a auditoria original apontou `Z80SubProj_ReadTextFile`
+  (`Z80SubProject.pbi`) como O(n²) por concatenar string linha a linha. Implementar o "fix" e testar
+  byte a byte contra o original revelou que `ReadString(FileNum, #PB_File_IgnoreEOL)` **sem** parâmetro
+  `Length` já lê o arquivo inteiro numa chamada só — o loop só roda uma vez, já era O(n). Revertido, com
+  uma nota no código pra não repetir o engano.
+
+---
+
 ## 7.31.4 — "ADEUS WINDOWS 3.1" (2026-08-08)
 
 **Tema da versão**: o piloto no Editor Hexa (`7.31.3`) agradou — usuário pediu pra replicar o

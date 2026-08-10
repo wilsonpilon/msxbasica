@@ -61,6 +61,18 @@ Global Dig_HasError.b
 Global Dig_ErrorMsg.s
 Global Dig_ErrorLine.i
 
+; #True quando o documento sendo processado e um projeto MSXBAS2ROM (ver
+; parametro IsMsxBas2Rom de Dig_Preprocess, setado la e lido aqui por Global
+; em vez de parametro - Dig_CollectHardVar_Piece/Dig_ShortenVars_Piece/
+; Dig_ScanLabelRefs_Piece sao chamadas via ponteiro de funcao (Prototype
+; Dig_PieceFn, assinatura fixa Piece.s/LineNum.i, ver Dig_MapCodeSegments) e
+; por isso NAO podem ganhar um parametro extra - mesmo idioma ja usado por
+; Dig_CurrentPrefix acima). Fica valido por toda a chamada de Dig_Preprocess,
+; inclusive dentro de INCLUDE recursivo (nao precisa reset por nivel, ao
+; contrario de Dig_CurrentPrefix, porque o modo nao muda dentro do mesmo
+; documento).
+Global Dig_ModeIsMsxBas2Rom.b = #False
+
 ; Diretorio do arquivo fonte sendo processado (passado a Dig_Preprocess),
 ; usado para resolver caminhos relativos de INCLUDE e do remtag export_file.
 ; "" quando desconhecido (documento nao salvo ainda) - INCLUDE relativo falha
@@ -163,6 +175,19 @@ EndProcedure
 
 Global NewMap Dig_ReservedKw.b()
 
+; Vocabulario estendido do MSXBAS2ROM (FILE/TEXT, sub-comandos de CMD/SET/
+; GET, funcoes como HEAP()/TILE()/etc.) - declarados AQUI (nao em
+; BadigEditor.pb) porque DignifiedPreprocessor.pbi precisa compilar sozinho
+; em harnesses standalone (editor/tools/DigTestCli.pb, que so XInclui este
+; arquivo + MsxTokenizer.pbi). BadigEditor.pb (que XInclui este arquivo bem
+; no comeco, antes de qualquer outra coisa) so CONSOME esses mapas
+; (FindMapElement, no destaque de sintaxe/autocompletar) e os POPULA de novo
+; via FillKeywordMap() no startup - populacao idempotente, sem risco de
+; corromper nada rodando duas vezes (aqui, em Dig_InitReservedKw, e la).
+Global NewMap KwMsxBas2RomDirective.b()
+Global NewMap KwMsxBas2RomStatement.b()
+Global NewMap KwMsxBas2RomFunctionPlain.b()
+
 Procedure Dig_AddKwList(Words.s)
   Protected n.i = CountString(Words, " ") + 1, i.i, w.s
   For i = 1 To n
@@ -173,6 +198,22 @@ Procedure Dig_AddKwList(Words.s)
       w = Left(w, Len(w) - 1)
     EndIf
     Dig_ReservedKw(w) = #True
+  Next
+EndProcedure
+
+; Generico (Map por referencia), ao contrario de Dig_AddKwList (que so
+; alimenta Dig_ReservedKw() especificamente) - usado abaixo pra povoar
+; KwMsxBas2RomDirective/Statement/FunctionPlain, que tambem sao usados pelo
+; destaque de sintaxe em BadigEditor.pb. Populado aqui TAMBEM (nao so em
+; BadigEditor.pb) porque DignifiedPreprocessor.pbi e XIncluded bem antes -
+; harnesses standalone (DigTestCli.exe) que so incluem este arquivo nao tem
+; o FillKeywordMap() de BadigEditor.pb disponivel. Idempotente (M(w)=#True
+; de novo nao corrompe nada), entao a populacao duplicada em BadigEditor.pb
+; convive sem problema quando os dois rodam juntos no .exe completo.
+Procedure Dig_FillWordMap(Map M.b(), Words.s)
+  Protected n.i = CountString(Words, " ") + 1, i.i
+  For i = 1 To n
+    M(UCase(StringField(Words, i, " "))) = #True
   Next
 EndProcedure
 
@@ -199,12 +240,42 @@ Procedure Dig_InitReservedKw()
   ; Dignified (nao devem ser tratadas como variavel; normalmente ja
   ; removidas/substituidas antes do estagio de renomeio, mas por seguranca)
   Dig_AddKwList("DEFINE DECLARE INCLUDE KEEP ENDIF FUNC RET EXIT TRUE FALSE")
+
+  ; Vocabulario estendido do MSXBAS2ROM - mesmas 3 listas de BadigEditor.pb
+  ; (FillKeywordMap), ver comentario de Dig_FillWordMap acima.
+  If MapSize(KwMsxBas2RomDirective()) = 0
+    Dig_FillWordMap(KwMsxBas2RomDirective(), "FILE TEXT")
+    Dig_FillWordMap(KwMsxBas2RomStatement(),
+      "KEYCLKOFF CLRKEY RUNASM RUNBAS MUTE RAMTOVRAM VRAMTORAM RAMTORAM RSCTORAM " +
+      "DISSCR ENASCR PAGE CLRSCR SETFNT UPDFNTCLR CLIP WRTVRAM WRTFNT WRTCHR " +
+      "WRTCLR WRTSCR WRTSPR WRTSPRPAT WRTSPRCLR WRTSPRATR PLYLOAD PLYSONG " +
+      "PLYPLAY PLYMUTE PLYSOUND PLYLOOP PLYREPLAY IPOKE " +
+      "FROM SCROLL FONT PATTERN FLIP ROTATE DATE " +
+      "IRESTORE IREAD IDATA")
+    Dig_FillWordMap(KwMsxBas2RomFunctionPlain(),
+      "HEAP MSX NTSC TURBO MAKER IPEEK PSG COLLISION RESOURCE RESOURCESIZE " +
+      "PLYSTATUS TILE USR0 USR1 USR2 USR3")
+  EndIf
 EndProcedure
 
+; Quando Dig_ModeIsMsxBas2Rom (setado por Dig_Preprocess), tambem reconhece o
+; vocabulario estendido do MSXBAS2ROM (KwMsxBas2RomDirective/Statement/
+; FunctionPlain, ver BadigEditor.pb) como reservado - mesmos 3 mapas ja
+; usados pelo destaque de sintaxe, consultados direto (sem copia/segunda
+; lista), entao qualquer correcao futura de vocabulario beneficia destaque e
+; pre-processamento juntos. Le o Global em vez de receber parametro porque
+; os 3 call sites (dentro de Dig_CollectHardVar_Piece/Dig_ShortenVars_Piece/
+; Dig_ScanLabelRefs_Piece) sao, eles mesmos, chamados via ponteiro de funcao
+; de assinatura fixa - nao tem como repassar um parametro extra por ali.
 Procedure.b Dig_IsReservedWord(W.s)
   Protected u.s = UCase(W)
   If FindMapElement(Dig_ReservedKw(), u)
     ProcedureReturn #True
+  EndIf
+  If Dig_ModeIsMsxBas2Rom
+    If FindMapElement(KwMsxBas2RomDirective(), u)    : ProcedureReturn #True : EndIf
+    If FindMapElement(KwMsxBas2RomStatement(), u)     : ProcedureReturn #True : EndIf
+    If FindMapElement(KwMsxBas2RomFunctionPlain(), u) : ProcedureReturn #True : EndIf
   EndIf
   ; USRn / DEFUSRn (n = 1 digito opcional)
   If Left(u, 3) = "USR" And (Len(u) = 3 Or (Len(u) = 4 And Dig_IsDigit(Right(u, 1))))
@@ -1604,7 +1675,22 @@ Structure DigLogLine
   SrcLine.i
   LineNumber.i
   IsComment.b
+  IsResourceDirective.b ; #True so em modo MSXBAS2ROM: linha "FILE .../TEXT ..." -
+                        ; nao recebe numero de linha nem consome um passo de
+                        ; numeracao, ver Dig_IsResourceDirectiveLine()/Dig_Preprocess
 EndStructure
+
+; Diretiva de recurso do MSXBAS2ROM ("FILE <arquivo>"/"TEXT <string>") - de
+; acordo com a documentacao oficial (resource-directives.md), essas linhas
+; NAO tem numero de linha (ficam antes do codigo numerado, sua ORDEM de
+; aparicao define o indice do recurso usado por "SCREEN LOAD 0"/"CMD RESTORE
+; 1"/etc.) - diferente de qualquer outro statement classico ou do proprio
+; vocabulario estendido (CMD .../SET .../etc., que SAO statements numerados
+; normais). So chamada quando Dig_ModeIsMsxBas2Rom.
+Procedure.b Dig_IsResourceDirectiveLine(Text.s)
+  Protected firstWord.s = UCase(StringField(Trim(Text), 1, " "))
+  ProcedureReturn Bool(firstWord = "FILE" Or firstWord = "TEXT")
+EndProcedure
 
 Global Dim Dig_LoopStack.s(255)
 Global Dig_LoopStackTop.i = -1
@@ -2516,10 +2602,11 @@ EndProcedure
 ;- Funcao principal (orquestra o merge final da arvore inteira)
 ;- ------------------------------------------------------------
 
-Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "")
+Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "", IsMsxBas2Rom.b = #False)
   Dig_HasError = #False
   Dig_ErrorMsg = ""
   Dig_ErrorLine = 0
+  Dig_ModeIsMsxBas2Rom = IsMsxBas2Rom
 
   Dig_InitReservedKw()
 
@@ -2578,6 +2665,9 @@ Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "")
     finalLines()\IsComment = logLines()\IsComment
     finalLines()\SrcLine = logLines()\SrcLine
     finalLines()\LabelNames = logLines()\LabelNames
+    If Dig_ModeIsMsxBas2Rom And Not logLines()\IsComment And Dig_IsResourceDirectiveLine(logLines()\Text)
+      finalLines()\IsResourceDirective = #True
+    EndIf
   Next
 
   If ListSize(finalLines()) = 0
@@ -2595,6 +2685,12 @@ Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "")
   EndIf
 
   ForEach finalLines()
+    ; diretiva de recurso (FILE/TEXT) nao recebe numero nem consome um passo
+    ; de numeracao - a linha de codigo seguinte fica com o numero que teria
+    ; se a diretiva nao existisse (ver Dig_IsResourceDirectiveLine acima)
+    If finalLines()\IsResourceDirective
+      Continue
+    EndIf
     finalLines()\LineNumber = lineNum
     If finalLines()\LabelNames <> ""
       Protected nLbl.i = CountString(finalLines()\LabelNames, ";") + 1, k.i
@@ -2692,7 +2788,12 @@ Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "")
     resolved = Dig_MapCodeSegments(resolved, finalLines()\SrcLine, @Dig_CapitalizeAll_Piece())
     resolved = Dig_MapCodeSegments(resolved, finalLines()\SrcLine, @Dig_StripSpaces_Piece())
 
-    Protected finalLine.s = Str(finalLines()\LineNumber) + " " + resolved
+    Protected finalLine.s
+    If finalLines()\IsResourceDirective
+      finalLine = resolved ; FILE/TEXT: sem numero de linha, ver Dig_IsResourceDirectiveLine
+    Else
+      finalLine = Str(finalLines()\LineNumber) + " " + resolved
+    EndIf
     If Len(finalLine) > 255
       Dig_Fail(finalLines()\SrcLine, "Linha gerada excede 256 caracteres.")
       ProcedureReturn ""

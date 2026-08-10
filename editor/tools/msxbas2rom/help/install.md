@@ -105,7 +105,7 @@ make all
 
 ## 📚 What’s Next?
 
-Proceed to the [Getting Started](Gettingstarted) guide to write, compile, and run your first MSX BASIC program using MSXBAS2ROM.
+Proceed to the [Getting Started](https://github.com/amaurycarvalho/msxbas2rom/wiki/Gettingstarted) guide to write, compile, and run your first MSX BASIC program using MSXBAS2ROM.
 
 ---
 

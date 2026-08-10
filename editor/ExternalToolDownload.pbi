@@ -62,17 +62,20 @@ Procedure ExtTool_CreateDirectoryRecursive(Dir.s)
   CreateDirectory(Dir)
 EndProcedure
 
-; Baixa Url (asset .zip de uma release) pra um arquivo temporario e
-; descompacta em TargetDir via BadigCfg_ExtractZip() (BadigSettings.pbi) -
-; mesma que ja lida corretamente com zip sem pasta-wrapper (caso do
-; msxbas2rom/N80: exe direto na raiz do zip). Apaga o zip temporario ao
-; final, sucesso ou falha.
-Procedure.b ExtTool_DownloadAndExtractZip(Url.s, TargetDir.s)
+; Baixa Url (asset .zip de uma release, ou o zip de um repositorio inteiro
+; via codeload.github.com/OWNER/REPO/zip/refs/heads/BRANCH) pra um arquivo
+; temporario e descompacta em TargetDir via BadigCfg_ExtractZip()
+; (BadigSettings.pbi) - mesma que ja lida corretamente com zip sem
+; pasta-wrapper (caso do msxbas2rom/N80: exe direto na raiz do zip).
+; OnlyUnderPrefix (opcional) repassa direto pra BadigCfg_ExtractZip() - ver
+; o comentario la pra o caso de uso (baixar so uma subpasta de um
+; repositorio grande). Apaga o zip temporario ao final, sucesso ou falha.
+Procedure.b ExtTool_DownloadAndExtractZip(Url.s, TargetDir.s, OnlyUnderPrefix.s = "")
   ExtTool_CreateDirectoryRecursive(TargetDir)
   Protected TempZip.s = GetTemporaryDirectory() + "ExtTool_" + Str(Random(999999999)) + ".zip"
   Protected Ok.b = ReceiveHTTPFile(Url, TempZip)
   If Ok
-    Ok = BadigCfg_ExtractZip(TempZip, TargetDir)
+    Ok = BadigCfg_ExtractZip(TempZip, TargetDir, OnlyUnderPrefix)
   EndIf
   If FileSize(TempZip) >= 0
     DeleteFile(TempZip)

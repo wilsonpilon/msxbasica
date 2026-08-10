@@ -41,16 +41,22 @@ Procedure.s N80_HelpDir()
   ProcedureReturn N80_ToolDir() + "help\"
 EndProcedure
 
-Procedure.s N80Cfg_FilePath()
+; OverridePath (opcional): ver comentario equivalente de BadigCfg_FilePath()
+; (BadigSettings.pbi) - "" = caminho global de sempre, senao usa esse
+; caminho direto (config por-projeto, "Configurar -> Projeto...").
+Procedure.s N80Cfg_FilePath(OverridePath.s = "")
+  If OverridePath <> ""
+    ProcedureReturn OverridePath
+  EndIf
   ProcedureReturn GetPathPart(ProgramFilename()) + "n80_settings.json"
 EndProcedure
 
-Procedure N80Cfg_Load()
+Procedure N80Cfg_Load(OverridePath.s = "")
   N80Cfg\N80Path = "" : N80Cfg\N80Version = ""
   N80Cfg\LK80Path = "" : N80Cfg\LK80Version = ""
   N80Cfg\LB80Path = "" : N80Cfg\LB80Version = ""
 
-  Protected FilePath.s = N80Cfg_FilePath()
+  Protected FilePath.s = N80Cfg_FilePath(OverridePath)
   If FileSize(FilePath) <= 0
     ProcedureReturn
   EndIf
@@ -71,7 +77,7 @@ Procedure N80Cfg_Load()
   FreeJSON(Json)
 EndProcedure
 
-Procedure N80Cfg_Save()
+Procedure N80Cfg_Save(OverridePath.s = "")
   Protected Json = CreateJSON(#PB_Any)
   Protected Root = SetJSONObject(JSONValue(Json))
   SetJSONString(AddJSONMember(Root, "N80Path"), N80Cfg\N80Path)
@@ -80,7 +86,7 @@ Procedure N80Cfg_Save()
   SetJSONString(AddJSONMember(Root, "LK80Version"), N80Cfg\LK80Version)
   SetJSONString(AddJSONMember(Root, "LB80Path"), N80Cfg\LB80Path)
   SetJSONString(AddJSONMember(Root, "LB80Version"), N80Cfg\LB80Version)
-  SaveJSON(Json, N80Cfg_FilePath(), #PB_JSON_PrettyPrint)
+  SaveJSON(Json, N80Cfg_FilePath(OverridePath), #PB_JSON_PrettyPrint)
   FreeJSON(Json)
 EndProcedure
 
@@ -327,8 +333,13 @@ EndProcedure
 ;- Tela "Configurar -> N80..."
 ;- ------------------------------------------------------------
 
-Procedure N80Settings_OpenWindow(ParentWindow)
-  N80Cfg_Load()
+; OverridePath (opcional): ver BadigCfg_OpenSettingsWindow() (BadigSettings.pbi)
+; pro mesmo padrao - aqui so troca de onde N80Cfg_Load() le no momento de
+; abrir a janela (nao ha campo editavel nesta tela alem do proprio download,
+; que continua salvando global de proposito - N80 ainda nao tem nenhum
+; consumidor de config por-projeto, ver ProjectSettingsGui.pbi).
+Procedure N80Settings_OpenWindow(ParentWindow, OverridePath.s = "")
+  N80Cfg_Load(OverridePath)
 
   Protected WinW = 640, WinH = 336
   Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configurar - N80",

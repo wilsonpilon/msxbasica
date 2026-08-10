@@ -42,7 +42,7 @@ FILE "TEXT.TXT"    ' item 1 on resource list
 - Resources are stored in ROM and accessible at runtime;
 - Resources total size on Plain ROM mode are limited to 16K (for FILE directive), and when compiled generates 48K ROMs thats can run as cartridge or in RAM with SofaRUN or [ODO](http://msxbanzai.tni.nl/dev/software.html) loaders (ExecROM do not support this ROM size);
 - On MegaROM mode, where the ROM size limit is 2048K, the theoretical limitation is around to 3273 resources (v0.3.3.2 and above);
-- Check [Extended Functions](Extended-Functions) for functions that interact with resources.
+- Check [Extended Functions](https://github.com/amaurycarvalho/msxbas2rom/wiki/Extended-Functions) for functions that interact with resources.
 
 ### Files types
 #### MSX BASIC program sources
@@ -80,14 +80,14 @@ FILE "TEXT.TXT"    ' item 1 on resource list
 
 ## Learn more:
 
-- [MSX Tile Forge Support](MTF-Support)  
+- [MSX Tile Forge Support](https://github.com/amaurycarvalho/msxbas2rom/wiki/MTF-Support)  
   Design screen maps with MTF and use it in your program.
 
-- [Tiny Sprite Support](TS-Support)  
+- [Tiny Sprite Support](https://github.com/amaurycarvalho/msxbas2rom/wiki/TS-Support)  
   Design sprites easily with Tiny Sprite tool.
 
-- [Arkos Tracker Music Support](Music-Support)  
+- [Arkos Tracker Music Support](https://github.com/amaurycarvalho/msxbas2rom/wiki/Music-Support)  
   Integrate AT music with commands like `CMD PLYLOAD`, `CMD PLYPLAY`, and customize playback.
 
-- [Compiler Architecture](Compiler-Architecture)
+- [Compiler Architecture](https://github.com/amaurycarvalho/msxbas2rom/wiki/Compiler-Architecture)
 

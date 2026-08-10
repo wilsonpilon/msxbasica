@@ -45,6 +45,9 @@
 # Caminho do JOE
 /joewin/
 
+#Caminho do MSXBAS2ROM
+/msxbas2rom/
+
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
 

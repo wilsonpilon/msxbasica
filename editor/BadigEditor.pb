@@ -74,6 +74,7 @@ Global Color_RulerBg, Color_RulerText, Color_RulerTick
 Global Color_Syntax_Default, Color_Syntax_Comment, Color_Syntax_String
 Global Color_Syntax_Statement, Color_Syntax_Operator, Color_Syntax_Function
 Global Color_Syntax_Number, Color_Syntax_Label, Color_Syntax_DignifiedStmt
+Global Color_Syntax_MsxBas2Rom
 Global Color_Syntax_Remtag, Color_Caret, Color_SelBack, Color_LineNumberFore
 
 ; Abre uma janela filha com o chrome padrao da IDE (cor de fundo + icone via
@@ -183,6 +184,7 @@ XIncludeFile "GenericMdHelpGui.pbi"
 XIncludeFile "EditorHelpGui.pbi"
 XIncludeFile "MsxBas2RomSupport.pbi"
 XIncludeFile "N80Support.pbi"
+XIncludeFile "ProjectSettingsGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
@@ -493,6 +495,7 @@ Enumeration MenuItems
   #Menu_InsertSpecialChar
   #Menu_RunBasic
   #Menu_RunNestorBasic
+  #Menu_CompileMsxBas2RomRom
   #Menu_RenumberBasic
   #Menu_AssembleZ80
   #Menu_AssembleZ80Rel
@@ -508,6 +511,7 @@ Enumeration MenuItems
   #Menu_ConfigureMsxBas2Rom
   #Menu_ConfigureN80
   #Menu_ConfigureOpenMSX
+  #Menu_ConfigureProject
   #Menu_HelpEditor
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
@@ -530,6 +534,7 @@ Enumeration 1
   #Style_Number
   #Style_Label
   #Style_DignifiedStmt
+  #Style_MsxBas2Rom
   #Style_Remtag
   #Style_MdHeading1
   #Style_MdHeading2
@@ -573,7 +578,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.33.1"
+  #App_Version = "7.33.9"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -629,6 +634,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(176, 106, 18)
       Color_Syntax_Label         = RGB(156, 124, 10)
       Color_Syntax_DignifiedStmt = RGB(195, 61, 111)
+      Color_Syntax_MsxBas2Rom    = RGB(0, 131, 143)
       Color_Syntax_Remtag        = RGB(165, 118, 12)
       Color_Caret                = RGB(0, 0, 0)
       Color_SelBack               = RGB(207, 224, 251)
@@ -656,6 +662,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(242, 184, 102)
       Color_Syntax_Label         = RGB(255, 212, 121)
       Color_Syntax_DignifiedStmt = RGB(255, 158, 203)
+      Color_Syntax_MsxBas2Rom    = RGB(190, 230, 90)
       Color_Syntax_Remtag        = RGB(255, 207, 140)
       Color_Caret                = RGB(255, 255, 255)
       Color_SelBack               = RGB(35, 74, 120)
@@ -683,6 +690,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(240, 176, 112)
       Color_Syntax_Label         = RGB(244, 207, 122)
       Color_Syntax_DignifiedStmt = RGB(255, 136, 173)
+      Color_Syntax_MsxBas2Rom    = RGB(110, 220, 210)
       Color_Syntax_Remtag        = RGB(246, 197, 137)
       Color_Caret                = RGB(255, 255, 255)
       Color_SelBack               = RGB(74, 47, 78)
@@ -710,6 +718,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(242, 192, 120)
       Color_Syntax_Label         = RGB(255, 207, 107)
       Color_Syntax_DignifiedStmt = RGB(255, 111, 145)
+      Color_Syntax_MsxBas2Rom    = RGB(110, 200, 230)
       Color_Syntax_Remtag        = RGB(255, 179, 122)
       Color_Caret                = RGB(255, 255, 255)
       Color_SelBack               = RGB(86, 37, 48)
@@ -737,6 +746,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(224, 169, 94)
       Color_Syntax_Label         = RGB(240, 207, 110)
       Color_Syntax_DignifiedStmt = RGB(217, 143, 194)
+      Color_Syntax_MsxBas2Rom    = RGB(140, 150, 240)
       Color_Syntax_Remtag        = RGB(238, 194, 122)
       Color_Caret                = RGB(255, 255, 255)
       Color_SelBack               = RGB(44, 74, 55)
@@ -764,6 +774,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(181, 101, 29)
       Color_Syntax_Label         = RGB(151, 131, 31)
       Color_Syntax_DignifiedStmt = RGB(161, 61, 99)
+      Color_Syntax_MsxBas2Rom    = RGB(28, 138, 130)
       Color_Syntax_Remtag        = RGB(138, 109, 31)
       Color_Caret                = RGB(0, 0, 0)
       Color_SelBack               = RGB(217, 196, 143)
@@ -791,6 +802,7 @@ Procedure ApplyTheme()
       Color_Syntax_Number        = RGB(224, 164, 100)
       Color_Syntax_Label         = RGB(240, 198, 116)
       Color_Syntax_DignifiedStmt = RGB(242, 143, 176)
+      Color_Syntax_MsxBas2Rom    = RGB(64, 208, 199)
       Color_Syntax_Remtag        = RGB(245, 205, 140)
       Color_Caret                = RGB(255, 255, 255)
       Color_SelBack               = RGB(46, 75, 110)
@@ -849,15 +861,18 @@ Global NewMap KwNestorBasic.b()
 
 ; Extensoes de vocabulario do MSXBAS2ROM (github.com/amaurycarvalho/msxbas2rom
 ; - ver editor/MsxBas2RomSupport.pbi), so usadas quando o documento esta em
-; modo "BAS" (ver HighlightDocument/HighlightDignifiedText) - um programa
-; Dignified/.dmx comum pode perfeitamente ter uma variavel chamada TURBO ou
-; COLLISION, entao essas palavras so viram destaque de palavra-chave nos
-; arquivos que sao de fato projetos MSXBAS2ROM. Lista extraida do conteudo
-; real baixado em "Configurar -> MSXBas2Rom... -> Baixar"
-; (tools/msxbas2rom/help/extended-commands.md e extended-functions.md).
-Global NewMap KwMsxBas2RomDirective.b()
-Global NewMap KwMsxBas2RomStatement.b()
-Global NewMap KwMsxBas2RomFunctionPlain.b()
+; modo "BAS" (ver HighlightDocument/HighlightDignifiedText, e Dig_IsReservedWord
+; em DignifiedPreprocessor.pbi) - um programa Dignified/.dmx comum pode
+; perfeitamente ter uma variavel chamada TURBO ou COLLISION, entao essas
+; palavras so viram destaque de palavra-chave/palavra reservada nos arquivos
+; que sao de fato projetos MSXBAS2ROM. Lista extraida do conteudo real
+; baixado em "Configurar -> MSXBas2Rom... -> Baixar" (tools/msxbas2rom/help/
+; extended-commands.md e extended-functions.md). Mapas declarados em
+; DignifiedPreprocessor.pbi (nao aqui) - precisam existir la pra harnesses
+; standalone (DigTestCli.pb) que so incluem aquele arquivo; a populacao
+; abaixo via FillKeywordMap() e redundante com a de Dig_InitReservedKw()
+; (idempotente, ambas convivem sem problema) e garante que o destaque de
+; sintaxe funcione mesmo antes do usuario rodar qualquer acao Dignified.
 
 ; Vocabulario do lexer de Z80 Assembly (modo "ASM" dos documentos) mora em
 ; Z80Asm.pbi (Z80Asm::IsMnemonic()/IsRegister()/IsDirective()/IsOperatorWord(),
@@ -1297,10 +1312,10 @@ Procedure HighlightDignifiedText(Sci, Text.s, IsMsxBas2Rom.b = #False)
         EndIf
         Continue
       ElseIf IsMsxBas2Rom And FindMapElement(KwMsxBas2RomDirective(), Word)
-        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_DignifiedStmt)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_MsxBas2Rom)
         Continue
       ElseIf IsMsxBas2Rom And FindMapElement(KwMsxBas2RomStatement(), Word)
-        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Statement)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_MsxBas2Rom)
         If Word = "IDATA"
           InDataLiteral = #True
         EndIf
@@ -1309,7 +1324,7 @@ Procedure HighlightDignifiedText(Sci, Text.s, IsMsxBas2Rom.b = #False)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Function)
         Continue
       ElseIf IsMsxBas2Rom And FindMapElement(KwMsxBas2RomFunctionPlain(), Word)
-        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Function)
+        EmitRun(Sci, Mid(Text, Start, I - Start), #Style_MsxBas2Rom)
         Continue
       ElseIf FindMapElement(KwOperatorWord(), Word)
         EmitRun(Sci, Mid(Text, Start, I - Start), #Style_Operator)
@@ -1808,6 +1823,8 @@ Procedure SetupEditorStyles(Sci)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_Label, #True)
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_DignifiedStmt, Color_Syntax_DignifiedStmt)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_DignifiedStmt, #True)
+  ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_MsxBas2Rom, Color_Syntax_MsxBas2Rom)
+  ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_MsxBas2Rom, #True)
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #Style_Remtag, Color_Syntax_Remtag)
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #Style_Remtag, #True)
 
@@ -3072,6 +3089,145 @@ Procedure App_EnsureDefaultAlphabet()
   EndIf
 EndProcedure
 
+; Pedido explicito do usuario (2026-08-10): o .msxproject ja guarda uma
+; copia dos fontes de texto (BASIC/.dmx/.amx/.bas e Assembly/.asm) via
+; StoreDocument() - mas so quando cada aba e salva individualmente. Esta
+; funcao forca uma resincronizacao completa (le o conteudo REAL do disco,
+; nao o buffer do Scintilla - "pegar as versoes que estao no disco",
+; pedido literal do usuario) pra todo caminho que o projeto ja conhece
+; (ProjectDB::ListDocumentPaths()) MAIS toda aba aberta nesta sessao que
+; ainda nao estava na lista (arquivo novo, salvo nesta sessao mas talvez
+; ainda nao rastreado) - torna "Salvar projeto"/"Salvar Tudo"/fechar o
+; programa um ponto onde o .msxproject fica garantidamente um espelho fiel
+; do que esta no disco, pra poder levar so o .msxproject de uma maquina pra
+; outra (ver RestoreMissingDocumentsToDisk() abaixo, o caminho inverso).
+; Projeto ainda temporario ("noname", nunca salvo) nao tem nada persistente
+; pra sincronizar - nao faz nada nesse caso.
+Procedure ResyncProjectDocumentsFromDisk()
+  If ProjectDB::IsTemp()
+    ProcedureReturn
+  EndIf
+
+  NewList Paths.s()
+  ProjectDB::ListDocumentPaths(Paths())
+
+  Protected AlreadyListed.b, ExistingPath.s
+  ForEach Docs()
+    If Docs()\Path <> ""
+      AlreadyListed = #False
+      ForEach Paths()
+        ExistingPath = Paths()
+        If ExistingPath = Docs()\Path
+          AlreadyListed = #True
+          Break
+        EndIf
+      Next
+      If Not AlreadyListed
+        AddElement(Paths())
+        Paths() = Docs()\Path
+      EndIf
+    EndIf
+  Next
+
+  Protected DiskPath.s, FNum.i, DiskContent.s, DocMode.s, TabIdx.i, FoundOpenTab.b
+  ForEach Paths()
+    DiskPath = Paths()
+    If FileSize(DiskPath) < 0
+      Continue ; arquivo nao existe mais no disco - nao ha nada fresco pra gravar
+    EndIf
+
+    FNum = ReadFile(#PB_Any, DiskPath, #PB_File_BOM)
+    If Not FNum
+      Continue
+    EndIf
+    DiskContent = ""
+    While Not Eof(FNum)
+      DiskContent + ReadString(FNum, #PB_File_IgnoreEOL) + #CRLF$
+    Wend
+    CloseFile(FNum)
+
+    ; Mode: se houver uma aba aberta com este caminho, usa o Mode dela (mais
+    ; confiavel); senao, mantem o Mode que o projeto ja tinha guardado antes.
+    FoundOpenTab = #False
+    ForEach Docs()
+      If Docs()\Path = DiskPath
+        DocMode = Docs()\Mode
+        FoundOpenTab = #True
+        Break
+      EndIf
+    Next
+    If Not FoundOpenTab
+      If ProjectDB::FetchDocument(DiskPath)
+        DocMode = ProjectDB::LastDocumentMode()
+      Else
+        DocMode = "DMX" ; fallback razoavel pra um caminho novo sem historico
+      EndIf
+    EndIf
+
+    ProjectDB::StoreDocument(DiskPath, DocMode, DiskContent)
+  Next
+EndProcedure
+
+; Caminho inverso de ResyncProjectDocumentsFromDisk(): chamado logo apos
+; abrir um projeto (ProjectDB::OpenExisting), extrai pro disco qualquer
+; fonte que o projeto conhece mas que nao existe no caminho gravado -
+; exatamente o caso de abrir o MESMO .msxproject numa maquina diferente
+; (unidade/usuario/pasta diferentes, ver pedido do usuario "quando abrir em
+; outro local, descompactar/extrair os fontes no diretorio"). O caminho
+; gravado (de quando o projeto foi salvo, possivelmente noutra maquina) e
+; so uma sugestao de NOME de arquivo - o destino real e sempre ao lado do
+; .msxproject sendo aberto agora (ProjectDB::GetPath()), entao o projeto
+; fica autocontido/portatil de verdade, sem depender da estrutura de pastas
+; original. Quando o destino difere do caminho gravado, a linha da tabela
+; "documents" e re-chaveada pro caminho novo (senao um Salvar futuro criaria
+; uma segunda linha com o caminho antigo, nunca mais alcancavel).
+Procedure RestoreMissingDocumentsToDisk()
+  Protected ProjectDir.s = GetPathPart(ProjectDB::GetPath())
+  If ProjectDir = ""
+    ProcedureReturn ; projeto temporario - nao ha "ao lado do .msxproject" ainda
+  EndIf
+
+  NewList Paths.s()
+  ProjectDB::ListDocumentPaths(Paths())
+
+  Protected RecordedPath.s, TargetPath.s, FNum.i, RestoredCount.i = 0
+  ForEach Paths()
+    RecordedPath = Paths()
+    If FileSize(RecordedPath) >= 0
+      Continue ; ja existe no caminho gravado - nada a extrair
+    EndIf
+
+    If Not ProjectDB::FetchDocument(RecordedPath)
+      Continue
+    EndIf
+
+    TargetPath = ProjectDir + GetFilePart(RecordedPath)
+    If FileSize(TargetPath) >= 0
+      Continue ; ja existe algo com esse nome ao lado do projeto - nao sobrescreve
+    EndIf
+
+    FNum = CreateFile(#PB_Any, TargetPath)
+    If Not FNum
+      Continue
+    EndIf
+    WriteString(FNum, ProjectDB::LastDocumentContent())
+    CloseFile(FNum)
+    RestoredCount + 1
+
+    If TargetPath <> RecordedPath
+      ProjectDB::StoreDocument(TargetPath, ProjectDB::LastDocumentMode(), ProjectDB::LastDocumentContent())
+      ProjectDB::DeleteDocument(RecordedPath)
+    EndIf
+  Next
+
+  If RestoredCount > 0
+    ProjectDB::SetWorkingDir(ProjectDir)
+    MessageRequester("Projeto aberto",
+                     Str(RestoredCount) + " arquivo(s) fonte extraido(s) de volta pro disco em:" + Chr(10) + ProjectDir,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+  EndIf
+EndProcedure
+
 ; Salva o projeto atual (menu Arquivo -> Salvar projeto / Salvar projeto
 ; como...). Se ja tem um caminho permanente e SaveAsFlag e #False, nao ha
 ; nada a fazer: ao contrario das abas de texto, o ProjectDB grava cada
@@ -3082,6 +3238,7 @@ EndProcedure
 ; pra facilitar "salvar uma copia com outro nome".
 Procedure.b SaveProject(SaveAsFlag.b = #False)
   If Not SaveAsFlag And Not ProjectDB::IsTemp()
+    ResyncProjectDocumentsFromDisk() ; pedido do usuario: "Salvar projeto" tambem resincroniza os fontes
     ProcedureReturn #True
   EndIf
 
@@ -3102,6 +3259,7 @@ Procedure.b SaveProject(SaveAsFlag.b = #False)
                       #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
     ProcedureReturn #False
   EndIf
+  ResyncProjectDocumentsFromDisk()
   ProcedureReturn #True
 EndProcedure
 
@@ -3463,17 +3621,46 @@ EndProcedure
 ; conteudo da aba atual e devolve o texto ASCII classico resultante, ou ""
 ; em erro (mostrando o dialogo de erro). Usado pelas duas procedures abaixo.
 Procedure.s RunDignifiedPreprocessor()
+  ; "Configurar -> Projeto..." (ProjectSettingsGui.pbi): se o projeto atual
+  ; tiver "usar configuracao especifica" ligado pro Basic Dignified, troca
+  ; o BadigCfg global pelo do projeto so durante esta chamada (snapshot no
+  ; comeco, restaura antes de qualquer retorno) - mesmo idioma de save/
+  ; restore ja usado em Dig_ProcessSource pra Dig_CurrentPrefix/Dig_Defines().
+  Protected UsingProjectOverride.b = #False
+  Protected BadigCfgSnapshot.BadigSettings
+  If ProjectDB::GetInfoValue("badig_override_enabled") = "1"
+    Protected OverridePath.s = ProjectDB::OverrideSettingsPath("project_badig_settings.json")
+    If OverridePath <> ""
+      BadigCfgSnapshot = BadigCfg
+      BadigCfg_Load(OverridePath)
+      UsingProjectOverride = #True
+    EndIf
+  EndIf
+
   Dig_SyncConfigFromBadigCfg()
   Protected SourceText.s = ReadSciText(Docs()\SciGadget)
   Protected BasePath.s = ""
   If Docs()\Path <> ""
     BasePath = GetPathPart(Docs()\Path)
   EndIf
-  Protected AsciiOut.s = Dig_Preprocess(SourceText, BasePath)
+  ; Mesmo criterio ja usado pro destaque de sintaxe/autocompletar (:2135) -
+  ; documentos MSXBAS2ROM ("Novo MSXBas2Rom...") protegem o vocabulario
+  ; estendido (FILE/TEXT/CMD.../HEAP()/etc.) contra o encurtamento de
+  ; variaveis, e diretivas FILE/TEXT saem sem numero de linha.
+  Protected IsMsxBas2Rom.b = Bool(Docs()\Mode = "BAS")
+  Protected AsciiOut.s = Dig_Preprocess(SourceText, BasePath, IsMsxBas2Rom)
 
-  If Dig_HasError
+  Protected HadError.b = Dig_HasError
+  Protected ErrLine.i = Dig_ErrorLine
+  Protected ErrMsg.s = Dig_ErrorMsg
+
+  If UsingProjectOverride
+    BadigCfg = BadigCfgSnapshot
+  EndIf
+
+  If HadError
     MessageRequester("Erro no pre-processador Dignified",
-                     "Linha " + Str(Dig_ErrorLine) + ": " + Dig_ErrorMsg,
+                     "Linha " + Str(ErrLine) + ": " + ErrMsg,
                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
     ProcedureReturn ""
   EndIf
@@ -3672,6 +3859,92 @@ Procedure RunNestorBasicFromActiveTab()
 
   Protected DmxSource.s = ReadSciText(Docs()\SciGadget)
   RunOnOpenMSX(BaseName, DmxSource, AsciiOut, HexOut, #True)
+EndProcedure
+
+; Menu "Executar -> Compilar ROM (MSXBas2Rom)...": gera o ASCII classico
+; (mesma deteccao de ASCII-ja-pronto de RunBasicFromActiveTab; quando
+; precisa do pre-processador, RunDignifiedPreprocessor() ja ativa o modo
+; MSXBAS2ROM sozinho - ver Docs()\Mode = "BAS" ali), salva num .bas de
+; verdade e roda o msxbas2rom.exe configurado (Configurar -> MSXBas2Rom...)
+; pra gerar o .ROM. NUNCA tokeniza - diferente de RunBasicFromActiveTab/
+; RunNestorBasicFromActiveTab, msxbas2rom.exe compila direto do texto
+; classico, nao do formato tokenizado nativo desta IDE.
+Procedure CompileMsxBas2RomFromActiveTab()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  If Docs()\Mode <> "BAS"
+    MessageRequester("Compilar ROM (MSXBas2Rom)",
+                     "A aba ativa nao e um documento MSXBAS2ROM (.bas)." + Chr(10) +
+                     "Use Arquivo -> Novo MSXBas2Rom... para criar um.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  ; "Configurar -> Projeto..." (ProjectSettingsGui.pbi): se o projeto atual
+  ; tiver "usar configuracao especifica" ligado pro MSXBas2Rom, troca o
+  ; MsxBas2RomCfg global (so o ExePath importa aqui) pelo do projeto so
+  ; durante esta chamada - mesmo idioma de RunDignifiedPreprocessor() acima.
+  Protected UsingProjectOverride.b = #False
+  Protected MsxBas2RomCfgSnapshot.MsxBas2RomSettings
+  If ProjectDB::GetInfoValue("msxbas2rom_override_enabled") = "1"
+    Protected OverridePath.s = ProjectDB::OverrideSettingsPath("project_msxbas2rom_settings.json")
+    If OverridePath <> ""
+      MsxBas2RomCfgSnapshot = MsxBas2RomCfg
+      MsxBas2RomCfg_Load(OverridePath)
+      UsingProjectOverride = #True
+    EndIf
+  EndIf
+
+  If MsxBas2RomCfg\ExePath = "" Or FileSize(MsxBas2RomCfg\ExePath) <= 0
+    MessageRequester("Compilar ROM (MSXBas2Rom)",
+                     "Configure o caminho do msxbas2rom.exe primeiro (Configurar -> MSXBas2Rom...).",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    If UsingProjectOverride : MsxBas2RomCfg = MsxBas2RomCfgSnapshot : EndIf
+    ProcedureReturn
+  EndIf
+
+  Protected AsciiOut.s
+  If LooksLikeClassicAscii(ReadSciText(Docs()\SciGadget))
+    AsciiOut = ReadSciText(Docs()\SciGadget)
+  Else
+    AsciiOut = RunDignifiedPreprocessor()
+    If AsciiOut = ""
+      If UsingProjectOverride : MsxBas2RomCfg = MsxBas2RomCfgSnapshot : EndIf
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".bas"
+
+  Protected BasPath.s = SaveFileRequester("Salvar .bas para compilar com o MSXBas2Rom", Suggestion,
+                                          "MSX Basic classico (*.bas)|*.bas|Todos os arquivos (*.*)|*.*", 0)
+  If BasPath = ""
+    If UsingProjectOverride : MsxBas2RomCfg = MsxBas2RomCfgSnapshot : EndIf
+    ProcedureReturn
+  EndIf
+
+  Protected FileNum = CreateFile(#PB_Any, BasPath)
+  If Not FileNum
+    MessageRequester("Erro", "Nao foi possivel salvar o arquivo:" + Chr(10) + BasPath,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    If UsingProjectOverride : MsxBas2RomCfg = MsxBas2RomCfgSnapshot : EndIf
+    ProcedureReturn
+  EndIf
+  WriteString(FileNum, AsciiOut)
+  CloseFile(FileNum)
+
+  MsxBas2Rom_CompileToRom(BasPath)
+
+  If UsingProjectOverride
+    MsxBas2RomCfg = MsxBas2RomCfgSnapshot
+  EndIf
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -4077,6 +4350,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_RunBasic, "BASIC" + Chr(9) + "F5")
     MenuItem(#Menu_RunNestorBasic, "Nestor Basic" + Chr(9) + "Shift+F5")
     MenuBar()
+    MenuItem(#Menu_CompileMsxBas2RomRom, "Compilar ROM (MSXBas2Rom)...")
+    MenuBar()
     MenuItem(#Menu_RenumberBasic, "Renumerar..." + Chr(9) + "F6")
     MenuBar()
     MenuItem(#Menu_AssembleZ80, "Montar Assembly (.bin)..." + Chr(9) + "Ctrl+F5")
@@ -4097,6 +4372,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_ConfigureMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_ConfigureN80, "N80...")
     MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
+    MenuBar()
+    MenuItem(#Menu_ConfigureProject, "Projeto...")
   MenuTitle("Ajuda")
     MenuItem(#Menu_HelpEditor, "Editor..." + Chr(9) + "F1")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
@@ -4216,6 +4493,8 @@ Repeat
                 MessageRequester("Erro ao abrir projeto",
                                   "Nao foi possivel abrir:" + Chr(10) + OpenProjectPath + Chr(10) + ProjectDB::GetLastError(),
                                   #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+              Else
+                RestoreMissingDocumentsToDisk()
               EndIf
             EndIf
           EndIf
@@ -4319,6 +4598,9 @@ Repeat
         Case #Menu_RunNestorBasic
           RunNestorBasicFromActiveTab()
 
+        Case #Menu_CompileMsxBas2RomRom
+          CompileMsxBas2RomFromActiveTab()
+
         Case #Menu_RenumberBasic
           RenumberActiveTabInPlace()
 
@@ -4371,6 +4653,9 @@ Repeat
 
         Case #Menu_ConfigureOpenMSX
           OpenMsxCfg_OpenSettingsWindow(#MainWindow)
+
+        Case #Menu_ConfigureProject
+          ProjSettings_OpenWindow(#MainWindow)
 
         Case #Menu_HelpEditor
           EditorHelp_OpenWindow(#MainWindow)
@@ -4522,6 +4807,10 @@ Repeat
 
 Until Quit = 1
 
+; Pedido do usuario: ao encerrar o programa, garante que o .msxproject fica
+; com uma copia fresca (do disco, nao do buffer) de todos os fontes que ja
+; conhece - ver ResyncProjectDocumentsFromDisk() acima.
+ResyncProjectDocumentsFromDisk()
 ProjectDB::Close()
 End
 

@@ -113,14 +113,23 @@ EndProcedure
 ;- Persistencia em JSON
 ;- ------------------------------------------------------------
 
-Procedure.s BadigCfg_FilePath()
+; OverridePath (opcional): "" = comportamento normal (JSON global ao lado
+; do .exe); qualquer outro valor e usado como caminho COMPLETO em vez do
+; global - usado por "Configurar -> Projeto..." (ProjectSettingsGui.pbi)
+; pra ler/gravar um JSON por-projeto sem duplicar nenhuma logica de
+; campo/UI (a janela de configuracao em si nao muda nada, so passa esse
+; parametro adiante).
+Procedure.s BadigCfg_FilePath(OverridePath.s = "")
+  If OverridePath <> ""
+    ProcedureReturn OverridePath
+  EndIf
   ProcedureReturn GetPathPart(ProgramFilename()) + "badig_settings.json"
 EndProcedure
 
-Procedure BadigCfg_Load()
+Procedure BadigCfg_Load(OverridePath.s = "")
   BadigCfg_SetDefaults()
 
-  Protected FilePath.s = BadigCfg_FilePath()
+  Protected FilePath.s = BadigCfg_FilePath(OverridePath)
   If FileSize(FilePath) <= 0
     ProcedureReturn #False
   EndIf
@@ -170,7 +179,7 @@ Procedure BadigCfg_Load()
   ProcedureReturn #True
 EndProcedure
 
-Procedure BadigCfg_Save()
+Procedure BadigCfg_Save(OverridePath.s = "")
   Protected Json = CreateJSON(#PB_Any)
   Protected Root = SetJSONObject(JSONValue(Json))
 
@@ -207,7 +216,7 @@ Procedure BadigCfg_Save()
   SetJSONInteger(AddJSONMember(Root, "EmVerbose"), BadigCfg\EmVerbose)
   SetJSONString(AddJSONMember(Root, "EmulatorPath"), BadigCfg\EmulatorPath)
 
-  SaveJSON(Json, BadigCfg_FilePath(), #PB_JSON_PrettyPrint)
+  SaveJSON(Json, BadigCfg_FilePath(OverridePath), #PB_JSON_PrettyPrint)
   FreeJSON(Json)
 EndProcedure
 
@@ -284,7 +293,15 @@ UseNetworkTLS() ; necessario para ReceiveHTTPFile() conseguir falar https:// (Gi
 ; Descompacta ZipPath em TargetDir, removendo o prefixo de pasta unico que o
 ; GitHub inclui em arquivos de archive (ex.: "basic-dignified-main/") para que
 ; o conteudo do repositorio fique direto dentro de TargetDir, sem subpasta extra.
-Procedure.b BadigCfg_ExtractZip(ZipPath.s, TargetDir.s)
+; OnlyUnderPrefix (opcional, "" = comportamento antigo/todo o zip): quando
+; informado (ex.: "demo"), extrai SO as entradas dentro dessa subpasta do
+; repositorio - o prefixo tambem e removido do caminho final, entao
+; "demo/scroll1/scroll1.bas" com OnlyUnderPrefix = "demo" vira
+; TargetDir\scroll1\scroll1.bas, como se "demo/" fosse a raiz do zip. Usado
+; por MsxBas2Rom_DownloadExamples() (MsxBas2RomSupport.pbi) pra baixar so a
+; pasta de exemplos de um repositorio grande sem extrair o resto (codigo
+; fonte C++ etc.) pro disco do usuario.
+Procedure.b BadigCfg_ExtractZip(ZipPath.s, TargetDir.s, OnlyUnderPrefix.s = "")
   Protected Pack = OpenPack(#PB_Any, ZipPath, #PB_PackerPlugin_Zip)
   If Not Pack
     ProcedureReturn #False
@@ -306,6 +323,11 @@ Procedure.b BadigCfg_ExtractZip(ZipPath.s, TargetDir.s)
 
   CreateDirectory(TargetDir)
 
+  Protected FilterPrefix.s = OnlyUnderPrefix
+  If FilterPrefix <> "" And Right(FilterPrefix, 1) <> "/"
+    FilterPrefix + "/"
+  EndIf
+
   Protected EntryName.s, RelName.s, OutPath.s
   ExaminePack(Pack)
   While NextPackEntry(Pack) > 0
@@ -316,6 +338,16 @@ Procedure.b BadigCfg_ExtractZip(ZipPath.s, TargetDir.s)
     EndIf
     If RelName = ""
       Continue
+    EndIf
+
+    If FilterPrefix <> ""
+      If Left(RelName, Len(FilterPrefix)) <> FilterPrefix
+        Continue
+      EndIf
+      RelName = Mid(RelName, Len(FilterPrefix) + 1)
+      If RelName = ""
+        Continue
+      EndIf
     EndIf
 
     OutPath = TargetDir + "\" + RelName
@@ -689,7 +721,19 @@ EndProcedure
 ;- Janela de configuracao (Configurar -> Basic Dignified...)
 ;- ------------------------------------------------------------
 
-Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
+; OverridePath (opcional): "" = comportamento normal (le/grava o BadigCfg
+; global, ja carregado pelo chamador antes de abrir esta janela). Quando
+; nao vazio, carrega esse arquivo por-projeto pro MESMO Global BadigCfg
+; antes de desenhar os campos (a janela em si nao muda nada) e o botao
+; Salvar grava de volta nesse mesmo arquivo - quem chama com OverridePath
+; <> "" e responsavel por salvar/restaurar o BadigCfg global antes/depois
+; (ver ProjectSettingsGui.pbi), ja que essa struct e temporariamente usada
+; como "rascunho" pra esta janela.
+Procedure BadigCfg_OpenSettingsWindow(ParentWindow, OverridePath.s = "")
+  If OverridePath <> ""
+    BadigCfg_Load(OverridePath)
+  EndIf
+
   ; Mesma grade de layout de EditorCfg_OpenSettingsWindow() (EditorSettings.pbi):
   ; 24px de margem externa, 24px de altura de campo, 8px entre um rotulo e o
   ; campo logo abaixo dele, ~26-30px entre grupos distintos.
@@ -896,8 +940,10 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow)
 
     BadigCfg_ApplyEmulatorGadgetsToConfig(@EmuG)
 
-    BadigCfg_Save()
-    BadigCfg_SyncEmulatorIni()
+    BadigCfg_Save(OverridePath)
+    If OverridePath = ""
+      BadigCfg_SyncEmulatorIni() ; so faz sentido pro emulador "de verdade" da maquina, nao pra um override de projeto
+    EndIf
   EndIf
 
   CloseModelessChildWindow(ParentWindow, Win)

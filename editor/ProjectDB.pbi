@@ -37,11 +37,16 @@ DeclareModule ProjectDB
 
   Declare SetWorkingDir(Dir.s)
   Declare.s GetWorkingDir()
+  Declare SetInfoValue(Key.s, Value.s)
+  Declare.s GetInfoValue(Key.s)
+  Declare.s OverrideSettingsPath(FileName.s)
 
   Declare.i StoreDocument(Path.s, Mode.s, Content.s)
   Declare.i FetchDocument(Path.s)
   Declare.s LastDocumentContent()
   Declare.s LastDocumentMode()
+  Declare ListDocumentPaths(List Paths.s())
+  Declare DeleteDocument(Path.s)
 
   Declare.i StoreSprite(Number.i, Tag.s, GridSize.i, SpriteMode.i, Array Grid.b(2))
   Declare.i FetchSprite(Number.i, Array Grid.b(2))
@@ -666,6 +671,56 @@ Module ProjectDB
     ProcedureReturn Result
   EndProcedure
 
+  ; Versao generica de SetWorkingDir/GetWorkingDir acima (qualquer chave, nao
+  ; so "working_dir") - usada por "Configurar -> Projeto..." (ProjectSettingsGui.pbi)
+  ; pra guardar os 3 booleans "usar config especifica deste projeto"
+  ; (badig/n80/msxbas2rom_override_enabled). Mesmo padrao DELETE+INSERT (nao
+  ; UPSERT - SQLite embutido do PureBasic pode nao suportar a sintaxe
+  ; ON CONFLICT em toda versao).
+  Procedure SetInfoValue(Key.s, Value.s)
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    Protected SafeKey.s = ReplaceString(Key, "'", "''")
+    Protected SafeValue.s = ReplaceString(Value, "'", "''")
+    DatabaseUpdate(#DB, "DELETE FROM project_info WHERE key='" + SafeKey + "'")
+    DatabaseUpdate(#DB, "INSERT INTO project_info (key, value) VALUES ('" + SafeKey + "', '" + SafeValue + "')")
+  EndProcedure
+
+  Procedure.s GetInfoValue(Key.s)
+    If Not EnsureOpen()
+      ProcedureReturn ""
+    EndIf
+
+    Protected SafeKey.s = ReplaceString(Key, "'", "''")
+    Protected Result.s = ""
+    If DatabaseQuery(#DB, "SELECT value FROM project_info WHERE key='" + SafeKey + "'")
+      If NextDatabaseRow(#DB)
+        Result = GetDatabaseString(#DB, 0)
+      EndIf
+      FinishDatabaseQuery(#DB)
+    EndIf
+    ProcedureReturn Result
+  EndProcedure
+
+  ; Caminho de um arquivo de configuracao POR PROJETO (ex.:
+  ; "project_badig_settings.json") - ao lado do .msxproject salvo, mesma
+  ; pasta de GetWorkingDir(). "" quando ainda nao ha projeto salvo (working
+  ; dir vazio) - quem chama (ProjectSettingsGui.pbi) trata isso desabilitando
+  ; a tela com uma mensagem "salve o projeto primeiro", nao tenta escrever
+  ; num caminho vazio.
+  Procedure.s OverrideSettingsPath(FileName.s)
+    Protected Dir.s = GetWorkingDir()
+    If Dir = ""
+      ProcedureReturn ""
+    EndIf
+    If Right(Dir, 1) <> "\" And Right(Dir, 1) <> "/"
+      Dir + "\"
+    EndIf
+    ProcedureReturn Dir + FileName
+  EndProcedure
+
   ; Guarda uma copia atualizada do conteudo de uma aba de texto ja salva em
   ; disco (Path sempre um caminho absoluto real, nunca aba "noname" ainda nao
   ; salva) - chamado por SaveDocument() em BadigEditor.pb logo apos escrever
@@ -714,6 +769,37 @@ Module ProjectDB
 
   Procedure.s LastDocumentMode()
     ProcedureReturn FetchedDocMode
+  EndProcedure
+
+  ; Remove a linha de um documento (usado por RestoreMissingDocumentsToDisk()
+  ; em BadigEditor.pb quando o arquivo e re-extraido pra um caminho NOVO -
+  ; a linha antiga, chaveada pelo caminho original de outra maquina, precisa
+  ; sair pra nao ficar duplicada/inalcancavel).
+  Procedure DeleteDocument(Path.s)
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+    Protected SafePath.s = ReplaceString(Path, "'", "''")
+    DatabaseUpdate(#DB, "DELETE FROM documents WHERE path='" + SafePath + "'")
+  EndProcedure
+
+  ; Todos os caminhos de documentos ja guardados por StoreDocument() -
+  ; usado por RestoreMissingDocumentsToDisk()/ResyncProjectDocumentsFromDisk()
+  ; (BadigEditor.pb) pra saber quais arquivos o projeto ja conhece, sem
+  ; precisar adivinhar varrendo o diretorio de trabalho.
+  Procedure ListDocumentPaths(List Paths.s())
+    ClearList(Paths())
+    If Not EnsureOpen()
+      ProcedureReturn
+    EndIf
+
+    If DatabaseQuery(#DB, "SELECT path FROM documents ORDER BY path ASC")
+      While NextDatabaseRow(#DB)
+        AddElement(Paths())
+        Paths() = GetDatabaseString(#DB, 0)
+      Wend
+      FinishDatabaseQuery(#DB)
+    EndIf
   EndProcedure
 
   Procedure.i StoreSprite(Number.i, Tag.s, GridSize.i, SpriteMode.i, Array Grid.b(2))

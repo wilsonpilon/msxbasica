@@ -147,5 +147,5 @@ Notes
 
 ---
 
-See also [Arkos Tracker Music Support](Music-Support).
+See also [Arkos Tracker Music Support](https://github.com/amaurycarvalho/msxbas2rom/wiki/Music-Support).
 

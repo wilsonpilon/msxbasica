@@ -58,26 +58,41 @@ Structure GenMdHelp_WindowState
   List Topics.GenMdHelp_TopicItem()
 EndStructure
 
+; Fonte do corpo do texto: Segoe UI num tamanho fixo (Windows), NAO a fonte
+; do editor de codigo (EditorCfg\FontName/FontSize) - mesma razao/mesmo fix
+; de NBHelpGui_SetupStyles (NestorBasicHelpGui.pbi): fonte monoespacada em
+; prosa fica maior/mais larga do que o tamanho configurado sugere e quebra
+; de linha (SC_WRAP_WORD, mais abaixo) muito mais frequente - lido pelo
+; usuario como "fonte grande, texto desalinhado, quebra em linhas
+; desconexas" (2026-08-09), reproduzido abrindo Ajuda -> MSXBas2Rom... (o
+; conteudo baixado da wiki tem paragrafos de prosa de verdade, ao contrario
+; da maioria dos outros Helps, escritos a mao ja mais compactos).
 Procedure GenMdHelp_SetupStyles(Sci)
-  Protected *FontName = UTF8(EditorCfg\FontName)
+  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+    Protected *FontName = UTF8("Segoe UI")
+    Protected BodyFontSize = 10
+  CompilerElse
+    Protected *FontName = UTF8(EditorCfg\FontName)
+    Protected BodyFontSize = EditorCfg\FontSize
+  CompilerEndIf
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_DEFAULT, RGB(30, 30, 30))
   ScintillaSendMessage(Sci, #SCI_STYLESETBACK, #STYLE_DEFAULT, RGB(255, 255, 255))
   ScintillaSendMessage(Sci, #SCI_STYLESETFONT, #STYLE_DEFAULT, *FontName)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #STYLE_DEFAULT, EditorCfg\FontSize)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #STYLE_DEFAULT, BodyFontSize)
   ScintillaSendMessage(Sci, #SCI_STYLECLEARALL)
   FreeMemory(*FontName)
 
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #GenMdHelp_Style_H1, RGB(15, 45, 100))
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #GenMdHelp_Style_H1, 1)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #GenMdHelp_Style_H1, EditorCfg\FontSize + 6)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #GenMdHelp_Style_H1, BodyFontSize + 6)
 
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #GenMdHelp_Style_H2, RGB(20, 60, 120))
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #GenMdHelp_Style_H2, 1)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #GenMdHelp_Style_H2, EditorCfg\FontSize + 3)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #GenMdHelp_Style_H2, BodyFontSize + 3)
 
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #GenMdHelp_Style_H3, RGB(25, 70, 130))
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #GenMdHelp_Style_H3, 1)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #GenMdHelp_Style_H3, EditorCfg\FontSize + 1)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #GenMdHelp_Style_H3, BodyFontSize + 1)
 
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #GenMdHelp_Style_Bold, 1)
 
@@ -266,6 +281,29 @@ Procedure GenMdHelp_RenderMarkdown(Sci, Markdown.s)
   ScintillaSendMessage(Sci, #SCI_GOTOPOS, 0)
 EndProcedure
 
+; Renderiza texto puro/verbatim (SEM passar pelo parser de markdown) num
+; unico estilo monoespacado (#GenMdHelp_Style_Code) - usado pra exemplos de
+; codigo de verdade (.bas), que NAO sao markdown: rodar um .bas por
+; GenMdHelp_RenderMarkdown() interpretaria "**"/"`"/"[texto](url)" que
+; aparecem legitimamente em BASIC (ex.: PRINT "**", A$(I)) como marcacao,
+; corrompendo a exibicao. Aqui todo byte vira o mesmo estilo, sem parsing.
+Procedure GenMdHelp_RenderPlainCode(Sci, Text.s)
+  Protected *Buffer = UTF8(Text)
+  ScintillaSendMessage(Sci, #SCI_SETREADONLY, 0)
+  ScintillaSendMessage(Sci, #SCI_SETTEXT, 0, *Buffer)
+  Protected ByteLen = StringByteLength(Text, #PB_UTF8)
+  FreeMemory(*Buffer)
+
+  ScintillaSendMessage(Sci, #SCI_STARTSTYLING, 0, 0)
+  If ByteLen > 0
+    ScintillaSendMessage(Sci, #SCI_SETSTYLING, ByteLen, #GenMdHelp_Style_Code)
+  EndIf
+
+  ScintillaSendMessage(Sci, #SCI_SETREADONLY, 1)
+  ScintillaSendMessage(Sci, #SCI_EMPTYUNDOBUFFER)
+  ScintillaSendMessage(Sci, #SCI_GOTOPOS, 0)
+EndProcedure
+
 ; Le FolderPath + "_index.json" (manifesto gravado pelo downloader - array de
 ; {"file":..., "title":..., "group":...}) para dentro de State\Topics(). Malformado/
 ; ausente -> lista vazia (chamador decide o que fazer).
@@ -315,6 +353,57 @@ Procedure GenMdHelp_SaveIndex(FolderPath.s, List Topics.GenMdHelp_TopicItem())
 
   SaveJSON(Json, FolderPath + "_index.json", #PB_JSON_PrettyPrint)
   FreeJSON(Json)
+EndProcedure
+
+; Combina NewTopics() no _index.json JA existente em FolderPath, sem
+; apagar topicos de OUTROS downloads que compartilham a mesma pasta de Ajuda
+; (ex.: MSXBas2Rom tem "Atualizar documentacao"/"Baixar exemplos"/"Baixar
+; jogos" gravando no mesmo _index.json em passos separados - cada botao so
+; deve substituir os topicos que ELE MESMO gera, nao apagar os dos outros).
+; "Dono" de um grupo = qualquer grupo que aparece em NewTopics(); todo topico
+; JA no index cujo Group bate com um desses e descartado (sera substituido
+; pela versao nova), o resto sobrevive intacto.
+Procedure GenMdHelp_MergeIndex(FolderPath.s, List NewTopics.GenMdHelp_TopicItem())
+  NewList OwnedGroups.s()
+  ForEach NewTopics()
+    Protected Found.b = #False
+    ForEach OwnedGroups()
+      If OwnedGroups() = NewTopics()\Group
+        Found = #True
+        Break
+      EndIf
+    Next
+    If Not Found
+      AddElement(OwnedGroups())
+      OwnedGroups() = NewTopics()\Group
+    EndIf
+  Next
+
+  Protected *State.GenMdHelp_WindowState = AllocateStructure(GenMdHelp_WindowState)
+  *State\FolderPath = FolderPath
+  GenMdHelp_LoadIndex(*State)
+
+  NewList Merged.GenMdHelp_TopicItem()
+  ForEach *State\Topics()
+    Protected Owned.b = #False
+    ForEach OwnedGroups()
+      If OwnedGroups() = *State\Topics()\Group
+        Owned = #True
+        Break
+      EndIf
+    Next
+    If Not Owned
+      AddElement(Merged())
+      Merged() = *State\Topics()
+    EndIf
+  Next
+  ForEach NewTopics()
+    AddElement(Merged())
+    Merged() = NewTopics()
+  Next
+
+  GenMdHelp_SaveIndex(FolderPath, Merged())
+  FreeStructure(*State)
 EndProcedure
 
 Procedure GenMdHelp_PopulateTree(Tree, *State.GenMdHelp_WindowState)
@@ -372,6 +461,23 @@ Procedure.s GenMdHelp_ReadTopicFile(*State.GenMdHelp_WindowState, TopicIdx.i)
   Wend
   CloseFile(FileNum)
   ProcedureReturn Text
+EndProcedure
+
+; Despacha pra GenMdHelp_RenderPlainCode() (codigo-fonte verbatim) ou
+; GenMdHelp_RenderMarkdown() (prosa) de acordo com a extensao do arquivo do
+; topico - unico ponto de decisao, usado nos 3 lugares que renderizam um
+; topico em GenMdHelp_OpenWindow() (abertura inicial, troca de topico na
+; arvore, Voltar), pra nao repetir a logica de extensao em cada um.
+Procedure GenMdHelp_RenderTopic(Sci, *State.GenMdHelp_WindowState, TopicIdx.i)
+  If Not SelectElement(*State\Topics(), TopicIdx)
+    ProcedureReturn
+  EndIf
+  Protected Content.s = GenMdHelp_ReadTopicFile(*State, TopicIdx)
+  If LCase(Right(*State\Topics()\File, 4)) = ".bas"
+    GenMdHelp_RenderPlainCode(Sci, Content)
+  Else
+    GenMdHelp_RenderMarkdown(Sci, Content)
+  EndIf
 EndProcedure
 
 ; Janela generica de Ajuda orientada a pasta. Title vai na barra de titulo;
@@ -437,7 +543,7 @@ Procedure GenMdHelp_OpenWindow(ParentWindow, Title.s, FolderPath.s)
       BackIdx = History()
       DeleteElement(History())
       If BackIdx >= 0
-        GenMdHelp_RenderMarkdown(G_Content, GenMdHelp_ReadTopicFile(*State, BackIdx))
+        GenMdHelp_RenderTopic(G_Content, *State, BackIdx)
         CurrentTopic = BackIdx
         For TreeScanIdx = 0 To CountGadgetItems(G_Tree) - 1
           If GetGadgetItemData(G_Tree, TreeScanIdx) = BackIdx
@@ -449,7 +555,7 @@ Procedure GenMdHelp_OpenWindow(ParentWindow, Title.s, FolderPath.s)
     EndIf
   EndMacro
 
-  GenMdHelp_RenderMarkdown(G_Content, GenMdHelp_ReadTopicFile(*State, 0))
+  GenMdHelp_RenderTopic(G_Content, *State, 0)
   CurrentTopic = 0
   SetGadgetState(G_Tree, 0)
 
@@ -468,7 +574,7 @@ Procedure GenMdHelp_OpenWindow(ParentWindow, Title.s, FolderPath.s)
                 Protected TopicIdx = GetGadgetItemData(G_Tree, Sel)
                 If TopicIdx <> CurrentTopic
                   AddElement(History()) : History() = CurrentTopic
-                  GenMdHelp_RenderMarkdown(G_Content, GenMdHelp_ReadTopicFile(*State, TopicIdx))
+                  GenMdHelp_RenderTopic(G_Content, *State, TopicIdx)
                   CurrentTopic = TopicIdx
                 EndIf
               EndIf

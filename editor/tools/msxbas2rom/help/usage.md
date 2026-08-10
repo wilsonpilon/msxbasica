@@ -62,7 +62,7 @@ msxbas2rom [options] <filename.bas>
 
 | Option          | Description                                                                 |
 |-----------------|----------------------------------------------------------------------------|
-| -s | generate [symbols](Usage#7-compile-and-generate-symbols-for-openmsx-debugger) for Z80 debugging (default format: .noi) |
+| -s | generate [symbols](https://github.com/amaurycarvalho/msxbas2rom/wiki/Usage#7-compile-and-generate-symbols-for-openmsx-debugger) for Z80 debugging (default format: .noi) |
 | --noi or --noice | generate symbols in .noi format ([OpenMSX](https://openmsx.org/)) |
 | --cdb | generate symbols in .cdb format (sdcc) |
 | --symbol | generate symbols in .symbol format (pasmo) |
@@ -150,15 +150,15 @@ msxbas2rom -x -s program.bas
 msxbas2rom -x -s --scc program.bas
 ```
 
-Learn more about debugging your MSX-BASIC program [here](Debugging_with_OpenMSX).
+Learn more about debugging your MSX-BASIC program [here](https://github.com/amaurycarvalho/msxbas2rom/wiki/Debugging_with_OpenMSX).
 
 ---
 
 ## 📚 Next Steps
 
-- Read the [Reference Guide](Documentation) for more detailed information; 
-- Explore the [Examples](Examples) page for code examples;
-- Check out [Games published](Games) to see what’s possible.
+- Read the [Reference Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Documentation) for more detailed information; 
+- Explore the [Examples](https://github.com/amaurycarvalho/msxbas2rom/wiki/Examples) page for code examples;
+- Check out [Games published](https://github.com/amaurycarvalho/msxbas2rom/wiki/Games) to see what’s possible.
 
 ---
 

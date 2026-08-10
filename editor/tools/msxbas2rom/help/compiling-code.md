@@ -18,7 +18,7 @@ msxbas2rom mygame.bas
 msxbas2rom -c mydemo.bas
 ```
 
-For advanced options, see the [Usage Guide](Usage).
+For advanced options, see the [Usage Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Usage).
 
 ---
 
@@ -186,4 +186,4 @@ See other important points below.
 
 ---
 
-📌 See also [Compiler Architecture](Compiler-Architecture), [Resource Directives](Resource-Directives), [Extended Commands](Extended-Commands) and [Extended Functions](Extended-Functions).
+📌 See also [Compiler Architecture](https://github.com/amaurycarvalho/msxbas2rom/wiki/Compiler-Architecture), [Resource Directives](https://github.com/amaurycarvalho/msxbas2rom/wiki/Resource-Directives), [Extended Commands](https://github.com/amaurycarvalho/msxbas2rom/wiki/Extended-Commands) and [Extended Functions](https://github.com/amaurycarvalho/msxbas2rom/wiki/Extended-Functions).

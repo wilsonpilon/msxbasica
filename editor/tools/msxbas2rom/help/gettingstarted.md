@@ -8,7 +8,7 @@
 
 Before starting, make sure you have MSXBAS2ROM installed on your system.
 
-- **Windows** and **Linux** installation steps are detailed here: [Installation Guide](Install)
+- **Windows** and **Linux** installation steps are detailed here: [Installation Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Install)
 
 Once installed, you can verify the tool is available by running:
 
@@ -94,16 +94,16 @@ Copy the ROM file to an SD card or storage device supported by your MSX setup an
   - Use **ASCII8 MegaROM compiled mode** for larger projects;
   - Use **Konami SCC MegaROM compiled mode** for projects that need native SCC support.
 
-See [Compiler Architecture](Compiler-Architecture) for more information.
+See [Compiler Architecture](https://github.com/amaurycarvalho/msxbas2rom/wiki/Compiler-Architecture) for more information.
 
 ---
 
 ## 📚 Next Steps
 
-- Learn more commands and options in the [Usage Guide](Usage);
-- Read the [Reference Guide](Documentation) for more detailed information; 
-- Explore the [Examples](Examples) page for code examples;
-- Check out [Games published](Games) to see what’s possible.
+- Learn more commands and options in the [Usage Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Usage);
+- Read the [Reference Guide](https://github.com/amaurycarvalho/msxbas2rom/wiki/Documentation) for more detailed information; 
+- Explore the [Examples](https://github.com/amaurycarvalho/msxbas2rom/wiki/Examples) page for code examples;
+- Check out [Games published](https://github.com/amaurycarvalho/msxbas2rom/wiki/Games) to see what’s possible.
 
 ---
 

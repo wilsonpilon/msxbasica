@@ -51,12 +51,12 @@ servir de especificação byte-a-byte ao port nativo:
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
-| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio |
+| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio. **2026-08-10**: projeto ganhou resincronização/restauração automática dos fontes BASIC/Assembly entre disco e `.msxproject`, pra poder levar só o arquivo de projeto de uma máquina pra outra — ver seção 13 |
 | 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. **Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)** — SALVA TELA/Restaurar, INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE VIDEO/ATRIBUTOS, todos com ícone; coluna direita e faixa abaixo do canvas reequilibradas, ver seção 14d. **Fase 5: persistência no projeto (2026-07-25, mesma sessão)** — Telas/Layouts/Shapes no `.msxproject` via `ProjectDB.pbi`, mesmo padrão número/navegação/tag/Novo/Registrar do editor de sprites/alfabetos, ver seção 14e. **Fase 6: menu AJUSTE (2026-07-25, mesma sessão)** — SCROLL/ROTAÇÃO, 1px e 8x8, 4 direções, ver seção 14f. **Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)** — ZOOM (janela à parte), SHAPE (carimbo com 4 modos lógicos), CORTE (Inverter/Espelhar), GRID (overlay não destrutivo), ver seção 14g. **Fase 8 (2026-07-25, mesma sessão): cursor de teclado — tentada e revertida**, ver seção 14h (usuário achou desnecessária com o mouse já disponível). **Fase 9: formatos nativos .ALF/.LAY/.SCR/.SHP (2026-07-25, mesma sessão)** — importar/exportar telas/layouts/shapes no formato binário que o Graphos III de verdade grava em disco (`editor/GraphosNativeIO.pbi`), verificado por round-trip contra arquivos reais (`editor/tools/GraphosNativeIOTestCli.pb`), ver seção 14i. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). **Todos os 5 menus do original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) + os formatos de arquivo nativos estão implementados.** Ver seções 14/14b a 14i |
 | 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
 | 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
 | 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29), reconhecimento estendido (2026-08-07)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. **2026-08-07**: reconhece também executável MSX-DOS (`.COM`), diferencia texto ASCII puro de BASIC clássico numerado, **planilha SuperCalc 2 MSX (`.CAL`)** — assinatura + título + início da seção de dados, validado contra 6 arquivos `.CAL` reais (ver `docs/reference/supercalc2-cal-format.md`) —, **banco de dados dBase II (`.DBF`)** — formato totalmente decifrado (cabeçalho + descritores de campo + registros), validado registro a registro contra um `.DBF` real (ver `docs/reference/dbase2-dbf-format.md`) — e **os 4 formatos nativos do Graphos III (`.ALF`/`.LAY`/`.SCR`/`.SHP`)**, reaproveitando a spec já validada em `GraphosNativeIO.pbi` (módulo 14i), validado em lote contra ~4100 arquivos reais do repositório (97-100% reconhecidos, ver seção 17); WordStar/MSX-Word seguem pendentes. |
-| 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. Ver seção 18 |
+| 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. **2026-08-10**: motor Dignified ganhou um modo MSXBAS2ROM (vocabulário estendido protegido contra encurtamento de variável, diretivas `FILE`/`TEXT` sem número de linha), novo **Executar → Compilar ROM (MSXBas2Rom)...** que chama o `msxbas2rom.exe` configurado, e **Configurar → Projeto...** (config por projeto pras 3 telas globais). Ver seção 18 |
 | 19 | Inserir → Caractere Especial (mapa de caracteres MSX) | baixo | **Implementado (2026-08-04)** — `editor/CharMapGui.pbi`, novo menu de topo **Inserir**. Grade estilo "Mapa de Caracteres" do Windows com os 159 caracteres que `-tr` traduz pra ASCII nativo MSX. Ver seção 19 |
 | 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família de 3 editores — **completa** desde o módulo 22, ver linhas abaixo |
 | 21 | Editor de tela SCREEN 1 estilo TheDraw/AcidDraw (`Criar → Screen 1...`) | médio | **Implementado (2026-08-05)** — `editor/Screen1EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen1_screens`). Mesma grade 32×24 e mesmas 6 ferramentas do módulo 20, mas com a Color Table real do SCREEN 1 (1 par tinta/fundo por grupo de 8 códigos de caractere, `&H2000`) — tabela ASCII de 256 células com o bitmap real de cada código já pintado na cor do seu octeto. Ver seção 21 |
@@ -1755,6 +1755,44 @@ apareceu certo (`A<B & C>D`) após o `RUN` — o bridge não tem mecanismo de le
   no canvas do editor de sprites se mostrou não confiável neste ambiente (mesmo tipo de fragilidade já
   observada em telas anteriores, ver seção 12 acima sobre `LVM_SETITEMSTATE`/`SCI_SETTEXT`).
 
+**Resincronização/restauração de fontes BASIC/Assembly (2026-08-10, pedido explícito do usuário)**: o
+`.msxproject` já guardava uma cópia de cada aba de texto salva (`ProjectDB::StoreDocument()`, chamado
+por `SaveDocument()` a cada `Ctrl+S`) — mas só nesse momento pontual, sem garantia de que o espelho
+ficasse fresco em outros pontos, e sem nada que reconstituísse os arquivos no disco ao abrir o projeto
+numa máquina onde eles não existem. Pedido do usuário: tornar o `.msxproject` **autocontido/portátil**
+— levar só esse arquivo de um PC pro outro e os fontes "irem junto".
+
+- **`ResyncProjectDocumentsFromDisk()`** (`BadigEditor.pb`) — lê o conteúdo REAL do disco (não o buffer
+  do Scintilla, "pegar as versões que estão no disco" foi o pedido literal) de todo caminho que o
+  projeto já conhece (`ProjectDB::ListDocumentPaths()`, novo) mais toda aba aberta na sessão atual, e
+  regrava cada um via `StoreDocument()`. Chamada em 3 pontos: **Salvar projeto** (mesmo no caso comum
+  onde a função normalmente não fazia nada, por já ser um SQLite "sempre gravado"), depois de um
+  **Salvar projeto como...** bem-sucedido, e ao **encerrar o programa** (antes de `ProjectDB::Close()`).
+  `Salvar Tudo` já cobre isso indiretamente — salva cada aba (que já chama `StoreDocument()`) e depois
+  chama `SaveProject()`.
+- **`RestoreMissingDocumentsToDisk()`** (`BadigEditor.pb`) — chamada depois de `ProjectDB::OpenExisting()`
+  bem-sucedido: para todo documento que o projeto conhece mas cujo caminho gravado não existe no disco
+  (o caso normal de abrir o MESMO `.msxproject` numa máquina diferente — unidade/usuário/pasta
+  diferentes), extrai o conteúdo de volta pro disco. O destino é sempre **ao lado do `.msxproject` que
+  está sendo aberto agora** (não o caminho absoluto antigo, que só faz sentido na máquina original) —
+  só o nome do arquivo é preservado, garantindo que o projeto fique autocontido de verdade, sem depender
+  da estrutura de pastas de onde foi criado. Quando o destino difere do caminho gravado, a linha da
+  tabela `documents` é **re-chaveada** pro caminho novo (`ProjectDB::DeleteDocument()` do caminho antigo
+  + `StoreDocument()` no novo) — sem isso, um `Salvar` futuro naquela mesma máquina criaria uma segunda
+  linha com o caminho antigo, nunca mais alcançável. Não sobrescreve nada que já exista no destino (não
+  arrisca perder um arquivo que o usuário já tenha ali por outro motivo). Avisa quantos arquivos foram
+  restaurados via `MessageRequester`.
+- **Escopo**: só documentos de texto (BASIC `.dmx`/`.amx`/`.bas` e Assembly `.asm`) — exatamente o que o
+  usuário pediu. Sprites/alfabetos/telas/sons/músicas/`asm_builds`/`asm_subprojects` já vivem nativamente
+  dentro do SQLite (nunca dependeram de um arquivo em disco pra existir), não são afetados.
+- **`ProjectDB::ListDocumentPaths()`**/**`DeleteDocument()`** (novos, `ProjectDB.pbi`) — generalizações
+  simples do padrão já usado por `ListSpriteNumbers()`/`StoreDocument()`. Testados no
+  `editor/tools/ProjectDBTestCli.pb` (harness de regressão do módulo) — todos os testes novos e
+  existentes passaram (achado incidental, não relacionado: um teste pré-existente e não tocado nesta
+  sessão, `FetchDefaultAlphabet(0)` vs. `alfabetos\msx.alf`, já falhava antes por um caminho de arquivo
+  incorreto no próprio harness — `alfabetos\ALF\msx.alf` é o caminho real — registrado aqui como débito
+  técnico conhecido, não corrigido por estar fora do escopo pedido).
+
 ### 14. Graphos III — edição de telas SCREEN 2 (Fase 1: implementada 2026-07-25)
 
 Pedido explícito do usuário: replicar o **Graphos III** (Renato Degiovani, 1987; revisão A&L Software,
@@ -2646,12 +2684,121 @@ progresso `TextGadget` de status + bombear a fila de eventos entre chamadas bloq
   mudança), e já funciona com tudo que foi construído para ASCII clássico nas duas tarefas anteriores
   desta sessão (Renumerar/RENUM, tokenizar nativo) sem nenhuma mudança adicional — `LooksLikeClassicAscii()`
   detecta por conteúdo, não por extensão/modo.
-- **Configurar → MSXBas2Rom...**: baixa o asset da release mais recente (`GET .../releases/latest`,
-  filtro `-windows-x64-bin.zip`/`-linux-x64-bin.zip` via `CompilerIf #PB_Compiler_OS`), roda `-h` e busca
-  10 páginas da wiki oficial (`Home`, `Install`, `Gettingstarted`, `Usage`, `Documentation`,
-  `Compiling-Code`, `Resource-Directives`, `Extended-Commands`, `Extended-Functions`, `Getting-Help`).
+- **Configurar → MSXBas2Rom...**: **redesenhada (2026-08-09)** com dois botões e um campo de caminho
+  separados, em vez de um único botão que baixava executável + Ajuda juntos (decisão explícita do
+  usuário: ele nunca é embutido no projeto, é sempre um `.exe` externo chamado por caminho).
+  - **"Baixar versão mais recente"** (`MsxBas2Rom_DownloadExe()`) baixa só o asset da release mais
+    recente (`GET .../releases/latest`, filtro `-windows-x64-bin.zip`/`-linux-x64-bin.zip` via
+    `CompilerIf #PB_Compiler_OS`) para `tools/msxbas2rom/` (subdiretório da instalação do msxbasica) e
+    preenche o campo de caminho com o executável encontrado.
+  - **Campo de caminho editável** (`StringGadget` + botão "..." → `OpenFileRequester`): cobre o caso do
+    usuário já ter o `msxbas2rom` instalado em outro lugar — não precisa baixar, só aponta pro `.exe`
+    existente. Pré-preenchido com `MsxBas2RomCfg\ExePath` (o local onde o pacote foi baixado, se já foi
+    baixado antes) ou, se ainda vazio, com o resultado de `MsxBas2Rom_FindExe()` contra a pasta padrão
+    (cobre o caso de `msxbas2rom_settings.json` ter sido apagado/recriado mas o executável já estar lá).
+    Só é persistido no `Salvar` da janela (padrão `G_Save`/`G_Cancel` de `BadigCfg_OpenSettingsWindow()`,
+    `BadigSettings.pbi`) — trocar o caminho manualmente zera `MsxBas2RomCfg\Version` (deixa de ser a
+    versão que a IDE baixou, então a versão exata é desconhecida).
+  - **"Atualizar documentação"** (`MsxBas2Rom_UpdateDocumentation()`) — **implementado (2026-08-09,
+    mesma sessão)**: roda `-h` do executável configurado (se houver um caminho válido, senão pula essa
+    etapa sem falhar) e baixa 19 páginas da wiki oficial (`raw.githubusercontent.com/wiki/
+    amaurycarvalho/msxbas2rom/<Página>.md`), organizadas nos MESMOS grupos/ordem da estrutura real da
+    wiki — confirmado clonando `amaurycarvalho/msxbas2rom.wiki.git` e lendo `Home.md` (tabela "Quick
+    Reference") e `Documentation.md` (hub "Reference Guide" com as 12 sub-páginas de referência)
+    diretamente, não adivinhado: **Primeiros passos** (Home/Install/Gettingstarted/Usage), **Guia de
+    referência** (Documentation + as 12 sub-páginas: Compiling-Code, Resource-Directives, Extended-
+    Commands, Extended-Functions, Music-Support, MTF-Support, nMT-Support, TS-Support,
+    VSCode_integration + seu manual de configuração manual, Debugging_with_OpenMSX, Compiler-
+    Architecture, Getting-Help) e **Exemplos** (Examples). `Games`/`Contributing`/`Branding` ficam de
+    fora de propósito — são páginas de comunidade/créditos do projeto msxbas2rom, não guia de uso do
+    dialeto (pedido explícito do usuário: "guia de referência prático pra quem quer usar este
+    dialeto"). Links internos da wiki (`[texto](Install)`, forma normal de link relativo entre páginas
+    de uma wiki do GitHub) são reescritos para URL absoluta (`MsxBas2Rom_RewriteWikiLinks()`) antes de
+    salvar em disco — sem isso, o clique no link (que `GenMdHelp_OpenUrl()` manda cru pro
+    `explorer.exe`/`xdg-open`) tentaria abrir um arquivo local inexistente em vez da página real,
+    inclusive pras páginas que este fluxo deliberadamente não baixa (ex.: um link pra `Games`). Mesmo
+    padrão bloqueante + `ExtTool_SetStatus()` de `MsxBas2Rom_DownloadExe()`. Pode ser clicado de novo no
+    futuro pra resincronizar com a wiki sem precisar de uma nova versão do `.exe`.
   Configurações em `msxbas2rom_settings.json` (mesmo padrão de `editor_settings.json`).
-- **Ajuda → MSXBas2Rom...**: `GenMdHelp_OpenWindow(..., MsxBas2Rom_HelpDir())`.
+- **Ajuda → MSXBas2Rom...**: `GenMdHelp_OpenWindow(..., MsxBas2Rom_HelpDir())` — mostra o que já tiver
+  sido baixado por "Atualizar documentação"; fica vazia num diretório novo até esse botão ser clicado
+  pelo menos uma vez.
+- **"Baixar exemplos (demo)"/"Baixar jogos completos" (2026-08-09, mesma sessão)**: pedido explícito do
+  usuário — quis os exemplos oficiais de `amaurycarvalho/msxbas2rom` (pasta `demo/` do repositório,
+  link direto `.../tree/master/demo`) e, se possível, também os jogos completos de
+  `amaurycarvalho/msxbasic`, baixados pro disco e navegáveis/legíveis (`.bas`/`.md`) dentro de `Ajuda →
+  MSXBas2Rom...`, na mesma estrutura de pastas dos repositórios.
+  - **"Baixar exemplos (demo)"** (`MsxBas2Rom_DownloadExamples()`) baixa **só** a pasta `demo/` do
+    repositório `msxbas2rom` pra `tools/msxbas2rom/demo/` — repositório inteiro via zip
+    (`codeload.github.com/.../zip/refs/heads/master`, ~32 MB, inclui todo o código C++ do compilador)
+    seria desperdício de banda/disco só pra chegar aos ~4 MB de `demo/`; em vez de varrer a API de
+    conteúdo do GitHub recursivamente (a pasta tem só 13 subdiretórios, mas somado às ~58 subpastas do
+    `msxbasic` no mesmo clique/hora estouraria facilmente o limite de 60 requisições/hora sem
+    autenticação da API), a extração do zip agora aceita um filtro de prefixo (`BadigCfg_ExtractZip()`/
+    `ExtTool_DownloadAndExtractZip()`, `OnlyUnderPrefix` opcional, retrocompatível — `""` continua
+    extraindo tudo, como os 2 chamadores existentes já faziam) que só descompacta entradas dentro de
+    `demo/`, removendo esse prefixo do caminho final. **TODOS** os arquivos de `demo/` são baixados
+    (imagens, ROMs, sprites, música — pedido explícito do usuário "baixe os arquivos no disco"), não só
+    `.bas`/`.md`.
+  - **"Baixar jogos completos"** (`MsxBas2Rom_DownloadGames()`) baixa o repositório `amaurycarvalho/
+    msxbasic` **inteiro** (zip pequeno, ~2.4 MB, sem código C++ pra filtrar) pra `tools/msxbas2rom/
+    games/` — 10 jogos completos em MSX BASIC, cada um na própria pasta (`README.md` + `.bas` +
+    imagens/música/níveis/disco).
+  - Depois de extrair, ambos varrem recursivamente a pasta baixada (`MsxBas2Rom_ScanCodeExamplesRec()`)
+    coletando `.bas`/`.md` — cada subpasta de PRIMEIRO NÍVEL vira seu próprio grupo na árvore de Ajuda
+    (`"Demo: scroll1"`, `"Jogo: Fortknox"`..., motor de Ajuda só suporta 1 nível de agrupamento),
+    arquivos mais profundos (ex.: `Fortknox/disk/AUTOEXEC.BAS`, `Dragon Treasure/music/extra/
+    dragon_scream.bas`) ficam no MESMO grupo do jogo/demo, com o título prefixado pelo caminho relativo
+    (`"disk\AUTOEXEC.BAS"`). Validado rodando o algoritmo (extração filtrada + varredura) contra os
+    zips reais dos dois repositórios num harness `.pb` isolado antes de integrar: 81 arquivos/12
+    tópicos pro `demo/` do msxbas2rom, 317 arquivos/23 tópicos pro `msxbasic` (Superman corretamente
+    sem `README.md`, `scroll5` corretamente com os 4 `.BAS` maiúsculos sob o mesmo grupo, `Games
+    Published` corretamente sem nenhum tópico — só tem `.png` de captura de tela).
+  - Os arquivos ficam onde foram baixados (`tools/msxbas2rom/demo/`, `tools/msxbas2rom/games/`), **não**
+    copiados pra dentro de `tools/msxbas2rom/help/` — cada tópico no `_index.json` usa um caminho
+    relativo com `..\` (ex.: `File = "..\demo\scroll1\scroll1.bas"`) que o Windows resolve normalmente
+    a partir de `MsxBas2Rom_HelpDir()`, sem precisar duplicar arquivo nenhum.
+  - **Coexistência no MESMO `_index.json`**: com agora 3 botões diferentes gravando tópicos na mesma
+    pasta de Ajuda (`Atualizar documentação`/`Baixar exemplos`/`Baixar jogos`), sobrescrever o índice
+    inteiro a cada clique apagaria os tópicos dos OUTROS botões. `GenMdHelp_MergeIndex()`
+    (`GenericMdHelpGui.pbi`) resolve isso: carrega o índice existente, descarta só os tópicos cujo
+    `Group` aparece na lista nova (ou seja, cada download só é "dono" dos grupos que ele mesmo gera),
+    acrescenta os novos, salva de volta — os tópicos dos outros downloads sobrevivem intactos.
+  - **Exibição de `.bas` como código, não markdown** (`GenMdHelp_RenderPlainCode()` +
+    `GenMdHelp_RenderTopic()`, `GenericMdHelpGui.pbi`): rodar um `.bas` de verdade pelo parser de
+    markdown existente (`GenMdHelp_RenderMarkdown()`) corromperia a exibição — BASIC usa `**`/`` ` ``/
+    `[texto](...)` legitimamente (`PRINT "**"`, `A$(I)`) e o parser interpretaria isso como negrito/
+    código/link. `GenMdHelp_RenderTopic()` (novo despachante, substituindo a chamada direta a
+    `RenderMarkdown` nos 3 lugares que renderizam um tópico) decide pela extensão do arquivo: `.bas` vai
+    pra `GenMdHelp_RenderPlainCode()` (todo o texto num único estilo monoespaçado, `#GenMdHelp_Style_
+    Code`, sem nenhum parsing), qualquer outra extensão continua no `RenderMarkdown()` normal. Decisão
+    deliberada de **não** reaproveitar o destaque de sintaxe MSX-BASIC real do editor principal
+    (`HighlightDignifiedText()`) — os números de estilo do Scintilla que ele usa colidiriam com os já
+    ocupados por `GenMdHelp_SetupStyles()` (H1/H2/H3/Bold/Code) na mesma tabela de estilos compartilhada
+    por toda janela de Ajuda; texto verbatim monoespaçado (mesmo visual já usado pros blocos ` ``` ` de
+    código na Ajuda) já satisfaz o pedido do usuário de "funcionando como verdadeiros exemplos de
+    programação" sem esse risco de cruzamento de tabelas de estilo.
+
+**Bug real encontrado testando o conteúdo baixado acima (2026-08-09, mesma sessão)**: usuário reportou
+"a fonte do HELP está muito grande... texto aparece desalinhado... quebra em linhas desconexas" em
+**toda** janela de Ajuda da IDE (não só a nova de MSXBas2Rom), reproduzido abrindo `Ajuda →
+MSXBas2Rom...` — o conteúdo baixado da wiki tem parágrafos de prosa de verdade, ao contrário da maioria
+dos outros Helps (escritos à mão, já mais compactos), o que deixou o problema óbvio pela primeira vez.
+Causa real: `NBHelpGui_SetupStyles()` (`NestorBasicHelpGui.pbi`, base de 5 janelas de Ajuda — Nestor
+Basic/MSX BASIC/Basic Dignified/SEE Tracker/openMSX) e `GenMdHelp_SetupStyles()`
+(`GenericMdHelpGui.pbi`, base de outras 3 — Editor/MD Viewer/MSXBas2Rom+N80) usavam
+`EditorCfg\FontName`/`EditorCfg\FontSize` — a fonte do **editor de código** do usuário, tipicamente
+monoespaçada por design — pra renderizar o corpo do texto (prosa). Fonte monoespaçada em prosa ocupa
+mais espaço horizontal por palavra do que uma fonte proporcional do mesmo tamanho nominal (cada letra
+tem a mesma largura, mesmo "i" e "m"), o que faz o texto parecer maior do que o configurado E quebra de
+linha (`SC_WRAP_WORD`) com muito mais frequência — lido pelo usuário como texto grande/desalinhado/
+picotado. Corrigido nas duas funções: no Windows, corpo do texto passa a usar **Segoe UI 10pt fixo**
+(desacoplado do `EditorCfg` do usuário) em vez da fonte do editor — mesmo "toque moderno" já aplicado
+aos controles nativos de toda janela secundária em `App_ApplyWindowIcon()` (`BadigEditor.pb`), por isso
+só Windows (sem equivalente testado noutro OS, mesmo escopo daquela função). Fora do Windows, mantido o
+comportamento antigo (`EditorCfg\FontName`/`FontSize`) por falta de um fallback testado. Estilos de
+título (H1/H2/H3) mantiveram os mesmos deltas relativos (+6/+3/+1 em `GenMdHelp_*`, +2 em
+`NBHelpGui_*`), só a base mudou; bloco de código (`Consolas`, já fixo) não foi afetado.
 
 **Destaque de sintaxe (2026-08-01, mesmo dia, pedido explícito do usuário em seguida)**: até aqui
 `HighlightDocument()`/`BadigEditor.pb` só distinguia `"ASM"` de tudo mais — abas em modo `"BAS"` caíam
@@ -2671,6 +2818,20 @@ vence, e função foi a escolha consistente. `IDATA` dispara o mesmo modo de lit
 sem depender de Scintilla real, `EmitRun()` só grava texto+estilo numa lista) — 11 casos, incluindo dois
 de isolamento negativo confirmando que `TURBO`/`COLLISION` como variável comum em modo `"BAS" = #False`
 continuam caindo no estilo padrão de identificador, não no de palavra-chave.
+
+**Cor própria pro vocabulário estendido (2026-08-10)**: até aqui os 3 mapas acima (`KwMsxBas2RomDirective`/
+`KwMsxBas2RomStatement`/`KwMsxBas2RomFunctionPlain`) reaproveitavam as cores JÁ existentes
+(`#Style_DignifiedStmt`/`#Style_Statement`/`#Style_Function`, respectivamente) — pedido explícito do
+usuário: "todos os comandos [do MSXBAS2ROM] devem aparecer em uma outra cor... tente colocar uma cor
+diferente para estes comandos", em vez de se confundir com as palavras clássicas do MSX-BASIC ou do
+Dignified. Novo estilo único `#Style_MsxBas2Rom` (`Enumeration 1`, entre `#Style_DignifiedStmt` e
+`#Style_Remtag`) unifica as 3 categorias (diretiva/comando/função do MSXBAS2ROM sempre na MESMA cor
+nova, não 3 cores emprestadas diferentes) — negrito, mesmo tratamento visual de `#Style_Statement`/
+`#Style_DignifiedStmt`. Cor nova (`Color_Syntax_MsxBas2Rom`) escolhida numa família teal/ciano em cada
+um dos 7 temas (`ApplyTheme()`) — hue que nenhum tema usava ainda pras outras categorias de sintaxe
+(exceto o próprio "Statement" do tema Forest, que por coincidência já é teal-esverdeado — ali a cor do
+MSXBAS2ROM foi pro azul-violeta em vez de repetir o teal). Só a COR mudou; os 3 mapas de palavras-chave
+em si (quais palavras entram em cada categoria) não foram tocados nesta sessão.
 
 **N80/LinkStor80/LibStor80/M80L80** (`editor/N80Support.pbi`):
 - **Configurar → N80...**: `N80_ResolveAllAssets()` varre o histórico completo de releases numa única
@@ -2706,6 +2867,82 @@ entrada técnica aqui no SPEC. De caminho, corrigido um trecho desatualizado do 
 dizia que o motor do assembler Z80 "ainda não existe", contradizendo a seção "Assembler Z80" do mesmo
 arquivo (módulo 2b/2c, já implementado há várias sessões). Versão embutida no executável (`build.ps1`/
 `#App_Version` em `editor/BadigEditor.pb`) atualizada para **7.9.1**, sem codinome novo.
+
+**Motor Dignified com modo MSXBAS2ROM + compilação pra ROM + config por projeto (2026-08-10, pedido
+explícito do usuário)**: até aqui, documentos "Novo MSXBas2Rom..." (`Docs()\Mode = "BAS"`) só suportavam
+BASIC clássico numerado escrito à mão (`MsxBas2RomTemplateText()`) — o pré-processador Dignified não
+reconhecia o vocabulário exclusivo do MSXBAS2ROM (`FILE`/`TEXT`, sub-comandos de `CMD`/`SET`/`GET`,
+`HEAP()`/`TILE()`/`TURBO()`/etc.), então usar essas palavras como nome de variável num programa Dignified
+arriscava virar candidato ao encurtamento automático (`Dig_ShortenVars_Piece`), corrompendo o programa.
+Também não existia nenhum caminho que efetivamente chamasse `msxbas2rom.exe` pra compilar um arquivo do
+usuário — só o downloader.
+
+- **Decisão de arquitetura**: em vez de duplicar `DignifiedPreprocessor.pbi` (~2500 linhas testadas de
+  labels/loops/`DEFINE`/`DECLARE`/`FUNC`/`RET`/`INCLUDE`/remtags) num arquivo separado, o motor existente
+  ganhou um **modo** — decisão confirmada com o usuário via `AskUserQuestion` (a alternativa, "criar um
+  segundo parser", foi descartada pelo risco real dos dois arquivos desalinharem com o tempo).
+- **Vocabulário reservado**: `Dig_IsReservedWord()` (`DignifiedPreprocessor.pbi`) agora também consulta
+  `KwMsxBas2RomDirective`/`Statement`/`FunctionPlain` — os MESMOS 3 mapas já usados pelo destaque de
+  sintaxe (sessão anterior) — quando `Dig_ModeIsMsxBas2Rom` (Global setado por `Dig_Preprocess(...,
+  IsMsxBas2Rom)`, lido em vez de recebido por parâmetro nos 3 call sites porque
+  `Dig_CollectHardVar_Piece`/`Dig_ShortenVars_Piece`/`Dig_ScanLabelRefs_Piece` são chamadas via ponteiro
+  de função de assinatura fixa — `Prototype Dig_PieceFn(Piece.s, LineNum.i)` — e não podem ganhar um
+  parâmetro extra; mesmo idioma já usado por `Dig_CurrentPrefix`). Os 3 mapas passaram a ser **declarados
+  dentro de `DignifiedPreprocessor.pbi`** (não em `BadigEditor.pb`) e também **populados ali**
+  (`Dig_FillWordMap()`, idempotente, convive sem problema com o `FillKeywordMap()` de `BadigEditor.pb`)
+  — necessário pra harnesses standalone (`DigTestCli.pb`) que só incluem `DignifiedPreprocessor.pbi`,
+  sem o resto do `.exe`.
+- **`FILE`/`TEXT` sem número de linha**: confirmado na documentação oficial (`resource-directives.md`)
+  que essas diretivas de recurso aparecem SEM número, antes do código numerado — a ORDEM define o índice
+  do recurso usado por `SCREEN LOAD 0`/`CMD RESTORE 1`/etc. Novo campo `IsResourceDirective` em
+  `DigLogLine` (calculado uma vez, reaproveitado na passagem de numeração — que agora pula essas linhas
+  sem consumir um número — e na passagem de geração final — que emite a linha verbatim, sem prefixo).
+- **Verificado** rodando `DigTestCli.exe` (ganhou um 4º argumento opcional, `msxbas2rom`) contra um `.dmx`
+  de teste com `FILE`/`TEXT`/`CMD TURBO`/`TURBO`/`HEAP` usados como statement E como identificador livre:
+  em modo clássico, `FILE`/`TURBO`/`HEAP` saem renomeados (`ZZ`/`ZX`/`ZW`, corrompendo o programa — bug
+  confirmado, exatamente o que o modo novo resolve); em modo MSXBAS2ROM, saem intactos e `FILE`/`TEXT`
+  saem sem número de linha, na ordem certa.
+- **`Executar → Compilar ROM (MSXBas2Rom)...`** (`CompileMsxBas2RomFromActiveTab()`, `BadigEditor.pb`):
+  só aceita `Docs()\Mode = "BAS"`; gera ASCII (pulando o pré-processador se o conteúdo já for ASCII
+  clássico, mesma detecção de `RunBasicFromActiveTab`) **sem nunca tokenizar** — `msxbas2rom.exe` compila
+  direto do texto; salva num `.bas` real (`SaveFileRequester`) e roda `msxbas2rom.exe` via
+  `MsxBas2Rom_CompileToRom()` (`MsxBas2RomSupport.pbi`) — `RunProgram` + drenagem de stdout/stderr (mesmo
+  padrão de `ExtTool_RunCaptureOutput`) **mais** `ProgramExitCode()` (único sinal confiável de sucesso/
+  falha, já que o `msxbas2rom` não tem uma convenção clara de mensagem no stdout) — mesmo idioma de
+  `RunProgram`+`ProgramExitCode`+`MessageRequester` já usado em `BadigCfg_DownloadViaGit()` pro `git
+  clone`, único outro precedente no projeto de checar exit code de processo externo.
+- **`Configurar → Projeto...`** (`ProjectSettingsGui.pbi`, novo arquivo pequeno): até aqui, `BadigCfg`/
+  `N80Cfg`/`MsxBas2RomCfg` eram só JSON global ao lado do `.exe` — zero precedente de override por
+  projeto (único dado por-projeto era `working_dir`, em `ProjectDB::project_info`). Em vez de duplicar as
+  ~700 linhas da tela global do Basic Dignified, as **3 telas de configuração existentes não mudaram
+  nada de conteúdo** — só ganharam um parâmetro opcional `OverridePath` (`_FilePath()`/`_Load()`/
+  `_Save()`/`_OpenSettingsWindow()` de cada uma, retrocompatível — `""` continua sendo o comportamento
+  global de sempre) que redireciona onde leem/gravam. A nova janela é só um `PanelGadget` com 3 abas
+  (checkbox "usar config específica" + status + botão "Editar..." que abre a MESMA janela de sempre,
+  apontada pro JSON do projeto — `ProjectDB::OverrideSettingsPath()`, ao lado do `.msxproject`, novos
+  `ProjectDB::SetInfoValue`/`GetInfoValue` genéricos generalizando o padrão já usado por
+  `SetWorkingDir`/`GetWorkingDir`). Desabilitada com um aviso se não há projeto salvo ainda (`GetWorkingDir()
+  = ""`). Consumido em `RunDignifiedPreprocessor()`/`CompileMsxBas2RomFromActiveTab()`: quando o override
+  está ligado, o Global (`BadigCfg`/`MsxBas2RomCfg`) é trocado só durante a operação (snapshot no começo,
+  restaurado antes de qualquer retorno — mesmo idioma de save/restore já usado em `Dig_ProcessSource` pra
+  `Dig_CurrentPrefix`/`Dig_Defines()`). N80 ganhou a mesma infraestrutura mas **sem consumidor ainda** —
+  não há hoje nenhum fluxo de compilação via N80.exe no editor.
+
+**Opções de linha de comando do msxbas2rom.exe expostas na tela (2026-08-10, pedido explícito do
+usuário, lista colada diretamente de `msxbas2rom -h`)**: `MsxBas2RomSettings` (`MsxBas2RomSupport.pbi`)
+ganhou 8 campos novos espelhando os grupos de opções do `-h` do compilador — geral (`-q`/`-d`), modo de
+compilação (`-c`/`-a`/`-x`/`-6`/`-7`/`-4`/`-k`, mutuamente exclusivos, um `ComboBoxGadget` só) e caminhos
+(`-i`/`-o`) na página "Opções de compilação" da MESMA janela (`Configurar → MSXBas2Rom...`/`Configurar →
+Projeto...`, já reaproveitada via `OverridePath` desde a sessão anterior — nenhuma mudança extra
+necessária pro lado do projeto). `MsxBas2Rom_BuildCliArgs()` monta a linha de argumentos a partir dessa
+struct, aplicada em `MsxBas2Rom_CompileToRom()` (antes só passava o `.bas` sem nenhuma flag).
+`MsxBas2Rom_ExpectedRomPath()` passou a considerar o override de `-o` (tratado como PASTA, não arquivo,
+mesmo espírito de `-i`) ao checar se a compilação gerou o `.rom` esperado. **Decisão de design**: os 4
+flags puramente informativos (`-h`/`-D`/`-H`/`-v`, mostram texto e saem sem compilar nada) NÃO entraram
+como checkbox persistente — um usuário “esquecer ligado” um desses quebraria silenciosamente o botão
+"Compilar ROM" (nunca mais geraria ROM nenhuma). Em vez disso, viraram 4 botões de ação única
+("Ajuda"/"Guia rápido"/"Histórico"/"Versão") que rodam só aquele flag e mostram o resultado num
+`MessageRequester`, sem afetar nenhuma configuração salva.
 
 ### 19. Inserir → Caractere Especial (mapa de caracteres MSX) — implementado (2026-08-04)
 
@@ -3772,8 +4009,8 @@ ferramenta mentiria sobre a cor de verdade do hardware).
 
 ## Próximos passos em aberto
 
-**Estado ao fim de 2026-08-09 — revisão geral: bugs, coesão de módulos, performance e temas (v7.33.1,
-sem codinome)**: sessão de auditoria ampla pedida pelo usuário (7 revisões paralelas por área do
+**Estado ao fim de 2026-08-09 — revisão geral: bugs, coesão de módulos, performance e temas, codinome
+"PENTE FINO" (v7.33.1)**: sessão de auditoria ampla pedida pelo usuário (7 revisões paralelas por área do
 código: pipeline/tokenizer, toolchain Z80, shell principal, editores gráficos, editores de tela texto,
 áudio/tracker, settings/integrações externas), seguida de correção do que valia a pena. Resumo (sem
 detalhe de release notes cumulativo, pedido explícito do usuário):

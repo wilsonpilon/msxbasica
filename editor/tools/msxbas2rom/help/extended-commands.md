@@ -440,4 +440,4 @@ FILE "data3.bin"
 
 ---
 
-See also: [Extended Functions](Extended-Functions) and [Arkos Tracker Support Music](Music-Support).
+See also: [Extended Functions](https://github.com/amaurycarvalho/msxbas2rom/wiki/Extended-Functions) and [Arkos Tracker Support Music](https://github.com/amaurycarvalho/msxbas2rom/wiki/Music-Support).

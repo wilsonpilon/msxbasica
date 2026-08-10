@@ -35,18 +35,35 @@
 
 Global NBHelpGui_WinID.i = -1
 
+; Fonte do corpo do texto: Segoe UI num tamanho fixo (Windows), NAO a fonte
+; do editor de codigo (EditorCfg\FontName/FontSize) - essa e tipicamente
+; monoespacada por design (o usuario configura isso pra ler CODIGO), e prosa
+; renderizada em fonte monoespacada fica com cada letra ocupando o mesmo
+; espaco (parece maior/mais larga do que deveria pro tamanho configurado) e
+; quebra de linha (SC_WRAP_WORD, mais abaixo) muito mais frequente - lida
+; pelo usuario como "fonte grande, texto desalinhado, quebra em linhas
+; desconexas" (2026-08-09). Mesmo "toque moderno" (Segoe UI) ja aplicado aos
+; controles nativos de toda janela secundaria em App_ApplyWindowIcon()
+; (BadigEditor.pb) - por isso so Windows: sem equivalente testado noutro OS,
+; mesmo escopo dessa outra funcao.
 Procedure NBHelpGui_SetupStyles(Sci)
-  Protected *FontName = UTF8(EditorCfg\FontName)
+  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+    Protected *FontName = UTF8("Segoe UI")
+    Protected BodyFontSize = 10
+  CompilerElse
+    Protected *FontName = UTF8(EditorCfg\FontName)
+    Protected BodyFontSize = EditorCfg\FontSize
+  CompilerEndIf
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #STYLE_DEFAULT, RGB(30, 30, 30))
   ScintillaSendMessage(Sci, #SCI_STYLESETBACK, #STYLE_DEFAULT, RGB(255, 255, 255))
   ScintillaSendMessage(Sci, #SCI_STYLESETFONT, #STYLE_DEFAULT, *FontName)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #STYLE_DEFAULT, EditorCfg\FontSize)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #STYLE_DEFAULT, BodyFontSize)
   ScintillaSendMessage(Sci, #SCI_STYLECLEARALL)
   FreeMemory(*FontName)
 
   ScintillaSendMessage(Sci, #SCI_STYLESETFORE, #NBHelpGui_Style_H2, RGB(20, 60, 120))
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #NBHelpGui_Style_H2, 1)
-  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #NBHelpGui_Style_H2, EditorCfg\FontSize + 2)
+  ScintillaSendMessage(Sci, #SCI_STYLESETSIZE, #NBHelpGui_Style_H2, BodyFontSize + 2)
 
   ScintillaSendMessage(Sci, #SCI_STYLESETBOLD, #NBHelpGui_Style_Bold, 1)
 
