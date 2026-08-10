@@ -52,7 +52,7 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida no executavel (padrao: 7.33.9).
+  -V, --version <versao>    Versao embutida no executavel (padrao: 7.33.10).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
@@ -75,7 +75,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "7.33.9"
+$Version = "7.33.10"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
 $Distribute = $false
@@ -197,9 +197,14 @@ Write-Host "Fonte      : $SourceFile"
 Write-Host "Saida      : $OutputExe"
 Write-Host "Versao     : $Version"
 Write-Host "Build      : $BuildHex ($BuildDateText)"
+# /XP embute o manifesto de dependencia do comctl32 v6 (mesmo mecanismo do
+# antigo "Windows XP visual styles") - sem ele, gadgets nativos nao-tematizados
+# (checkbox/combobox/listview/scrollbar/groupbox - o ButtonImageGadget dos
+# botoes ja e desenhado a mao, ver ThemedButtons.pbi, entao nao depende disso)
+# renderizam no estilo antigo, sem tema, mesmo no Windows 10/11.
 Write-Host ""
 
-& $CompilerPath $SourceFile /OUTPUT $OutputExe /QUIET /CONSOLE @IconArgs `
+& $CompilerPath $SourceFile /OUTPUT $OutputExe /QUIET /CONSOLE /XP @IconArgs `
     /CONSTANT "App_Version=$Version" `
     /CONSTANT "App_Build=$BuildHex" `
     /CONSTANT "App_BuildDate=$BuildDateText"
@@ -235,6 +240,7 @@ if ($Distribute) {
     Copy-DistItem -Path (Join-Path $PSScriptRoot "docs\MANUAL.md")
     Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE")
     Copy-DistItem -Path (Join-Path $PSScriptRoot "sample") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\fonts") -Recurse
     Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.ico")
     Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.png")
 

@@ -33,20 +33,23 @@ Python — que serve de referência de comportamento a ser portada, não de depe
 - **Editor** (`editor/BadigEditor.pb`) — `ScintillaGadget` com lexer próprio para o dialeto Dignified
   e outro para **Z80 Assembly** (`.asm`, dialeto do assembler
   [N80/Nestor80](https://github.com/Konamiman/Nestor80)), abas customizadas (fechar, hover, arrastar
-  visual), régua de colunas, margem de números de linha dinâmica, **7 temas de cores** (`Configurar →
-  Editor...`) e estilo de abas moderno/clássico configuráveis. Teclado padrão Scintilla/Windows (sem
+  visual), régua de colunas, margem de números de linha dinâmica, **4 temas claros** (`Configurar →
+  Editor...` — os 5 temas escuros foram removidos na 7.33.10, ver [Changelog](#changelog-resumido)) e
+  estilo de abas moderno/clássico configuráveis. Teclado padrão Scintilla/Windows (sem
   modo próprio, ver [Changelog](#changelog-resumido) 2026-08-08) — Buscar/Substituir/Ir para linha
   (`Ctrl+F`/`H`/`G`) e mais de 30 atalhos cobrindo o resto da IDE, ver `docs/MANUAL.md`. Menu
   **Arquivo → Novo** (`.dmx`) e **Novo Assembly** (`.asm`, `Ctrl+Shift+N`) — cada aba detecta e lembra
   seu próprio tipo.
 
   ![Aba de Assembly Z80 com syntax highlight (mnemônicos, registradores, diretivas, rótulos)](images/msxbasica-02.png)
-- **Botões tematizados em toda a IDE, com ícones Nerd Font opcionais** (`editor/ThemedButtons.pbi`) —
-  botão nativo do Windows (`ButtonGadget`) ignora completamente a cor do tema; os 293 botões da IDE
+- **Botões tematizados em toda a IDE, com ícones Nerd Font por padrão** (`editor/ThemedButtons.pbi`) —
+  botão nativo do Windows (`ButtonGadget`) ignora completamente a cor do tema; os 311 botões da IDE
   (todas as telas de Configurar, editores visuais, gerenciador de disco, console do openMSX, telas de
   Ajuda) são desenhados na hora seguindo o tema escolhido, e mais de 140 trocam o texto por um ícone
-  real de uma Nerd Font quando uma está configurada (`Configurar → Editor... → Fonte de ícones`), com
-  tooltip mostrando o nome ao passar o mouse. Sem fonte de ícones, todos continuam com texto normal.
+  real de uma Nerd Font — a partir da 7.33.10, uma fonte de ícones vem empacotada com o executável
+  (`editor/fonts/`) e é usada automaticamente, sem precisar configurar nada (`Configurar → Editor...
+  → Fonte de ícones` deixa desligar ou trocar por outra), com tooltip mostrando o nome ao passar o
+  mouse.
 - **Pré-processador Dignified nativo** (`editor/DignifiedPreprocessor.pbi`) — **cobre 100% do escopo
   do `badig.py` original**: labels, loop labels, `EXIT`, `DEFINE` recursivo, `DECLARE` com redução
   automática de nomes longos, comentários/blocos de comentário, `TRUE`/`FALSE`, operadores compostos,
@@ -1951,6 +1954,45 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
   a montar esses argumentos de verdade (antes só passava o `.bas`, sem nenhuma flag). Os 4 flags só-leem-
   e-saem (`-h`/`-D`/`-H`/`-v`) ficaram de propósito como botões de ação única em vez de checkbox
   persistente — teriam como travar silenciosamente o botão de compilar se esquecidos ligados.
+- **2026-08-10 (mesma sessão) — fim dos temas escuros, ícones por padrão, manifesto `/XP`, codinome
+  `ADEUS ESCURIDÃO` (`7.33.10`)**: pedido explícito do usuário — a interface datada continuava
+  incomodando mesmo depois de `PENTE FINO`/`ADEUS WINDOWS 3.1`, e o pior visual era justamente nos
+  temas escuros: `ThemedButton` só recolore botões, então checkbox/combobox/listview/scrollbar
+  nativos (chrome do Windows, sem como recolorir) ficavam com contraste ruim contra fundo escuro —
+  contra fundo claro o mesmo cinza nativo passa despercebido. Três mudanças, todas reaproveitando
+  infraestrutura que já existia:
+  - **Só temas claros**: os 5 escuros (`Graphite`/`Navy`/`Rose`/`Crimson`/`Forest`) saíram; dois temas
+    novos (`Mist` "Neblina", `Linen` "Linho") entraram ao lado dos 2 originais (`Snow`/`Paper`) pra
+    manter 4 opções. `Snow` vira o novo padrão. `editor_settings.json` de instalações antigas migra
+    sozinho: cada ID escuro removido mapeia pro claro de "família" mais parecida (`Navy`→`Mist`,
+    `Rose`→`Linen`, `Crimson`/`Forest`→`Paper`, `Graphite`/legado→`Snow`) — `EditorCfg_ThemeIsDark()`
+    fica sempre `#False` em vez de excluída (2 outros arquivos ainda chamam ela pra decidir quando
+    acionar as APIs de modo escuro do Windows; sem tema escuro nenhum, esse código fica
+    permanentemente inerte, o que é o comportamento certo).
+  - **Ícone por padrão, sem configurar nada**: os 311 `ThemedButton()` da IDE já usavam uma Nerd Font
+    quando uma estava configurada, mas isso sempre foi opt-in — `IconFontName` vinha vazio por padrão
+    e ninguém tropeçava na tela que ativa isso. Agora `editor/fonts/SymbolsNerdFontMono-Regular.ttf`
+    (Nerd Fonts, licença SIL OFL, só os glifos de ícone — sem letras, sobra a fonte de código
+    escolhida) vem empacotado junto do executável (`build.ps1 -D` copia a pasta, igual `sample/`) e é
+    registrado em memória (`AddFontResourceEx`, privado ao processo) automaticamente na inicialização,
+    reaproveitando a mesma função que já carregava a pasta de fontes customizadas do usuário
+    (`EditorCfg_LoadCustomFonts()`, agora fatorada em `EditorCfg_LoadFontsFromFolder()` chamada duas
+    vezes: pasta empacotada + pasta do usuário). Novo campo `IconsEnabled` (booleano, separado de
+    `IconFontName`) faz a distinção entre "sem preferência salva" (`IconFontName=""` → usa a fonte
+    embutida) e "usuário pediu pra desligar de propósito" (`IconsEnabled=#False`) — sem isso não dava
+    pra represenar "não, eu realmente não quero ícone" depois que vazio passou a significar "usa o
+    padrão". Combo **Fonte de ícones** ganhou a opção **"(Padrão - ícones embutidos)"** ao lado de
+    **"(Nenhuma - usa texto)"** e da lista de Nerd Fonts já instaladas.
+  - **Manifesto `/XP` no `build.ps1`**: flag do `pbcompiler.exe` que embute a dependência do
+    `comctl32` v6 (mesmo mecanismo por trás do antigo "Windows XP visual styles") — sem ela, os
+    controles nativos não-tematizáveis citados acima renderizavam no estilo antigo/sem tema mesmo no
+    Windows 10/11; não muda nada nos botões (já desenhados à mão, ver acima), só o resto.
+  - Investigação prévia (não implementada agora, registrada aqui pra não se perder): PureBasic 6.10+
+    tem um `WebViewGadget()` nativo (Chromium/WebView2 no Windows, cross-platform) com
+    `BindWebViewCallback()`/`WebViewExecuteScript()` pra IPC bidirecional com HTML/CSS/JS — daria pra
+    reconstruir a apresentação em HTML mantendo toda a lógica em PureBasic, sem DLL nem processo
+    separado, mas é um esforço grande (~40 arquivos `.pbi` de diálogo virariam HTML) pro ganho
+    puramente visual perseguido aqui; descartado a favor das 3 mudanças acima, bem mais baratas.
 
 ## Ferramentas e ambiente
 

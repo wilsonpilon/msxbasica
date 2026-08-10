@@ -82,14 +82,22 @@ Procedure.i ThemedUI_ShadeColor(Col, Delta)
   ProcedureReturn RGB(R, G, B)
 EndProcedure
 
-; Tenta carregar EditorCfg\IconFontName uma unica vez por sessao (cache no
-; Global acima) - devolve 0 se nao configurado ou se o LoadFont falhar (nome
-; invalido), caso em que o chamador cai pro texto normal.
+; Tenta carregar a fonte de icones uma unica vez por sessao (cache no Global
+; acima) - devolve 0 se IconsEnabled = #False ou se o LoadFont falhar (nome
+; invalido/fonte nao encontrada), caso em que o chamador cai pro texto normal.
+; EditorCfg\IconFontName vazio = usa #EdFont_BundledIconFontName (a Nerd Font
+; empacotada em editor/fonts/, registrada em memoria por
+; EditorCfg_LoadCustomFonts() antes desta funcao ser chamada pela primeira
+; vez) - so um nome explicito em IconFontName troca pra outra fonte instalada.
 Procedure.i ThemedUI_GetIconFont()
   If Not ThemedUI_IconFontTried
     ThemedUI_IconFontTried = #True
-    If EditorCfg\IconFontName <> ""
-      ThemedUI_IconFont = LoadFont(#PB_Any, EditorCfg\IconFontName, 14)
+    If EditorCfg\IconsEnabled
+      Protected IconFontToUse.s = EditorCfg\IconFontName
+      If IconFontToUse = ""
+        IconFontToUse = #EdFont_BundledIconFontName
+      EndIf
+      ThemedUI_IconFont = LoadFont(#PB_Any, IconFontToUse, 14)
     EndIf
   EndIf
   ProcedureReturn ThemedUI_IconFont

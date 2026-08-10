@@ -424,32 +424,34 @@ modificada) — não salva sozinho, revise e salve como de costume.
 ## Telas de configuração
 
 - **Configurar → Editor...** (atalho `Ctrl+Alt+E`) — fonte (só monoespaçadas, com botão para baixar fontes
-  [Nerd Fonts](https://www.nerdfonts.com/) direto de dentro da IDE), tema (7 opções — ver
+  [Nerd Fonts](https://www.nerdfonts.com/) direto de dentro da IDE), tema (4 opções — ver
   [Temas](#temas)), fonte de ícones (opcional — ver [Botões com ícones](#botões-com-ícones)),
   estilo de abas, caminho de instalação do editor.
 
 ### Temas
 
-O combo **Tema** em **Configurar → Editor...** tem 7 opções, cada uma com sua própria paleta de
-cores da área de edição, abas, régua de colunas e destaque de sintaxe:
+O combo **Tema** em **Configurar → Editor...** tem 4 opções — todas claras desde a 7.33.10 (os 5 temas
+escuros foram removidos: os controles nativos que o PureBasic não deixa recolorir — combo, lista,
+checkbox, scrollbar — ficavam com contraste ruim contra um fundo escuro; contra um fundo claro o
+mesmo cinza nativo passa despercebido). Cada uma com sua própria paleta de cores da área de edição,
+abas, régua de colunas e destaque de sintaxe:
 
 | Tema | Estilo |
 |---|---|
-| Grafite | Escuro neutro — o padrão da IDE |
-| Neve | Claro neutro |
-| Azul Profundo | Escuro, índigo com destaques em azul-céu e menta |
-| Rosé | Escuro, ameixa com rosa e lavanda |
-| Carmesim | Escuro, vinho/oxblood com dourado e verde |
-| Floresta | Escuro, verde-floresta com lima e areia |
+| Neve | Claro neutro — o padrão da IDE |
 | Bege | Claro, papel envelhecido (estilo Solarized Light) |
+| Neblina | Claro, azulado e frio |
+| Linho | Claro, lilás/lavanda |
 
 A troca vale só depois de **Salvar** — não tem pré-visualização ao vivo enquanto o combo está aberto.
 
 **O que muda e o que não muda**: a área do editor (Scintilla), as abas, a régua de colunas, o fundo
 de toda janela de diálogo e os próprios botões (ver [Botões com ícones](#botões-com-ícones)) seguem
 o tema escolhido de verdade. O que continua com a aparência padrão do Windows em qualquer tema —
-limitação do PureBasic, não do tema escolhido — são os controles que não dá pra redesenhar:
-combos, campos de texto, listas e checkboxes.
+limitação do PureBasic, não do tema escolhido — são os controles que não dá pra redesenhar: combos,
+campos de texto, listas e checkboxes; desde a 7.33.10 o executável é compilado com `/XP` (manifesto de
+tema moderno do Windows), então pelo menos esses controles usam o visual nativo atual do Windows em
+vez do estilo antigo sem tema.
 
 ### Botões com ícones
 
@@ -460,16 +462,19 @@ de Ajuda, Editor Hexa etc.) tematizam seus próprios botões em vez de usar o bo
 centralizado na mesma fonte já escolhida em **Configurar → Editor...**. A janela em si também
 segue o fundo do tema (antes ficava branca/cinza nativa, destoando do editor).
 
-Com uma [Nerd Font](https://www.nerdfonts.com/) escolhida no combo **Fonte de ícones** (mesma
-tela **Configurar → Editor...** — baixe uma pelo botão **Baixar fontes (Nerd Fonts)...** logo
-acima, ou coloque um `.ttf`/`.otf` já patcheado na pasta de fontes customizadas), os botões que
-representam uma ação universalmente reconhecível (Fechar, Salvar, Copiar, Tocar, Parar, Ejetar,
-Inserir, Limpar, Conectar/Desconectar, Voltar etc. — mais de 140 ao todo) trocam o texto por um
-ícone de verdade (não um desenho genérico à mão), com o nome continuando disponível no tooltip ao
-passar o mouse. Ações bem específicas de um módulo (ex.: "Gerar código PLAY", "Gravar disco MSX")
-ficam de propósito só com texto — um ícone genérico ali confundiria mais do que ajudaria. Sem fonte
-de ícones escolhida (padrão), todos os botões continuam com texto normalmente — nada quebra por não
-ter uma Nerd Font instalada.
+Desde a 7.33.10 os botões mostram ícone **por padrão**, sem precisar configurar nada: uma
+[Nerd Font](https://www.nerdfonts.com/) (`editor/fonts/SymbolsNerdFontMono-Regular.ttf`) vem
+empacotada junto com o executável e é usada automaticamente. Os botões que representam uma ação
+universalmente reconhecível (Fechar, Salvar, Copiar, Tocar, Parar, Ejetar, Inserir, Limpar,
+Conectar/Desconectar, Voltar etc. — mais de 140 ao todo) mostram um ícone de verdade (não um
+desenho genérico à mão), com o nome continuando disponível no tooltip ao passar o mouse. Ações bem
+específicas de um módulo (ex.: "Gerar código PLAY", "Gravar disco MSX") ficam de propósito só com
+texto — um ícone genérico ali confundiria mais do que ajudaria. O combo **Fonte de ícones** (mesma
+tela **Configurar → Editor...**) tem três tipos de opção: **"(Nenhuma - usa texto)"** desliga os
+ícones inteiramente, **"(Padrão - ícones embutidos)"** é o padrão descrito acima, e qualquer outra
+entrada troca pra uma Nerd Font diferente já instalada no sistema (baixe uma pelo botão
+**Baixar fontes (Nerd Fonts)...** logo acima, ou coloque um `.ttf`/`.otf` já patcheado na pasta de
+fontes customizadas).
 - **Configurar → Basic Options...** — liga/desliga o auto completar de abas MSX-BASIC/Dignified
   (`.dmx`/`.bas`) e ajusta quantas letras precisam ser digitadas antes dele aparecer, além da caixa
   das palavras-chave sugeridas — ver [Auto completar](#auto-completar).

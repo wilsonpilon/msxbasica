@@ -57,15 +57,28 @@ Structure EditorSettings
   FontSize.i
   FontFolder.s    ; pasta com .ttf/.otf/.ttc customizados (opcional)
   EditorPath.s    ; "onde o editor reside" (sempre termina com separador) - nao move o .exe, so serve de base para outros defaults
-  Theme.s         ; um dos 7 IDs de EditorCfg_ThemeIdByIndex() (Graphite/Snow/Navy/Rose/Crimson/Forest/Paper)
+  Theme.s         ; um dos 4 IDs de EditorCfg_ThemeIdByIndex() (Snow/Paper/Mist/Linen) - so
+                  ; temas claros desde a 7.33.10 (os 5 escuros foram removidos: o texto nativo
+                  ; nao-tematizavel de checkbox/combobox/listview/scrollbar - so os botoes,
+                  ; via ThemedButton, sao redesenhados - ficava com contraste ruim contra
+                  ; fundo escuro; contra fundo claro o mesmo cinza nativo passa despercebido)
   Style.s         ; "Modern" ou "Classic" (formato das abas)
-  IconFontName.s  ; nome de uma Nerd Font (da mesma FontFolder) usada pra desenhar icones
-                  ; em botoes tematizados (ver ThemedUI_CreateButtonImage, ThemedButtons.pbi) -
-                  ; "" (padrao) = sem icones, botoes ficam com texto
+  IconFontName.s  ; override do nome de fonte de icones (Nerd Font); "" = usa o nome em
+                  ; #EdFont_BundledIconFontName (fonte de icones empacotada em editor/fonts/,
+                  ; ver EditorCfg_LoadCustomFonts()) quando IconsEnabled = #True
+  IconsEnabled.b  ; #True (padrao) = botoes tematizados mostram icone (ThemedUI_CreateButtonImage,
+                  ; ThemedButtons.pbi); #False = "(Nenhuma - usa texto)" escolhido nas Configuracoes
 EndStructure
 
 Global EditorCfg.EditorSettings
 Global NewList CustomFontResources.s()   ; caminhos registrados via AddFontResourceEx, para poder remover ao trocar de pasta
+
+; Nome de familia exato da fonte empacotada em editor/fonts/SymbolsNerdFontMono-Regular.ttf
+; (conferido com System.Drawing.Text.PrivateFontCollection) - usada como fonte de icones
+; padrao quando IconsEnabled = #True e IconFontName nao tem um override explicito. Precisa
+; estar declarada aqui (antes do primeiro XIncludeFile) porque ThemedButtons.pbi a le dentro
+; de ThemedUI_GetIconFont(), mesmo motivo de EditorCfg/Color_* acima.
+#EdFont_BundledIconFontName = "Symbols Nerd Font Mono"
 
 Global Color_AppBg, Color_EditorBg, Color_TabInactive, Color_TabHover
 Global Color_TextActive, Color_TextInactive, Color_Accent, Color_CloseHover
@@ -640,117 +653,61 @@ Procedure ApplyTheme()
       Color_SelBack               = RGB(207, 224, 251)
       Color_LineNumberFore       = RGB(144, 152, 166)
 
-    Case "Navy"
-      Color_AppBg        = RGB(11, 18, 32)
-      Color_EditorBg      = RGB(16, 24, 44)
-      Color_TabInactive   = RGB(22, 32, 58)
-      Color_TabHover      = RGB(28, 41, 71)
-      Color_TextActive    = RGB(214, 226, 240)
-      Color_TextInactive  = RGB(124, 141, 179)
-      Color_Accent        = RGB(90, 169, 230)
-      Color_CloseHover    = RGB(224, 99, 122)
-      Color_RulerBg       = RGB(13, 21, 38)
-      Color_RulerText     = RGB(107, 123, 160)
-      Color_RulerTick     = RGB(38, 49, 79)
+    Case "Mist"
+      Color_AppBg        = RGB(230, 236, 244)
+      Color_EditorBg      = RGB(255, 255, 255)
+      Color_TabInactive   = RGB(214, 224, 236)
+      Color_TabHover      = RGB(198, 211, 227)
+      Color_TextActive    = RGB(30, 41, 59)
+      Color_TextInactive  = RGB(100, 116, 139)
+      Color_Accent        = RGB(37, 99, 235)
+      Color_CloseHover    = RGB(220, 38, 38)
+      Color_RulerBg       = RGB(222, 230, 240)
+      Color_RulerText     = RGB(100, 116, 139)
+      Color_RulerTick     = RGB(196, 208, 224)
 
-      Color_Syntax_Default       = RGB(207, 220, 242)
-      Color_Syntax_Comment       = RGB(95, 114, 146)
-      Color_Syntax_String        = RGB(127, 217, 185)
-      Color_Syntax_Statement     = RGB(165, 140, 255)
-      Color_Syntax_Operator      = RGB(239, 143, 174)
-      Color_Syntax_Function      = RGB(90, 169, 230)
-      Color_Syntax_Number        = RGB(242, 184, 102)
-      Color_Syntax_Label         = RGB(255, 212, 121)
-      Color_Syntax_DignifiedStmt = RGB(255, 158, 203)
-      Color_Syntax_MsxBas2Rom    = RGB(190, 230, 90)
-      Color_Syntax_Remtag        = RGB(255, 207, 140)
-      Color_Caret                = RGB(255, 255, 255)
-      Color_SelBack               = RGB(35, 74, 120)
-      Color_LineNumberFore       = RGB(74, 92, 130)
+      Color_Syntax_Default       = RGB(30, 41, 59)
+      Color_Syntax_Comment       = RGB(115, 130, 150)
+      Color_Syntax_String        = RGB(21, 128, 91)
+      Color_Syntax_Statement     = RGB(126, 34, 172)
+      Color_Syntax_Operator      = RGB(190, 40, 60)
+      Color_Syntax_Function      = RGB(37, 99, 235)
+      Color_Syntax_Number        = RGB(180, 90, 20)
+      Color_Syntax_Label         = RGB(146, 108, 10)
+      Color_Syntax_DignifiedStmt = RGB(180, 50, 110)
+      Color_Syntax_MsxBas2Rom    = RGB(0, 121, 133)
+      Color_Syntax_Remtag        = RGB(150, 105, 15)
+      Color_Caret                = RGB(0, 0, 0)
+      Color_SelBack               = RGB(196, 214, 245)
+      Color_LineNumberFore       = RGB(130, 142, 160)
 
-    Case "Rose"
-      Color_AppBg        = RGB(26, 18, 25)
-      Color_EditorBg      = RGB(34, 24, 36)
-      Color_TabInactive   = RGB(44, 32, 48)
-      Color_TabHover      = RGB(56, 41, 62)
-      Color_TextActive    = RGB(240, 223, 232)
-      Color_TextInactive  = RGB(160, 132, 160)
-      Color_Accent        = RGB(232, 138, 176)
-      Color_CloseHover    = RGB(224, 91, 111)
-      Color_RulerBg       = RGB(29, 21, 31)
-      Color_RulerText     = RGB(140, 111, 140)
-      Color_RulerTick     = RGB(58, 44, 64)
+    Case "Linen"
+      Color_AppBg        = RGB(244, 236, 245)
+      Color_EditorBg      = RGB(253, 249, 253)
+      Color_TabInactive   = RGB(231, 218, 233)
+      Color_TabHover      = RGB(219, 201, 223)
+      Color_TextActive    = RGB(51, 39, 54)
+      Color_TextInactive  = RGB(126, 108, 130)
+      Color_Accent        = RGB(147, 51, 179)
+      Color_CloseHover    = RGB(200, 50, 90)
+      Color_RulerBg       = RGB(236, 226, 238)
+      Color_RulerText     = RGB(126, 108, 130)
+      Color_RulerTick     = RGB(213, 196, 216)
 
-      Color_Syntax_Default       = RGB(236, 219, 229)
-      Color_Syntax_Comment       = RGB(138, 114, 144)
-      Color_Syntax_String        = RGB(184, 209, 138)
-      Color_Syntax_Statement     = RGB(199, 146, 234)
-      Color_Syntax_Operator      = RGB(242, 143, 163)
-      Color_Syntax_Function      = RGB(232, 166, 208)
-      Color_Syntax_Number        = RGB(240, 176, 112)
-      Color_Syntax_Label         = RGB(244, 207, 122)
-      Color_Syntax_DignifiedStmt = RGB(255, 136, 173)
-      Color_Syntax_MsxBas2Rom    = RGB(110, 220, 210)
-      Color_Syntax_Remtag        = RGB(246, 197, 137)
-      Color_Caret                = RGB(255, 255, 255)
-      Color_SelBack               = RGB(74, 47, 78)
-      Color_LineNumberFore       = RGB(110, 88, 114)
-
-    Case "Crimson"
-      Color_AppBg        = RGB(26, 14, 17)
-      Color_EditorBg      = RGB(36, 19, 24)
-      Color_TabInactive   = RGB(48, 26, 32)
-      Color_TabHover      = RGB(61, 33, 41)
-      Color_TextActive    = RGB(242, 221, 224)
-      Color_TextInactive  = RGB(169, 124, 131)
-      Color_Accent        = RGB(226, 83, 106)
-      Color_CloseHover    = RGB(255, 107, 74)
-      Color_RulerBg       = RGB(28, 16, 19)
-      Color_RulerText     = RGB(151, 112, 122)
-      Color_RulerTick     = RGB(60, 35, 42)
-
-      Color_Syntax_Default       = RGB(239, 217, 220)
-      Color_Syntax_Comment       = RGB(143, 107, 113)
-      Color_Syntax_String        = RGB(155, 201, 138)
-      Color_Syntax_Statement     = RGB(224, 135, 158)
-      Color_Syntax_Operator      = RGB(255, 140, 107)
-      Color_Syntax_Function      = RGB(232, 161, 92)
-      Color_Syntax_Number        = RGB(242, 192, 120)
-      Color_Syntax_Label         = RGB(255, 207, 107)
-      Color_Syntax_DignifiedStmt = RGB(255, 111, 145)
-      Color_Syntax_MsxBas2Rom    = RGB(110, 200, 230)
-      Color_Syntax_Remtag        = RGB(255, 179, 122)
-      Color_Caret                = RGB(255, 255, 255)
-      Color_SelBack               = RGB(86, 37, 48)
-      Color_LineNumberFore       = RGB(124, 89, 96)
-
-    Case "Forest"
-      Color_AppBg        = RGB(16, 26, 21)
-      Color_EditorBg      = RGB(22, 33, 28)
-      Color_TabInactive   = RGB(28, 41, 33)
-      Color_TabHover      = RGB(36, 53, 42)
-      Color_TextActive    = RGB(220, 232, 220)
-      Color_TextInactive  = RGB(127, 161, 137)
-      Color_Accent        = RGB(158, 209, 90)
-      Color_CloseHover    = RGB(226, 99, 122)
-      Color_RulerBg       = RGB(18, 28, 23)
-      Color_RulerText     = RGB(110, 144, 120)
-      Color_RulerTick     = RGB(38, 58, 45)
-
-      Color_Syntax_Default       = RGB(215, 229, 215)
-      Color_Syntax_Comment       = RGB(108, 138, 117)
-      Color_Syntax_String        = RGB(224, 201, 136)
-      Color_Syntax_Statement     = RGB(126, 196, 209)
-      Color_Syntax_Operator      = RGB(224, 138, 107)
-      Color_Syntax_Function      = RGB(158, 209, 90)
-      Color_Syntax_Number        = RGB(224, 169, 94)
-      Color_Syntax_Label         = RGB(240, 207, 110)
-      Color_Syntax_DignifiedStmt = RGB(217, 143, 194)
-      Color_Syntax_MsxBas2Rom    = RGB(140, 150, 240)
-      Color_Syntax_Remtag        = RGB(238, 194, 122)
-      Color_Caret                = RGB(255, 255, 255)
-      Color_SelBack               = RGB(44, 74, 55)
-      Color_LineNumberFore       = RGB(86, 122, 96)
+      Color_Syntax_Default       = RGB(51, 39, 54)
+      Color_Syntax_Comment       = RGB(140, 122, 144)
+      Color_Syntax_String        = RGB(60, 130, 80)
+      Color_Syntax_Statement     = RGB(147, 51, 179)
+      Color_Syntax_Operator      = RGB(190, 45, 100)
+      Color_Syntax_Function      = RGB(110, 70, 190)
+      Color_Syntax_Number        = RGB(178, 96, 20)
+      Color_Syntax_Label         = RGB(150, 105, 15)
+      Color_Syntax_DignifiedStmt = RGB(190, 55, 130)
+      Color_Syntax_MsxBas2Rom    = RGB(10, 130, 125)
+      Color_Syntax_Remtag        = RGB(150, 105, 15)
+      Color_Caret                = RGB(0, 0, 0)
+      Color_SelBack               = RGB(224, 200, 230)
+      Color_LineNumberFore       = RGB(150, 135, 155)
 
     Case "Paper"
       Color_AppBg        = RGB(236, 225, 204)
@@ -780,33 +737,37 @@ Procedure ApplyTheme()
       Color_SelBack               = RGB(217, 196, 143)
       Color_LineNumberFore       = RGB(165, 148, 110)
 
-    Default ; "Graphite" e qualquer valor desconhecido/legado
-      Color_AppBg        = RGB(20, 22, 27)
-      Color_EditorBg      = RGB(28, 31, 38)
-      Color_TabInactive   = RGB(34, 37, 45)
-      Color_TabHover      = RGB(43, 47, 57)
-      Color_TextActive    = RGB(227, 230, 238)
-      Color_TextInactive  = RGB(136, 144, 160)
-      Color_Accent        = RGB(107, 179, 240)
-      Color_CloseHover    = RGB(224, 104, 122)
-      Color_RulerBg       = RGB(23, 25, 31)
-      Color_RulerText     = RGB(115, 123, 140)
-      Color_RulerTick     = RGB(47, 51, 61)
+    Default ; "Snow" e qualquer valor desconhecido/legado (ex.: settings.json
+             ; salvo por uma versao anterior aos 4 temas, com um dos 5 IDs
+             ; escuros removidos - EditorCfg_Load() ja migra esses IDs para um
+             ; dos 4 atuais antes de ApplyTheme() ser chamado, entao este
+             ; Default so deveria disparar num corrompimento direto do JSON)
+      Color_AppBg        = RGB(242, 243, 245)
+      Color_EditorBg      = RGB(255, 255, 255)
+      Color_TabInactive   = RGB(230, 232, 236)
+      Color_TabHover      = RGB(217, 220, 226)
+      Color_TextActive    = RGB(38, 42, 51)
+      Color_TextInactive  = RGB(107, 114, 128)
+      Color_Accent        = RGB(52, 104, 192)
+      Color_CloseHover    = RGB(194, 59, 82)
+      Color_RulerBg       = RGB(237, 238, 241)
+      Color_RulerText     = RGB(118, 124, 136)
+      Color_RulerTick     = RGB(213, 216, 222)
 
-      Color_Syntax_Default       = RGB(221, 225, 234)
-      Color_Syntax_Comment       = RGB(107, 115, 133)
-      Color_Syntax_String        = RGB(147, 196, 125)
-      Color_Syntax_Statement     = RGB(197, 134, 239)
-      Color_Syntax_Operator      = RGB(240, 113, 120)
-      Color_Syntax_Function      = RGB(107, 179, 240)
-      Color_Syntax_Number        = RGB(224, 164, 100)
-      Color_Syntax_Label         = RGB(240, 198, 116)
-      Color_Syntax_DignifiedStmt = RGB(242, 143, 176)
-      Color_Syntax_MsxBas2Rom    = RGB(64, 208, 199)
-      Color_Syntax_Remtag        = RGB(245, 205, 140)
-      Color_Caret                = RGB(255, 255, 255)
-      Color_SelBack               = RGB(46, 75, 110)
-      Color_LineNumberFore       = RGB(86, 95, 112)
+      Color_Syntax_Default       = RGB(43, 47, 56)
+      Color_Syntax_Comment       = RGB(138, 143, 156)
+      Color_Syntax_String        = RGB(47, 125, 79)
+      Color_Syntax_Statement     = RGB(154, 63, 160)
+      Color_Syntax_Operator      = RGB(194, 59, 82)
+      Color_Syntax_Function      = RGB(52, 104, 192)
+      Color_Syntax_Number        = RGB(176, 106, 18)
+      Color_Syntax_Label         = RGB(156, 124, 10)
+      Color_Syntax_DignifiedStmt = RGB(195, 61, 111)
+      Color_Syntax_MsxBas2Rom    = RGB(0, 131, 143)
+      Color_Syntax_Remtag        = RGB(165, 118, 12)
+      Color_Caret                = RGB(0, 0, 0)
+      Color_SelBack               = RGB(207, 224, 251)
+      Color_LineNumberFore       = RGB(144, 152, 166)
   EndSelect
 EndProcedure
 

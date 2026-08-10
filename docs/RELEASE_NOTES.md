@@ -6,6 +6,53 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.33.10 — "ADEUS ESCURIDÃO" (2026-08-10)
+
+**Tema da versão**: usuário pediu pra atacar o visual datado da IDE sem entrar numa reforma grande
+(reescrita de UI, framework novo, etc.) — o pior ponto era os temas escuros, onde os controles nativos
+que os botões tematizados não alcançam (combo/checkbox/lista/scrollbar) ficavam com contraste ruim
+contra fundo escuro. Três mudanças pequenas e de baixo risco, todas reaproveitando infraestrutura que
+já existia, em vez de uma reforma de interface.
+
+### Novidades
+
+- **Só temas claros**: os 5 temas escuros (Grafite/Azul Profundo/Rosé/Carmesim/Floresta) foram
+  removidos. Dois temas claros novos — **Neblina** (azulado, frio) e **Linho** (lilás) — entraram ao
+  lado dos 2 originais (Neve/Bege), mantendo 4 opções em **Configurar → Editor...**. Neve é o novo
+  padrão.
+- **Ícones de botão ligados por padrão**: uma Nerd Font só-de-ícones
+  (`editor/fonts/SymbolsNerdFontMono-Regular.ttf`, licença SIL OFL) passou a ser empacotada junto do
+  executável e carregada automaticamente na inicialização — os 311 botões tematizados da IDE que já
+  sabiam mostrar ícone (infraestrutura da v7.31.3) deixam de depender de o usuário achar e configurar
+  manualmente uma fonte. O combo **Fonte de ícones** ganhou a opção **"(Padrão - ícones embutidos)"**;
+  ainda dá pra desligar (**"(Nenhuma - usa texto)"**) ou trocar por outra Nerd Font instalada.
+- **Manifesto `/XP` no build**: `build.ps1` agora compila com a flag `/XP` do `pbcompiler.exe`
+  (dependência do `comctl32` v6) — os controles nativos não-tematizáveis citados acima passam a usar o
+  visual moderno do Windows em vez do estilo antigo sem tema, em qualquer tema da IDE.
+
+### Bastidores
+
+- `editor_settings.json` de instalações anteriores migra sozinho: cada tema escuro removido mapeia
+  pro claro de "família" mais parecida (`Navy`→`Mist`, `Rose`→`Linen`, `Crimson`/`Forest`→`Paper`,
+  `Graphite`/legado→`Snow`) — ninguém reabre a IDE num tema que não existe mais.
+  `EditorCfg_ThemeIsDark()` foi mantida (sempre retornando `#False`) em vez de excluída, já que 2
+  arquivos ainda a chamam para decidir quando acionar as APIs de modo escuro nativo do Windows — sem
+  tema escuro nenhum, esse código agora fica permanentemente inerte, o que é o comportamento correto.
+- Novo campo `IconsEnabled` (booleano) na struct de configurações, separado de `IconFontName` — sem
+  ele não dava pra distinguir "sem preferência salva" (usa a fonte embutida) de "usuário desligou de
+  propósito", já que `IconFontName` vazio passou a significar "usa o padrão" em vez de "sem ícone".
+  `EditorCfg_LoadCustomFonts()` foi fatorada em `EditorCfg_LoadFontsFromFolder()`, chamada duas vezes
+  (pasta de fontes empacotada + pasta customizada do usuário) em vez de duplicar a varredura de
+  diretório.
+- **Investigado e descartado nesta rodada**: reescrever a apresentação em HTML/CSS/JS via
+  `WebViewGadget()` nativo do PureBasic 6.10+ (`BindWebViewCallback()`/`WebViewExecuteScript()` pra
+  IPC), ou separar o "motor" da IDE numa DLL consumida por uma GUI em outra linguagem (Go, Tauri,
+  Electron). Tecnicamente viável e sem dependência de runtime além do WebView2 já presente no Windows
+  11, mas um esforço grande (~40 arquivos `.pbi` de diálogo virariam HTML) pro ganho puramente visual
+  perseguido aqui — descartado a favor das 3 mudanças acima.
+
+---
+
 ## 7.33.9 — "CARTUCHO DE VERDADE" (2026-08-10)
 
 **Tema da versão**: o `msxbas2rom` (compilador de terceiro que gera ROM de verdade a partir de
