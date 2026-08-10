@@ -523,6 +523,33 @@ Detalhes técnicos completos (arquitetura, tentativas anteriores, e as pegadinha
 durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa frente** está listado em
 `docs/SPEC.md` → [Próximos passos](docs/SPEC.md#próximos-passos-em-aberto).
 
+**Base de conhecimento MSX embutida no menu Ajuda (2026-08-10)** — sete janelas novas, todas navegáveis
+por árvore + busca (mesmo padrão das janelas de Ajuda originais), com conteúdo extraído automaticamente
+de fontes históricas reais (não escrito à mão) por scripts de conversão descartáveis (não versionados,
+mesma ideia de `OpenMsxHelpData.pbi`):
+- **Manuais MSX** (`Ajuda → Manuais MSX...`) — MSX-DOS 2 (Referência/Interface de Programa/Códigos de
+  Função), Z80/R800, Turbo-Basic Compiler, FM-PAC e o MSX2 Technical Handbook original (transcrição de
+  1997), extraídos de `help/MANUALS.CHM` (RuMSX) e reproduzidos como no original (documentos antigos,
+  amplamente disponíveis).
+- **MSX-Basic/DOS/CP-M (RuMSX)** (`Ajuda → MSX-Basic/DOS/CP-M...`) — 359 comandos de
+  `help/SOFTWARE.CHM`, incluindo os que só eram citados pelo nome sem página própria (viram um
+  placeholder em vez de sumir) — segunda fonte de MSX-BASIC em paralelo com "Ajuda → MSX BASIC..." (o
+  do livro brasileiro), para comparar qual fica mais completa.
+- **BIOS MSX: Chamadas/Hardware/Documentação (RuMSX)** — `help/MSXBIOS.CHM` dividido nas 3 seções do
+  CHM original; 597 rotinas de BIOS individuais (uma por endereço/nome, splitting automático a partir
+  do HTML) nas áreas de ROM/RAM, mais os tópicos de hardware (PSG/VDP/V9990/portas I/O/etc.).
+- **Livro Vermelho** (`Ajuda → Livro Vermelho...`) — "The MSX Red Book" (Avalon Software/Kuma
+  Computers, 1985) completo, 973 tópicos, com as ~2911 referências cruzadas internas do livro
+  **clicáveis de verdade** (hotspot nativo do Scintilla) e as 53 figuras originais (convertidas de SVG)
+  abrindo num popup — única parte do programa com link clicável dentro do texto de Ajuda.
+- **MSX2 Technical Handbook** (`Ajuda → MSX2 Technical Handbook...`) — edição Markdown mantida por
+  Konamiman (github.com/Konamiman/MSX2-Technical-Handbook), 1356 tópicos particionados por heading
+  Markdown real, com as 84 figuras originais do livro (PNG) e os mesmos links/figuras clicáveis do
+  Livro Vermelho.
+
+Detalhes de arquitetura (codificação de dados, os dois estilos de renderizador, o mecanismo de hotspot)
+em `docs/SPEC.md`, módulo 30.
+
 ## Changelog resumido
 
 - **2026-07-13** — Projeto criado; editor base migrado para repositório git com `badig/` como
@@ -1993,12 +2020,48 @@ durante a validação) em `docs/SPEC.md`, módulo 12. **O que ainda falta nessa 
     reconstruir a apresentação em HTML mantendo toda a lógica em PureBasic, sem DLL nem processo
     separado, mas é um esforço grande (~40 arquivos `.pbi` de diálogo virariam HTML) pro ganho
     puramente visual perseguido aqui; descartado a favor das 3 mudanças acima, bem mais baratas.
+- **2026-08-10 (mesma sessão) — base de conhecimento MSX embutida no Ajuda, codinome `ACERVO VIVO`
+  (`7.33.11`)**: pedido explícito do usuário, feito aos poucos ao longo da sessão — sete janelas de
+  Ajuda novas (ver ["O que já temos"](#o-que-já-temos) para a lista completa e o que cada uma cobre),
+  todas geradas por scripts de conversão descartáveis (Python, não versionados) a partir de fontes
+  históricas reais: os 4 arquivos CHM do emulador RuMSX (`help/*.CHM` — `MANUALS.CHM`, `SOFTWARE.CHM`,
+  `MSXBIOS.CHM`; `MSX.CHM` foi descartado por ser específico do emulador, fora do escopo do projeto),
+  "The MSX Red Book" (Avalon Software/Kuma Computers 1985, edição Markdown de Gustavo Seidler) e o MSX2
+  Technical Handbook (ASCII Corporation 1987, edição Markdown de Konamiman).
+  - **Decisão sobre direitos autorais** (discutida explicitamente com o usuário antes de implementar):
+    manuais técnicos antigos, há muito fora de catálogo e amplamente compartilhados pela comunidade MSX
+    há décadas, foram reproduzidos como no original; conteúdo de autoria do próprio RuMSX (Lex Lechz)
+    também foi reproduzido como está, por decisão explícita do usuário — mesmo padrão de risco já
+    tolerado no projeto desde `MsxBasicDictData.pbi` (transcrição de um livro comercial de 1986,
+    `docs/Linguagem_Basic_MSX.pdf`, commitado no repositório).
+  - **Dois estilos de renderizador**, conforme o tipo de conteúdo: monoespaçado/sem quebra automática
+    pra texto pré-formatado cheio de tabela ASCII/diagrama de bits (Manuais MSX, as 3 janelas de BIOS);
+    proporcional com negrito/código/link pra prosa corrida (MSX-Basic/DOS/CP-M, Livro Vermelho, MSX2
+    Technical Handbook).
+  - **Links de verdade clicáveis** (Livro Vermelho e MSX2 Technical Handbook) — hotspot nativo do
+    Scintilla (`SCI_STYLESETHOTSPOT`/`SCN_HOTSPOTCLICK`), único lugar do programa com isso; as outras
+    janelas de Ajuda continuam só com árvore + busca (limitação conhecida do "mini-Markdown" comum).
+  - **Figuras originais dos livros clicáveis** (53 do Livro Vermelho, convertidas de SVG pra PNG com
+    ImageMagick; 84 do MSX2 Technical Handbook, já PNG no repositório de origem) — abrem num popup com
+    `ImageGadget`, mesmo link clicável dos parágrafos, prefixo `"img:"` no anchor.
+  - **3 bugs reais achados e corrigidos durante os testes ao vivo** (nenhuma dessas janelas foi
+    considerada pronta sem rodar de verdade): heurística de "endereço+nome" confundindo rótulos de bit
+    (`b7`/`b6`...) com endereço de rotina no BIOS; parser tratando item de lista aninhado do Livro
+    Vermelho (indentado com 4 espaços, igual bloco de código) como código em vez de link; título
+    duplicado na tela (uma vez renderizado, outra como texto puro `"## Título"`) nas janelas
+    monoespaçadas.
+  - **Achado novo de compilador**: `pbcompiler.exe` rejeita bytes de controle crus (`Chr(1)` etc.)
+    dentro de literais de string — `"Literal string not terminated"` — mesmo com a string
+    aparentemente bem formada; caiu pra sentinelas ASCII imprimível (`"[[["`/`"|||"`/`"]]]"`). Guardado
+    na memória do projeto.
+  - **Total**: 1356 + 973 + 597 + 359 + 33 + 18 + 2 ≈ **3300+ tópicos** navegáveis, mais de 130 imagens,
+    tudo offline/embutido no executável (sem depender de internet depois de gerado).
 
 ## Ferramentas e ambiente
 
 Projeto desenvolvido com:
 
-- **[PureBasic](https://www.purebasic.com/) 6.4** — linguagem/compilador da IDE (Windows e Linux).
+- **[PureBasic](https://www.purebasic.com/) 6.41** — linguagem/compilador da IDE (Windows e Linux).
 - **Windows** e **Ubuntu** — desenvolvido e testado nos dois sistemas.
 - **PowerShell** — automação, build e scripts no ambiente Windows.
 - **[Helix](https://helix-editor.com/)** — editor de texto modal usado no dia a dia de edição de

@@ -6,6 +6,48 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.33.11 — "ACERVO VIVO" (2026-08-10)
+
+**Tema da versão**: o menu Ajuda ganhou uma base de conhecimento MSX inteira — sete janelas novas,
+~3300 tópicos, extraídos automaticamente dos 3 arquivos CHM do emulador RuMSX encontrados no
+repositório (`help/*.CHM`) mais duas referências externas clássicas ("The MSX Red Book" e o MSX2
+Technical Handbook), com links internos e figuras originais **clicáveis de verdade** nas duas últimas.
+
+### Novidades
+
+- **Ajuda → Manuais MSX...** — MSX-DOS 2, Z80/R800, Turbo-Basic Compiler, FM-PAC e a transcrição
+  original de 1997 do MSX2 Technical Handbook, extraídos de `help/MANUALS.CHM`.
+- **Ajuda → MSX-Basic/DOS/CP-M (RuMSX)...** — 359 comandos de `help/SOFTWARE.CHM`; segunda fonte de
+  referência MSX-BASIC em paralelo com "Ajuda → MSX BASIC..." (livro brasileiro).
+- **Ajuda → BIOS MSX: Chamadas/Hardware/Documentação (RuMSX)...** — três janelas, `help/MSXBIOS.CHM`;
+  597 rotinas de BIOS individuais, uma por endereço/nome.
+- **Ajuda → Livro Vermelho...** — "The MSX Red Book" (1985) completo, 973 tópicos, com as ~2911
+  referências cruzadas do livro clicáveis de verdade (hotspot nativo do Scintilla) e as 53 figuras
+  originais num popup.
+- **Ajuda → MSX2 Technical Handbook...** — edição Markdown de Konamiman, 1356 tópicos, mesmos links e
+  84 figuras clicáveis do Livro Vermelho.
+
+### Bastidores
+
+- Dois estilos de renderizador por tipo de conteúdo: monoespaçado/sem quebra automática pra texto
+  pré-formatado (tabela ASCII, diagrama de bits); proporcional com negrito/código/link pra prosa.
+- Cada `*HelpData.pbi` monta o corpo linha a linha (`Begin()`/`L()`/`Commit()`) em vez de uma
+  expressão gigante `"l1" + #CRLF$ + "l2" + ...` — `pbcompiler.exe` tem um limite de "continuation
+  lines" que os documentos maiores estouravam.
+- Achado de compilador: bytes de controle crus (`Chr(1)` etc.) dentro de um literal de string
+  quebram o `pbcompiler.exe` ("Literal string not terminated") mesmo com a string bem formada —
+  sentinelas de link/código trocadas por ASCII imprimível (`"[[["`/`"|||"`/`"]]]"`/`"@@@"`).
+- 3 bugs reais corrigidos durante testes ao vivo (nenhuma janela considerada pronta sem abrir de
+  verdade): heurística de endereço confundindo rótulo de bit (`b7`) com endereço de rotina;
+  indentação de item de lista aninhado do Livro Vermelho tratada como bloco de código; título
+  duplicado na tela nas janelas monoespaçadas.
+- Decisão de direitos autorais sobre o conteúdo reproduzido (documentos antigos amplamente
+  disponíveis + conteúdo do próprio RuMSX) avaliada explicitamente com o usuário antes de
+  implementar — detalhe completo em `docs/SPEC.md`, módulo 30.
+- Versão do PureBasic usada no projeto atualizada na documentação para **6.41**.
+
+---
+
 ## 7.33.10 — "ADEUS ESCURIDÃO" (2026-08-10)
 
 **Tema da versão**: usuário pediu pra atacar o visual datado da IDE sem entrar numa reforma grande

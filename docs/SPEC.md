@@ -66,8 +66,9 @@ servir de especificação byte-a-byte ao port nativo:
 | 25 | Auto completar ("Palpiteiro") — MSX-BASIC/Dignified e Assembly | médio | **Implementado (2026-08-08)** — sugestões via popup nativo do Scintilla (`SCI_AUTOCSHOW`), disparadas ao digitar. Abas `.dmx`/`.bas`: palavras-chave clássicas + Dignified + MSXBAS2ROM (quando aplicável) + os 87 wrappers `.NB_*` do NestorBASIC + variáveis do documento; config em `editor/BasicOptionsSettings.pbi` (`Configurar → Basic Options...`). Abas `.asm`: mnemônicos/registradores/diretivas do Z80 (`Z80Asm.pbi`) + rótulos do documento; config em `editor/AssemblyOptionsSettings.pbi` (`Configurar → Assembly...`). Ver seção 25 |
 | 26 | Internacionalização (i18n) da UI — inglês (e depois espanhol/holandês/italiano) | alto (mecânico, incremental) | **Planejado, não iniciado (2026-08-08)** — usuário pediu pra registrar a ideia antes de decidir quando começar. Escopo inicial: só a **UI** (menus/botões/diálogos), português continua existindo como opção, inglês é o padrão sem configuração salva; documentação (`*HelpData.pbi`/`*DictData.pbi`/`*ManualData.pbi`, ~13.500 linhas de prosa) fica pra depois, de propósito. Ver seção 26 |
 | 27 | Fim do teclado WordStar/JOE + atalhos de teclado modernos | médio | **Implementado (2026-08-08)** — `editor/WordStarKeys.pbi` removido por completo (não só desligado); teclado do editor principal virou o padrão Scintilla/Windows. Buscar/Substituir/Ir para linha sobreviveram, portados pra `editor/EditorSearch.pbi` com atalhos convencionais (`Ctrl+F`/`F3`/`Ctrl+H`/`Ctrl+G`). Mais 22 atalhos novos cobrindo o resto da IDE (projeto, inserir, executar, criar). Ver seção 27 |
-| 28 | Sete temas de cores (`Configurar → Editor...`) | médio | **Implementado (2026-08-08)** — `EditorCfg\Theme` virou um de 7 IDs (Graphite/Snow/Navy/Rose/Crimson/Forest/Paper) em vez de um booleano Dark/Light; paletas desenhadas e aprovadas num mockup HTML fora do PureBasic antes de virar código. `editor_settings.json` antigo migra sozinho. Ver seção 28 |
+| 28 | Temas de cores (`Configurar → Editor...`) | médio | **Implementado (2026-08-08), reduzido pra 4 temas claros em 2026-08-10** — `EditorCfg\Theme` virou um de 4 IDs (Snow/Paper/Mist/Linen, todos claros — os 5 escuros originais foram removidos, contraste ruim contra controles nativos não-tematizáveis) em vez de um booleano Dark/Light; paletas desenhadas e aprovadas num mockup HTML fora do PureBasic antes de virar código. `editor_settings.json` antigo migra sozinho. Ver seção 28 |
 | 29 | Botões tematizados em toda a IDE + ícones Nerd Font opcionais | alto | **Implementado (2026-08-08)** — `editor/ThemedButtons.pbi` (novo módulo compartilhado, nasceu como piloto no Editor Hexa): 293 botões em 33 arquivos deixam de ser `ButtonGadget` nativo (chrome do Windows, ignora `Color_*`) e viram imagens desenhadas na hora, seguindo o tema; mais de 140 ganham ícone real de uma Nerd Font quando configurada. Ver seção 29 |
+| 30 | Base de conhecimento MSX embutida no Ajuda (7 janelas: Manuais MSX, MSX-Basic/DOS/CP-M, BIOS Chamadas/Hardware/Documentação, Livro Vermelho, MSX2 Technical Handbook) | alto | **Implementado (2026-08-10)** — ~3300 tópicos extraídos de `help/*.CHM` (RuMSX) + "The MSX Red Book" + MSX2 Technical Handbook (edições Markdown de terceiros) por scripts Python descartáveis; dois estilos de renderizador (monoespaçado vs. proporcional com link clicável de verdade via hotspot do Scintilla); 137 figuras originais (SVG→PNG e PNG direto) clicáveis em popup. Ver seção 30 |
 
 ## Decisões fechadas
 
@@ -3895,6 +3896,14 @@ editor (Scintilla), as abas e a régua de colunas eram desenhadas pelo próprio 
 controles nativos (botões, combos, diálogos) continuavam com chrome do Windows em qualquer tema.
 Essa limitação começou a cair já na mesma sessão, ver módulo 29.
 
+**Atualização (2026-08-10, `7.33.10` "ADEUS ESCURIDÃO")**: os 5 temas escuros (`Graphite`/`Navy`/
+`Rose`/`Crimson`/`Forest`) foram **removidos** — controles nativos não-tematizáveis (combo/checkbox/
+lista/scrollbar) ficavam com contraste ruim contra fundo escuro, praticamente invisível contra fundo
+claro. Dois temas claros novos (`Mist` "Neblina", `Linen` "Linho") substituíram os removidos, ao lado
+dos 2 originais (`Snow`/`Paper`) — **4 temas hoje**, todos claros. `editor_settings.json` de
+instalações anteriores migra sozinho (cada tema escuro removido mapeia pro claro de "família" mais
+parecida). Detalhe completo no changelog do README (`7.33.10`).
+
 ### 29. Botões tematizados em toda a IDE + ícones Nerd Font opcionais — implementado (2026-08-08)
 
 Usuário testou o módulo 28 e reclamou que os diálogos ainda pareciam "Windows 3.1" — "aquele mar de
@@ -3964,6 +3973,110 @@ tem 22 botões nativos (agora tematizados) contra só 4 áreas de canvas com cor
 arquivo, separando cor de "chrome" (segue o tema) de cor de "conteúdo" (ex.: a paleta MSX real
 mostrada no editor de alfabeto/sprite não pode virar rosa só porque o tema é Rosé, senão a
 ferramenta mentiria sobre a cor de verdade do hardware).
+
+### 30. Base de conhecimento MSX embutida no Ajuda — implementado (2026-08-10)
+
+Usuário pediu, aos poucos ao longo de uma sessão longa, pra transformar `help/*.CHM` (arquivos de
+ajuda do emulador RuMSX, achados no repositório) e mais duas fontes externas ("The MSX Red Book" e o
+MSX2 Technical Handbook) em janelas de Ajuda navegáveis dentro do próprio programa. Resultado: sete
+janelas novas, ~3300 tópicos, todas geradas por scripts Python descartáveis (escritos no scratchpad da
+sessão, não fazem parte do repositório — mesma convenção já usada em `OpenMsxHelpData.pbi`) que
+convertem HTML/Markdown de origem pra um dos dois formatos de dados abaixo.
+
+**Fontes e escopo**:
+- `help/MANUALS.CHM` → **Ajuda → Manuais MSX...** (18 tópicos): MSX-DOS 2, Z80/R800, Turbo-Basic
+  Compiler, FM-PAC, MSX2 Technical Handbook (transcrição de 1997, ver módulo separado abaixo pra
+  edição melhor). RS232 e MSXtra excluídos por pedido do usuário (obsoleto/direitos incertos).
+- `help/SOFTWARE.CHM` → **Ajuda → MSX-Basic/DOS/CP-M (RuMSX)...** (359 tópicos): comandos MSX-BASIC
+  (1/2/2+/Turbo-R/Disk-BASIC/CALL de firmware), MSX-DOS, CP/M. UZIX/HALNOTE/MSXView/Chakkari Copy
+  excluídos (fora de escopo). MSX-DOS ganhou um segundo passe: `MsxDos.htm` usa `<UL><LI>` misturando
+  comando com link (tem página) e só-nome (sem página) — os sem página viram um tópico placeholder em
+  vez de sumir, incluindo apelidos que apontam pro mesmo arquivo (ERA/ERASE → DEL).
+- `help/MSXBIOS.CHM` → **Ajuda → BIOS MSX: Chamadas/Hardware/Documentação (RuMSX)...** (597+33+2
+  tópicos, 3 janelas separadas espelhando as 3 seções do CHM original): rotinas de BIOS individuais
+  extraídas automaticamente de marcadores `ENDEREÇO <B>NOME</B>` no HTML (heurística com alguns
+  ajustes reais — ver "Achados" abaixo).
+- `help/MSX.CHM` → **descartado** (específico da interface do emulador RuMSX, fora do escopo do
+  projeto — decisão explícita do usuário).
+- "The MSX Red Book" (Avalon Software/Kuma Computers, 1985), edição Markdown de Gustavo Seidler
+  (github.com/gseidler/The-MSX-Red-Book) → **Ajuda → Livro Vermelho...** (973 tópicos, 53 figuras).
+- MSX2 Technical Handbook (ASCII Corporation, 1987), edição Markdown de Konamiman
+  (github.com/Konamiman/MSX2-Technical-Handbook) → **Ajuda → MSX2 Technical Handbook...** (1356
+  tópicos, 84 figuras) — edição bem mais limpa que a transcrição de 1997 já incluída em Manuais MSX
+  (headings Markdown reais em vez de marcador ad-hoc, tabelas GFM de verdade, figuras originais).
+
+**Decisão sobre direitos autorais** (avaliada explicitamente com o usuário antes de qualquer
+implementação, não assumida): manuais técnicos antigos, há muito fora de catálogo, amplamente
+compartilhados pela comunidade MSX há décadas (casos do Red Book e do MSX2 Technical Handbook,
+inclusive o texto de 1997 já usado antes) foram reproduzidos como no original. Conteúdo de autoria
+própria do RuMSX (Lex Lechz, SOFTWARE.CHM/MSXBIOS.CHM) também foi reproduzido como está, por decisão
+explícita do usuário — nível de risco comparável ao que o projeto já tolera desde `MsxBasicDictData.pbi`
+(transcrição de um livro comercial de 1986 ainda sob direitos, `docs/Linguagem_Basic_MSX.pdf`, já
+commitado no repositório). RS232/MSXtra (direitos mais incertos/conteúdo obsoleto) e MSX.CHM
+(fora de escopo) foram excluídos por decisão do usuário, não por limitação técnica.
+
+**Arquitetura de dados** — todo `*HelpData.pbi` segue o mesmo esqueleto (`Structure {Titulo, Grupo,
+Corpo}` + `Global NewList *_Topics()` + `*_Begin()`/`*_L()`/`*_Commit()`): o corpo de cada tópico é
+montado **linha por linha** (uma chamada `*_L("linha")` por linha do documento original, junta tudo
+num `Body.s` só dentro de `*_Commit()`) em vez de uma única expressão `"linha1" + #CRLF$ + "linha2" +
+...` gigante — `pbcompiler.exe` tem um limite de "continuation lines" por expressão que os documentos
+maiores (MSX-DOS 2 sozinho passa de 3000 linhas) estouravam com a abordagem ingênua. Cada `Add(...)`
+tradicional virou `Begin()`/várias `L(...)`/`Commit(...)` justamente por isso.
+
+**Dois estilos de renderizador**, escolhidos por tipo de conteúdo, não por janela:
+- **Monoespaçado, sem quebra automática** (Manuais MSX, as 3 janelas de BIOS) — texto pré-formatado
+  cheio de tabela ASCII/diagrama de bits, onde reformatar destruiria o alinhamento. Sem suporte a
+  negrito/link, só título + corpo.
+- **Proporcional com negrito/`código`/link** (MSX-Basic/DOS/CP-M, Livro Vermelho, MSX2 Technical
+  Handbook) — prosa corrida, mesmo espírito do "mini-Markdown" já usado em `NestorBasicHelpGui.pbi`
+  mas com um parser próprio por janela (não o compartilhado) porque as duas últimas precisam de mais:
+  link clicável de verdade e bloco de código multi-linha.
+
+**Links clicáveis de verdade** (só Livro Vermelho e MSX2 Technical Handbook — as ~2911 + ~2000
+referências cruzadas internas de cada livro): hotspot nativo do Scintilla
+(`SCI_STYLESETHOTSPOT`/`SCN_HOTSPOTCLICK`, capturado no `ScintillaGadget`'s callback e resolvido no
+loop principal via `PostEvent` — mesmo motivo de reentrância documentado em `ScintillaCallBack()`,
+`BadigEditor.pb`). Cada topico guarda uma lista de `(StartPos, EndPos, Anchor)` em bytes UTF-8
+(posição real no documento Scintilla); no clique, acha qual faixa contém a posição, resolve o anchor
+num `Map` global (`*_AnchorMap()`) pro índice do tópico alvo, navega igual um clique na árvore (empilha
+histórico, `ShowRow`, sincroniza seleção da árvore). Livro Vermelho usa anchors simples (o livro
+inteiro era 1 arquivo `.md` só); MSX2 Technical Handbook precisou qualificar o anchor com o nome do
+arquivo (`"Chapter1#slug"`) porque cada capítulo era uma página separada no original e headings
+repetidos (`"Index"` aparece em quase todo arquivo) colidiriam num mapa só de slug.
+
+**Figuras originais clicáveis** (mesmo mecanismo dos links de texto, prefixo especial `"img:"` no
+anchor abre um popup com `ImageGadget` em vez de navegar): 53 do Livro Vermelho (SVG original
+convertido pra PNG com ImageMagick, 2x de escala, `editor/redbook_images/`); 84 do MSX2 Technical
+Handbook (já PNG no repositório de origem, sem conversão, `editor/th2handbook_images/`). Ambas as
+pastas entram no pacote de distribuição (`build.ps1 -D`).
+
+**Achados reais durante os testes ao vivo** (nenhuma janela foi considerada pronta sem abrir de
+verdade e clicar):
+1. Heurística de "endereço+nome" (BIOS) inicialmente confundia rótulos de posição de bit
+   (`b7`/`b6`/.../`b0`, 2 caracteres hex válidos) com endereço de rotina — corrigido exigindo que
+   endereços de verdade sejam maiúsculos (padrão real do conteúdo).
+2. Mesma heurística, blocos multi-linha sem `<B>` (variáveis de RAM nomeadas tipo `EXPTBL`) estavam
+   sendo ignorados porque só a primeira linha do bloco era checada, e o resto (sem nome em negrito)
+   não tinha como virar título — corrigido pra tentar a 1ª palavra após o endereço como nome candidato.
+3. Parser do Livro Vermelho tratava item de lista aninhado do sumário (`    + [Texto](#link)`,
+   indentado com 4 espaços) como bloco de código — mesma indentação usada por blocos de código
+   markdown de verdade — corrigido excluindo linhas que começam com marcador de lista (`+`/`-`/`*`/
+   `N.`) da detecção de bloco de código.
+4. Título duplicado na tela (uma vez renderizado pelo `RenderTopic`, outra como texto puro `"##
+   Título"` dentro do próprio corpo) nas 3 janelas de BIOS — sobrou de copiar o padrão de prefixar
+   `"## "` de outro conversor sem notar que esta janela já desenha o título separado.
+5. **Achado de compilador, não de lógica**: `pbcompiler.exe` rejeita bytes de controle crus (`Chr(1)`,
+   `Chr(4)` etc.) dentro de literais de string — `"Literal string not terminated"` mesmo com a string
+   visivelmente bem formada. A codificação de sentinela original (Livro Vermelho/MSX2 Technical
+   Handbook, marcar span de link/código dentro do texto) usava esses bytes; trocada por sentinelas
+   ASCII 100% imprimível (`"[[["`/`"|||"`/`"]]]"` pra link, `"@@@"` como prefixo de linha de código) -
+   guardado na memória do projeto (`purebasic-syntax-gotchas-z80asm`), pode aparecer de novo em
+   qualquer geração de código PureBasic que precise de marcador inline.
+
+**Verificação**: cada uma das 7 janelas foi compilada e aberta de verdade (não só inspeção de código),
+incluindo clique real em link de texto e em figura (via um pequeno driver PureBasic descartável de
+automação de UI — `SendMessage`/`PostMessage` diretos no controle nativo — quando a automação via
+PowerShell/`Add-Type` ficou instável na sessão).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

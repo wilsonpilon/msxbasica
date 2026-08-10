@@ -113,30 +113,36 @@
 21. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
     - [Configurar → N80...](#configurar--n80)
     - [Ajuda → N80...](#ajuda--n80)
-22. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
+22. [Base de conhecimento MSX (manuais antigos, livros técnicos)](#base-de-conhecimento-msx-manuais-antigos-livros-técnicos)
+    - [Ajuda → Manuais MSX...](#ajuda--manuais-msx)
+    - [Ajuda → MSX-Basic/DOS/CP-M (RuMSX)...](#ajuda--msx-basicdoscp-m-rumsx)
+    - [Ajuda → BIOS MSX: Chamadas / Hardware / Documentação (RuMSX)...](#ajuda--bios-msx-chamadas--hardware--documentação-rumsx)
+    - [Ajuda → Livro Vermelho...](#ajuda--livro-vermelho)
+    - [Ajuda → MSX2 Technical Handbook...](#ajuda--msx2-technical-handbook)
+23. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
     - [O que está coberto](#o-que-está-coberto-1)
-23. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
+24. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
     - [O que está coberto](#o-que-está-coberto-2)
-24. [Editor Hexa](#editor-hexa)
+25. [Editor Hexa](#editor-hexa)
     - [Abrir/Salvar e a grade hex/ASCII](#abrirsalvar-e-a-grade-hexascii)
     - [Reconhecimento de formato](#reconhecimento-de-formato)
     - [Galeria de templates](#galeria-de-templates)
     - [Intervalo marcado e operações de bloco](#intervalo-marcado-e-operações-de-bloco)
     - [Barra de rolagem](#barra-de-rolagem)
-25. [Inserir → Caractere Especial](#inserir--caractere-especial)
+26. [Inserir → Caractere Especial](#inserir--caractere-especial)
     - [A grade e a prévia](#a-grade-e-a-prévia)
     - [Campo acumulador e o botão Inserir](#campo-acumulador-e-o-botão-inserir)
-26. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
+27. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
     - [Largura, fonte e cor (INK/PAPER único pra tela inteira)](#largura-fonte-e-cor-inkpaper-único-pra-tela-inteira)
     - [Ferramentas](#ferramentas)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-3)
     - [Barra de projeto](#barra-de-projeto-4)
-27. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
+28. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
     - [Fonte e a tabela ASCII do alfabeto (cor por octeto)](#fonte-e-a-tabela-ascii-do-alfabeto-cor-por-octeto)
     - [Ferramentas](#ferramentas-2)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-4)
     - [Barra de projeto](#barra-de-projeto-5)
-28. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
+29. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
     - [3 alfabetos, um por terço da tela](#3-alfabetos-um-por-terço-da-tela)
     - [Cor por linha de scanline (o modo mais complexo)](#cor-por-linha-de-scanline-o-modo-mais-complexo)
     - [Ferramentas](#ferramentas-3)
@@ -1793,6 +1799,53 @@ os 5 manuais originais do openMSX — Guia de Configuração, Manual do Usuário
 Controlling openMSX from External Applications e a Referência de Comandos/Configurações completa
 (mais de 250 tópicos). Diferente do console acima, esta janela é só consulta de texto — não depende
 do openMSX estar aberto nem do controle remoto funcionar.
+
+## Base de conhecimento MSX (manuais antigos, livros técnicos)
+
+Sete janelas de referência, todas com a mesma UI não-modal de busca/árvore/histórico das outras
+janelas de Ajuda — a diferença é a origem do conteúdo: documentação técnica antiga (manuais de
+fabricante, livros técnicos há muito fora de catálogo), reproduzida como no original, não escrita
+pela equipe do projeto. Pode ficar aberta ao lado do editor enquanto você programa.
+
+### Ajuda → Manuais MSX...
+
+Documentos técnicos originais completos: **MSX-DOS 2** (Referência, Interface de Programa, Códigos de
+Função), **Z80** (conjunto de instruções por código e por mnemônico) e **R800**, **Turbo-Basic
+Compiler**, **FM-PAC** e o **MSX2 Technical Handbook** (a transcrição original de 1997, texto puro —
+veja também **Ajuda → MSX2 Technical Handbook...** abaixo para uma edição mais recente, com tabelas e
+figuras).
+
+### Ajuda → MSX-Basic/DOS/CP-M (RuMSX)...
+
+Referência de comandos MSX-BASIC (organizada por geração — MSX1/MSX2/MSX2+/Turbo-R —, mais Disk-BASIC
+e as extensões `CALL` de firmware), MSX-DOS e CP/M, cada comando com Sintaxe/Função/Exemplo/Veja
+também. É uma **segunda fonte** de referência MSX-BASIC, em paralelo com **Ajuda → MSX BASIC...**
+(baseada no livro brasileiro "Linguagem BASIC MSX") — compare as duas e use a que preferir.
+
+### Ajuda → BIOS MSX: Chamadas / Hardware / Documentação (RuMSX)...
+
+Três janelas cobrindo a documentação de BIOS do RuMSX: **Chamadas** tem as rotinas de BIOS
+individuais (MainROM, RAM-variables, SubROM, Disk-ROM, Hangul-ROM, BDOS, EXTBIO, MSX-JE), uma entrada
+por endereço/nome — útil pra pesquisar uma rotina específica pelo nome (`RDSLT`, `CALSLT` etc.) sem
+abrir um PDF externo. **Hardware** cobre os chips e periféricos (PSG, SCC, VDP, V9990, teclado, portas
+I/O, ROM Kanji, etc.). **Documentação** tem os tópicos avulsos (sequências ESC de impressora,
+software-reset).
+
+### Ajuda → Livro Vermelho...
+
+**"The MSX Red Book"** (Avalon Software/Kuma Computers, 1985) completo — um dos livros técnicos mais
+respeitados sobre o hardware/software do MSX1, incluindo a BIOS descrita rotina por rotina. Esta
+janela tem um recurso que nenhuma outra tem: **os links internos do livro são clicáveis de verdade**
+— clicar numa palavra sublinhada azul (ex.: uma referência a outra rotina, tipo "veja `DAC`") navega
+direto pra aquele tópico, sem precisar procurar na árvore. As figuras originais do livro (diagramas de
+registrador/porta) também são clicáveis — abrem num popup com a imagem, ao lado do texto.
+
+### Ajuda → MSX2 Technical Handbook...
+
+O manual técnico oficial da ASCII Corporation para o MSX2 (1987), na edição em Markdown mantida por
+Konamiman (autor do Nestor80, já usado nesta IDE) — mais completa que a transcrição de 1997 já
+incluída em **Ajuda → Manuais MSX...**, com tabelas e as figuras originais do livro. Mesmos links e
+figuras clicáveis do Livro Vermelho acima.
 
 ## Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)
 

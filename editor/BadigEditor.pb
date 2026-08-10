@@ -193,6 +193,20 @@ XIncludeFile "SeeTrackerHelpData.pbi"
 XIncludeFile "SeeTrackerHelpGui.pbi"
 XIncludeFile "OpenMsxHelpData.pbi"
 XIncludeFile "OpenMsxHelpGui.pbi"
+XIncludeFile "MsxManualsHelpData.pbi"
+XIncludeFile "MsxManualsHelpGui.pbi"
+XIncludeFile "MsxSoftwareHelpData.pbi"
+XIncludeFile "MsxSoftwareHelpGui.pbi"
+XIncludeFile "BiosCallsHelpData.pbi"
+XIncludeFile "BiosCallsHelpGui.pbi"
+XIncludeFile "HardwareHelpData.pbi"
+XIncludeFile "HardwareHelpGui.pbi"
+XIncludeFile "BiosDocHelpData.pbi"
+XIncludeFile "BiosDocHelpGui.pbi"
+XIncludeFile "RedBookHelpData.pbi"
+XIncludeFile "RedBookHelpGui.pbi"
+XIncludeFile "Th2HandbookHelpData.pbi"
+XIncludeFile "Th2HandbookHelpGui.pbi"
 XIncludeFile "GenericMdHelpGui.pbi"
 XIncludeFile "EditorHelpGui.pbi"
 XIncludeFile "MsxBas2RomSupport.pbi"
@@ -528,6 +542,13 @@ Enumeration MenuItems
   #Menu_HelpEditor
   #Menu_HelpNestorBasic
   #Menu_HelpMsxBasic
+  #Menu_HelpManuals
+  #Menu_HelpSoftware
+  #Menu_HelpBiosCalls
+  #Menu_HelpHardware
+  #Menu_HelpBiosDoc
+  #Menu_HelpRedBook
+  #Menu_HelpTh2Handbook
   #Menu_HelpBasicDignified
   #Menu_HelpSeeTracker
   #Menu_HelpOpenMSX
@@ -4339,6 +4360,13 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpEditor, "Editor..." + Chr(9) + "F1")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
     MenuItem(#Menu_HelpMsxBasic, "MSX BASIC...")
+    MenuItem(#Menu_HelpManuals, "Manuais MSX...")
+    MenuItem(#Menu_HelpSoftware, "MSX-Basic/DOS/CP-M (RuMSX)...")
+    MenuItem(#Menu_HelpBiosCalls, "BIOS MSX: Chamadas (RuMSX)...")
+    MenuItem(#Menu_HelpHardware, "BIOS MSX: Hardware (RuMSX)...")
+    MenuItem(#Menu_HelpBiosDoc, "BIOS MSX: Documentacao (RuMSX)...")
+    MenuItem(#Menu_HelpRedBook, "Livro Vermelho...")
+    MenuItem(#Menu_HelpTh2Handbook, "MSX2 Technical Handbook...")
     MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
     MenuItem(#Menu_HelpSeeTracker, "SEE Tracker...")
     MenuItem(#Menu_HelpOpenMSX, "openMSX...")
@@ -4626,6 +4654,27 @@ Repeat
 
         Case #Menu_HelpMsxBasic
           MsxBasicHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpManuals
+          MsxManualsHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpSoftware
+          MsxSoftwareHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpBiosCalls
+          BiosCallsHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpHardware
+          HardwareHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpBiosDoc
+          BiosDocHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpRedBook
+          RedBookHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpTh2Handbook
+          Th2HandbookHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpBasicDignified
           BasicDignifiedHelp_OpenWindow(#MainWindow)

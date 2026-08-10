@@ -52,7 +52,7 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida no executavel (padrao: 7.33.10).
+  -V, --version <versao>    Versao embutida no executavel (padrao: 7.33.11).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
@@ -75,7 +75,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "7.33.10"
+$Version = "7.33.11"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
 $Distribute = $false
@@ -241,6 +241,8 @@ if ($Distribute) {
     Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE")
     Copy-DistItem -Path (Join-Path $PSScriptRoot "sample") -Recurse
     Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\fonts") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\redbook_images") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\th2handbook_images") -Recurse
     Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.ico")
     Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.png")
 
