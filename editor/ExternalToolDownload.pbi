@@ -1,10 +1,11 @@
 ;
 ; ------------------------------------------------------------
-;  Helpers compartilhados por MsxBas2RomSupport.pbi e N80Support.pbi: baixar
-;  um release do GitHub (API + asset zip), descompactar e capturar a saida de
-;  "-h"/"--help" de um executavel baixado. Reaproveita UseNetworkTLS() (ja
-;  chamado globalmente em BadigSettings.pbi) e BadigCfg_ExtractZip() (mesmo
-;  arquivo) - nao reimplementa nada disso.
+;  Helpers compartilhados por MsxBas2RomSupport.pbi, N80Support.pbi e
+;  AsmsxSupport.pbi: baixar um release do GitHub (API + asset zip OU
+;  executavel avulso), descompactar e capturar a saida de "-h"/"--help" de um
+;  executavel baixado. Reaproveita UseNetworkTLS() (ja chamado globalmente em
+;  BadigSettings.pbi) e BadigCfg_ExtractZip() (mesmo arquivo) - nao
+;  reimplementa nada disso.
 ; ------------------------------------------------------------
 ;
 
@@ -80,6 +81,30 @@ Procedure.b ExtTool_DownloadAndExtractZip(Url.s, TargetDir.s, OnlyUnderPrefix.s 
   If FileSize(TempZip) >= 0
     DeleteFile(TempZip)
   EndIf
+  ProcedureReturn Ok
+EndProcedure
+
+; Baixa Url (asset avulso de uma release, NAO um zip - caso do asMSX, cujas
+; releases publicam o executavel direto, um por SO/arquitetura) pra
+; TargetPath. Ao contrario de ExtTool_DownloadAndExtractZip(), nao descompacta
+; nada; em compensacao marca o arquivo como executavel no Linux/macOS via
+; "chmod +x" (RunProgram bloqueante) - ReceiveHTTPFile() nao preserva bit de
+; execucao nenhum (o asset baixado nao e um zip, entao nao ha permissao
+; nenhuma pra preservar), e sem isso RunProgram() no executavel baixado
+; falharia com "Permission denied" nesses sistemas. No-op no Windows (nao tem
+; conceito de bit de execucao separado).
+Procedure.b ExtTool_DownloadFile(Url.s, TargetPath.s)
+  ExtTool_CreateDirectoryRecursive(GetPathPart(TargetPath))
+  Protected Ok.b = ReceiveHTTPFile(Url, TargetPath)
+  CompilerIf #PB_Compiler_OS <> #PB_OS_Windows
+    If Ok
+      Protected ChmodProg = RunProgram("chmod", "+x " + Chr(34) + TargetPath + Chr(34), "",
+                                       #PB_Program_Open | #PB_Program_Wait | #PB_Program_Hide)
+      If ChmodProg
+        CloseProgram(ChmodProg)
+      EndIf
+    EndIf
+  CompilerEndIf
   ProcedureReturn Ok
 EndProcedure
 

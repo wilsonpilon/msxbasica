@@ -211,6 +211,15 @@ XIncludeFile "GenericMdHelpGui.pbi"
 XIncludeFile "EditorHelpGui.pbi"
 XIncludeFile "MsxBas2RomSupport.pbi"
 XIncludeFile "N80Support.pbi"
+XIncludeFile "AsmsxSupport.pbi"
+XIncludeFile "AsmsxHelpData.pbi"
+XIncludeFile "AsmsxHelpGui.pbi"
+XIncludeFile "MamuteSupport.pbi"
+XIncludeFile "MamuteHelpData.pbi"
+XIncludeFile "MamuteHelpGui.pbi"
+XIncludeFile "MamuteDumpGui.pbi"
+XIncludeFile "MamuteZapGui.pbi"
+XIncludeFile "MamuteAssemblerGui.pbi"
 XIncludeFile "ProjectSettingsGui.pbi"
 
 ;- ------------------------------------------------------------
@@ -484,6 +493,7 @@ EndEnumeration
 Enumeration MenuItems
   #Menu_New
   #Menu_NewAssembly
+  #Menu_NewAsmsx
   #Menu_NewNestorBasic
   #Menu_NewMsxBas2Rom
   #Menu_NewMD
@@ -527,7 +537,9 @@ Enumeration MenuItems
   #Menu_AssembleZ80
   #Menu_AssembleZ80Rel
   #Menu_LinkZ80
+  #Menu_AssembleAsmsx
   #Menu_HexEditor
+  #Menu_MamuteAssembler
   #Menu_OpenMSXConsole
   #Menu_ViewMdTxt
   #Menu_ViewMdTxtSplit
@@ -537,6 +549,8 @@ Enumeration MenuItems
   #Menu_ConfigureAssemblyOptions
   #Menu_ConfigureMsxBas2Rom
   #Menu_ConfigureN80
+  #Menu_ConfigureAsmsx
+  #Menu_ConfigureMamuteAssembler
   #Menu_ConfigureOpenMSX
   #Menu_ConfigureProject
   #Menu_HelpEditor
@@ -551,9 +565,11 @@ Enumeration MenuItems
   #Menu_HelpTh2Handbook
   #Menu_HelpBasicDignified
   #Menu_HelpSeeTracker
+  #Menu_HelpMamuteAssembler
   #Menu_HelpOpenMSX
   #Menu_HelpMsxBas2Rom
   #Menu_HelpN80
+  #Menu_HelpAsmsx
   #Menu_HelpAbout
 EndEnumeration
 
@@ -3930,6 +3946,82 @@ Procedure CompileMsxBas2RomFromActiveTab()
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Montar Fonte asMSX (menu "Executar") - chama o executavel EXTERNO do
+;- asMSX (AsmsxSupport.pbi) contra a aba .asm ativa, ao contrario de "Montar
+;- Assembly (.bin)/(.REL)" abaixo, que usam o assembler NATIVO desta IDE
+;- (Z80Asm.pbi). O asMSX so aceita um arquivo real em disco (nao stdin), por
+;- isso salva a aba antes de montar - mesmo idioma de
+;- CompileMsxBas2RomFromActiveTab() acima (sempre pergunta onde salvar, nunca
+;- sobrescreve silenciosamente o arquivo ja aberto).
+;- ------------------------------------------------------------
+
+Procedure AssembleAsmsxFromActiveTab()
+  Protected Position = ActiveTabPosition
+  If Position < 0 Or Not SelectElement(Docs(), Position)
+    ProcedureReturn
+  EndIf
+
+  If Docs()\Mode <> "ASM"
+    MessageRequester("Montar Fonte asMSX",
+                     "A aba ativa nao e Assembly (.asm)." + Chr(10) +
+                     "Abra ou crie uma aba .asm (Arquivo -> Novo asMSX...) antes de montar.",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Info)
+    ProcedureReturn
+  EndIf
+
+  ; "Configurar -> Projeto..." (ProjectSettingsGui.pbi): mesmo idioma de
+  ; CompileMsxBas2RomFromActiveTab() acima - snapshot/troca/restore do
+  ; Global AsmsxCfg so durante esta chamada, se o override estiver ligado.
+  Protected UsingProjectOverride.b = #False
+  Protected AsmsxCfgSnapshot.AsmsxSettings
+  If ProjectDB::GetInfoValue("asmsx_override_enabled") = "1"
+    Protected OverridePath.s = ProjectDB::OverrideSettingsPath("project_asmsx_settings.json")
+    If OverridePath <> ""
+      AsmsxCfgSnapshot = AsmsxCfg
+      AsmsxCfg_Load(OverridePath)
+      UsingProjectOverride = #True
+    EndIf
+  EndIf
+
+  If AsmsxCfg\ExePath = "" Or FileSize(AsmsxCfg\ExePath) <= 0
+    MessageRequester("Montar Fonte asMSX",
+                     "Configure o caminho do executavel do asMSX primeiro (Configurar -> asMSX...).",
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    If UsingProjectOverride : AsmsxCfg = AsmsxCfgSnapshot : EndIf
+    ProcedureReturn
+  EndIf
+
+  Protected Suggestion.s = Docs()\Path
+  If Suggestion = ""
+    Suggestion = Docs()\UntitledName
+  EndIf
+  Suggestion = GetPathPart(Suggestion) + GetFilePart(Suggestion, #PB_FileSystem_NoExtension) + ".asm"
+
+  Protected AsmPath.s = SaveFileRequester("Salvar .asm para montar com o asMSX", Suggestion,
+                                          "Assembly asMSX (*.asm)|*.asm|Todos os arquivos (*.*)|*.*", 0)
+  If AsmPath = ""
+    If UsingProjectOverride : AsmsxCfg = AsmsxCfgSnapshot : EndIf
+    ProcedureReturn
+  EndIf
+
+  Protected FileNum = CreateFile(#PB_Any, AsmPath)
+  If Not FileNum
+    MessageRequester("Erro", "Nao foi possivel salvar o arquivo:" + Chr(10) + AsmPath,
+                     #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    If UsingProjectOverride : AsmsxCfg = AsmsxCfgSnapshot : EndIf
+    ProcedureReturn
+  EndIf
+  WriteString(FileNum, ReadSciText(Docs()\SciGadget))
+  CloseFile(FileNum)
+
+  Asmsx_AssembleFile(AsmPath)
+
+  If UsingProjectOverride
+    AsmsxCfg = AsmsxCfgSnapshot
+  EndIf
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Montar Assembly (.asm) -> binario (menu "Executar") - modo absoluto
 ;- (.bin, Ctrl+F5) e relocavel (.REL, insumo do linker/biblioteca - modulo
 ;- 2b, ver docs/resumo-asm.md). Saida do modo absoluto passa por
@@ -4283,6 +4375,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
   MenuTitle("Arquivo")
     MenuItem(#Menu_New,      "Novo" + Chr(9) + "Ctrl+N")
     MenuItem(#Menu_NewAssembly, "Novo Assembly" + Chr(9) + "Ctrl+Shift+N")
+    MenuItem(#Menu_NewAsmsx, "Novo asMSX...")
     MenuItem(#Menu_NewNestorBasic, "Novo Nestor Basic...")
     MenuItem(#Menu_NewMsxBas2Rom, "Novo MSXBas2Rom...")
     MenuItem(#Menu_NewMD, "Novo MD...")
@@ -4340,7 +4433,11 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_AssembleZ80Rel, "Montar Assembly relocavel (.REL)..." + Chr(9) + "Ctrl+Shift+F5")
     MenuItem(#Menu_LinkZ80, "Linkar (.REL) -> binario..." + Chr(9) + "Ctrl+Alt+F5")
     MenuBar()
+    MenuItem(#Menu_AssembleAsmsx, "Montar Fonte asMSX...")
+    MenuBar()
     MenuItem(#Menu_HexEditor, "Editor Hexa..." + Chr(9) + "F7")
+    MenuBar()
+    MenuItem(#Menu_MamuteAssembler, "Mamute Assembler...")
     MenuBar()
     MenuItem(#Menu_OpenMSXConsole, "openMSX (console de comandos)..." + Chr(9) + "F8")
     MenuBar()
@@ -4353,6 +4450,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_ConfigureAssemblyOptions, "Assembly...")
     MenuItem(#Menu_ConfigureMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_ConfigureN80, "N80...")
+    MenuItem(#Menu_ConfigureAsmsx, "asMSX...")
+    MenuItem(#Menu_ConfigureMamuteAssembler, "Mamute Assembler...")
     MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
     MenuBar()
     MenuItem(#Menu_ConfigureProject, "Projeto...")
@@ -4369,9 +4468,11 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpTh2Handbook, "MSX2 Technical Handbook...")
     MenuItem(#Menu_HelpBasicDignified, "Basic Dignified...")
     MenuItem(#Menu_HelpSeeTracker, "SEE Tracker...")
+    MenuItem(#Menu_HelpMamuteAssembler, "Mamute Assembler...")
     MenuItem(#Menu_HelpOpenMSX, "openMSX...")
     MenuItem(#Menu_HelpMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_HelpN80, "N80...")
+    MenuItem(#Menu_HelpAsmsx, "asMSX...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
@@ -4451,6 +4552,9 @@ Repeat
 
         Case #Menu_NewAssembly
           AddDocumentTab("", "", "ASM")
+
+        Case #Menu_NewAsmsx
+          AddDocumentTab("", AsmsxTemplateText(), "ASM", "asmsx")
 
         Case #Menu_NewNestorBasic
           AddDocumentTab("", NestorBasicTemplateText(), "DMX", "nbasic")
@@ -4602,8 +4706,14 @@ Repeat
         Case #Menu_LinkZ80
           Z80LinkGui_OpenWindow(#MainWindow)
 
+        Case #Menu_AssembleAsmsx
+          AssembleAsmsxFromActiveTab()
+
         Case #Menu_HexEditor
           HexEditor_OpenWindow(#MainWindow)
+
+        Case #Menu_MamuteAssembler
+          MamuteAssembler_OpenWindow(#MainWindow)
 
         Case #Menu_OpenMSXConsole
           OMSXGui_OpenWindow(#MainWindow)
@@ -4639,6 +4749,12 @@ Repeat
 
         Case #Menu_ConfigureN80
           N80Settings_OpenWindow(#MainWindow)
+
+        Case #Menu_ConfigureAsmsx
+          AsmsxSettings_OpenWindow(#MainWindow)
+
+        Case #Menu_ConfigureMamuteAssembler
+          MamuteSettings_OpenWindow(#MainWindow)
 
         Case #Menu_ConfigureOpenMSX
           OpenMsxCfg_OpenSettingsWindow(#MainWindow)
@@ -4682,6 +4798,9 @@ Repeat
         Case #Menu_HelpSeeTracker
           SeeTrackerHelp_OpenWindow(#MainWindow)
 
+        Case #Menu_HelpMamuteAssembler
+          MamuteHelp_OpenWindow(#MainWindow)
+
         Case #Menu_HelpOpenMSX
           OpenMsxHelp_OpenWindow(#MainWindow)
 
@@ -4690,6 +4809,9 @@ Repeat
 
         Case #Menu_HelpN80
           GenMdHelp_OpenWindow(#MainWindow, "Ajuda - N80 / LinkStor80 / LibStor80 / M80L80", N80_HelpDir())
+
+        Case #Menu_HelpAsmsx
+          AsmsxHelp_OpenWindow(#MainWindow)
 
         Case #Menu_HelpAbout
           ShowAboutDialog()

@@ -113,41 +113,51 @@
 21. [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80)
     - [Configurar → N80...](#configurar--n80)
     - [Ajuda → N80...](#ajuda--n80)
-22. [Base de conhecimento MSX (manuais antigos, livros técnicos)](#base-de-conhecimento-msx-manuais-antigos-livros-técnicos)
+22. [asMSX](#asmsx)
+    - [Arquivo → Novo asMSX...](#arquivo--novo-asmsx)
+    - [Executar → Montar Fonte asMSX...](#executar--montar-fonte-asmsx)
+    - [Configurar → asMSX...](#configurar--asmsx)
+    - [Ajuda → asMSX...](#ajuda--asmsx)
+23. [Base de conhecimento MSX (manuais antigos, livros técnicos)](#base-de-conhecimento-msx-manuais-antigos-livros-técnicos)
     - [Ajuda → Manuais MSX...](#ajuda--manuais-msx)
     - [Ajuda → MSX-Basic/DOS/CP-M (RuMSX)...](#ajuda--msx-basicdoscp-m-rumsx)
     - [Ajuda → BIOS MSX: Chamadas / Hardware / Documentação (RuMSX)...](#ajuda--bios-msx-chamadas--hardware--documentação-rumsx)
     - [Ajuda → Livro Vermelho...](#ajuda--livro-vermelho)
     - [Ajuda → MSX2 Technical Handbook...](#ajuda--msx2-technical-handbook)
-23. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
+24. [Ajuda Basic Dignified (sintaxe da linguagem e configurações desta IDE)](#ajuda-basic-dignified-sintaxe-da-linguagem-e-configurações-desta-ide)
     - [O que está coberto](#o-que-está-coberto-1)
-24. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
+25. [Ajuda SEE Tracker (manual original e formato de arquivo)](#ajuda-see-tracker-manual-original-e-formato-de-arquivo)
     - [O que está coberto](#o-que-está-coberto-2)
-25. [Editor Hexa](#editor-hexa)
+26. [Editor Hexa](#editor-hexa)
     - [Abrir/Salvar e a grade hex/ASCII](#abrirsalvar-e-a-grade-hexascii)
     - [Reconhecimento de formato](#reconhecimento-de-formato)
     - [Galeria de templates](#galeria-de-templates)
     - [Intervalo marcado e operações de bloco](#intervalo-marcado-e-operações-de-bloco)
     - [Barra de rolagem](#barra-de-rolagem)
-26. [Inserir → Caractere Especial](#inserir--caractere-especial)
+27. [Inserir → Caractere Especial](#inserir--caractere-especial)
     - [A grade e a prévia](#a-grade-e-a-prévia)
     - [Campo acumulador e o botão Inserir](#campo-acumulador-e-o-botão-inserir)
-27. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
+28. [Editor de tela SCREEN 0](#editor-de-tela-screen-0)
     - [Largura, fonte e cor (INK/PAPER único pra tela inteira)](#largura-fonte-e-cor-inkpaper-único-pra-tela-inteira)
     - [Ferramentas](#ferramentas)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-3)
     - [Barra de projeto](#barra-de-projeto-4)
-28. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
+29. [Editor de tela SCREEN 1](#editor-de-tela-screen-1)
     - [Fonte e a tabela ASCII do alfabeto (cor por octeto)](#fonte-e-a-tabela-ascii-do-alfabeto-cor-por-octeto)
     - [Ferramentas](#ferramentas-2)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-4)
     - [Barra de projeto](#barra-de-projeto-5)
-29. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
+30. [Editor de tela SCREEN 1+2](#editor-de-tela-screen-12)
     - [3 alfabetos, um por terço da tela](#3-alfabetos-um-por-terço-da-tela)
     - [Cor por linha de scanline (o modo mais complexo)](#cor-por-linha-de-scanline-o-modo-mais-complexo)
     - [Ferramentas](#ferramentas-3)
     - [Gerar código e injetar no editor](#gerar-código-e-injetar-no-editor-5)
     - [Barra de projeto](#barra-de-projeto-6)
+31. [Mamute Assembler](#mamute-assembler)
+    - [Configurar → Mamute Assembler...](#configurar--mamute-assembler)
+    - [Comandos disponíveis](#comandos-disponíveis)
+    - [DM - navegação e edição](#dm---navegação-e-edição)
+    - [ZAP - editor de setores de disco](#zap---editor-de-setores-de-disco)
 
 ---
 
@@ -294,20 +304,24 @@ quer salvar uns arquivos de texto soltos. Se você cancelar o diálogo "Salvar c
 nome, as demais abas (e o projeto) continuam sendo salvos normalmente — não trava tudo por causa de uma
 aba cancelada.
 
-**Tipos de arquivo**: o menu **Arquivo** tem três comandos de "criar novo" que definem o tipo da aba —
+**Tipos de arquivo**: o menu **Arquivo** tem comandos de "criar novo" que definem o tipo da aba —
 **Novo** (`Ctrl+N`, MSX-BASIC/Dignified, `.dmx`), **Novo Assembly** (`Ctrl+Shift+N`, Z80 Assembly,
-`.asm`) e **Novo MSXBas2Rom...** (ASCII clássico numerado, `.bas` — ver [Suporte a
+`.asm`), **Novo asMSX...** (Z80 Assembly, `.asm`, já com cabeçalho/diretivas pertinentes ao dialeto
+asMSX — ver [asMSX](#asmsx)) e **Novo MSXBas2Rom...** (ASCII clássico numerado, `.bas` — ver [Suporte a
 MSXBAS2ROM](#suporte-a-msxbas2rom)). Cada aba lembra seu próprio tipo (detectado automaticamente pela
 extensão ao abrir um arquivo existente — `.asm`/`.z80`/`.mac` viram Assembly, `.bas` vira MSXBas2Rom, o
 resto vira Dignified) e aplica o destaque de sintaxe certo: o dialeto Dignified numa aba `.dmx`
 (estendido com os comandos/funções do MSXBAS2ROM — `CMD TURBO`, `SCREEN LOAD`, `HEAP()`,
 `COLLISION()` etc. — só numa aba `.bas`, pra não confundir uma variável comum chamada `TURBO` num
 programa Dignified qualquer), ou o vocabulário do assembler **N80/Nestor80** (mnemônicos, registradores,
-diretivas, literais numéricos em qualquer radix) numa aba `.asm`. O motor que monta `.asm` em binário
-Z80 é nativo desta IDE (compatível M80/L80) — ver [Assembler Z80](#assembler-z80). A IDE também consegue
-baixar o **N80/LinkStor80/LibStor80** de terceiro (mesmo dialeto, mesmo autor do NestorBASIC) pra uso
-via linha de comando fora da IDE — ver [N80, LinkStor80 e LibStor80](#n80-linkstor80-e-libstor80); ainda
-não há um botão que monte usando esses binários em vez do motor nativo.
+diretivas, literais numéricos em qualquer radix) numa aba `.asm` — **Novo asMSX...** usa o mesmo
+destaque de sintaxe Z80 (o lexer não distingue dialeto, só a diretiva com ponto muda de significado). O
+motor que monta `.asm` em binário Z80 é nativo desta IDE (compatível M80/L80) — ver [Assembler
+Z80](#assembler-z80). A IDE também consegue baixar o **N80/LinkStor80/LibStor80** de terceiro (mesmo
+dialeto, mesmo autor do NestorBASIC) e o **asMSX** de terceiro (dialeto próprio) — ver [N80, LinkStor80 e
+LibStor80](#n80-linkstor80-e-libstor80) e [asMSX](#asmsx). O asMSX já tem um botão próprio que monta
+chamando o executável de verdade (**Executar → Montar Fonte asMSX...**); o N80/LinkStor80/LibStor80
+ainda não têm — servem só pra uso via linha de comando fora da IDE por enquanto.
 
 ### Desfazer / refazer
 
@@ -510,6 +524,9 @@ fontes customizadas).
 - **Configurar → N80...** — baixa as versões mais recentes do N80/LinkStor80/LibStor80 de terceiro
   (e o manual M80L80) e gera a Ajuda a partir do que foi baixado (ver [N80, LinkStor80 e
   LibStor80](#n80-linkstor80-e-libstor80)).
+- **Configurar → asMSX...** — caminho editável do executável (aponta pra uma instalação já existente,
+  ou baixa a versão mais recente do [asMSX](https://github.com/Fubukimaru/asMSX) de terceiro direto do
+  GitHub) — ver [asMSX](#asmsx).
 - **Ajuda → Sobre...** — versão, build e data de compilação (ver
   [Versão e build](#versão-e-build)).
 
@@ -1687,6 +1704,52 @@ Mesmo motor de Ajuda do MSXBas2Rom (conteúdo lido ao vivo de `tools/n80/help/`,
 
 ---
 
+## asMSX
+
+Terceiro assembler Z80 suportado pela IDE, ao lado do [assembler nativo](#assembler-z80) e do
+[N80/Nestor80](#n80-linkstor80-e-libstor80) acima: **[asMSX](https://github.com/Fubukimaru/asMSX)**,
+mantido pelo "asMSX team" a partir do trabalho original de Eduardo "pitpan" Robsy Petrus. Não substitui
+nenhum dos outros dois — é mais uma opção de dialeto pra quem já usa/prefere o asMSX, com um botão
+próprio (**Executar → Montar Fonte asMSX...**) pra montar chamando o executável de verdade, sem precisar
+sair da IDE. Diferença de sintaxe mais visível frente a Z80 "normal": colchetes `[ ]` em vez de
+parênteses `( )` pra endereçamento indireto (a diretiva `.ZILOG` reverte pra parênteses, se preferir).
+
+### Arquivo → Novo asMSX...
+
+Cria uma aba `.asm` já com um cabeçalho de comentário e as diretivas mais pertinentes pra um programa MSX
+típico: `.BASIC` (gera o cabeçalho pra carregar com `BLOAD"NOME.BIN",R` no MSX-BASIC — a forma mais
+simples de testar) e `.ORG 8000h` (página 2, RAM em qualquer MSX padrão — troque conforme necessário).
+
+### Executar → Montar Fonte asMSX...
+
+Monta a aba `.asm` ativa chamando o executável do asMSX configurado — ao contrário de **Montar
+Assembly (.bin)/(.REL)** (assembler *nativo* desta IDE), este comando roda o **asMSX de verdade** por
+fora, então entende as diretivas próprias dele (`.BASIC`/`.ROM`/`.MegaROM`/`.MSXDOS`/etc. — o tipo do
+arquivo gerado vem do que está escrito no fonte, não de uma opção da IDE). Pede pra salvar a aba num
+`.asm` real primeiro (o asMSX só assembla arquivo em disco, nunca sobrescreve silenciosamente o arquivo
+já aberto) e mostra a saída do programa (mensagens/erros/nomes dos arquivos gerados) ao final. Precisa
+do caminho do executável configurado antes (**Configurar → asMSX...** logo abaixo, ou **Configurar →
+Projeto...** pra uma configuração só deste projeto).
+
+### Configurar → asMSX...
+
+Campo de caminho **editável** (+ botão "..." pra apontar direto pra uma instalação já existente) e botão
+**Baixar versão mais recente**. Diferente do N80/MSXBas2Rom (asset `.zip`), as releases do asMSX publicam
+um executável avulso por sistema/arquitetura — o download busca a release mais recente no GitHub e salva
+o executável certo pro seu sistema em `tools/asmsx/`. Mais abaixo, as opções de linha de comando usadas
+por **Executar → Montar Fonte asMSX...**: sintaxe Zilog padrão sem precisar de `.ZILOG` no código (`-z`),
+modo silencioso (`-s`), modo verboso (`-vv`) e um caminho/prefixo de saída opcional (`-o`, vazio = gera
+ao lado do próprio fonte).
+
+### Ajuda → asMSX...
+
+O manual oficial do asMSX, navegável e pesquisável (busca por título ou seção), mesmo layout de
+árvore + busca + conteúdo das outras janelas de Ajuda desta IDE. Ao contrário do N80/MSXBas2Rom (conteúdo
+baixado e atualizado a cada "Baixar"), o conteúdo desta janela já vem embutido no `.exe` — não precisa
+baixar nada antes de consultar.
+
+---
+
 ## Controle remoto do openMSX
 
 > Validado ao vivo contra um openMSX real (2026-07-30, ampliado 2026-08-08): pipe conecta, o boot
@@ -2305,3 +2368,174 @@ Mesmo padrão dos demais editores gráficos desta IDE: número da tela, navegaç
 (primeiro/anterior/próximo/último), campo de tag (até 16 caracteres), **Novo** (numera automaticamente,
 começa em branco, os 3 alfabetos voltam a Padrão) e **Registrar** (grava a tela atual no projeto). Trocar
 de tela ou criar uma nova sem ter registrado avisa antes de descartar as alterações pendentes.
+
+---
+
+## Mamute Assembler
+
+> ⚠️ **Ferramenta ainda em fase inicial.** O nome já promete um assembler completo, mas hoje o Mamute
+> Assembler só oferece um "monitor" de memória/disco (comandos `PAGE`, `DM`, `ZAP` — ver abaixo). Ele
+> **não** monta código Z80, não tem editor de fonte próprio, e não substitui o Assembler Z80 nativo, o
+> N80 nem o asMSX (esses continuam sendo os caminhos reais pra montar um `.asm`). Novos comandos entram
+> aos poucos, um de cada vez, ao longo de futuras versões.
+
+`Executar → Mamute Assembler...` abre uma janela "monitor" — inspirada nos montadores de linha de
+comando dos computadores de 8 bits dos anos 80 (o **MegaAssembler** foi a referência direta pedida pelo
+usuário). Diferente do [Editor Hexa](#editor-hexa) e dos assemblers já existentes (nativo, N80, asMSX),
+não é uma tela de campos/botões: um prompt `MON>` aceita comandos digitados, um de cada vez, com o
+resultado aparecendo logo acima, igual um terminal de verdade. Fundo preto, texto monoespaçado verde —
+visual deliberadamente fora do tema claro do resto da IDE; fonte (nome/tamanho/negrito) configurável em
+[Configurar → Mamute Assembler...](#configurar--mamute-assembler) logo abaixo.
+
+A ferramenta simula o **sistema de slots do MSX de verdade**: 4 slots (numerados 0 a 3), cada um com 4
+páginas de 16KB — os mesmos endereços do hardware real:
+
+| Página | Endereços     |
+|--------|---------------|
+| 0      | `0000`-`3FFF` |
+| 1      | `4000`-`7FFF` |
+| 2      | `8000`-`BFFF` |
+| 3      | `C000`-`FFFF` |
+
+16 blocos de memória ao todo (256KB). Por padrão todos começam em branco; **`Configurar → Mamute
+Assembler...`** já permite carregar um arquivo real (BIOS, BASIC, uma ROM) em qualquer célula — ver a
+seção logo abaixo.
+
+Ferramenta nova, em construção: os comandos existentes até agora estão listados abaixo. Novos comandos
+entram aos poucos, ao longo de futuras versões — consulte **Ajuda → Mamute Assembler...** pra ver sempre
+a lista atualizada (o conteúdo dessa janela cresce junto com a própria ferramenta).
+
+### Configurar → Mamute Assembler...
+
+Define o que existe **fisicamente** em cada um dos 16 blocos de memória (4 slots × 4 páginas) — uma
+lista com uma linha por bloco (Slot/Página/Endereço/Tipo/Arquivo). Selecione uma linha pra editar:
+
+- **Tipo** — `Vazio` (padrão), `RAM`, `ROM` ou `BASIC` (mais tipos de cartucho entram depois).
+- **Arquivo** — só habilitado quando o Tipo é `ROM` ou `BASIC`: caminho de um arquivo pra carregar
+  naquele bloco (ex.: `BIOS.ROM` no Slot 0/Página 0). O carregamento de verdade (ler o arquivo pros
+  256KB simulados) ainda não está implementado — por enquanto só guarda o caminho configurado.
+
+Exemplo de configuração típica de um MSX1: `ROM` no Slot 0/Página 0 (BIOS), `BASIC` no Slot 0/Página 1,
+`RAM` nas páginas do Slot 3. **Salvar** grava em `mamute_settings.json`; **Cancelar** descarta as
+edições.
+
+**Arquivo de BIOS+BASIC combinado (32KB)**: em muitos MSX reais a BIOS e o BASIC vêm num único arquivo
+de ROM de 32KB (16KB de cada, concatenados). Ao escolher um arquivo assim (exatamente 32KB) pra uma
+célula `ROM` na **Página 0** (a posição convencional da BIOS), a tela pergunta se é BIOS+BASIC
+combinados:
+
+- **Sim** — a Página 0 fica com os primeiros 16KB do arquivo (BIOS); a Página 1 do mesmo slot passa
+  pra `BASIC` automaticamente e fica com os últimos 16KB — o mesmo arquivo, repetido nos dois pontos,
+  cada um lendo a metade certa (a lista mostra **"(últimos 16KB)"** ao lado do caminho nessa segunda
+  linha). Você continua livre pra trocar o arquivo da Página 1 na mão depois, se quiser usar um BASIC
+  diferente.
+- **Não** (ou o arquivo escolhido não tem 32KB) — funciona como antes: só a célula selecionada recebe
+  o arquivo.
+
+Mais abaixo, **"Fonte do terminal"** ajusta a aparência da janela do monitor (`Executar → Mamute
+Assembler...`) — combo com as fontes monoespaçadas instaladas (mesma lista de `Configurar →
+Editor...`), campo de tamanho e checkbox **Negrito**. Só tem efeito na próxima vez que o monitor for
+aberto.
+
+### Comandos disponíveis
+
+- **`BA`** ou **`QUIT`** — encerra a janela do Mamute Assembler (equivalente a fechar pelo X). Não
+  diferencia maiúsculas de minúsculas. Sem argumentos.
+- **`PAGE`** — mostra ou troca o **mapeamento ativo agora mesmo** (qual slot está comutado em cada uma
+  das 4 páginas que o Z80 enxerga) — diferente da configuração física acima, que só diz o que EXISTE em
+  cada slot. Três formas:
+  - `PAGE` sozinho — coloca as 4 páginas no slot marcado como RAM (o primeiro slot, varrendo 0 a 3, com
+    RAM configurada em alguma página).
+  - `PAGE ?` — só mostra o mapeamento ativo, sem mudar nada.
+  - `PAGE X, Y, Z, W` — troca o mapeamento: página 0 vai pro slot `X`, página 1 pro slot `Y`, página 2
+    pro slot `Z`, página 3 pro slot `W` (cada um de 0 a 3, sempre os 4 juntos). Exemplo: `PAGE 2, 2, 2,
+    2` coloca tudo no slot 2; `PAGE 0, 1, 3, 3` coloca a página 0 no slot 0, a página 1 no slot 1, e as
+    páginas 2 e 3 no slot 3.
+
+  O mapeamento ativo é recalculado sozinho ("estado de boot") toda vez que a janela abre, a partir da
+  configuração salva em `Configurar → Mamute Assembler...`. É esse mapeamento que o comando `DM` (abaixo)
+  usa pra decidir de qual bloco de memória ler/escrever em cada endereço.
+- **`DM <endereço>[,<deslocamento>]`** — abre uma janela de despejo/edição de memória. Ver [DM -
+  navegação e edição](#dm---navegação-e-edição) logo abaixo, seção própria (é o comando mais rico até
+  agora).
+
+**Todo endereço digitado em qualquer comando do Mamute Assembler é hexadecimal** — o padrão de entrada
+da ferramenta inteira.
+
+### DM - navegação e edição
+
+`DM <endereço>[,<deslocamento>]` abre uma janela separada mostrando **128 bytes** (16 linhas de 8) a
+partir do `<endereço>` informado (hexadecimal, obrigatório), em hexa e ASCII lado a lado — cada linha
+tem o endereço na primeira coluna, os 8 bytes em hexa nas colunas seguintes, e os 8 caracteres
+correspondentes como um bloco no final. Caractere que não dá pra imprimir aparece como `.`.
+
+Abaixo da grade, duas linhas de status sempre visíveis: **Endereço:** (o endereço da primeira linha da
+grade) e **Desloc.:** (o deslocamento ASCII ativo).
+
+**Deslocamento (`<deslocamento>`, opcional, hexadecimal com sinal `+`/`-`, de `-7F` a `80`)**: não
+muda o byte na memória — só a forma como o bloco de texto interpreta/edita cada byte, somando o
+deslocamento ao valor cru (módulo 256) antes de decidir o caractere. Útil pra "descriptografar" texto
+guardado com um deslocamento simples tipo César. Exemplo: `DM 4000,-20` mostra o conteúdo de `4000`
+com um deslocamento de `-20h` aplicado só na leitura do texto.
+
+**Navegando o cursor** (ambos os métodos abaixo funcionam, e clicar direto numa célula da grade também
+move o cursor pra lá):
+
+| Ação | Mouse | Teclado |
+|---|---|---|
+| Mover uma célula | 4 setas pequenas na tela | Setas do cursor |
+| Alternar bloco hexa ↔ texto | — | `TAB` |
+| Pular ±128 bytes (endereço base) | 2 setas maiores (`<<`/`>>`) | `PgUp`/`PgDn` |
+| Ajustar o deslocamento em 1 | Botões `+`/`-` | Tecla `+`/`-` do teclado numérico |
+
+**Editando um byte**: `RETURN` abre um campo de entrada pro bloco onde o cursor está (mostra o valor
+atual, pronto pra substituir); `RETURN` de novo confirma o que foi digitado. `ESC` cancela a edição em
+andamento sem gravar nada — ou, se não havia edição em curso, fecha a janela do DM (volta pro `MON>`).
+
+- **Bloco hexa**: digite 1-2 dígitos hexadecimais — vira o byte cru na célula do cursor.
+- **Bloco texto**: digite um texto qualquer (não só 1 caractere) — cada caractere digitado vira um byte
+  (revertendo o deslocamento ativo, se houver), escrito a partir da posição do cursor; o cursor avança
+  sozinho conforme você digita.
+
+**Importante**: a escrita só tem efeito em células mapeadas como **RAM** no momento (ver `PAGE` acima e
+`Configurar → Mamute Assembler...`) — células ROM, BASIC ou Vazio são somente-leitura, igual num MSX de
+verdade (fisicamente não há o que escrever ali). Tentar editar uma célula assim não dá erro nem trava —
+só não muda nada.
+
+### ZAP - editor de setores de disco
+
+`ZAP <setor inicial>[,<deslocamento>]` é muito parecido com o `DM`, mas em vez de mostrar a memória
+simulada do MSX, ele edita **setores de uma imagem de disco `.dsk` de verdade**, direto, sem passar pela
+estrutura do sistema de arquivos FAT12 — como um editor de setor de disquete dos anos 80.
+
+Ao digitar o comando, uma janela normal de **escolher arquivo** aparece primeiro, pedindo a imagem `.dsk`
+que você quer editar. Cancelar essa escolha cancela o comando inteiro (a janela do ZAP não chega a abrir).
+A prioridade é editar discos **FAT12 de 720KB**, mas imagens de **360KB** e **180KB** também funcionam —
+face simples ou dupla, densidade simples ou dupla, 5¼" ou 3½", tanto faz: o ZAP não interpreta a estrutura
+do disco, só lê e escreve bytes crus por posição.
+
+`<setor inicial>` é o número do setor (hexadecimal, obrigatório — setor `0` é o boot sector) a partir de
+onde a grade de 128 bytes começa. `<deslocamento>` funciona exatamente como no `DM` (hexadecimal com
+sinal, `-7F` a `80`, só afeta a interpretação/edição do bloco de texto).
+
+**A navegação é idêntica à do `DM`** — mesmas 4 setas pequenas/setas do cursor pra mover a célula, `TAB`
+pra alternar hexa↔texto, as 2 setas maiores/`PgUp`/`PgDn` pra pular ±128 bytes, botões `+`/`-` (ou as
+teclas `+`/`-`) pra ajustar o deslocamento, `RETURN` pra abrir/confirmar a edição de um byte, `ESC` pra
+cancelar a edição em andamento. A única diferença visível na grade: o rótulo de cada linha mostra o
+deslocamento **dentro do setor** (`000` a `1F8`) em vez de um endereço de CPU, e as linhas de status
+mostram **Setor:** e **Byte:** em vez de **Endereço:**.
+
+**Diferença importante em relação ao `DM`: salvar é um passo separado e explícito.** Editar um byte no
+ZAP só muda uma cópia em memória — ele **não** grava no arquivo `.dsk` sozinho. Para gravar de verdade no
+disco, use uma das duas opções, que gravam **só o setor onde está o cursor** (não o disco inteiro):
+
+- **`Ctrl+S`** (atalho de teclado), ou
+- o botão amarelo **"SALVAR SETOR"**, ao lado dos outros botões de navegação.
+
+Enquanto houver alterações não salvas, o título da janela do ZAP ganha um `*` no final. Se você tentar
+fechar a janela (`ESC` fora de uma edição em andamento, ou pelo X) com alterações não salvas, o ZAP pede
+confirmação antes de descartá-las — igual o restante da IDE (ver o Gerenciador de Discos, por exemplo).
+
+**Também importante: no ZAP, qualquer byte do disco pode ser editado** — diferente do `DM`, onde células
+ROM/BASIC/Vazio são somente-leitura. Não existe conceito de "só RAM é editável" numa imagem de disco, então
+a proteção de escrita do `DM` não se aplica aqui.

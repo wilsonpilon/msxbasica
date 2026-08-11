@@ -48,6 +48,13 @@
 #Caminho do MSXBAS2ROM
 /msxbas2rom/
 
+# Copia local do asMSX (github.com/Fubukimaru/asMSX) - Z80 cross-assembler pra
+# MSX, terceiro assembler suportado (alem do nativo Z80Asm.pbi e do N80/
+# Nestor80) - referencia pra extrair Ajuda -> asMSX... (asmsx/doc/asmsx.md),
+# nao dependencia de runtime nem material pra distribuir com o repositorio.
+# Baixavel via Configurar -> asMSX... -> "Baixar versao mais recente".
+/asmsx/
+
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
 
@@ -72,3 +79,8 @@
 /editor/editor_settings.json
 /editor/badig_settings.json
 /editor/hexeditor_templates.json
+
+# Configuracao do Mamute Assembler (Configurar -> Mamute Assembler...) -
+# guarda caminhos de arquivo (BIOS/BASIC/etc.) especificos da maquina do
+# usuario, igual as outras acima.
+/editor/mamute_settings.json

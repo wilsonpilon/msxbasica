@@ -11,12 +11,12 @@
 ;  arquivo JSON ao lado do .msxproject (ProjectDB::OverrideSettingsPath())
 ;  em vez do JSON global - ver o parametro OverridePath dessas 3 janelas.
 ;
-;  Consumido em RunDignifiedPreprocessor()/CompileMsxBas2RomFromActiveTab()
-;  (BadigEditor.pb) - la que o override de verdade entra em vigor (troca o
-;  Global BadigCfg/MsxBas2RomCfg so durante a operacao, com snapshot/
-;  restore). N80 ainda nao tem nenhum consumidor (nenhum fluxo de
-;  compilacao via N80.exe existe no editor ainda) - a flag fica pronta pra
-;  quando existir.
+;  Consumido em RunDignifiedPreprocessor()/CompileMsxBas2RomFromActiveTab()/
+;  AssembleAsmsxFromActiveTab() (BadigEditor.pb) - la que o override de
+;  verdade entra em vigor (troca o Global BadigCfg/MsxBas2RomCfg/AsmsxCfg so
+;  durante a operacao, com snapshot/restore). N80 ainda nao tem nenhum
+;  consumidor (nenhum fluxo de compilacao via N80.exe existe no editor
+;  ainda) - a flag fica pronta pra quando existir.
 ; ------------------------------------------------------------
 ;
 
@@ -83,20 +83,30 @@ Procedure ProjSettings_OpenWindow(ParentWindow)
                          "Caminho do msxbas2rom.exe usado so neste projeto (Executar -> Compilar ROM (MSXBas2Rom)...).",
                          @G_MsxBas2RomEnable, @G_MsxBas2RomStatus, @G_MsxBas2RomEdit)
 
+  AddGadgetItem(Panel, -1, "asMSX")
+  Protected G_AsmsxEnable, G_AsmsxStatus, G_AsmsxEdit
+  ProjSettings_CreatePage(PanelWidth, "asMSX",
+                         "Caminho e opcoes do asMSX usados so neste projeto (Executar -> Montar Fonte asMSX...).",
+                         @G_AsmsxEnable, @G_AsmsxStatus, @G_AsmsxEdit)
+
   CloseGadgetList() ; fecha o PanelGadget
 
   SetGadgetState(G_BadigEnable, Bool(ProjectDB::GetInfoValue("badig_override_enabled") = "1"))
   SetGadgetState(G_N80Enable, Bool(ProjectDB::GetInfoValue("n80_override_enabled") = "1"))
   SetGadgetState(G_MsxBas2RomEnable, Bool(ProjectDB::GetInfoValue("msxbas2rom_override_enabled") = "1"))
+  SetGadgetState(G_AsmsxEnable, Bool(ProjectDB::GetInfoValue("asmsx_override_enabled") = "1"))
   Protected InitBadigOn.b = GetGadgetState(G_BadigEnable)
   Protected InitN80On.b = GetGadgetState(G_N80Enable)
   Protected InitMsxOn.b = GetGadgetState(G_MsxBas2RomEnable)
+  Protected InitAsmsxOn.b = GetGadgetState(G_AsmsxEnable)
   ProjSettings_UpdateStatus(G_BadigStatus, InitBadigOn)
   ProjSettings_UpdateStatus(G_N80Status, InitN80On)
   ProjSettings_UpdateStatus(G_MsxBas2RomStatus, InitMsxOn)
+  ProjSettings_UpdateStatus(G_AsmsxStatus, InitAsmsxOn)
   DisableGadget(G_BadigEdit, Bool(Not InitBadigOn))
   DisableGadget(G_N80Edit, Bool(Not InitN80On))
   DisableGadget(G_MsxBas2RomEdit, Bool(Not InitMsxOn))
+  DisableGadget(G_AsmsxEdit, Bool(Not InitAsmsxOn))
 
   Protected G_Close = ThemedButton(WinW - 24 - 110, WinH - 56, 110, 32, "Fechar", Chr(#Icon_Close))
   GadgetToolTip(G_Close, "Fechar")
@@ -125,6 +135,12 @@ Procedure ProjSettings_OpenWindow(ParentWindow)
             ProjSettings_UpdateStatus(G_MsxBas2RomStatus, MsxOn)
             DisableGadget(G_MsxBas2RomEdit, Bool(Not MsxOn))
 
+          Case G_AsmsxEnable
+            Protected AsmsxOn.b = GetGadgetState(G_AsmsxEnable)
+            ProjectDB::SetInfoValue("asmsx_override_enabled", Str(Bool(AsmsxOn)))
+            ProjSettings_UpdateStatus(G_AsmsxStatus, AsmsxOn)
+            DisableGadget(G_AsmsxEdit, Bool(Not AsmsxOn))
+
           Case G_BadigEdit
             BadigCfg_OpenSettingsWindow(Win, ProjectDB::OverrideSettingsPath("project_badig_settings.json"))
 
@@ -133,6 +149,9 @@ Procedure ProjSettings_OpenWindow(ParentWindow)
 
           Case G_MsxBas2RomEdit
             MsxBas2RomSettings_OpenWindow(Win, ProjectDB::OverrideSettingsPath("project_msxbas2rom_settings.json"))
+
+          Case G_AsmsxEdit
+            AsmsxSettings_OpenWindow(Win, ProjectDB::OverrideSettingsPath("project_asmsx_settings.json"))
 
           Case G_Close
             Quit = #True

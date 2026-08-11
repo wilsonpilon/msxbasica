@@ -56,7 +56,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
 | 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
 | 17 | Editor Hexa genérico | baixo-médio | **Implementado (2026-07-29), reconhecimento estendido (2026-08-07)** — `editor/HexEditorGui.pbi` (menu **Executar → Editor Hexa...**): abre qualquer arquivo, grade offset/hex/ASCII rolável, edição byte a byte, reconhece formatos nativos da IDE (BLOAD/BSAVE, tokenizado, boot sector FAT12) com galeria de templates persistida em JSON, operações de bloco (preencher/inserir/sobrepor/excluir) e rolagem customizada. **2026-08-07**: reconhece também executável MSX-DOS (`.COM`), diferencia texto ASCII puro de BASIC clássico numerado, **planilha SuperCalc 2 MSX (`.CAL`)** — assinatura + título + início da seção de dados, validado contra 6 arquivos `.CAL` reais (ver `docs/reference/supercalc2-cal-format.md`) —, **banco de dados dBase II (`.DBF`)** — formato totalmente decifrado (cabeçalho + descritores de campo + registros), validado registro a registro contra um `.DBF` real (ver `docs/reference/dbase2-dbf-format.md`) — e **os 4 formatos nativos do Graphos III (`.ALF`/`.LAY`/`.SCR`/`.SHP`)**, reaproveitando a spec já validada em `GraphosNativeIO.pbi` (módulo 14i), validado em lote contra ~4100 arquivos reais do repositório (97-100% reconhecidos, ver seção 17); WordStar/MSX-Word seguem pendentes. |
-| 18 | Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. **2026-08-10**: motor Dignified ganhou um modo MSXBAS2ROM (vocabulário estendido protegido contra encurtamento de variável, diretivas `FILE`/`TEXT` sem número de linha), novo **Executar → Compilar ROM (MSXBas2Rom)...** que chama o `msxbas2rom.exe` configurado, e **Configurar → Projeto...** (config por projeto pras 3 telas globais). Ver seção 18 |
+| 18 | Integração de toolchains externas: MSXBas2Rom, N80/LinkStor80/LibStor80 e asMSX | médio-alto | **Implementado (2026-08-01)** — download direto do GitHub, Ajuda gerada a partir do conteúdo baixado, destaque de sintaxe estendido. **2026-08-10**: motor Dignified ganhou um modo MSXBAS2ROM (vocabulário estendido protegido contra encurtamento de variável, diretivas `FILE`/`TEXT` sem número de linha), novo **Executar → Compilar ROM (MSXBas2Rom)...** que chama o `msxbas2rom.exe` configurado, e **Configurar → Projeto...** (config por projeto pras 3 telas globais). **2026-08-11**: terceiro assembler externo, **asMSX** (`Fubukimaru/asMSX`) — **Configurar → asMSX...** (caminho + baixar release oficial, asset avulso por SO em vez de zip), **Ajuda → asMSX...** (manual `asmsx.md` baked em `AsmsxHelpData.pbi`, sem download em runtime) e **Arquivo → Novo asMSX...** (template com cabeçalho + diretivas `.BASIC`/`.ORG` pertinentes). Ver seção 18 |
 | 19 | Inserir → Caractere Especial (mapa de caracteres MSX) | baixo | **Implementado (2026-08-04)** — `editor/CharMapGui.pbi`, novo menu de topo **Inserir**. Grade estilo "Mapa de Caracteres" do Windows com os 159 caracteres que `-tr` traduz pra ASCII nativo MSX. Ver seção 19 |
 | 20 | Editor de tela SCREEN 0 estilo TheDraw/AcidDraw (`Criar → Screen 0...`) | médio | **Implementado (2026-08-04), estendido (mesma sessão)** — `editor/Screen0EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen0_screens`). Grade de caracteres 40/80×24, INK/PAPER único pra tela inteira (fiel ao hardware, sem cor por célula), fonte padrão ou do banco de alfabetos, 7 ferramentas (Texto/Caractere/Quadro/Sombra/Bloco/Borracha/**Atributo**). **Em 80 colunas, segunda cor de texto real do MSX2+ (modo T2)** — estática (travada) ou piscante, velocidade configurável, via `VDP(13)`/`VDP(14)` + tabela de pisca de verdade do VDP. Primeira de uma família de 3 editores — **completa** desde o módulo 22, ver linhas abaixo |
 | 21 | Editor de tela SCREEN 1 estilo TheDraw/AcidDraw (`Criar → Screen 1...`) | médio | **Implementado (2026-08-05)** — `editor/Screen1EditorGui.pbi`, integrado ao sistema de projeto (módulo 13, tabela `screen1_screens`). Mesma grade 32×24 e mesmas 6 ferramentas do módulo 20, mas com a Color Table real do SCREEN 1 (1 par tinta/fundo por grupo de 8 códigos de caractere, `&H2000`) — tabela ASCII de 256 células com o bitmap real de cada código já pintado na cor do seu octeto. Ver seção 21 |
@@ -69,6 +69,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 28 | Temas de cores (`Configurar → Editor...`) | médio | **Implementado (2026-08-08), reduzido pra 4 temas claros em 2026-08-10** — `EditorCfg\Theme` virou um de 4 IDs (Snow/Paper/Mist/Linen, todos claros — os 5 escuros originais foram removidos, contraste ruim contra controles nativos não-tematizáveis) em vez de um booleano Dark/Light; paletas desenhadas e aprovadas num mockup HTML fora do PureBasic antes de virar código. `editor_settings.json` antigo migra sozinho. Ver seção 28 |
 | 29 | Botões tematizados em toda a IDE + ícones Nerd Font opcionais | alto | **Implementado (2026-08-08)** — `editor/ThemedButtons.pbi` (novo módulo compartilhado, nasceu como piloto no Editor Hexa): 293 botões em 33 arquivos deixam de ser `ButtonGadget` nativo (chrome do Windows, ignora `Color_*`) e viram imagens desenhadas na hora, seguindo o tema; mais de 140 ganham ícone real de uma Nerd Font quando configurada. Ver seção 29 |
 | 30 | Base de conhecimento MSX embutida no Ajuda (7 janelas: Manuais MSX, MSX-Basic/DOS/CP-M, BIOS Chamadas/Hardware/Documentação, Livro Vermelho, MSX2 Technical Handbook) | alto | **Implementado (2026-08-10)** — ~3300 tópicos extraídos de `help/*.CHM` (RuMSX) + "The MSX Red Book" + MSX2 Technical Handbook (edições Markdown de terceiros) por scripts Python descartáveis; dois estilos de renderizador (monoespaçado vs. proporcional com link clicável de verdade via hotspot do Scintilla); 137 figuras originais (SVG→PNG e PNG direto) clicáveis em popup. Ver seção 30 |
+| 31 | Mamute Assembler — monitor estilo anos 80 + simulação de slots do MSX (`Executar → Mamute Assembler...`) | médio (crescendo aos poucos) | **Implementado (2026-08-11)** — `editor/MamuteAssemblerGui.pbi`: janela "terminal" (fundo preto, texto monoespaçado verde **negrito**, fora do tema da IDE de propósito), prompt `MON>` — inspirado no MegaAssembler do usuário, cresce comando por comando em sessões futuras. Comandos: `BA`/`QUIT` (encerra a janela), `PAGE` (mostra/troca o slot comutado em cada uma das 4 páginas de 16KB do Z80), `DM` (`editor/MamuteDumpGui.pbi`, janela própria de despejo/edição de 128 bytes da memória simulada em hexa+ASCII, navegação por mouse e teclado, deslocamento ASCII "criptografado" configurável, escrita restrita a células RAM) e `ZAP` (`editor/MamuteZapGui.pbi`, mesma UI do `DM` porém editando setores de uma imagem `.dsk` de verdade — 720KB prioritário, 360KB/180KB também suportados — sem interpretar FAT12; grava no disco real só sob comando explícito, `Ctrl+S`/botão "SALVAR SETOR"). `editor/MamuteSupport.pbi`: modelo de memória 4 slots × 4 páginas × 16KB (256KB) com acesso por endereço de CPU via o mapeamento ativo do `PAGE`, configuração física por célula (`Configurar → Mamute Assembler...`, Vazio/RAM/ROM/BASIC + arquivo, com divisão automática de ROM BIOS+BASIC de 32KB entre Página 0/1 do mesmo slot), mais fonte do terminal configurável (nome/tamanho/negrito, mesma enumeração de fontes monoespaçadas do editor de código). `Ajuda → Mamute Assembler...` documenta cada comando já portado. Ver seção 31 |
 
 ## Decisões fechadas
 
@@ -2609,7 +2610,7 @@ Hexa + Exorcist, pedido explícito do usuário — mesmo espírito de `BFG9200`/
 foi sobre reconhecer/"esconjurar" formato atrás de formato que antes caía em "binário desconhecido/dados
 crus"). Ver `docs/RELEASE_NOTES.md` para as notas de lançamento completas desta versão.
 
-### 18. Integração de toolchains externas: MSXBas2Rom e N80/LinkStor80/LibStor80 — implementado (2026-08-01)
+### 18. Integração de toolchains externas: MSXBas2Rom, N80/LinkStor80/LibStor80 e asMSX — implementado (2026-08-01)
 
 Pedido explícito do usuário: integrar duas toolchains de terceiros com um fluxo "baixar do GitHub →
 gerar Ajuda a partir do que foi baixado" — **MSXBas2Rom** (compilador MSX-BASIC→ROM de terceiro,
@@ -2944,6 +2945,84 @@ como checkbox persistente — um usuário “esquecer ligado” um desses quebra
 "Compilar ROM" (nunca mais geraria ROM nenhuma). Em vez disso, viraram 4 botões de ação única
 ("Ajuda"/"Guia rápido"/"Histórico"/"Versão") que rodam só aquele flag e mostram o resultado num
 `MessageRequester`, sem afetar nenhuma configuração salva.
+
+**asMSX — terceiro assembler suportado (2026-08-11, pedido explícito do usuário)**: `Fubukimaru/asMSX`
+(Z80 cross-assembler pra MSX, mantido pelo "asMSX team" a partir do trabalho original de Eduardo "pitpan"
+Robsy Petrus) — externo, ao lado do assembler nativo (`Z80Asm.pbi`, módulo 2) e do N80/Nestor80
+(`N80Support.pbi`, acima), sem se sobrepor a nenhum dos dois.
+
+- **`Configurar → asMSX...`** (`editor/AsmsxSupport.pbi`) — mais simples que N80/MSXBas2Rom: releases do
+  asMSX publicam um **executável avulso por SO/arquitetura** (`asmsx-win-x86-64.exe`/
+  `asmsx-linux-x86_64`, confirmado direto na API), não um `.zip` — `GET /releases/latest` mais um novo
+  helper `ExtTool_DownloadFile()` (`ExternalToolDownload.pbi`, irmão de
+  `ExtTool_DownloadAndExtractZip()`) que baixa o arquivo cru e roda `chmod +x` nele fora do Windows
+  (`ReceiveHTTPFile()` não preserva bit de execução nenhum, o asset não é um zip). Tela tem campo de
+  caminho editável + "..." (`OpenFileRequester`) **além** do botão de download — ao contrário de
+  N80 (só baixa, sem campo manual), pedido explícito do usuário ("informar o local do asMSX"), mesmo
+  padrão de `MsxBas2RomSettings_OpenWindow()` (Salvar/Cancelar, versão fica "desconhecida" se o caminho
+  for trocado à mão).
+- **`Ajuda → asMSX...`** (`editor/AsmsxHelpData.pbi`/`AsmsxHelpGui.pbi`) — ao contrário dos dois helps
+  acima (conteúdo baixado em tempo de execução via `GenMdHelp_OpenWindow()` lendo de disco), o manual do
+  asMSX (`asmsx/doc/asmsx.md`, cópia local gitignored — mesmo espírito de `badig/`/`nestor80/`) foi
+  **baked no `.exe` em tempo de compilação**, mesmo padrão do Livro Vermelho/MSX2 Technical Handbook
+  (módulo 30): script descartável (`convert_asmsx.py`, não versionado) particiona o Markdown real por
+  heading (`#`/`##`/`###`/`####`/`#####` — só 30 no documento inteiro, bem mais raso que os outros dois
+  livros) em 27 tópicos agrupados pelas 2 seções de topo ("1. Introduction"/"2. Assembly language"), e
+  encapsula num fence ``` a única tabela solta do original (endereços de variável de sistema, seção 2.5)
+  pra ficar monoespaçada. Diferença chave: **o manual do asMSX não tem nenhum link interno** (ao
+  contrário do Livro Vermelho/Handbook, com milhares) — dispensou toda a infraestrutura de `AnchorMap`
+  daqueles dois; `AsmsxHelpGui.pbi` reaproveita `GenMdHelp_RenderMarkdown()`/`GenMdHelp_SetupStyles()`
+  (`GenericMdHelpGui.pbi`) **direto**, sem renderer próprio — o corpo já fica em memória
+  (`AsmsxHelp_Topics()\Corpo`), só troca "ler tópico de um `.md` em disco" por "já carregado", igual
+  layout busca+árvore+conteúdo+Voltar do NestorBASIC.
+- **`Arquivo → Novo asMSX...`** (`AsmsxTemplateText()`) — ao contrário de "Novo Assembly" (dialeto N80,
+  arquivo em branco), abre com cabeçalho + diretivas padrão pertinentes lidas direto do manual: `.BASIC`
+  (cabeçalho carregável via `BLOAD"NOME.BIN",R`, a saída mais simples de testar no openMSX) + `.ORG 8000h`
+  (página 2/RAM), mais um comentário citando a diferença de sintaxe mais visível do asMSX frente a Z80
+  "normal" — colchetes `[ ]` em vez de parênteses `( )` pra endereçamento indireto (`.ZILOG` reverte pra
+  parênteses).
+- **Verificado**: `build.ps1` compilou limpo; os 3 pontos novos (aba "Novo asMSX...", "Configurar →
+  asMSX...", "Ajuda → asMSX...") abertos de verdade via um build `/CONSOLE` descartável +
+  `PostMessage(WM_COMMAND)` pelos IDs de menu + captura real de tela (`PrintWindow`, mesma técnica de
+  sessões anteriores) — sem bug de renderização, árvore da Ajuda com os 2 grupos esperados, template
+  colorido corretamente pelo lexer `.asm` já existente.
+
+**`Executar → Montar Fonte asMSX...` (mesma sessão, pedido explícito do usuário)**: até aqui o asMSX só
+tinha configuração/Ajuda/template — faltava um jeito de efetivamente montar chamando o executável de
+verdade, sem sair da IDE (paralelo ao `Executar → Compilar ROM (MSXBas2Rom)...` já existente).
+
+- **Opções de linha de comando novas em `AsmsxSettings`** (`editor/AsmsxSupport.pbi`): `OptZilog`/
+  `OptSilent`/`OptVerbose`/`OutputPath`, espelhando a seção 1.5.1 do manual (`-z`/`-s`/`-vv`/`-o`) — `-r`
+  (o próprio manual marca como *deprecated*) e `-d` (só existe num build com `YYDEBUG=1`) ficaram de
+  fora. `Asmsx_BuildCliArgs()` monta a linha a partir dessa struct, mesmo idioma de
+  `MsxBas2Rom_BuildCliArgs()`. Tela `Configurar → asMSX...` cresceu (336px → 500px de altura) pra caber
+  3 checkboxes + campo de saída com "..." (`PathRequester`), sem mudar nada do que já existia (caminho +
+  download continuam no topo).
+- **`AssembleAsmsxFromActiveTab()`** (`BadigEditor.pb`) — exige aba `Docs()\Mode = "ASM"` (mesma checagem
+  de `AssembleZ80FromActiveTab()`, mas **não distingue** se a aba veio de "Novo Assembly" ou "Novo
+  asMSX...": `Docs()\Mode` não carrega essa informação, e não precisa — o asMSX só vê texto de assembly,
+  tanto faz de qual dos dois menus a aba nasceu). Diferente do assembler *nativo* (`AssembleZ80FromActiveTab`,
+  monta em memória, nunca toca disco pro fonte), o asMSX é um processo externo que só aceita um arquivo
+  real — por isso sempre pede pra salvar a aba num `.asm` antes (`SaveFileRequester`, mesmo idioma de
+  `CompileMsxBas2RomFromActiveTab()`, nunca sobrescreve silenciosamente o arquivo já aberto). `Asmsx_
+  AssembleFile()` roda o executável (`RunProgram` + drenagem de stdout/stderr + `ProgramExitCode()`, MESMO
+  padrão de `MsxBas2Rom_CompileToRom()`) mas **não** tenta prever o caminho de saída esperado — ao
+  contrário do MSXBas2Rom (sempre gera `<nome>.rom`), o tipo/nome do arquivo gerado pelo asMSX depende de
+  diretivas dentro do PRÓPRIO fonte (`.BASIC`/`.ROM`/`.MegaROM`/`.MSXDOS`/etc., não de uma flag de CLI) —
+  a IDE não parseia essas diretivas, então só repassa a saída de texto capturada (o próprio asMSX já
+  imprime os nomes dos arquivos gerados) num `MessageRequester`, sem checar `FileSize()` de nada.
+- **`Configurar → Projeto...`** (`ProjectSettingsGui.pbi`) ganhou uma 4ª aba "asMSX", réplica mecânica das
+  outras 3 (`ProjSettings_CreatePage()`, já genérica) — `asmsx_override_enabled`/
+  `project_asmsx_settings.json`, consumidos em `AssembleAsmsxFromActiveTab()` com o mesmo idioma de
+  snapshot/troca/restore do `Global AsmsxCfg` já usado pro `MsxBas2RomCfg`.
+- **Verificado**: `build.ps1` compilou limpo (achou o `.exe` de produção travado por uma instância já
+  aberta do editor no meio do caminho — usuário fechou, recompilou depois, sem forçar `Stop-Process` sem
+  avisar). Fluxo testado ao vivo (build `/CONSOLE` descartável + `PostMessage(WM_COMMAND)` + captura de
+  tela): aba "Novo asMSX..." → "Montar Fonte asMSX..." sem executável configurado mostra o
+  `MessageRequester` correto pedindo pra configurar primeiro; tela `Configurar → asMSX...` com os 3
+  checkboxes + campo de saída novos sem sobreposição. A 4ª aba de `Configurar → Projeto...` não foi
+  verificada visualmente nesta sessão (exige um projeto já salvo em disco) — reaproveita
+  `ProjSettings_CreatePage()` sem alteração, mesmo risco baixo das 3 abas irmãs já em produção.
 
 ### 19. Inserir → Caractere Especial (mapa de caracteres MSX) — implementado (2026-08-04)
 
@@ -4077,6 +4156,255 @@ verdade e clicar):
 incluindo clique real em link de texto e em figura (via um pequeno driver PureBasic descartável de
 automação de UI — `SendMessage`/`PostMessage` diretos no controle nativo — quando a automação via
 PowerShell/`Add-Type` ficou instável na sessão).
+
+### 31. Mamute Assembler — monitor estilo anos 80 (`Executar → Mamute Assembler...`) — implementado (2026-08-11)
+
+Pedido explícito do usuário: uma ferramenta nova, inspirada nos montadores de linha de comando dos
+computadores de 8 bits dos anos 80 — o usuário tem um chamado **MegaAssembler** (manual próprio, não
+compartilhado ainda) e quer portar um subconjunto pequeno dos comandos dele, aos poucos, sessão a
+sessão. Deliberadamente **não** é o Editor Hexa (módulo 17) nem nenhum dos assemblers já existentes
+(nativo, N80, asMSX — módulos 2/18) — uma ferramenta à parte, com seu próprio prompt de comandos.
+
+**Escopo desta sessão** (pedido explícito: "por hora não vamos fazer nada, apenas uma tela com um
+prompt simples"): só a casca da janela + **um** comando, `BA`/`QUIT`, que encerra a janela. Toda a
+lógica de assemblagem de verdade fica para sessões futuras, conforme o usuário for pedindo comando por
+comando.
+
+- **`editor/MamuteAssemblerGui.pbi`** — janela "terminal": `EditorGadget` somente-leitura como
+  scrollback (`MamuteGui_AppendLog()`, mesmo idioma de `OMSXGui_AppendLog()` em
+  `OpenMSXConsoleGui.pbi` — acumulado mantido do lado da IDE, nunca relido do controle) + rótulo `MON>`
+  + `StringGadget` de entrada, Enter submete via `AddKeyboardShortcut(Win, #PB_Shortcut_Return, ...)`
+  (mesmo padrão do console do openMSX). Visual propositalmente fora do tema da IDE — fundo preto,
+  texto monoespaçado verde (`SetGadgetColor`/`SetGadgetFont` explícitos, fonte Consolas carregada uma
+  vez e reaproveitada) — pra parecer um terminal de verdade daquela época, não mais um diálogo comum.
+  **Achado real**: `App_StyleChildCallback` (`BadigEditor.pb`) força a fonte Segoe UI em todo controle
+  nativo de qualquer janela no primeiro `WM_PAINT` dela, sem opção de desligar por janela — a fonte
+  monoespaçada é reaplicada de novo logo antes do loop de eventos pra vencer essa corrida (defensivo;
+  não confirmado se a corrida chegava a acontecer de verdade, mas o custo de reaplicar é zero).
+  `MamuteGui_Dispatch()` isola o `Select` de comandos num único ponto de extensão — cada comando novo
+  vira só mais um `Case`, sem mexer no resto da janela. Comparação de comando é case-insensitive
+  (`UCase(Trim(Cmd))`); qualquer entrada não reconhecida mostra `?COMANDO INVALIDO`, no mesmo espírito
+  terse dos monitores originais.
+- **`editor/MamuteHelpData.pbi`/`MamuteHelpGui.pbi`** — `Ajuda → Mamute Assembler...`, mesmo padrão de
+  árvore+busca+conteúdo+Voltar das outras janelas de Ajuda, reaproveitando
+  `GenMdHelp_RenderMarkdown()`/`GenMdHelp_SetupStyles()` (`GenericMdHelpGui.pbi`) direto — igual
+  `AsmsxHelpGui.pbi`, sem parser próprio. Ao contrário de `AsmsxHelpData.pbi` (convertido de um `.md`
+  externo por script), o conteúdo aqui é **escrito à mão** (`MamuteHelp_Add()`), já que o Mamute
+  Assembler é uma ferramenta nova desta IDE, sem documento de origem — cresce um tópico por comando
+  novo, na mesma velocidade que `MamuteGui_Dispatch()` ganha o `Case` correspondente.
+- **Verificado**: `build.ps1` compilou limpo (achou o `.exe` travado por uma instância já aberta do
+  editor — usuário fechou, recompilou depois). As duas janelas abertas de verdade via build `/CONSOLE`
+  descartável + `PostMessage(WM_COMMAND)` + captura de tela: fundo preto/texto verde monoespaçado
+  confirmados visualmente (a fonte não ficou Segoe UI), árvore de Ajuda com "Introdução" (sem grupo) +
+  "Comandos" → "BA / QUIT". O envio de `BA`+Enter pelo campo de entrada **não** foi testado via
+  automação nesta sessão — exigiria simulação de teclado real (`SendKeys`) contra a janela em foco, que
+  a diretriz do projeto evita por poder atingir o que estiver na tela do usuário; o caminho de código é
+  o mesmo já comprovado em produção por `OpenMSXConsoleGui.pbi` (mesma função `AppendLog`/mesmo atalho
+  Enter), risco considerado baixo.
+
+**Simulação do sistema de slots do MSX + comando `PAGE` (mesma sessão, pedido explícito do usuário)**:
+fonte da janela aumentada e em **negrito** (Consolas 12pt → 14pt, pedido explícito, legibilidade) — e a
+primeira peça de simulação de hardware de verdade, especificada em detalhe pelo usuário: 4 slots (0-3)
+× 4 páginas de 16KB cada, endereços idênticos ao MSX real (`Página 0` = `0000-3FFF`, `1` = `4000-7FFF`,
+`2` = `8000-BFFF`, `3` = `C000-FFFF`).
+
+- **`editor/MamuteSupport.pbi`** (novo) — dois conceitos deliberadamente separados, replicando o
+  hardware real:
+  - **Configuração física** (`MamuteCfgCell()`, `Dim` 4×4 de `{Tipo, FilePath}`) — o que existe
+    fisicamente em cada slot×página (Vazio/RAM/ROM/BASIC + arquivo pra ROM/BASIC), fixa, não muda em
+    tempo de execução. Editada em `Configurar → Mamute Assembler...` (`MamuteSettings_OpenWindow()`) —
+    `ListIconGadget` de 16 linhas (uma por célula, colunas Slot/Página/Endereço/Tipo/Arquivo) + combo
+    Tipo + campo Arquivo (habilitado só quando Tipo = ROM/BASIC) editando a linha selecionada, cópia de
+    trabalho (`WorkCells()`) só vira o `MamuteCfgCell()` global em "Salvar" — mesmo idioma das outras
+    telas de Configurar da IDE. Persistido em `mamute_settings.json` (array flat de 16 objetos
+    `{Slot,Pagina,Tipo,Arquivo}`, mais simples de montar em JSON do que array-de-array aninhado).
+  - **Mapeamento ativo** (`MamutePageMap()`, `Dim` de 4 ints) — pra cada uma das 4 páginas que o Z80
+    enxerga agora mesmo, qual slot está comutado ali - exatamente o registrador de slot primário (porta
+    A8h) de um MSX real. É ISSO que o comando `PAGE` manipula, não a configuração física.
+  - **`Mamute_ResetPageMapToDefault()`** — calcula o "estado de boot" a partir da configuração física:
+    pra cada página, o slot configurado ali (ROM/BASIC ganham de RAM se colidirem na mesma página — RAM
+    só vence quando é a ÚNICA coisa configurada); página sem nada configurado cai no slot 0 por padrão
+    (comportamento determinístico, sem "barramento flutuante"). Chamado toda vez que a janela do Mamute
+    Assembler abre — "assim que é carregado", pedido explícito do usuário.
+  - **`Mamute_FindRamSlot()`** — primeiro slot (varrendo 0→3) com RAM configurada em qualquer página,
+    usado por `PAGE` sem argumentos.
+  - **`MamuteMem()`** (`Dim` 4×4×16384 bytes, 256KB total) — o bloco de memória em si, todo em branco
+    por enquanto (`Dim` zera sozinho, sem laço de inicialização) — pedido explícito do usuário ("neste
+    momento apenas crie toda a memória em branco"); carregamento de arquivo real (ex.: BIOS.ROM) fica
+    pra uma sessão futura, quando algum comando passar a ler/escrever nesses blocos de verdade.
+- **`MamuteGui_Dispatch()`** (`MamuteAssemblerGui.pbi`) cresceu de "só o verbo inteiro" (`BA`/`QUIT`)
+  pra "verbo + argumentos crus" (primeiro espaço separa os dois, cada comando interpreta os próprios
+  argumentos) — `MamuteGui_CmdPage()` implementa as 3 formas do comando: sem argumentos (aplica RAM em
+  todas as páginas), `?` (só mostra, `MamuteGui_ShowPageMap()`) e `X,Y,Z,W` (`CountString(Args,",")=3`
+  mais validação dígito-a-dígito de cada token via `MamuteGui_IsValidSlotToken()`, 0-3) — qualquer forma
+  fora dessas três mostra `?ERRO DE SINTAXE`. Aplicar com sucesso sempre re-mostra o mapeamento na hora
+  (mesmo texto de `PAGE ?`), feedback imediato igual monitores de verdade ecoando o estado após um SET.
+- **Achado real de sintaxe do PureBasic**: `NewMap` não pode ser usado como nome de variável comum —
+  nem pra um array `Dim` — porque é a mesma palavra-chave reservada do comando `NewMap` (declarar um
+  `Map`); o compilador tenta interpretar como tal e devolve um erro enganoso ("A map name needs to start
+  with a character (a-z or _)"), sem indicar em nenhum momento que o problema é colisão de nome
+  reservado. Renomeado pra `ParsedSlots`.
+- **Verificado**: `build.ps1` compilou limpo depois do fix acima. `PAGE` testado de ponta a ponta **sem
+  simulação de teclado real** (build `/CONSOLE` descartável): texto injetado direto no `StringGadget` da
+  janela via `WM_SETTEXT` (identificado entre os filhos da janela pela classe `Edit` + altura pequena,
+  distinguindo do `EditorGadget`/`RICHEDIT50W` do scrollback) seguido de `PostMessage(WM_COMMAND)` no ID
+  do atalho Enter (mesma técnica message-based já usada pros IDs de menu, sem tocar teclado de verdade)
+  — confirmou visualmente `PAGE 2,2,2,2` aplicando corretamente nas 4 páginas, `PAGE 9,9,9,9` rejeitado
+  (`?ERRO DE SINTAXE`, 9 fora de 0-3) e `XYZ` rejeitado (`?COMANDO INVALIDO`). `Configurar → Mamute
+  Assembler...` verificada só visualmente (16 linhas/colunas corretas, edição desabilitada sem seleção)
+  — a seleção de uma linha da lista não foi automatizada de propósito: `LVM_SETITEMSTATE` via
+  `SendMessage` é um dos casos que a diretriz do projeto marca explicitamente como podendo
+  travar/crashar o processo alvo.
+
+**Fonte do terminal configurável (mesma sessão, pedido explícito do usuário - "as fontes estão
+pequenas")**: `Configurar → Mamute Assembler...` ganhou uma seção "Fonte do terminal" — combo (reaproveita
+`EditorCfg_EnumMonospaceFonts()`, `EditorSettings.pbi`, a mesma enumeração de fontes monoespaçadas já
+usada em `Configurar → Editor...`, em vez de duplicar a lógica de `EnumFontFamiliesEx_`), campo de
+tamanho e checkbox "Negrito" - persistidos em `MamuteFontName`/`MamuteFontSize`/`MamuteFontBold`
+(`MamuteSupport.pbi`), no mesmo `mamute_settings.json` das células de memória. `MamuteGui_EnsureFont()`
+deixou de carregar Consolas 14pt negrito fixo uma única vez ("carregada uma vez, reaproveitada entre
+aberturas") — passou a recarregar a cada abertura da janela do monitor, liberando a fonte anterior
+(`FreeFont()`) antes pra não vazar um `HFONT`; `MamuteAssembler_OpenWindow()` precisou trocar a ordem de
+`MamuteCfg_Load()`/`MamuteGui_EnsureFont()` (a fonte depende dos globais que só o `Load` preenche).
+Verificado com build `/CONSOLE` descartável + captura de tela: combo populado com fontes reais do
+sistema, valores mostrados batendo com a configuração de slots que o usuário já tinha salvo de sessões
+anteriores (ROM/BASIC no Slot 0, RAM no Slot 3) — confirmando de quebra, contra dados reais (não só a
+config vazia testada antes), que `Mamute_ResetPageMapToDefault()` calcula o mapeamento de boot certo.
+
+**Divisão automática de arquivo BIOS+BASIC de 32KB (mesma sessão, pedido explícito do usuário)**: em
+muitos MSX reais a BIOS e o BASIC vêm num único arquivo de ROM de 32KB (16KB de cada, concatenados).
+
+- `MamuteMemCell` (`MamuteSupport.pbi`) ganhou o campo `FileOffset.i` — deslocamento em bytes dentro de
+  `FilePath` de onde começam os 16KB desta célula (0 normalmente; `#Mamute_PageSize` = 16384 quando a
+  célula é a metade FINAL de um arquivo combinado) - persistido no `mamute_settings.json` como campo
+  `"Offset"` junto de `Tipo`/`Arquivo`. Prepara o modelo de dados pro carregamento de arquivo de verdade
+  (ainda pendente) já saber ler o pedaço certo de cada arquivo, sem precisar de outra migração de schema
+  depois.
+- No handler de `G_FileBrowse` (`MamuteSettings_OpenWindow()`): se a célula selecionada é `Tipo = ROM` E
+  `Pagina = 0` (a posição convencional da BIOS) E o arquivo escolhido tem exatamente
+  `#Mamute_CombinedBiosBasicSize` (32768) bytes, um `MessageRequester` Sim/Não pergunta se é BIOS+BASIC
+  combinados. **Sim**: a Página 0 recebe o arquivo com `FileOffset=0`, a Página 1 do MESMO slot recebe o
+  MESMO arquivo com `Tipo` forçado pra `BASIC` e `FileOffset=#Mamute_PageSize`, ambas as linhas da lista
+  são atualizadas (`MamuteSettings_RefreshRow()` chamado duas vezes). **Não** (ou tamanho de arquivo
+  diferente de 32KB, ou célula fora da Página 0/Tipo ROM): comportamento anterior, sem nenhuma mudança -
+  só a célula selecionada recebe o arquivo, `FileOffset=0`. Editar o campo Arquivo à mão (`G_File`,
+  digitado em vez de escolhido pelo browse) também zera `FileOffset` de volta pra 0, abandonando um
+  offset de uma divisão anterior - evita um offset "orfão" apontando pra um arquivo diferente do que foi
+  digitado.
+- `MamuteSettings_RefreshRow()` passou a mostrar `" (ultimos 16KB)"` ao lado do caminho na coluna
+  Arquivo quando `FileOffset > 0`, pra deixar visualmente claro que aquela célula é a segunda metade de
+  um arquivo compartilhado com outra linha da lista.
+- **Verificado**: `build.ps1` compilou limpo; tela reaberta com a configuração real do usuário (que já
+  inclui arquivos de BIOS/BASIC/RAM de sessões anteriores) sem regressão visual. O fluxo completo de
+  ponta a ponta (escolher um arquivo de 32KB de verdade → confirmar no `MessageRequester` → ver as duas
+  linhas preenchidas) **não foi automatizado** nesta sessão: diferente do `MessageRequester` (automatizável
+  via `PostMessage`/`BM_CLICK` nos botões, IDs padrão conhecidos), o `OpenFileRequester` nativo do
+  Windows usa o Common Item Dialog (tema Vista+) internamente, que não expõe IDs de controle simples
+  como os diálogos de arquivo antigos - automação por mensagem contra ele não é confiável. Verificado só
+  por revisão de código, reaproveitando o mesmo padrão de atualização `WorkCells()`/`RefreshRow()` já
+  comprovado nas outras edições desta mesma tela (Tipo/Arquivo de uma única célula).
+
+**Comando `DM` (Despejo de Memória) — mesma sessão, pedido em detalhe pelo usuário**: o primeiro
+comando que realmente lê/escreve nos 256KB simulados (`MamuteMem()`) por trás do que `PAGE` mapeia.
+"Os endereços em hexa são o padrão de entrada de todos os comandos" (pedido explícito, generaliza pra
+qualquer comando futuro, não só `DM`).
+
+- **Acesso a memória por endereço de CPU** (`MamuteSupport.pbi`, novo bloco): `Mamute_ResolveAddress(Addr,
+  *Slot, *Pagina, *Offset)` — `Pagina = (Addr>>14)&3`, `Slot = MamutePageMap(Pagina)` (o mapeamento
+  ATIVO do `PAGE`, não a configuração física crua), `Offset = Addr & (#Mamute_PageSize-1)`.
+  `Mamute_ReadByte()`/`Mamute_WriteByte()` em cima disso — a segunda só escreve de verdade
+  (`Mamute_CanWriteAt()`) se a célula mapeada agora for `#MamuteMem_RAM`; ROM/BASIC/Vazio são
+  fisicamente somente-leitura (recusa silenciosa, devolve `#False`, sem erro nem exceção). Novos
+  parsers `Mamute_ParseHexAddr()` (1-4 dígitos, 0-FFFF) e `Mamute_ParseHexOffset()` (sinal `+`/`-`
+  opcional, valida a faixa `-7Fh`/`80h` pedida) — reaproveitam `Mamute_IsHexString()` já existente.
+- **`editor/MamuteDumpGui.pbi`** (novo arquivo) — `MamuteDump_Open(ParentWindow, StartAddr, StartOffset)`
+  abre uma janela própria (não reaproveita a janela do monitor - mais simples que alternar
+  visibilidade de gadgets dentro da mesma janela e juntar dois loops de evento). Grade 16 linhas × 8
+  bytes (128 bytes de uma vez, sem scroll — cabe tudo, ao contrário do Editor Hexa que pagina 16
+  bytes/linha com scroll pra arquivos grandes) desenhada num `CanvasGadget` próprio:
+  - **Geometria/desenho/hit-test**: técnica idêntica a `HexEd_PaintRow`/`HexEd_Repaint`/o loop de
+    hit-test de `HexEditorGui.pbi` (medir `TextWidth("00")` em tempo de execução pra achar a largura
+    real da fonte, iterar as 8 caixas de coluna conhecidas em vez de inverter a fórmula pra achar a
+    coluna clicada) — só adaptada pra 8 bytes/linha em vez de 16 e cores fixas preto/verde (não os
+    `Color_*` do tema da IDE, que não fazem sentido aqui). Cursor desenhado como `Box()` cheio + texto
+    em preto por cima ("vídeo reverso" completo), mais simples que o box-vazado+fill de
+    `HexEditorGui.pbi` (esse tinha que distinguir cursor de "range marcado"; aqui só existe um cursor).
+  - **Deslocamento ASCII**: `MamuteDump_DisplayChar(RawByte, Offset)` = `(RawByte+Offset)&$FF`, "." se
+    fora de 32-126 — só afeta o bloco texto exibido/editado, nunca o bloco hexa (sempre o byte cru).
+  - **Navegação por teclado** (ausente em `HexEditorGui.pbi` - não havia precedente no projeto pra
+    copiar) via `AddKeyboardShortcut()` no nível da JANELA (não da `CanvasGadget`) — mesmo mecanismo já
+    comprovado pro Enter do prompt `MON>`, generalizado pra Setas/`PgUp`/`PgDn`/`Tab`/`Return`/`Esc`/
+    numpad `+`/`-`. Decisão deliberada de NÃO usar a API de teclado nativa do `CanvasGadget`
+    (`#PB_Canvas_Keyboard`/`#PB_EventType_KeyDown`) pra tudo — incerta o suficiente (sem precedente no
+    projeto pra validar contra) que o risco não compensava.
+  - **Edição em 2 estágios**: `RETURN` (estágio 1, fora de edição) mostra um `StringGadget`
+    normalmente oculto (`HideGadget`), pré-preenchido com o valor atual da célula (mesma conveniência
+    de `HexEditorGui.pbi`); `RETURN` de novo (estágio 2) confirma. Bloco hexa: 1-2 dígitos → 1 byte
+    cru na célula do cursor. Bloco texto: 1+ caracteres → cada um vira `(CharCode-Offset)&$FF`,
+    escritos em endereços sucessivos a partir do cursor (avança sozinho, clampado no byte 127 da
+    grade) — decisão deliberada de aceitar uma STRING no modo texto (não só 1 char), interpretação
+    mais útil de "entrada de texto simples" do pedido original. `ESC` cancela a edição em andamento
+    (sem gravar nada) ou, fora de edição, fecha a janela do DM.
+  - **Achado real de PureBasic**: uma `Macro` expandida em MAIS DE UM ponto do mesmo `Procedure` não
+    pode ter `Protected` próprio dentro dela — cada expansão gera outra declaração textual do MESMO
+    nome dentro do mesmo escopo, que o compilador rejeita (confirmado tentando `MamuteDump_DoOffset`,
+    chamada de 4 lugares: botões `+`/`-` e atalhos de teclado `+`/`-` — `Protected NewOff.i` dentro da
+    macro falhava; resolvido içando a declaração pra fora, pro `Procedure` pai, com a macro só
+    atribuindo). Macros usadas em UM ÚNICO ponto (`MamuteDump_BeginEdit`/`MamuteDump_CommitEdit`) não
+    têm esse problema, mesmo declarando `Protected` dentro.
+  - Reaproveita a fonte configurável (`MamuteFontName`/`Size`/`Bold`, `MamuteSupport.pbi`) em vez de
+    fixar outra fonte à toa - consistente com o resto da ferramenta.
+- **Verificado de ponta a ponta**, sem simulação de teclado real: build `/CONSOLE` descartável, `DM
+  8000` digitado no prompt via `WM_SETTEXT` + `PostMessage(WM_COMMAND)` no atalho Enter do monitor,
+  depois `PostMessage(WM_COMMAND)` direto nos IDs numéricos dos atalhos de teclado do DM (mover cursor,
+  `TAB`, paginar ±128, ajustar deslocamento, abrir/confirmar edição) — cada passo confirmado por captura
+  de tela real: cursor se move pra célula certa, paginação soma/subtrai 128 no endereço certo,
+  deslocamento atualiza o rótulo "Desloc.:", e o teste decisivo - editar o byte sob o cursor pra `42`
+  com deslocamento ativo `+05` mostrou `42` no bloco hexa e **`G`** no bloco texto (0x42+5=0x47='G'),
+  confirmando tanto a "criptografia" ASCII quanto que a escrita de fato aconteceu (a célula testada
+  caía numa página mapeada pra RAM de verdade na configuração real já salva pelo usuário). Cliques do
+  mouse nos botões/na grade não foram automatizados nesta sessão (chamam as MESMAS macros internas já
+  exercitadas pelos atalhos de teclado testados, risco considerado baixo).
+- **Comando `ZAP` — editor de setores de disco (2026-08-11, `7.33.19`, "SETOR ZERO")**: pedido do
+  usuário — "muito parecido com o `DM`", porém em vez da memória simulada (`MamuteMem()`), edita
+  **setores de uma imagem `.dsk` de verdade**, sem interpretar a estrutura FAT12 (leitura/escrita crua
+  por posição de byte, como um editor de setor de época).
+  - **`ZAP <setor inicial>[,<deslocamento>]`** (`MamuteGui_CmdZap()`, `MamuteAssemblerGui.pbi`) — parser
+    quase idêntico a `MamuteGui_CmdPage`/`CmdDm`: `<setor inicial>` em hexa (setor 0 = boot sector),
+    `<deslocamento>` opcional com a mesma faixa/semântica de `DM`. Abre um `OpenFileRequester` pedindo a
+    imagem `.dsk` antes de qualquer coisa; cancelar a escolha aborta o comando sem abrir janela nenhuma.
+  - **`editor/MamuteZapGui.pbi`** (novo arquivo) — adaptação quase literal de `MamuteDumpGui.pbi`: mesma
+    técnica de desenho/hit-test/edição em 2 estágios (grade 16×8 em `CanvasGadget`, `StringGadget`
+    oculto pra edição), só trocando a fonte de dados: `Global Dim MamuteZapDisk.a()` carregado do
+    arquivo escolhido (`MamuteZap_LoadDisk()`, `ReDim` arredondado pra múltiplo de 512 bytes) em vez de
+    slot/página. **Sem** a restrição de somente-leitura em ROM/BASIC que o `DM` tem — qualquer byte do
+    disco é editável, já que não há conceito de "tipo de memória" num arquivo de disco.
+  - **Rótulos diferentes do `DM`**: cada linha mostra o deslocamento dentro do setor (`000`-`1F8`, não
+    um endereço de CPU); linhas de status mostram `Setor:`/`Byte:` em vez de `Endereço:`.
+  - **Salvar é explícito, não automático** — pedido do usuário ("escolha uma tecla para salvar o setor
+    no disco"): editar um byte só muda o buffer em memória (`Global`); grava no arquivo real só com
+    **`Ctrl+S`** (`#MamuteZap_Shortcut_Save`) ou o botão amarelo **"SALVAR SETOR"**
+    (`MamuteZap_DoSave` macro) — `MamuteZap_SaveSector(SectorStart)` grava exatamente 512 bytes via
+    `FileSeek`+`WriteData`, cirúrgico (não reescreve o disco inteiro). `MamuteZapState\Dirty` rastreia
+    alterações não salvas: título ganha `*` quando `#True`, `MamuteZap_ConfirmClose` macro pede
+    confirmação (`MessageRequester` Sim/Não) antes de fechar a janela ou processar `ESC` enquanto sujo.
+  - **Achado real de PureBasic, repetido do `DM`**: o mesmo padrão de `Macro` expandida em mais de um
+    ponto do `Procedure` não podendo ter `Protected` próprio apareceu de novo em duas macros novas
+    (`MamuteZap_DoPage`, 4 expansões; `MamuteZap_DoSave`, 2 expansões) — mesma correção, variáveis
+    içadas (`NewBase.i`, `CursorOff.i`, `SectorStart.i`) pro topo do `Procedure` junto do `NewOff.i` já
+    içado por `MamuteDump_DoOffset`.
+  - **Achado real de automação de UI que corrige uma suposição anterior desta sessão**: no trabalho de
+    divisão automática de BIOS+BASIC de 32KB (módulo 31, entrada `7.33.17` acima), foi assumido sem
+    confirmação meticulosa que o `OpenFileRequester` nativo (Common Item Dialog, Vista+) não seria
+    automatizável de forma simples. Testando o `ZAP` de ponta a ponta, o diálogo **respondeu
+    normalmente** à técnica clássica de Win32: `GetDlgItem(hDlg, 1148)` (campo de nome de arquivo) +
+    `WM_SETTEXT`, depois `GetDlgItem(hDlg, 1)` (IDOK) + `BM_CLICK` — suposição anterior descartada.
+  - **Verificado de ponta a ponta com um disco real** (não só revisão de código): disco de teste de
+    720KB criado via `BadigEditor.exe --diskmanipulator create`, aberto no `ZAP` com automação completa
+    do diálogo de arquivo (técnica acima), cursor movido, um byte editado via o campo de edição oculto,
+    `Ctrl+S` disparado — o arquivo `.dsk` real foi lido de volta de forma **independente** (fora do app,
+    via script separado) confirmando o byte gravado no offset exato esperado; título da janela perdeu o
+    `*` após salvar, confirmando que `Dirty` também funciona.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
