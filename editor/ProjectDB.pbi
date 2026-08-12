@@ -478,11 +478,29 @@ Module ProjectDB
     ProcedureReturn #True
   EndProcedure
 
+  ; Achado real (2026-08-12, pedido do Mamute Assembler guardar historico de
+  ; comandos "mesmo sem projeto aberto, entre sessoes"): OpenAt(...,
+  ; CreateFileFirst=#True) sempre chamava CreateFile(), que TRUNCA um
+  ; arquivo existente - o projeto temporario implicito (NewTempPath(),
+  ; "noname.msxproject") era apagado toda vez que o editor abria de novo e
+  ; algo tocava ProjectDB pela primeira vez nessa sessao, mesmo que a sessao
+  ; anterior ja tivesse gravado dado nele. Afetava qualquer consumidor do
+  ; projeto temporario, nao so o Mamute (ex.: os 3 booleans de override em
+  ; "Configurar -> Projeto..."). So cria o arquivo do zero se ele ainda nao
+  ; existir - se ja existir (sessao anterior sem projeto salvo), abre e
+  ; reaproveita o conteudo, dado que RunSchema() so faz CREATE TABLE IF NOT
+  ; EXISTS (nunca apaga dado). CreateNew() (Arquivo -> Novo projeto...)
+  ; continua chamando OpenAt(..., #True) direto, sem essa checagem - "Novo
+  ; projeto" precisa mesmo comecar vazio, mesmo que o caminho escolhido ja
+  ; tenha um arquivo (o dialogo de Salvar Como ja confirma sobrescrever
+  ; antes de devolver o caminho).
   Procedure.i EnsureOpen()
     If IsOpen
       ProcedureReturn #True
     EndIf
-    If Not OpenAt(NewTempPath(), #True)
+    Protected TempPath.s = NewTempPath()
+    Protected NeedsCreate.b = Bool(FileSize(TempPath) < 0)
+    If Not OpenAt(TempPath, NeedsCreate)
       ProcedureReturn #False
     EndIf
     RunSchema()

@@ -6,6 +6,571 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.33.32 — "TELA MAIOR" (2026-08-12)
+
+**Tema da versão**: janela do Mamute Assembler maior e fonte padrão maior/mais legível, depois de
+investigar um relato de "disassembly incompleto" que acabou não sendo bug nenhum.
+
+### Novidades
+
+- Janela do Mamute Assembler aumentada de 720×480 para 960×640 — mostra bem mais linhas de log de
+  uma vez sem precisar rolar.
+- Tamanho padrão da fonte do terminal aumentado de 14 para 16 (negrito já era o padrão).
+- Fonte/tamanho/negrito continuam configuráveis em `Configurar → Mamute Assembler...`.
+
+### Bastidores
+
+- Investigação de um relato de bug ("`L 0,100` disassembla poucas instruções, diferente a cada
+  execução") confirmou, com automação de UI real contra o ROM de verdade do usuário (repetida, e com
+  um teste de estresse levando o log a mais de 160 mil caracteres sem qualquer perda), que a
+  listagem estava correta e completa o tempo todo — o texto colado pelo usuário bateu exatamente com
+  a listagem de referência. O "bug" era só a janela antiga não caber 115 linhas sem rolar, e a barra
+  de rolagem não ter sido percebida.
+- `WinW`/`WinH` (`MamuteAssemblerGui.pbi`) e `MamuteFontSize` (`MamuteSupport.pbi`, `Global` e o
+  bloco de reset em `MamuteCfg_Load()`) ajustados — todos os gadgets da janela já eram parametrizados
+  por `WinW`/`WinH`, então mudar as duas constantes redimensionou tudo automaticamente.
+- Verificado com uma captura de tela real (`PrintWindow`) da janela redimensionada, confirmando fonte
+  maior/em negrito e mais área de log visível.
+
+---
+
+## 7.33.31 — "DESMONTANDO O CODIGO" (2026-08-12)
+
+**Tema da versão**: `L`/`LP`, um disassembler Z80 completo (base + `CB` + `ED` + `DD`/`FD` indexados,
+incluindo formas não documentadas estáveis) para o Mamute Assembler.
+
+### Novidades
+
+- **`L [<endinic>[,<endfim>]]`** — disassembla a memória RAM/ROM (mapeamento `PAGE` ativo agora) direto
+  no log do `MON>`. Com os dois endereços, decodifica até ultrapassar `<endfim>`; só `<endinic>`, 10
+  instruções; sem nenhum, continua de onde o `L`/`LP` mais recente parou.
+- **`LP [<endinic>[,<endfim>]]`** — mesma listagem do `L`, mas gera um PDF A4 (mesma infra do `P`/`V`)
+  em vez de mandar pro log.
+- Cada linha mostra endereço, bytes crus em hexa e mnemônico com operandos. Saltos relativos (`JR`/
+  `DJNZ`) mostram o endereço de destino absoluto, não o deslocamento cru.
+- Conjunto de instruções completo: toda a tabela documentada do Z80 mais as formas não documentadas
+  mais estáveis (`IXH`/`IXL`/`IYH`/`IYL`, `CB` indexado com cópia-sombra, prefixos `DD`/`FD` encadeados).
+
+### Bastidores
+
+- `Mamute_DisasmOne()`/`Mamute_DisasmBuildLines()` (`editor/MamuteSupport.pbi`, novos, ~450 linhas) —
+  tabela de opcodes construída do zero via a decomposição x/y/z/p/q clássica de decodificação do Z80
+  (não havia tabela reaproveitável no assemblador `Z80Asm.pbi` deste projeto — ele codifica
+  proceduralmente, sem tabela estática bytes→mnemônico).
+- Substituição `IX`/`IY` (8 e 16 bits) implementada parametrizando as MESMAS tabelas de nome de
+  registrador usadas pela decodificação normal — opcodes que não referenciam `H`/`L`/`(HL)`/`HL`
+  produzem o mesmo texto nas 3 variantes automaticamente, sem precisar de uma lista separada de "quais
+  opcodes o prefixo afeta".
+- Prefixos `DD`/`FD` encadeados tratados com um laço simples: cada prefixo é consumido 1 byte por vez,
+  só o último antes do opcode de verdade "vale" — mesmo comportamento do hardware real.
+- Verificado com um harness de teste temporário (removido ao final da sessão): 151 casos pontuais
+  corretos byte a byte (cobrindo cada ramo da tabela, matemática de salto relativo através de um
+  prefixo desperdiçado, deslocamentos negativos, cópia-sombra não documentada, imunidade do `HALT`/
+  `EX DE,HL` ao prefixo) mais uma varredura de completude confirmando que nenhum dos 512 opcodes
+  base+`CB` fica sem decodificação — depois verificado de ponta a ponta na UI real.
+- **Achado real de compilador/runtime, documentado em `CLAUDE.md`**: o padrão `*Ptr.String` para
+  parâmetros de saída (devolver uma string por referência) travou com acesso inválido de verdade neste
+  contexto específico (arquivo de ~30 mil linhas numa única unidade de compilação) — corrigido
+  devolvendo o texto como retorno normal da função (`Procedure.s`) em vez de escrever por ponteiro de
+  string. Ponteiros de saída pra tipos fixos (`Integer`/`Byte`/etc.) continuam funcionando normalmente.
+
+---
+
+## 7.33.30 — "REGISTRADORES EM ESPERA" (2026-08-12)
+
+**Tema da versão**: `X` (registradores do Z80 simulado, funcional de verdade) mais `G` e `R` como
+entradas reconhecidas mas explicitamente adiadas para uma fase futura — pedido direto do usuário.
+
+### Novidades
+
+- **`X [<reg>]`** — sem argumento, mostra os 7 pares de registrador (`AF`/`BC`/`DE`/`HL`/`IX`/`IY`/
+  `SP`) de uma vez. Com argumento, entra num modo de edição sequencial a partir do registrador
+  escolhido — aceita tanto um **par** (`AF`/`BC`/`DE`/`HL`/`IX`/`IY`/`SP`, editado como um valor
+  único de 16 bits/4 dígitos hexa) quanto um **registrador de 1 byte isolado** (`A`/`F`/`B`/`C`/`D`/
+  `E`/`H`/`L`, 2 dígitos hexa) — extensão pedida explicitamente pelo usuário sobre o manual original.
+  Cada registrador da sequência é perguntado numa caixa de diálogo com o valor atual já preenchido:
+  confirmar sem editar **mantém** o valor e passa pro próximo; apagar o campo (ou Cancelar) **para**
+  a caminhada ali mesmo. Registradores duram só a sessão da janela.
+- **`G <endinic>[,<brkpnt1>[,<brkpnt2>]]`** — reconhece e valida a sintaxe completa (endereço inicial
+  obrigatório, até 2 breakpoints opcionais), mas **ainda não executa nada** — confirma no log que
+  entendeu o comando. Execução real de programas (com registradores/breakpoints de verdade) fica
+  para uma fase futura do projeto, por pedido explícito do usuário.
+- **`R [<offset>]`** — confirma no log que o carregamento de um programa assemblado depende do
+  assemblador Z80 embutido, que também fica para uma fase futura. Não valida nem usa o argumento.
+
+### Bastidores
+
+- Novos campos `Reg*` em `MamuteGui_State` (`MamuteAssemblerGui.pbi`) — `A`/`F`/`B`/`C`/`D`/`E`/`H`/
+  `L` como bytes, `IX`/`IY`/`SP` como palavras de 16 bits, zero-inicializados (mesmo espírito volátil
+  do `PAGE`/`DisplayMode`).
+- `MamuteGui_RegPairValue()`/`SetRegPair()`/`RegByteValue()`/`SetRegByte()` (novos) — leitura/escrita
+  dos registradores por nome, compartilhadas entre a exibição (`X` sem argumento) e a caminhada de
+  edição (`X <reg>`).
+- **Achado real de automação de teste, não um bug do app**: a primeira tentativa de automatizar as
+  caixas de diálogo do `X` assumiu que o botão OK teria o ID de controle clássico `1`/`IDOK` (como
+  funciona nos diálogos comuns do Windows usados pelo `SAVE`/`P`/`V`) — mas o `InputRequester()` do
+  PureBasic gera seus próprios botões com IDs internos do framework, não `1`. O clique automatizado
+  não acertou o botão de verdade, o diálogo nunca fechou, e o app inteiro ficou travado nesse diálogo
+  modal (bloqueando até o teste seguinte, que reusou o mesmo diálogo sem perceber). Corrigido achando
+  o botão pela classe `Button` + texto "OK" em vez de um ID assumido — mais robusto contra diálogos
+  gerados internamente pelo framework em vez de diálogos comuns do sistema.
+- Verificado de ponta a ponta com automação de UI real (incluindo as caixas de diálogo nativas, uma
+  vez corrigida a detecção do botão OK): `G` testado com 1/2/3 argumentos e com endereços/breakpoints
+  inválidos; `R` confirmado ignorando qualquer argumento; `X IX` setou `IX=ABCD` e parou em `IY`
+  (deixando `IY`/`SP` intactos); `X BC` setou `BC=1234`/`DE=5678` e parou em `HL` sem alcançar `IX`
+  — prova real de que parar num campo vazio realmente impede a caminhada de tocar nos registradores
+  seguintes; `X A` (modo byte) setou `A=AA` e parou em `F`, confirmado no par combinado `AF=AA00`.
+
+---
+
+## 7.33.29 — "TRANSFERE E PREENCHE" (2026-08-12)
+
+**Tema da versão**: `T` e `F`, os comandos de transferência e preenchimento de bloco de memória.
+
+### Novidades
+
+- **`T <endinic>,<endfim>,<enddest>`** — transfere (copia) o bloco de memória RAM/ROM entre `<endinic>`
+  e `<endfim>` (inclusive, mapeamento `PAGE` ativo agora) para o bloco do mesmo tamanho iniciado em
+  `<enddest>`. Origem e destino sobrepostos são tratados corretamente (copia de trás pra frente ou de
+  frente pra trás conforme necessário, mesmo cuidado de um `memmove` de verdade).
+- **`F <endinic>,<endfim>,<byte>`** — preenche esse mesmo tipo de bloco inteiro com um único byte
+  repetido.
+- Nem `T` nem `F` dão a volta pro `0000` (mesma regra do `D`/`P`/`V`) — `<endfim>` menor que
+  `<endinic>`, ou um destino do `T` que passe de `FFFF`, são `?ERRO DE SINTAXE`.
+- Escrita silenciosa em células que não sejam RAM nos dois comandos (`Mamute_WriteByte` já recusa,
+  mesma regra do `DM`/`MS`).
+
+### Bastidores
+
+- `MamuteGui_CmdT()`/`MamuteGui_CmdF()` (`MamuteAssemblerGui.pbi`, novos) — parsing manual de 3 campos
+  separados por vírgula (mesmo idioma do `MS`), sem depender de `MamuteGui_ParseDpvArgs()` (essa é
+  específica pro par `<endinic>[,<endfim>]` opcional dos comandos `D`/`P`/`V`, formato diferente).
+- `T` decide a direção da cópia comparando `<enddest>` com `<endinic>`: copia de trás pra frente
+  (`Length-1` até `0`) quando o destino vem depois da origem, de frente pra trás caso contrário — evita
+  corromper bytes de origem ainda não lidos quando os blocos se sobrepõem.
+- Verificado de ponta a ponta com automação de UI real, usando endereços em `C000-FFFF` (confirmado RAM
+  no config real do usuário pelos testes do `M`/`S` numa sessão anterior — `4000-7FFF` é ROM/BASIC
+  nesse mesmo config, achado real ao tentar testar `F`/`T` ali primeiro e ver a escrita silenciosamente
+  recusada, mesma "lacuna conhecida" já documentada no `docs/SPEC.md`): preenchimento simples
+  confirmado byte a byte via `D`; cópia simples confirmada; teste de sobreposição real (`MS` gravando um
+  texto reconhecível, depois um `T` com destino dentro do mesmo bloco de origem) confirmou o conteúdo
+  final exatamente como esperado, provando que a lógica de direção realmente evita a corrupção que uma
+  cópia ingênua causaria; os 4 casos de erro (endereço final menor que o inicial nos dois comandos, byte
+  de 3 dígitos no `F`, destino do `T` estourando `FFFF`) todos rejeitados corretamente.
+
+---
+
+## 7.33.28 — "SAINDO NA IMPRESSORA" (2026-08-12)
+
+**Tema da versão**: `D`/`P`/`V`, os comandos de dump de memória formatado que o `C` preparou terreno para
+— mais uma VRAM simulada nova, pra dar sentido ao `V`.
+
+### Novidades
+
+- **`D <endinic>[,<endfim>]`** — despeja a memória RAM/ROM (mapeamento `PAGE` ativo agora) formatada
+  conforme o modo escolhido em `C`, direto no log do `MON>`. Sem `<endfim>`, mostra só 16 bytes.
+- **`P <endinic>[,<endfim>]`** — mesmo despejo do `D`, mas "na impressora": gera um **PDF A4** simples
+  (fonte Courier, cabeçalho com o intervalo/modo, paginação automática a cada ~56 linhas) e abre "Salvar
+  como" no final. Um driver de verdade pra impressora dot-matrix Epson FX-80 é um projeto separado do
+  usuário pra uma sessão futura — o PDF é a solução provisória.
+- **`V <endinic>[,<endfim>]`** — igual ao `P`, mas lê da **VRAM simulada** nova em vez da RAM/ROM.
+- **VRAM simulada** (`Configurar → Mamute Assembler...`) — tamanho configurável entre **16KB** (MSX1,
+  mesmo teto que o MegaAssembler original enxergava), **128KB** ou **192KB** (MSX2/2+, ampliação desta
+  ferramenta sobre o original). Endereçamento **plano, sem banco/página** — a VRAM de um MSX real nunca
+  fica mapeada no espaço de endereços do Z80 (é acessada pelas portas do VDP), então a restrição de 16
+  bits que vale pra RAM/ROM não se aplica.
+- Nem `D`/`P`/`V` dão a volta pro `0000` como o `SH`/`M` fazem — passar do teto do espaço de endereços
+  (`FFFF` na RAM/ROM, o tamanho de VRAM configurado na VRAM) é `?ERRO DE SINTAXE`.
+
+### Bastidores
+
+- `Mamute_BuildDumpLines()` (`MamuteSupport.pbi`, novo) — monta as linhas formatadas compartilhadas por
+  `D`/`P`/`V`, parametrizada por `IsVram` (escolhe entre `Mamute_ReadByte()`/`MamuteVRAM()`).
+- `Mamute_SavePdfListing()` (`editor/MamutePdf.pbi`, novo arquivo) — gera os bytes de um PDF 1.4 à mão
+  (sem lib externa, PureBasic não tem uma nativa): objetos Catalog/Pages/Page/Content-stream/Font,
+  `MediaBox [0 0 595 842]`, tabela `xref` de 20 bytes por linha, tudo ASCII puro (conteúdo é só dígitos
+  hexa/texto, sem precisar de compressão/stream binário).
+- `MamuteVRAM()` (`MamuteSupport.pbi`) — array plano de até 192KB, sempre alocado no tamanho máximo
+  (trivial em memória) mesmo que o usuário mude o tamanho configurado depois — evita `ReDim`/perda de
+  dado.
+- `Mamute_ParseVramAddr()`/`Mamute_HexPad()` (`MamuteSupport.pbi`, novos) — endereço de VRAM aceita até 5
+  dígitos hexa (o teto de 192KB passa de `FFFF`), validado contra o tamanho configurado agora.
+- `VLOAD`/`VSAVE` (ou uma extensão do `LOAD`/`SAVE` existente pra ler/gravar VRAM) ficam explicitamente
+  fora de escopo desta versão — pedido direto do usuário; a VRAM simulada começa sempre zerada.
+- Verificado de ponta a ponta com automação de UI real (sem simular teclado/mouse): `D` nos 3 modos com
+  bytes reais da ROM carregada; `P`/`V` geraram PDFs cujos offsets do `xref` foram conferidos byte a
+  byte contra o conteúdo real do arquivo; `V` testado também com uma listagem de 10 páginas confirmando
+  a paginação automática; endereços fora do teto (RAM e VRAM) rejeitados com `?ERRO DE SINTAXE`.
+
+---
+
+## 7.33.27 — "PREPARANDO O VISOR" (2026-08-12)
+
+**Tema da versão**: `C`, o comando que escolhe o modo de exibição para os futuros comandos `D`/`P`/`V` —
+pequeno e sem janela, prepara terreno pra próxima leva.
+
+### Novidades
+
+- **`C <modo>`** — guarda qual dos 4 formatos de exibição os comandos `D`/`P`/`V` (dump de memória
+  formatado, ainda não implementados) vão usar:
+  - `0` — hexadecimal + ASCII, 4 bytes por linha.
+  - `1` — igual ao `0`, mas 16 bytes por linha (pra telas/impressoras de 80 colunas).
+  - `2` — só hexadecimal, 8 bytes por linha, com um checksum no final de cada linha = soma dos 8 bytes +
+    o byte baixo do endereço inicial da linha (tudo módulo 256).
+  - `3` — igual ao `2`, mas o checksum é só a soma dos bytes, sem somar o endereço.
+- Sozinho não mostra nada na tela — só confirma o modo escolhido no log do `MON>`
+  (`MODO 1: HEXA+ASCII, 16 BYTES/LINHA`).
+- Estado dura só enquanto a janela do Mamute Assembler estiver aberta — não persiste em
+  `mamute_settings.json`, mesmo espírito volátil do `PAGE`.
+
+### Bastidores
+
+- Novo campo `DisplayMode.b` em `MamuteGui_State` (`MamuteAssemblerGui.pbi`) — zero-inicializado, então o
+  modo padrão já é `0` sem precisar de código extra.
+- `Mamute_DisplayModeText()` (`MamuteSupport.pbi`, novo) — só uma tabela `Select`/`Case` mapeando modo →
+  descrição, reaproveitável pelos futuros `D`/`P`/`V` quando formatarem a saída de verdade.
+- **Achado de sintaxe, documentado em vez de contornado**: o exemplo do manual original usa `C1` colado
+  (sem espaço) — não reconhecido aqui, porque `MamuteGui_Dispatch()` sempre separa verbo de argumentos
+  pelo primeiro espaço digitado, igual todo outro comando do Mamute Assembler. Em vez de adicionar um caso
+  especial só pra esse comando, a Ajuda documenta explicitamente que é preciso digitar `C 1` (com espaço).
+- Verificado de ponta a ponta: `C 0`/`C 1`/`C 2`/`C 3` confirmados cada um com a descrição certa; `C 4`
+  (fora da faixa `0-3`) e `C` (sem argumento) rejeitados com `?ERRO DE SINTAXE`; `C1` sem espaço
+  confirmado caindo em `?COMANDO INVALIDO` (o verbo digitado literalmente vira `"C1"`, que não bate com
+  nenhum `Case` do dispatcher) — comportamento esperado, não um bug.
+
+---
+
+## 7.33.26 — "TECLADO NUMERICO" (2026-08-12)
+
+**Tema da versão**: `M` e `S`, edição rápida de memória no Mamute Assembler — mesma grade/navegação do
+`DM`, mas hexa digitado tecla-a-tecla direto; `S` usa um teclado numérico totalmente configurável.
+
+### Novidades
+
+- **`M [<endereço>]`** — mesma grade de 128 bytes e mesma navegação do `DM` (setas, `PgUp`/`PgDn`, `TAB`,
+  botões, `+`/`-` de deslocamento). Edição de byte diferente: digite dois dígitos hexa (`0-9`, `A-F`)
+  direto, sem abrir campo de texto — o 1º dígito mostra `"3_"` esperando o 2º, que confirma o byte e
+  avança o cursor sozinho. `RETURN` sempre sai da janela (como no manual original); `ESC` cancela um
+  dígito pendente ou sai. Bloco de texto (ASCII) é somente leitura. Endereço omitido continua de onde a
+  janela do `M` ficou da última vez.
+- **`S [<endereço>]`** — idêntico ao `M`, mas usa um **teclado numérico configurável** (`Configurar →
+  Mamute Assembler...`) em vez de `0-9`/`A-F` fixos. Padrão: `1,2,3,4,Q,W,E,R,A,S,D,F,Z,X,C,V` — mesmo
+  layout clássico usado em jogos/emuladores (4 fileiras da esquerda do teclado QWERTY). Guarda seu
+  próprio "último endereço", separado do `M`.
+- **Nova seção em `Configurar → Mamute Assembler...`**: grade 4x4 rotulada `1,2,3,4,5,6,7,8,9,A,B,C,D,
+  E,F,0`, um campo de 1 caractere por posição, pra escolher livremente qual tecla física representa cada
+  dígito hexa do `S`.
+
+### Bastidores
+
+- **`editor/MamuteMGui.pbi`** (novo arquivo) — `MamuteM_Open(ParentWindow, StartAddr, StartOffset,
+  UseCustomKeys)` é o código COMPARTILHADO entre `M` e `S`; `UseCustomKeys` só decide se a tabela de 16
+  teclas vem fixa (`0-9`/`A-F`) ou de `MamuteSKeyMap()` (`MamuteSupport.pbi`, novo array configurável,
+  indexado pelo VALOR do nibble 0-15). Devolve o endereço final da janela (não recebe/toca
+  `G_Log`/`MamuteGui_State` diretamente — mesma razão de independência já usada por `MamuteScr_Open`/
+  `MamuteSave_Open`: esse tipo só é declarado mais tarde no arquivo que inclui este antes).
+- **Decisão deliberada de não reaproveitar o campo de texto em 2 estágios do `DM`** pra digitar hexa:
+  discutido com o usuário antes de implementar — usar `AddKeyboardShortcut` pras 16 teclas (fixas ou
+  configuráveis) evita ter que descobrir se um atalho de janela rouba ou não uma tecla de um campo de
+  texto nativo do Windows focado (comportamento não testado neste projeto). Resolvido tornando o bloco de
+  texto (ASCII) somente leitura em `M`/`S` - elimina a pergunta inteira, não só contorna.
+- `Mamute_KeyCharToShortcut()` (`MamuteSupport.pbi`, novo) converte um caractere (`"Q"`, `"1"`...) na
+  constante `#PB_Shortcut_*` certa - usado pelas 16 teclas do `S`.
+- **Verificado de ponta a ponta com automação de UI e captura de tela real**, não só revisão de código:
+  byte `3F` seguido de `A5` digitados tecla-a-tecla (via `PostMessage` nos IDs internos dos atalhos,
+  mesma técnica message-based já usada no projeto) no `M`, confirmados na grade — inclusive o caractere
+  `?` correto na coluna ASCII pro byte `3F` (`0x3F` = `'?'` em ASCII). Janela fechada e reaberta com `M`
+  sem endereço - reabriu exatamente no mesmo endereço com o mesmo conteúdo, confirmando a "memória" de
+  último endereço. `S` testado escrevendo outro byte pelo mesmo mecanismo compartilhado. Tela de
+  configuração conferida por captura de tela real: grade 4x4 renderizada corretamente, com os rótulos e
+  os valores padrão exatos pedidos (`1,2,3,4/Q,W,E,R/A,S,D,F/Z,X,C,V`).
+
+---
+
+## 7.33.25 — "GRAVANDO O CARTUCHO" (2026-08-12)
+
+**Tema da versão**: `SAVE`, o comando de gravação de arquivos do Mamute Assembler — o inverso natural do
+`LOAD` — mais um refinamento no próprio `LOAD` (nome sugerido no diálogo).
+
+### Novidades
+
+- **`LOAD <nome>`** — o nome digitado depois de `LOAD` (ex.: `LOAD alfabeto.alf`) não carrega nada
+  sozinho, só pré-preenche o campo de nome na janela de escolher arquivo e acrescenta a extensão dele ao
+  filtro padrão (`*.alf;*.bin;*.rom`, no exemplo). O arquivo carregado de verdade é sempre o confirmado
+  na janela.
+- **`SAVE [<nome>][,<endinic>,<endfim>[,<endexec>]]`** — abre uma janela própria (estilo normal da IDE,
+  não o terminal preto/verde) pra revisar tudo antes de gravar. Nome e endereços digitados no comando só
+  pré-preenchem os campos (endereço de execução vazio = igual ao inicial).
+- **Campos da janela**: Arquivo (editável + botão "..." com `SaveFileRequester`); Slot (0-3), sugerido a
+  partir do mapeamento `PAGE` ativo na página do endereço inicial; Endereço inicial/final/execução;
+  Formato — `BIN` (cabeçalho real do BSAVE: `FE` + 3 endereços) ou `ROM` (formato próprio deste
+  simulador: `AB` + os mesmos 3 endereços, sugerido pela extensão `.rom` mas trocável); checkbox "Salvar
+  sem cabeçalho" (ignora o formato, grava só os bytes crus).
+- Confirma no log do `MON>`: `SALVO "<arquivo>" - SLOT <slot> - <inicial>-<final> - TAMANHO <tamanho>`.
+
+### Bastidores
+
+- **`editor/MamuteSaveGui.pbi`** (novo arquivo) — `MamuteSave_Open()` devolve uma string de resultado em
+  vez de tocar `G_Log`/`MamuteGui_State` diretamente (esse tipo só é declarado mais tarde em
+  `MamuteAssemblerGui.pbi`, que inclui este arquivo antes) — mesma razão de independência já usada por
+  `MamuteScr_Open`/`MamuteZap_Open`.
+- **Lê DIRETO de `MamuteMem(Slot,...)`** pro range pedido, sem passar pelo `PAGE`/`Mamute_ReadByte()` —
+  mesma filosofia do `LOAD`: o usuário escolhe explicitamente de qual slot físico ler.
+- Cabeçalho e dados montados num único buffer (`Dim FullBuf.a(...)`) e gravados com uma `WriteData()` só
+  — sem depender de `WriteByte()` (nunca confirmado como existente na API de arquivos do PureBasic usada
+  neste projeto).
+- **Verificado de ponta a ponta com automação completa da janela e inspeção byte a byte dos arquivos
+  reais gerados**, não só revisão de código: string `XYZ1` gravada em RAM via `MS C000,'XYZ1`, depois
+  `SAVE savetest1.bin,C000,C003` (endereços vindos do comando, Slot sugerido corretamente como `3` — a
+  página de `C000` está mapeada nesse slot) — arquivo resultante conferido byte a byte mostrou exatamente
+  `FE 00 C0 03 C0 00 C0 58 59 5A 31` (cabeçalho `FE`+`C000`+`C003`+`C000` little-endian + `"XYZ1"`
+  literal). Depois `SAVE savetest2.rom` (só nome, sem endereços — Formato auto-detectado como `ROM` pela
+  extensão, confirmado antes de gravar) com endereços preenchidos na janela — arquivo resultante mostrou
+  `41 42 00 C0 03 C0 00 C0` + os 4 bytes do slot lido (`AB`+`C000`+`C003`+`C000`, mesma estrutura do
+  `BIN` só com `AB` no lugar do `FE`).
+- **Achado real de automação, não um bug**: o mesmo problema de corrida já visto ao abrir a janela
+  principal (menu com poucos itens se consultado cedo demais) se repetiu ao enumerar os controles filhos
+  da janela do Mamute Assembler e da janela do `SAVE` logo após encontrá-las pelo título — resolvido com
+  uma pequena pausa (~500ms) antes de `EnumChildWindows` em cada uma, mesma lição já registrada, agora
+  confirmada acontecer em mais de um lugar.
+
+---
+
+## 7.33.24 — "INSERINDO O CARTUCHO" (2026-08-12)
+
+**Tema da versão**: `LOAD`, o comando de carregamento de arquivos do Mamute Assembler — reimaginado como
+totalmente interativo (janela de escolher arquivo + escolha de slot), em vez do `LOAD <arquivo>,B` de
+linha de comando do manual original.
+
+### Novidades
+
+- **`LOAD`** (sem argumentos) — abre uma janela normal de escolher arquivo do Windows. Cancelar cancela
+  o comando inteiro, sem gravar nada.
+- **Sempre pergunta o Slot (0-3)** para carregar, sugerindo como padrão o slot que tiver RAM configurada
+  (`Configurar → Mamute Assembler...`) — qualquer slot pode ser escolhido.
+- **`.rom`** (cartucho) — carrega a partir de `4000` (Página 1); se tiver mais de 16KB (até 32KB), ocupa
+  também `8000` (Página 2). Mais que 32KB não é suportado (precisaria de troca de banco) —
+  `?ROM MAIOR QUE 32KB NAO SUPORTADA`.
+- **Binário com cabeçalho BLOAD real do MSX** (byte `FE` + endereços inicial/final/execução, 2 bytes
+  cada, little-endian — formato real do BSAVE) — carrega automaticamente no endereço indicado pelo
+  cabeçalho.
+- **Binário sem cabeçalho** — pergunta o endereço inicial (hexa) antes de carregar.
+- **`.cas` ainda não suportado** — `?ARQUIVOS .CAS NAO SUPORTADOS AINDA`, em vez de tentar interpretar
+  errado.
+- Resultado sempre no log: `CARREGADO NO SLOT <slot> EM <endereço> - TAMANHO <tamanho> - FIM <endereço
+  final>`.
+
+### Bastidores
+
+- **Grava direto na memória física do slot escolhido** (`MamuteMem(Slot,...)`), não pelo `PAGE`/
+  `Mamute_WriteByte()` — decisão deliberada: `LOAD` simula "inserir um cartucho/carregar dado naquele
+  slot", independente de qual slot está mapeado ativo agora.
+- Ajusta `MamuteCfgCell()` das páginas realmente tocadas (RAM pro binário, ROM pro `.rom`) - **só em
+  memória**, nunca chama `MamuteCfg_Save()`. Fechar e reabrir a janela do Mamute Assembler volta pra
+  configuração salva de antes, igual desligar/ligar um MSX de verdade tira o cartucho.
+- `MamuteGui_CmdLoad()` (`editor/MamuteAssemblerGui.pbi`) — diferencia `.rom` de binário pela EXTENSÃO do
+  arquivo (`GetExtensionPart`), não pelo conteúdo — mais previsível pro usuário do que tentar adivinhar
+  pelo cabeçalho. Lê o arquivo inteiro pra um array `.a()` (mesmo tipo unsigned de `MamuteMem()`, sem
+  problema de sinal).
+- **Verificado de ponta a ponta com arquivos reais e automação completa dos diálogos**, não só revisão de
+  código: 3 arquivos de teste (binário sem cabeçalho, binário com cabeçalho BLOAD real, ROM de 16KB com
+  um padrão de bytes reconhecível `00,01,02...FF`), cada um carregado via a sequência completa
+  `OpenFileRequester` (técnica clássica `GetDlgItem(hDlg,1148)`/`GetDlgItem(hDlg,1)`/`BM_CLICK`, já
+  confirmada em sessões anteriores) → `InputRequester` do slot (descoberto por inspeção real dos
+  controles: classe `InputRequester`, campo de edição id `10`, botão OK id `1000`) → `InputRequester` do
+  endereço quando aplicável. Confirmado não só pela mensagem de log, mas mapeando o slot carregado via
+  `PAGE` e conferindo com uma captura de tela real do `DM` que o padrão de bytes do arquivo apareceu
+  exatamente no endereço `4000` esperado.
+
+---
+
+## 7.33.23 — "TINTA INVISIVEL" (2026-08-12)
+
+**Tema da versão**: `MS`, o comando de escrita de texto do Mamute Assembler — grava uma string na
+memória simulada, com o mesmo deslocamento "cifrador" opcional já usado por `DM`/`ZAP`/`SH`.
+
+### Novidades
+
+- **`MS <endereço>,[<deslocamento>],'<texto>`** — grava o texto, byte a byte, a partir de
+  `<endereço>` (obrigatório, hexa). `<deslocamento>` (opcional, hexa com sinal, `-7F` a `80`, mesma
+  faixa do `DM`/`ZAP`/`SH`) — `0` se omitido. Um apóstrofo antes do texto, sem precisar fechar com
+  outro; qualquer vírgula dentro do texto não quebra o comando.
+- Cada caractere grava como `(código do caractere - deslocamento) & FF` — a MESMA fórmula do bloco de
+  texto do `DM`. Texto gravado com deslocamento diferente de zero fica "cifrado" nos bytes crus, só
+  reaparecendo legível se lido (`DM`) ou procurado (`SH`) com esse mesmo deslocamento — útil pra simular
+  o truque clássico de esconder diálogo/texto num jogo antigo.
+- **Sem janela** — só confirma `GRAVADO EM <endereço>` no log do `MON>`. Escrita silenciosa em células
+  que não sejam RAM (mesma regra do `DM`/`SCR`) — sem aviso separado de "recusado".
+
+### Bastidores
+
+- `MamuteGui_CmdMs()` (`editor/MamuteAssemblerGui.pbi`) — parser lida com o meio-termo opcional
+  (`<deslocamento>`) olhando se o token logo após o endereço começa com apóstrofo (deslocamento ausente)
+  ou não (precisa achar mais uma vírgula antes do apóstrofo). Reaproveita `Mamute_WriteByte()`,
+  `Mamute_ParseHexAddr()`, `Mamute_ParseHexOffset()`, `Mamute_Hex4()` já existentes — nenhum código novo
+  de baixo nível, só o comando em si.
+- **Verificado de ponta a ponta com dados reais**, não só revisão de código (mesma técnica `/CONSOLE`
+  dentro de `editor/` das sessões anteriores): `MS C000,'nome` + `SH C000,'nome` confirmou
+  `DESLOC +00`; `MS C010,20,'nome` + `SH C010,'nome` confirmou `DESLOC +20` auto-detectado pelo `SH`,
+  provando o round-trip completo da "cifra" por deslocamento; `MS 0000,'ZWQK` (endereço ROM, Slot
+  0/Página 0 na config real do usuário) + `SH 0000,'ZWQK` retornou `NAO ENCONTRADO`, confirmando que a
+  escrita em ROM foi mesmo recusada de verdade (o comando sempre mostra `GRAVADO EM...` independente do
+  resultado real, então só a busca posterior confirma se a escrita realmente aconteceu); sintaxes
+  inválidas (`MS C020` sem string, `MS ,20,'nome` sem endereço) confirmadas rejeitadas com
+  `?ERRO DE SINTAXE`.
+
+---
+
+## 7.33.22 — "AGULHA NO PALHEIRO" (2026-08-12)
+
+**Tema da versão**: `SH`, o comando de busca do Mamute Assembler — bytes exatos com curinga, ou texto
+com detecção automática de deslocamento, direto no log do `MON>`, sem abrir janela nenhuma.
+
+### Novidades
+
+- **`SH [<endereço>],<byte>[,<byte>...]`** — busca uma sequência exata de bytes em hexa na memória
+  simulada. Deixar um `<byte>` vazio entre vírgulas (`SH 4000,2A,,0C`) vira curinga — "esse byte pode ser
+  qualquer um".
+- **`SH [<endereço>],'<texto>`** — busca um texto (2+ caracteres, um apóstrofo antes, sem precisar
+  fechar com outro) testando automaticamente TODOS os deslocamentos possíveis (`-7F` a `80`, mesma faixa
+  do `DM`/`ZAP`) — acha tanto texto puro (deslocamento `+00`) quanto texto "cifrado" por um deslocamento
+  fixo, truque comum em jogos antigos pra não deixar diálogo legível num editor de disco cru.
+- **`<endereço>` omitido** continua a busca a partir do último endereço ACHADO + 1 — só funciona depois
+  de uma busca bem-sucedida nesta mesma sessão da janela do Mamute Assembler.
+- Busca varre a memória inteira (64KB) com volta ao início se necessário, uma passada completa no
+  máximo.
+- **Sem janela** — diferente do `DM`/`ZAP`/`SCR`, `SH` só mostra o resultado no próprio log do `MON>`:
+  `ACHADO EM <endereço>` (bytes), `ACHADO EM <endereço> DESLOC <deslocamento>` (texto), ou
+  `NAO ENCONTRADO`.
+
+### Bastidores
+
+- Busca por texto otimizada pra não ser O(64K × 256 deslocamentos × tamanho do texto): o deslocamento é
+  calculado uma vez a partir do 1º caractere candidato (`Offset = Alvo[0] - RawByte[0]`, normalizado pro
+  intervalo `-7F..80`) e só depois os caracteres restantes são conferidos com ESSE deslocamento —
+  O(64K × tamanho do texto), rápido mesmo varrendo a memória inteira.
+- Nenhuma janela nova, nenhum arquivo novo — tudo em `MamuteGui_CmdSh()`
+  (`editor/MamuteAssemblerGui.pbi`), reaproveitando `Mamute_ReadByte()`/`Mamute_Hex4()`/`Mamute_Hex2()`/
+  `Mamute_IsHexString()`/`Mamute_ParseHexAddr()` já existentes. Dois campos novos em `MamuteGui_State`
+  (`HasLastSh`/`LastShAddr`) guardam onde a última busca achou algo, pro `<endereço>` opcional continuar
+  dali.
+- **Verificado de ponta a ponta com dados reais**, não só revisão de código: string `TESTE` escrita em
+  RAM via `DM` (bloco de texto, avança sozinho pelos endereços), depois encontrada pelo `SH` com endereço
+  exato E continuando a busca (`SH ,'TESTE` deu a volta completa nos 64KB e reencontrou a mesma
+  ocorrência, exercitando o wraparound); busca por bytes com curinga (`SH C000,54,,53,54`, byte do meio
+  divergindo do valor real) confirmada batendo; busca sem alvo plausível (`SH C000,FF,FF,FF`) encontrou
+  de verdade uma ocorrência legítima em dados de ROM ao dar a volta pelos 64KB — confirma o wraparound
+  funcionando contra dado real, não um caso simulado/forçado.
+
+---
+
+## 7.33.21 — "MEMORIA DO MONITOR" (2026-08-12)
+
+**Tema da versão**: histórico de comandos no `MON>` do Mamute Assembler, navegável com as setas e
+persistido no arquivo de projeto — mais uma correção no `ProjectDB` que beneficia qualquer configuração
+salva no projeto padrão (implícito, sem projeto salvo), não só o Mamute.
+
+### Novidades
+
+- **Setas Cima/Baixo no campo `MON>`** navegam pelo histórico de comandos já digitados (Cima = mais
+  recente, Baixo = volta pro presente/campo vazio) — cursor sempre posicionado no fim do texto recuperado.
+- **Histórico persistido no arquivo de projeto atual** (`ProjectDB::SetInfoValue`/`GetInfoValue`, chave
+  `mamute_mon_history`) — se nenhum projeto estiver aberto, salva silenciosamente no projeto padrão
+  implícito (`noname.msxproject`), sem pedir nada ao usuário. Recarregado toda vez que a janela do Mamute
+  Assembler abre. Comandos repetidos consecutivos não duplicam entrada; limite de 200 comandos guardados.
+
+### Bastidores
+
+- **Achado real no `ProjectDB` (não é bug novo desta versão — já afetava outras telas)**:
+  `ProjectDB::EnsureOpen()`, usado pelo projeto padrão implícito, chamava `OpenAt(..., CreateFileFirst=
+  #True)` incondicionalmente — e `CreateFile()` do PureBasic trunca um arquivo existente em vez de só
+  criar quando ele falta. Resultado: o projeto padrão era apagado toda vez que o editor abria e algo
+  tocava `ProjectDB` pela primeira vez naquela sessão, mesmo com dado salvo numa sessão anterior — isso
+  já afetava os 3 booleans de override de "Configurar → Projeto..." antes desta versão, não só o
+  histórico novo do Mamute. Corrigido em `EnsureOpen()`: só chama `CreateFile()` se o arquivo do projeto
+  padrão ainda não existir (`FileSize(TempPath) < 0`); se já existir, abre e reaproveita o conteúdo
+  (`RunSchema()` só faz `CREATE TABLE IF NOT EXISTS`, nunca apaga dado). `Arquivo → Novo projeto...`
+  continua sempre começando vazio de verdade — usa um caminho de código separado (`CreateNew()`), não
+  afetado por essa mudança.
+- Lista do histórico codificada como uma única string separada por `Chr(10)` dentro de `project_info`,
+  mesmo idioma já usado por `StoreAsmSubProject`/`FetchAsmSubProject` pras listas de arquivos `.asm`/`.lib`
+  de um subprojeto — nenhuma tabela nova precisou ser criada.
+- **Verificado de ponta a ponta com dois processos reais em sequência**, não só revisão de código: um
+  processo digitou `PAGE ?` e `PAGE`, com Cima/Cima/Baixo/Baixo confirmados navegando na ordem certa;
+  processo encerrado e um processo novo aberto do zero — a primeira tecla Cima já recuperou `PAGE`
+  corretamente, confirmando que o histórico sobreviveu a um reinício completo do aplicativo (o cenário
+  que estava quebrado antes da correção do `ProjectDB`).
+
+---
+
+## 7.33.20 — "OLHO NA ROM" (2026-08-12)
+
+**Tema da versão**: **`SCR`**, o comando mais complexo do Mamute Assembler até agora — display gráfico
+da memória numa tela fixa estilo SCREEN 2 do MSX, mais o pré-requisito que faltava pra ele fazer
+sentido: carregar de verdade o conteúdo dos arquivos ROM/BASIC configurados.
+
+### Novidades
+
+- **`Mamute_LoadPhysicalMemory()`** (`editor/MamuteSupport.pbi`) — até esta versão, `MamuteMem()` ficava
+  sempre em branco mesmo com ROM/BASIC configurados em `Configurar → Mamute Assembler...`; agora lê os
+  arquivos de verdade pro bloco certo (respeitando o `FileOffset` da divisão BIOS+BASIC de 32KB), toda
+  vez que a janela do Mamute Assembler abre.
+- **`SCR <endinic>,<dx>,<dy>[,<modo>]`** — mostra uma **tela FIXA de 256x192 pixels** (32x24 caracteres
+  8x8, a mesma resolução de um SCREEN 2/1 real do MSX) preenchida a partir de `endinic`. `<dx>`/`<dy>`
+  não mudam o tamanho da tela — definem um "azulejo" de `dx`×`dy` caracteres que ladrilha a tela inteira;
+  `<modo>` decide se os blocos de 8 bytes dentro de cada azulejo são lidos horizontal (`0`, padrão) ou
+  verticalmente (`1`, a mesma ordem real de armazenamento de sprites do MSX).
+- Uma **moldura de tamanho fixo — sempre 2x2 caracteres (16x16 pixels), sempre no canto superior
+  esquerdo da tela** — é o cursor de edição. `TAB` liga/desliga seu contorno; `ENTER` amplia exatamente
+  esses 16x16 pixels num painel à parte, ao lado da tela normal, pra edição fina pixel a pixel.
+- Teclas remapeadas a pedido explícito do usuário em relação ao manual original do MegaAssembler: `ESC`
+  encerra, `E` mostra/oculta o endereço atual. Fora de edição, setas esquerda/direita rolam o endereço
+  base em ±1 byte e cima/baixo em ±1 azulejo inteiro (`dx`×`dy`×8 bytes) — é assim que se traz outro
+  pedaço da memória pra dentro da moldura fixa. Em edição, setas movem o cursor de pixel dentro da
+  moldura; `ESPAÇO` inverte o ponto sob o cursor; `I`/`L` invertem/apagam os 16x16 pixels da moldura
+  inteira de uma vez; `ESC` em edição cancela e restaura um snapshot tirado ao entrar. Botão na tela pra
+  cada ação, mesmo espírito do `DM`/`ZAP`.
+- **Se a moldura cair sobre ROM/BASIC/Vazio** (não RAM) — pedido explícito do usuário, refinado ainda
+  dentro desta versão: o painel de edição mostra o conteúdo real normalmente ("às vezes ampliamos pra
+  ver algum detalhe da tela, não pra editar propriamente dito") e todas as teclas de edição respondem ao
+  toque, mas nada é gravado de verdade (`Mamute_CanWriteAt()` já recusa a escrita, mesma regra do `DM` —
+  o pixel só volta a mostrar o mesmo valor real no repaint seguinte), com um aviso amarelo "ROM - somente
+  leitura (alterações não são gravadas)" abaixo da tela. Modificar ROM de verdade fica pra uma sessão
+  futura.
+
+### Bastidores
+
+- **Primeira versão implementada estava com o modelo errado** — tratava `<dx>`×`<dy>` como o tamanho da
+  própria tela (uma grade que crescia/encolhia com os parâmetros) e a "moldura 2x2" como 2x2 *pixels*
+  ancorados num cursor livre, não 2x2 *caracteres* fixos. O usuário testou, apontou a diferença ("o
+  original mostra uma tela gráfica 256x192... e um cursor 16x16 em azul") e anexou duas capturas de tela
+  reais do MegaAssembler original rodando num emulador (`images/msxbasica-17.png`/`-18.png`), que
+  resolveram a ambiguidade que o manual original tinha deixado em aberto. Modelo corrigido na mesma
+  sessão, ainda dentro da `7.33.20` — ver acima a descrição já corrigida.
+- **Achado real de PureBasic**: nomear um parâmetro de macro `DX`/`DY` colide (PureBasic é
+  case-insensitive) com os campos `State\Dx`/`State\Dy` — a substituição textual da macro trocava o
+  `Dx`/`Dy` DENTRO de `State\Dx`/`State\Dy` também, virando `State\-1 * State\0` (visto direto no
+  `Macro.out` do compilador). Resolvido renomeando os parâmetros pra `MoveX`/`MoveY`.
+- **Outro achado real**: `Campo = Not Campo` (atribuição direta do resultado de `Not` a um campo de
+  estrutura) não compila sob `EnableExplicit` (“variables have to be declared: Not”) — resolvido
+  envolvendo em `Bool()`: `Campo = Bool(Not Campo)`.
+- **Verificado de ponta a ponta com dados reais**, não só por revisão de código: `SCR 1BBF,1,1` batendo
+  visualmente com a captura de tela real do produto original (moldura no canto certo, tabela ASCII da
+  ROM `cbios_main_msx1.rom` no topo, "ruído" de dados não-fonte preenchendo o resto da tela); `ENTER`
+  sobre a configuração real do usuário (Slot 0/Página 0 = ROM) mostrou corretamente "ROM - somente
+  leitura"; escrita testada num endereço RAM real (`SCR C000,1,1` + `ESPAÇO`) acendeu o pixel certo no
+  painel de edição.
+- **Duas pistas falsas no caminho, ambas descartadas com evidência, não suposição**: (1) a configuração
+  física real do usuário tinha o Slot 0/Página 0 (posição da BIOS) apontando pro `cbios_logo_msx1.rom`
+  (ROM só do logo de boot do C-BIOS, sem tabela de fontes) em vez do `cbios_main_msx1.rom` — o resultado
+  em branco era correto para aquele arquivo específico, não um bug. (2) mesmo trocando pro arquivo
+  certo, um segundo teste continuou em branco — a causa real era o executável de teste descartável ter
+  sido compilado fora de `editor/` (`ProgramFilename()` não achava o `mamute_settings.json` real do
+  usuário ali, caindo na configuração padrão vazia); recompilado dentro de `editor/`, os dados reais
+  apareceram. Nenhuma das duas pistas era um bug no `SCR` ou no carregamento de ROM.
+
+---
+
 ## 7.33.19 — "SETOR ZERO" (2026-08-11)
 
 **Tema da versão**: **`ZAP`**, o segundo comando do Mamute Assembler que lê/escreve dados de verdade —

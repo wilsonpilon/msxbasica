@@ -39,6 +39,24 @@
 ; sem precisar de nenhum laco de inicializacao.
 Global Dim MamuteMem.a(3, 3, 16383)
 
+; VRAM simulada (comandos V/futuros VLOAD/VSAVE) - pedido explicito do
+; usuario, "ainda nao temos VRAM, mas vamos implementar entao". Diferente
+; da RAM/ROM (que passa pelo sistema de 4 slots x 4 paginas, espelhando o
+; barramento de enderecos de 16 bits do Z80), a VRAM de um MSX real NUNCA
+; fica mapeada nesse espaco - e acessada por PORTA de I/O (o VDP tem seu
+; proprio contador de endereco interno), entao nao ha "pagina"/"slot" real
+; pra simular. Por isso o endereco da VRAM aqui e PLANO e DIRETO, de 0 ate
+; #Mamute_VramMaxSize-1 (192KB, o maior tamanho configuravel) - sem bancos,
+; sem paginacao, sem PAGE - a opcao mais simples entre as que o usuario
+; sugeriu ("permitirmos o enderecamento de ate os 128Kb" - ampliado aqui
+; pro teto de 192KB). MamuteVramSize (configuravel em "Configurar -> Mamute
+; Assembler...": 16/128/192KB) e so o LIMITE de validacao - o array em si
+; sempre aloca o tamanho maximo (192KB e trivial em memoria), evitando
+; ReDim/perda de dado se o usuario mudar o tamanho configurado depois.
+#Mamute_VramMaxSize = 196608 ; 192KB - maior tamanho configuravel
+Global Dim MamuteVRAM.a(#Mamute_VramMaxSize - 1)
+Global MamuteVramSize.i = 16384 ; 16KB por padrao - mesmo tamanho que o MegaAssembler original (MSX1) enxergava
+
 ; FileOffset: deslocamento (em bytes) dentro de FilePath de onde comecam os
 ; 16KB desta celula - normalmente 0 (arquivo do tamanho exato da pagina),
 ; mas #Mamute_PageSize (16384) quando esta celula e a metade FINAL de um
@@ -64,8 +82,39 @@ Global Dim MamutePageMap.i(3)
 ; codigo) - uma fonte proporcional quebraria o alinhamento em grade do
 ; terminal.
 Global MamuteFontName.s = "Consolas"
-Global MamuteFontSize.i = 14
+Global MamuteFontSize.i = 16
 Global MamuteFontBold.b = #True
+
+; Teclado numerico reduzido do comando S (MamuteMGui.pbi) - pedido explicito
+; do usuario: "vamos criar uma opcao no Configurar -> Mamute Assembler pra
+; o usuario escolher quais teclas do teclado ele vai usar como
+; 1,2,3,4,5,6,7,8,9,A,B,C,D,E,F,0". Indexado pelo VALOR do nibble (0-15),
+; nao pela ordem de exibicao pedida (que comeca em 1 e termina em 0) - mais
+; simples de usar em tempo de execucao (MamuteSKeyMap(Valor) direto). A tela
+; de Configurar e que reordena pra mostrar "1" primeiro e "0" por ultimo.
+; Padrao pedido explicitamente pelo usuario: "1,2,3,4,q,w,e,r,a,s,d,f,z,x,c,v"
+; - mesmo layout classico de teclado numerico em jogos/emuladores (4x4 nos
+; cantos esquerdos do teclado QWERTY).
+Global Dim MamuteSKeyMap.s(15)
+
+Procedure Mamute_SKeyMapDefaults()
+  MamuteSKeyMap(0)  = "V" ; ultimo na ordem de exibicao (1,2,3,4,5,6,7,8,9,A,B,C,D,E,F,0)
+  MamuteSKeyMap(1)  = "1"
+  MamuteSKeyMap(2)  = "2"
+  MamuteSKeyMap(3)  = "3"
+  MamuteSKeyMap(4)  = "4"
+  MamuteSKeyMap(5)  = "Q"
+  MamuteSKeyMap(6)  = "W"
+  MamuteSKeyMap(7)  = "E"
+  MamuteSKeyMap(8)  = "R"
+  MamuteSKeyMap(9)  = "A"
+  MamuteSKeyMap(10) = "S" ; valor A
+  MamuteSKeyMap(11) = "D" ; valor B
+  MamuteSKeyMap(12) = "F" ; valor C
+  MamuteSKeyMap(13) = "Z" ; valor D
+  MamuteSKeyMap(14) = "X" ; valor E
+  MamuteSKeyMap(15) = "C" ; valor F
+EndProcedure
 
 Procedure.s Mamute_PageRangeText(Pagina.i)
   Select Pagina
@@ -84,6 +133,19 @@ Procedure.s Mamute_TipoText(Tipo.b)
     Case #MamuteMem_Basic : ProcedureReturn "BASIC"
   EndSelect
   ProcedureReturn "Vazio"
+EndProcedure
+
+; Descricao do modo de exibicao escolhido pelo comando C - usado por ele
+; mesmo (so pra confirmar no log) e, mais tarde, pelos comandos D/P/V que
+; vao realmente formatar a saida conforme esse modo.
+Procedure.s Mamute_DisplayModeText(Mode.b)
+  Select Mode
+    Case 0 : ProcedureReturn "HEXA+ASCII, 4 BYTES/LINHA"
+    Case 1 : ProcedureReturn "HEXA+ASCII, 16 BYTES/LINHA"
+    Case 2 : ProcedureReturn "HEXA, 8 BYTES/LINHA + CHECKSUM (SOMA+ENDERECO)"
+    Case 3 : ProcedureReturn "HEXA, 8 BYTES/LINHA + CHECKSUM (SO SOMA)"
+  EndSelect
+  ProcedureReturn "?"
 EndProcedure
 
 ; Primeiro slot (0..3, varrendo em ordem) com RAM configurada em QUALQUER
@@ -124,6 +186,42 @@ Procedure Mamute_ResetPageMapToDefault()
       EndIf
     Next
     MamutePageMap(Pagina) = Chosen
+  Next
+EndProcedure
+
+; Le de verdade o conteudo dos arquivos ROM/BASIC configurados
+; (MamuteCfgCell()\FilePath) pro bloco de MamuteMem() correspondente,
+; respeitando FileOffset (metade final de um arquivo BIOS+BASIC combinado de
+; 32KB - ver MamuteSettings_HandleFilePick acima). Ate aqui (SCR, modulo 31)
+; MamuteMem() ficava sempre em branco mesmo com ROM configurada - "sessao
+; futura" que virou necessaria agora que um comando (SCR) precisa mostrar
+; dado real de ROM pra fazer sentido. Zera a celula antes de tentar ler (nao
+; so quando falha) - reabrir a janela depois de trocar a config (ex.: tipo
+; ROM -> Vazio, ou apontar pra outro arquivo) nao deve deixar lixo de uma
+; carga anterior. Arquivo ausente/menor que 16KB: preenche o que der, resto
+; fica zerado (nao e erro - igual um MSX real com uma ROM menor instalada).
+Procedure Mamute_LoadPhysicalMemory()
+  Protected Slot.i, Pagina.i, i.i
+  Protected FilePath.s, FileOff.i, Fh.i
+  For Slot = 0 To 3
+    For Pagina = 0 To 3
+      For i = 0 To #Mamute_PageSize - 1
+        MamuteMem(Slot, Pagina, i) = 0
+      Next
+
+      If MamuteCfgCell(Slot, Pagina)\Tipo = #MamuteMem_ROM Or MamuteCfgCell(Slot, Pagina)\Tipo = #MamuteMem_Basic
+        FilePath = MamuteCfgCell(Slot, Pagina)\FilePath
+        FileOff = MamuteCfgCell(Slot, Pagina)\FileOffset
+        If FilePath <> "" And FileSize(FilePath) > 0
+          Fh = ReadFile(#PB_Any, FilePath)
+          If Fh
+            FileSeek(Fh, FileOff)
+            ReadData(Fh, @MamuteMem(Slot, Pagina, 0), #Mamute_PageSize)
+            CloseFile(Fh)
+          EndIf
+        EndIf
+      EndIf
+    Next
   Next
 EndProcedure
 
@@ -185,6 +283,12 @@ Procedure.s Mamute_Hex4(v.i)
   ProcedureReturn RSet(Hex(v & $FFFF), 4, "0")
 EndProcedure
 
+; Endereco em hexa com largura variavel (usado pra VRAM - ate 5 digitos,
+; 0-2FFFF pros 192KB maximos) - Mamute_Hex4() acima fica curto pra isso.
+Procedure.s Mamute_HexPad(v.i, Digits.i)
+  ProcedureReturn RSet(Hex(v), Digits, "0")
+EndProcedure
+
 ; Valida que Token so tem digitos hex (0-9A-Fa-f), 1 a MaxLen deles.
 Procedure.b Mamute_IsHexString(Token.s, MaxLen.i)
   If Len(Token) < 1 Or Len(Token) > MaxLen
@@ -206,6 +310,80 @@ Procedure.b Mamute_ParseHexAddr(Token.s, *OutValue.Integer)
   EndIf
   *OutValue\i = Val("$" + Token)
   ProcedureReturn #True
+EndProcedure
+
+; Endereco de VRAM - plano, 1-5 digitos hex, validado contra o tamanho
+; configurado agora (MamuteSKeyMap ja usa esse idioma de "configuravel em
+; Configurar -> Mamute Assembler..." - MamuteVramSize e o mesmo espirito).
+; Sem wraparound (diferente dos enderecos de RAM/CPU) - passar do limite e
+; erro de sintaxe, nao da volta pro 0.
+Procedure.b Mamute_ParseVramAddr(Token.s, *OutValue.Integer)
+  If Not Mamute_IsHexString(Token, 5)
+    ProcedureReturn #False
+  EndIf
+  Protected V.i = Val("$" + Token)
+  If V < 0 Or V >= MamuteVramSize
+    ProcedureReturn #False
+  EndIf
+  *OutValue\i = V
+  ProcedureReturn #True
+EndProcedure
+
+; Monta as linhas formatadas de um dump de memoria (StartAddr..EndAddr,
+; inclusive) conforme o Mode do comando C - usado pelo D (manda pro log),
+; P e V (manda pro PDF). IsVram=#True le de MamuteVRAM() (endereco plano,
+; sem PAGE) em vez de Mamute_ReadByte() (RAM/ROM, resolve pelo mapeamento
+; ATIVO). Modo 0/1: hexa+ASCII, 4 ou 16 bytes/linha. Modo 2/3: so hexa, 8
+; bytes/linha, com checksum (soma dos bytes, +byte baixo do endereco so no
+; modo 2) no final de cada linha.
+Procedure Mamute_BuildDumpLines(List Lines.s(), StartAddr.i, EndAddr.i, Mode.b, IsVram.b)
+  ClearList(Lines())
+  Protected BytesPerLine.i
+  Select Mode
+    Case 0 : BytesPerLine = 4
+    Case 1 : BytesPerLine = 16
+    Default : BytesPerLine = 8 ; modo 2/3
+  EndSelect
+
+  Protected AddrDigits.i = 4
+  If IsVram : AddrDigits = 5 : EndIf
+
+  Protected Addr.i = StartAddr
+  Protected LineAddr.i, HexPart.s, AsciiPart.s, Checksum.i, i.i, RawByte.a, Line.s
+  While Addr <= EndAddr
+    LineAddr = Addr
+    HexPart = "" : AsciiPart = "" : Checksum = 0
+    For i = 0 To BytesPerLine - 1
+      If Addr > EndAddr : Break : EndIf
+      If IsVram
+        RawByte = MamuteVRAM(Addr)
+      Else
+        RawByte = Mamute_ReadByte(Addr & $FFFF)
+      EndIf
+      HexPart + Mamute_Hex2(RawByte) + " "
+      If Mode = 0 Or Mode = 1
+        If RawByte >= 32 And RawByte <= 126
+          AsciiPart + Chr(RawByte)
+        Else
+          AsciiPart + "."
+        EndIf
+      EndIf
+      Checksum + RawByte
+      Addr + 1
+    Next
+
+    Line = Mamute_HexPad(LineAddr, AddrDigits) + ": " + HexPart
+    Select Mode
+      Case 0, 1
+        Line + " " + AsciiPart
+      Case 2
+        Line + RSet(Hex((Checksum + (LineAddr & $FF)) & $FF), 2, "0")
+      Case 3
+        Line + RSet(Hex(Checksum & $FF), 2, "0")
+    EndSelect
+    AddElement(Lines())
+    Lines() = Line
+  Wend
 EndProcedure
 
 ; Deslocamento com sinal opcional ("+"/"-" na frente, 1-2 digitos hex depois)
@@ -235,6 +413,641 @@ Procedure.b Mamute_ParseHexOffset(Token.s, *OutValue.Integer)
 EndProcedure
 
 ;- ------------------------------------------------------------
+;- Disassembler Z80 (comandos L/LP) - pedido explicito do usuario: "voce tem
+;- os dados do Z80 consigo" (confirmado - conjunto de instrucoes documentado
+;- e as formas nao-documentadas mais estaveis/conhecidas, como IXH/IXL/IYH/
+;- IYL e as formas indexadas do CB, sao bem estabelecidas e usadas aqui) -
+;- decodificacao de bytes crus em texto mnemonico, do zero (nao existe
+;- nenhuma tabela de opcodes reaproveitavel no assemblador Z80Asm.pbi deste
+;- projeto - ele CODIFICA mnemonico->bytes proceduralmente por familia de
+;- instrucao, nao tem uma tabela estatica bytes->mnemonico pra inverter).
+;-
+;- Decomposicao usada (esquema padrao/classico de decodificacao do Z80,
+;- amplamente documentado - a mesma base conceitual dos dois projetos que o
+;- usuario indicou como referencia, DASM80 e disark): pro byte de opcode b,
+;-   x = (b>>6)&3, y=(b>>3)&7, z=b&7, p=y>>1, q=y&1
+;- Cada bloco x/z abaixo segue exatamente essa tabela classica.
+;-
+;- IndexMode (0=nenhum,1=IX,2=IY) troca H/L por IXH/IXL/IYH/IYL, (HL) por
+;- (IX+d)/(IY+d), e HL por IX/IY em QUALQUER lugar da tabela base onde esses
+;- registradores apareceriam - funciona porque a mesma tabela/formulas sao
+;- reaproveitadas com tabelas de nomes de registrador diferentes; opcodes que
+;- NAO referenciam H/L/(HL)/HL de jeito nenhum (ex.: "LD BC,nn") produzem o
+;- MESMO texto nas 3 tabelas, entao nao precisa de uma lista separada de
+;- "quais opcodes o DD/FD afeta" - a substituicao "automatica" ja da o
+;- resultado certo em todos os casos (inclusive EX DE,HL/EXX/HALT, que nunca
+;- passam pelas tabelas de registrador parametrizadas, entao ficam
+;- corretamente IMUNES ao prefixo, igual o hardware real).
+;-
+;- Prefixos DD/FD encadeados (ex.: "DD FD 21 xx xx") sao tratados exatamente
+;- como o hardware real: cada prefixo warning e consumido 1 byte por vez, so
+;- o ULTIMO prefixo antes do opcode de verdade "vale" - implementado com um
+;- laco simples que consome DD/FD em sequencia antes de decodificar.
+;- ------------------------------------------------------------
+;-
+
+; Formata um deslocamento de 1 byte com sinal (-80 a +7F) como "+05"/"-05" -
+; usado nos operandos "(IX+05)"/"(IY-05)".
+Procedure.s Mamute_DisasmSignedDisp(d.a)
+  Protected Signed.i = d
+  If Signed > 127 : Signed - 256 : EndIf
+  If Signed < 0
+    ProcedureReturn "-" + Mamute_Hex2(-Signed)
+  Else
+    ProcedureReturn "+" + Mamute_Hex2(Signed)
+  EndIf
+EndProcedure
+
+; Tabela "crua" B/C/D/E/H/L/(HL)/A - SEM substituicao de indice, usada pelo
+; CB puro (nao-indexado) e pelo registrador-sombra das formas indexadas do
+; CB (esse "sombra" sempre grava no registrador de 8 bits de verdade, nunca
+; em IXH/IXL - comportamento real do hardware, mesmo nas formas nao
+; documentadas).
+Procedure.s Mamute_DisasmReg8Plain(Idx.i)
+  Select Idx
+    Case 0 : ProcedureReturn "B"
+    Case 1 : ProcedureReturn "C"
+    Case 2 : ProcedureReturn "D"
+    Case 3 : ProcedureReturn "E"
+    Case 4 : ProcedureReturn "H"
+    Case 5 : ProcedureReturn "L"
+    Case 6 : ProcedureReturn "(HL)"
+    Case 7 : ProcedureReturn "A"
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+Procedure.s Mamute_DisasmRotName(y.i)
+  Select y
+    Case 0 : ProcedureReturn "RLC"
+    Case 1 : ProcedureReturn "RRC"
+    Case 2 : ProcedureReturn "RL"
+    Case 3 : ProcedureReturn "RR"
+    Case 4 : ProcedureReturn "SLA"
+    Case 5 : ProcedureReturn "SRA"
+    Case 6 : ProcedureReturn "SLL" ; nao documentada, mas estavel/conhecida
+    Case 7 : ProcedureReturn "SRL"
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+Procedure.s Mamute_DisasmCC8(y.i)
+  Select y
+    Case 0 : ProcedureReturn "NZ"
+    Case 1 : ProcedureReturn "Z"
+    Case 2 : ProcedureReturn "NC"
+    Case 3 : ProcedureReturn "C"
+    Case 4 : ProcedureReturn "PO"
+    Case 5 : ProcedureReturn "PE"
+    Case 6 : ProcedureReturn "P"
+    Case 7 : ProcedureReturn "M"
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+Procedure.s Mamute_DisasmAluText(y.i, Operand.s)
+  Select y
+    Case 0 : ProcedureReturn "ADD A," + Operand
+    Case 1 : ProcedureReturn "ADC A," + Operand
+    Case 2 : ProcedureReturn "SUB " + Operand
+    Case 3 : ProcedureReturn "SBC A," + Operand
+    Case 4 : ProcedureReturn "AND " + Operand
+    Case 5 : ProcedureReturn "XOR " + Operand
+    Case 6 : ProcedureReturn "OR " + Operand
+    Case 7 : ProcedureReturn "CP " + Operand
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+; Par de 16 bits no esquema BC/DE/HL/SP (slot 2 = HL, substituido por IX/IY
+; conforme IndexMode).
+Procedure.s Mamute_DisasmReg16(Slot.i, IndexMode.b)
+  Select Slot
+    Case 0 : ProcedureReturn "BC"
+    Case 1 : ProcedureReturn "DE"
+    Case 2
+      Select IndexMode
+        Case 1 : ProcedureReturn "IX"
+        Case 2 : ProcedureReturn "IY"
+        Default : ProcedureReturn "HL"
+      EndSelect
+    Case 3 : ProcedureReturn "SP"
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+; Mesma ideia, mas esquema BC/DE/HL/AF (usado so por PUSH/POP) - slot 3 e
+; SEMPRE "AF" (nunca substituido - PUSH/POP AF nao existe como IX/IY, o
+; hardware real ignora o prefixo nesse caso, e como este slot nunca troca de
+; nome aqui, o resultado ja sai certo sem precisar de nenhum caso especial).
+Procedure.s Mamute_DisasmReg16Alt(Slot.i, IndexMode.b)
+  Select Slot
+    Case 0 : ProcedureReturn "BC"
+    Case 1 : ProcedureReturn "DE"
+    Case 2
+      Select IndexMode
+        Case 1 : ProcedureReturn "IX"
+        Case 2 : ProcedureReturn "IY"
+        Default : ProcedureReturn "HL"
+      EndSelect
+    Case 3 : ProcedureReturn "AF"
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+; Registrador de 8 bits com substituicao de indice - Idx 4/5 viram IXH/IXL/
+; IYH/IYL (nao documentado, mas estavel/conhecido), Idx 6 vira (IX+d)/(IY+d)
+; e CONSOME 1 byte de deslocamento em *Cursor (le e avanca) - so quando
+; IndexMode<>0; sem prefixo, Idx 6 e so "(HL)" direto, sem byte extra.
+Procedure.s Mamute_DisasmReg8(Idx.i, IndexMode.b, *Cursor.Integer)
+  Select Idx
+    Case 0 : ProcedureReturn "B"
+    Case 1 : ProcedureReturn "C"
+    Case 2 : ProcedureReturn "D"
+    Case 3 : ProcedureReturn "E"
+    Case 4
+      Select IndexMode
+        Case 1 : ProcedureReturn "IXH"
+        Case 2 : ProcedureReturn "IYH"
+        Default : ProcedureReturn "H"
+      EndSelect
+    Case 5
+      Select IndexMode
+        Case 1 : ProcedureReturn "IXL"
+        Case 2 : ProcedureReturn "IYL"
+        Default : ProcedureReturn "L"
+      EndSelect
+    Case 6
+      If IndexMode = 0
+        ProcedureReturn "(HL)"
+      Else
+        Protected D.a = Mamute_ReadByte(*Cursor\i & $FFFF)
+        *Cursor\i + 1
+        Protected IxName.s
+        If IndexMode = 1 : IxName = "IX" : Else : IxName = "IY" : EndIf
+        ProcedureReturn "(" + IxName + Mamute_DisasmSignedDisp(D) + ")"
+      EndIf
+    Case 7 : ProcedureReturn "A"
+  EndSelect
+  ProcedureReturn "?"
+EndProcedure
+
+; Le um imediato de 16 bits little-endian a partir de *Cursor (avanca 2).
+Procedure.i Mamute_DisasmReadImm16(*Cursor.Integer)
+  Protected Lo.a = Mamute_ReadByte(*Cursor\i & $FFFF)
+  Protected Hi.a = Mamute_ReadByte((*Cursor\i + 1) & $FFFF)
+  *Cursor\i + 2
+  ProcedureReturn Lo | (Hi << 8)
+EndProcedure
+
+; Le o deslocamento relativo de 1 byte com sinal do JR/DJNZ a partir de
+; *Cursor (avanca 1) e calcula o endereco de destino - relativo ao endereco
+; JA DEPOIS do deslocamento (mesma convencao do Z80 de verdade: o PC ja
+; avancou pela instrucao inteira antes do calculo) - como *Cursor aqui ja
+; inclui qualquer prefixo DD/FD consumido antes (ver Mamute_DisasmOne), o
+; destino sai certo mesmo num DD/FD+JR "desperdicado".
+Procedure.s Mamute_DisasmRelTarget(*Cursor.Integer)
+  Protected e.a = Mamute_ReadByte(*Cursor\i & $FFFF)
+  *Cursor\i + 1
+  Protected Signed.i = e
+  If Signed > 127 : Signed - 256 : EndIf
+  ProcedureReturn Mamute_Hex4((*Cursor\i + Signed) & $FFFF)
+EndProcedure
+
+; Decodifica um opcode CB-prefixado (bit ops) - IndexMode=0: 2 bytes (CB+op),
+; alvo B/C/D/E/H/L/(HL)/A direto. IndexMode<>0: forma indexada de 4 bytes no
+; total (DD/FD CB d op, contando o prefixo) - deslocamento 'd' vem ANTES do
+; sub-opcode aqui (diferente das formas nao-CB, onde 'd' vem DEPOIS), alvo
+; sempre (IX+d)/(IY+d); campo z2 (0-7, 6=sem copia) seleciona uma copia
+; "sombra" nao documentada pro registrador de 8 bits real (nunca IXH/IXL) -
+; nao existe pro BIT (nao tem escrita nenhuma pra copiar).
+Procedure.s Mamute_DisasmDecodeCB(IndexMode.b, *Cursor.Integer)
+  Protected d.a
+  If IndexMode <> 0
+    d = Mamute_ReadByte(*Cursor\i & $FFFF)
+    *Cursor\i + 1
+  EndIf
+  Protected op.a = Mamute_ReadByte(*Cursor\i & $FFFF)
+  *Cursor\i + 1
+
+  Protected x2.i = (op >> 6) & 3
+  Protected y2.i = (op >> 3) & 7
+  Protected z2.i = op & 7
+
+  Protected Target.s
+  If IndexMode = 0
+    Target = Mamute_DisasmReg8Plain(z2)
+  Else
+    Protected IxName.s
+    If IndexMode = 1 : IxName = "IX" : Else : IxName = "IY" : EndIf
+    Target = "(" + IxName + Mamute_DisasmSignedDisp(d) + ")"
+  EndIf
+
+  Protected Result.s
+  Select x2
+    Case 0 : Result = Mamute_DisasmRotName(y2) + " " + Target
+    Case 1 : Result = "BIT " + Str(y2) + "," + Target
+    Case 2 : Result = "RES " + Str(y2) + "," + Target
+    Case 3 : Result = "SET " + Str(y2) + "," + Target
+  EndSelect
+
+  If IndexMode <> 0 And z2 <> 6 And x2 <> 1
+    Result + "," + Mamute_DisasmReg8Plain(z2)
+  EndIf
+
+  ProcedureReturn Result
+EndProcedure
+
+; Decodifica um opcode ED-prefixado - NUNCA afetado por IndexMode (hardware
+; real: ED ignora completamente qualquer DD/FD pendente, o prefixo fica so
+; "desperdicado" mas ainda conta como byte consumido em Mamute_DisasmOne).
+; x2=0 e x2=3 (fora dos blocos de bloco y2>=4/z2<=3) sao oficialmente
+; indefinidos - comportamento real e estavel: agem como NOP de 2 bytes.
+Procedure.s Mamute_DisasmDecodeED(*Cursor.Integer)
+  Protected ed.a = Mamute_ReadByte(*Cursor\i & $FFFF)
+  *Cursor\i + 1
+
+  Protected x2.i = (ed >> 6) & 3
+  Protected y2.i = (ed >> 3) & 7
+  Protected z2.i = ed & 7
+  Protected p2.i = y2 >> 1
+  Protected q2.i = y2 & 1
+  Protected Imm16.i
+  Protected Rp.s
+  Protected ImVal.i
+
+  If x2 = 1
+    Select z2
+      Case 0
+        If y2 = 6 : ProcedureReturn "IN F,(C)" : EndIf
+        ProcedureReturn "IN " + Mamute_DisasmReg8Plain(y2) + ",(C)"
+      Case 1
+        If y2 = 6 : ProcedureReturn "OUT (C),0" : EndIf
+        ProcedureReturn "OUT (C)," + Mamute_DisasmReg8Plain(y2)
+      Case 2
+        Rp = Mamute_DisasmReg16(p2, 0)
+        If q2 = 0 : ProcedureReturn "SBC HL," + Rp : EndIf
+        ProcedureReturn "ADC HL," + Rp
+      Case 3
+        Imm16 = Mamute_DisasmReadImm16(*Cursor)
+        Rp = Mamute_DisasmReg16(p2, 0)
+        If q2 = 0 : ProcedureReturn "LD (" + Mamute_Hex4(Imm16) + ")," + Rp : EndIf
+        ProcedureReturn "LD " + Rp + ",(" + Mamute_Hex4(Imm16) + ")"
+      Case 4
+        ProcedureReturn "NEG"
+      Case 5
+        If y2 = 1 : ProcedureReturn "RETI" : EndIf
+        ProcedureReturn "RETN"
+      Case 6
+        Select y2
+          Case 0, 1, 4, 5 : ImVal = 0
+          Case 2, 6 : ImVal = 1
+          Case 3, 7 : ImVal = 2
+        EndSelect
+        ProcedureReturn "IM " + Str(ImVal)
+      Case 7
+        Select y2
+          Case 0 : ProcedureReturn "LD I,A"
+          Case 1 : ProcedureReturn "LD R,A"
+          Case 2 : ProcedureReturn "LD A,I"
+          Case 3 : ProcedureReturn "LD A,R"
+          Case 4 : ProcedureReturn "RRD"
+          Case 5 : ProcedureReturn "RLD"
+          Default : ProcedureReturn "NOP"
+        EndSelect
+    EndSelect
+  ElseIf x2 = 2 And z2 <= 3 And y2 >= 4
+    Select y2
+      Case 4
+        Select z2
+          Case 0 : ProcedureReturn "LDI"
+          Case 1 : ProcedureReturn "CPI"
+          Case 2 : ProcedureReturn "INI"
+          Case 3 : ProcedureReturn "OUTI"
+        EndSelect
+      Case 5
+        Select z2
+          Case 0 : ProcedureReturn "LDD"
+          Case 1 : ProcedureReturn "CPD"
+          Case 2 : ProcedureReturn "IND"
+          Case 3 : ProcedureReturn "OUTD"
+        EndSelect
+      Case 6
+        Select z2
+          Case 0 : ProcedureReturn "LDIR"
+          Case 1 : ProcedureReturn "CPIR"
+          Case 2 : ProcedureReturn "INIR"
+          Case 3 : ProcedureReturn "OTIR"
+        EndSelect
+      Case 7
+        Select z2
+          Case 0 : ProcedureReturn "LDDR"
+          Case 1 : ProcedureReturn "CPDR"
+          Case 2 : ProcedureReturn "INDR"
+          Case 3 : ProcedureReturn "OTDR"
+        EndSelect
+    EndSelect
+  EndIf
+
+  ProcedureReturn "NOP"
+EndProcedure
+
+; Decodifica um opcode da tabela BASE (nao-CB/ED/DD/FD) - IndexMode troca
+; H/L/(HL)/HL pelos equivalentes IX/IY em QUALQUER lugar que apareceriam,
+; via Mamute_DisasmReg8()/Reg16()/Reg16Alt() (ver comentario no topo desta
+; secao pra por que isso basta, sem precisar de uma lista separada de "quais
+; opcodes o prefixo afeta").
+Procedure.s Mamute_DisasmDecodeBase(b.a, IndexMode.b, *Cursor.Integer)
+  Protected x.i = (b >> 6) & 3
+  Protected y.i = (b >> 3) & 7
+  Protected z.i = b & 7
+  Protected p.i = y >> 1
+  Protected q.i = y & 1
+  Protected Result.s
+  Protected Imm16.i
+  Protected Imm8.a
+  Protected RegTxt.s
+
+  Select x
+    Case 0
+      Select z
+        Case 0
+          Select y
+            Case 0 : Result = "NOP"
+            Case 1 : Result = "EX AF,AF'"
+            Case 2 : Result = "DJNZ " + Mamute_DisasmRelTarget(*Cursor)
+            Case 3 : Result = "JR " + Mamute_DisasmRelTarget(*Cursor)
+            Default : Result = "JR " + Mamute_DisasmCC8(y - 4) + "," + Mamute_DisasmRelTarget(*Cursor)
+          EndSelect
+        Case 1
+          If q = 0
+            Imm16 = Mamute_DisasmReadImm16(*Cursor)
+            Result = "LD " + Mamute_DisasmReg16(p, IndexMode) + "," + Mamute_Hex4(Imm16)
+          Else
+            Result = "ADD " + Mamute_DisasmReg16(2, IndexMode) + "," + Mamute_DisasmReg16(p, IndexMode)
+          EndIf
+        Case 2
+          Select p
+            Case 0
+              If q = 0 : Result = "LD (BC),A" : Else : Result = "LD A,(BC)" : EndIf
+            Case 1
+              If q = 0 : Result = "LD (DE),A" : Else : Result = "LD A,(DE)" : EndIf
+            Case 2
+              Imm16 = Mamute_DisasmReadImm16(*Cursor)
+              If q = 0
+                Result = "LD (" + Mamute_Hex4(Imm16) + ")," + Mamute_DisasmReg16(2, IndexMode)
+              Else
+                Result = "LD " + Mamute_DisasmReg16(2, IndexMode) + ",(" + Mamute_Hex4(Imm16) + ")"
+              EndIf
+            Case 3
+              Imm16 = Mamute_DisasmReadImm16(*Cursor)
+              If q = 0 : Result = "LD (" + Mamute_Hex4(Imm16) + "),A" : Else : Result = "LD A,(" + Mamute_Hex4(Imm16) + ")" : EndIf
+          EndSelect
+        Case 3
+          If q = 0 : Result = "INC " + Mamute_DisasmReg16(p, IndexMode) : Else : Result = "DEC " + Mamute_DisasmReg16(p, IndexMode) : EndIf
+        Case 4
+          Result = "INC " + Mamute_DisasmReg8(y, IndexMode, *Cursor)
+        Case 5
+          Result = "DEC " + Mamute_DisasmReg8(y, IndexMode, *Cursor)
+        Case 6
+          RegTxt = Mamute_DisasmReg8(y, IndexMode, *Cursor)
+          Imm8 = Mamute_ReadByte(*Cursor\i & $FFFF)
+          *Cursor\i + 1
+          Result = "LD " + RegTxt + "," + Mamute_Hex2(Imm8)
+        Case 7
+          Select y
+            Case 0 : Result = "RLCA"
+            Case 1 : Result = "RRCA"
+            Case 2 : Result = "RLA"
+            Case 3 : Result = "RRA"
+            Case 4 : Result = "DAA"
+            Case 5 : Result = "CPL"
+            Case 6 : Result = "SCF"
+            Case 7 : Result = "CCF"
+          EndSelect
+      EndSelect
+
+    Case 1
+      If y = 6 And z = 6
+        Result = "HALT"
+      Else
+        Result = "LD " + Mamute_DisasmReg8(y, IndexMode, *Cursor) + "," + Mamute_DisasmReg8(z, IndexMode, *Cursor)
+      EndIf
+
+    Case 2
+      Result = Mamute_DisasmAluText(y, Mamute_DisasmReg8(z, IndexMode, *Cursor))
+
+    Case 3
+      Select z
+        Case 0
+          Result = "RET " + Mamute_DisasmCC8(y)
+        Case 1
+          If q = 0
+            Result = "POP " + Mamute_DisasmReg16Alt(p, IndexMode)
+          Else
+            Select p
+              Case 0 : Result = "RET"
+              Case 1 : Result = "EXX"
+              Case 2 : Result = "JP (" + Mamute_DisasmReg16(2, IndexMode) + ")"
+              Case 3 : Result = "LD SP," + Mamute_DisasmReg16(2, IndexMode)
+            EndSelect
+          EndIf
+        Case 2
+          Imm16 = Mamute_DisasmReadImm16(*Cursor)
+          Result = "JP " + Mamute_DisasmCC8(y) + "," + Mamute_Hex4(Imm16)
+        Case 3
+          Select y
+            Case 0
+              Imm16 = Mamute_DisasmReadImm16(*Cursor)
+              Result = "JP " + Mamute_Hex4(Imm16)
+            Case 1
+              Result = "?" ; CB ja interceptado antes desta funcao - nunca deveria chegar aqui
+            Case 2
+              Imm8 = Mamute_ReadByte(*Cursor\i & $FFFF) : *Cursor\i + 1
+              Result = "OUT (" + Mamute_Hex2(Imm8) + "),A"
+            Case 3
+              Imm8 = Mamute_ReadByte(*Cursor\i & $FFFF) : *Cursor\i + 1
+              Result = "IN A,(" + Mamute_Hex2(Imm8) + ")"
+            Case 4
+              Result = "EX (SP)," + Mamute_DisasmReg16(2, IndexMode)
+            Case 5
+              Result = "EX DE,HL" ; nunca substituido - hardware real ignora o prefixo aqui
+            Case 6
+              Result = "DI"
+            Case 7
+              Result = "EI"
+          EndSelect
+        Case 4
+          Imm16 = Mamute_DisasmReadImm16(*Cursor)
+          Result = "CALL " + Mamute_DisasmCC8(y) + "," + Mamute_Hex4(Imm16)
+        Case 5
+          If q = 0
+            Result = "PUSH " + Mamute_DisasmReg16Alt(p, IndexMode)
+          Else
+            Select p
+              Case 0
+                Imm16 = Mamute_DisasmReadImm16(*Cursor)
+                Result = "CALL " + Mamute_Hex4(Imm16)
+              Case 1 : Result = "?" ; DD ja interceptado antes desta funcao
+              Case 2 : Result = "?" ; ED ja interceptado antes desta funcao
+              Case 3 : Result = "?" ; FD ja interceptado antes desta funcao
+            EndSelect
+          EndIf
+        Case 6
+          Imm8 = Mamute_ReadByte(*Cursor\i & $FFFF) : *Cursor\i + 1
+          Result = Mamute_DisasmAluText(y, Mamute_Hex2(Imm8))
+        Case 7
+          Result = "RST " + Mamute_Hex2(y * 8)
+      EndSelect
+  EndSelect
+
+  ProcedureReturn Result
+EndProcedure
+
+; Ponto de entrada: decodifica UMA instrucao a partir de Addr (que pode
+; comecar com 0, 1 ou mais bytes DD/FD encadeados - ver comentario no topo
+; da secao). Devolve o comprimento TOTAL em *OutLen (incluindo prefixos) e o
+; texto mnemonico+operandos em *OutText.
+; Devolve o texto mnemonico+operandos diretamente (nao por ponteiro de
+; String "Out" - esse padrao, embora documentado, travou com acesso
+; invalido de verdade neste build/contexto especifico ao escrever em
+; *Ptr.String\s vindo de dentro desta unidade de compilacao gigante;
+; comprimento total ainda sai por ponteiro de Integer em *OutLen, que
+; funciona sem problema (mesmo padrao ja usado em Mamute_ParseHexAddr()
+; etc.) - so o ponteiro de String especificamente que nao e confiavel aqui.
+Procedure.s Mamute_DisasmOne(Addr.i, *OutLen.Integer)
+  Protected PrefixCount.i = 0
+  Protected IndexMode.b = 0
+  Protected CurAddr.i = Addr
+  Protected b.a = Mamute_ReadByte(CurAddr & $FFFF)
+
+  While (b = $DD Or b = $FD) And PrefixCount < 8 ; guarda defensiva - encadeamento real nunca chega nem perto disso
+    If b = $DD : IndexMode = 1 : Else : IndexMode = 2 : EndIf
+    PrefixCount + 1
+    CurAddr + 1
+    b = Mamute_ReadByte(CurAddr & $FFFF)
+  Wend
+
+  Protected Cursor.i = CurAddr + 1
+  Protected Text.s
+  Select b
+    Case $CB
+      Text = Mamute_DisasmDecodeCB(IndexMode, @Cursor)
+    Case $ED
+      Text = Mamute_DisasmDecodeED(@Cursor)
+    Default
+      Text = Mamute_DisasmDecodeBase(b, IndexMode, @Cursor)
+  EndSelect
+
+  *OutLen\i = PrefixCount + (Cursor - CurAddr)
+  ProcedureReturn Text
+EndProcedure
+
+; Monta as linhas formatadas "ENDERECO  BYTES-HEXA  MNEMONICO" pros
+; comandos L/LP, a partir de StartAddr - se HasEndAddr, decodifica ate
+; ultrapassar EndAddr (instrucao que comeca dentro do intervalo entra
+; inteira, mesmo que termine depois - comportamento padrao de disassembler,
+; igual o exemplo do manual original); senao, decodifica exatamente 10
+; instrucoes. A listagem PARA (nao envolve pro endereco 0000) assim que a
+; PROXIMA instrucao comecaria depois de FFFF - decodificar enderecos indo
+; pra tras no meio de uma mesma listagem seria confuso de ler, diferente do
+; wraparound de leitura ja usado pelo SH/M (que faz sentido ali porque so
+; devolve UM endereco encontrado, nao uma sequencia de linhas). Se os
+; ULTIMOS bytes de uma unica instrucao que ja comecou dentro do limite
+; passarem um pouco de FFFF (ex.: uma instrucao de 3 bytes comecando em
+; FFFE), esses bytes finais ainda sao lidos via o wraparound normal de
+; Mamute_ReadByte(...&$FFFF) - so a listagem como um todo nao continua
+; depois disso. *OutNextAddr recebe o endereco logo apos a ultima instrucao
+; mostrada, pra "L sem endereco" continuar dali.
+Procedure Mamute_DisasmBuildLines(List Lines.s(), StartAddr.i, HasEndAddr.b, EndAddr.i, *OutNextAddr.Integer)
+  ClearList(Lines())
+  Protected CurAddr.i = StartAddr
+  Protected LineCount.i = 0
+  Protected InstrLen.i
+  Protected Text.s
+  Protected HexBytes.s
+  Protected i.i
+  Protected RawByte.a
+  Protected Line.s
+
+  Repeat
+    If HasEndAddr
+      If CurAddr > EndAddr : Break : EndIf
+    Else
+      If LineCount >= 10 : Break : EndIf
+    EndIf
+
+    Text = Mamute_DisasmOne(CurAddr, @InstrLen)
+    If InstrLen < 1 : InstrLen = 1 : EndIf
+
+    HexBytes = ""
+    For i = 0 To InstrLen - 1
+      RawByte = Mamute_ReadByte((CurAddr + i) & $FFFF)
+      If HexBytes <> "" : HexBytes + " " : EndIf
+      HexBytes + Mamute_Hex2(RawByte)
+    Next
+
+    Line = Mamute_Hex4(CurAddr & $FFFF) + "  " + LSet(HexBytes, 11, " ") + "  " + Text
+    AddElement(Lines())
+    Lines() = Line
+
+    CurAddr + InstrLen
+    LineCount + 1
+  Until CurAddr > $FFFF
+
+  *OutNextAddr\i = CurAddr & $FFFF
+EndProcedure
+
+; Converte um caractere ("Q", "1", "z"...) na constante #PB_Shortcut_* certa,
+; pra registrar como AddKeyboardShortcut() - usado pelo comando S
+; (MamuteMGui.pbi) pras 16 teclas configuraveis. 0 (nenhuma constante) se
+; Ch nao for exatamente 1 letra/digito.
+Procedure.i Mamute_KeyCharToShortcut(Ch.s)
+  If Len(Ch) <> 1
+    ProcedureReturn 0
+  EndIf
+  Select UCase(Ch)
+    Case "0" : ProcedureReturn #PB_Shortcut_0
+    Case "1" : ProcedureReturn #PB_Shortcut_1
+    Case "2" : ProcedureReturn #PB_Shortcut_2
+    Case "3" : ProcedureReturn #PB_Shortcut_3
+    Case "4" : ProcedureReturn #PB_Shortcut_4
+    Case "5" : ProcedureReturn #PB_Shortcut_5
+    Case "6" : ProcedureReturn #PB_Shortcut_6
+    Case "7" : ProcedureReturn #PB_Shortcut_7
+    Case "8" : ProcedureReturn #PB_Shortcut_8
+    Case "9" : ProcedureReturn #PB_Shortcut_9
+    Case "A" : ProcedureReturn #PB_Shortcut_A
+    Case "B" : ProcedureReturn #PB_Shortcut_B
+    Case "C" : ProcedureReturn #PB_Shortcut_C
+    Case "D" : ProcedureReturn #PB_Shortcut_D
+    Case "E" : ProcedureReturn #PB_Shortcut_E
+    Case "F" : ProcedureReturn #PB_Shortcut_F
+    Case "G" : ProcedureReturn #PB_Shortcut_G
+    Case "H" : ProcedureReturn #PB_Shortcut_H
+    Case "I" : ProcedureReturn #PB_Shortcut_I
+    Case "J" : ProcedureReturn #PB_Shortcut_J
+    Case "K" : ProcedureReturn #PB_Shortcut_K
+    Case "L" : ProcedureReturn #PB_Shortcut_L
+    Case "M" : ProcedureReturn #PB_Shortcut_M
+    Case "N" : ProcedureReturn #PB_Shortcut_N
+    Case "O" : ProcedureReturn #PB_Shortcut_O
+    Case "P" : ProcedureReturn #PB_Shortcut_P
+    Case "Q" : ProcedureReturn #PB_Shortcut_Q
+    Case "R" : ProcedureReturn #PB_Shortcut_R
+    Case "S" : ProcedureReturn #PB_Shortcut_S
+    Case "T" : ProcedureReturn #PB_Shortcut_T
+    Case "U" : ProcedureReturn #PB_Shortcut_U
+    Case "V" : ProcedureReturn #PB_Shortcut_V
+    Case "W" : ProcedureReturn #PB_Shortcut_W
+    Case "X" : ProcedureReturn #PB_Shortcut_X
+    Case "Y" : ProcedureReturn #PB_Shortcut_Y
+    Case "Z" : ProcedureReturn #PB_Shortcut_Z
+  EndSelect
+  ProcedureReturn 0
+EndProcedure
+
+;- ------------------------------------------------------------
 ;- Configuracoes / persistencia
 ;- ------------------------------------------------------------
 
@@ -252,8 +1065,10 @@ Procedure MamuteCfg_Load()
     Next
   Next
   MamuteFontName = "Consolas"
-  MamuteFontSize = 14
+  MamuteFontSize = 16
   MamuteFontBold = #True
+  Mamute_SKeyMapDefaults()
+  MamuteVramSize = 16384
 
   Protected FilePath.s = MamuteCfg_FilePath()
   If FileSize(FilePath) <= 0
@@ -270,6 +1085,10 @@ Procedure MamuteCfg_Load()
   M = GetJSONMember(Root, "FontName") : If M : MamuteFontName = GetJSONString(M)  : EndIf
   M = GetJSONMember(Root, "FontSize") : If M : MamuteFontSize = GetJSONInteger(M) : EndIf
   M = GetJSONMember(Root, "FontBold") : If M : MamuteFontBold = GetJSONBoolean(M) : EndIf
+  M = GetJSONMember(Root, "VramSize") : If M : MamuteVramSize = GetJSONInteger(M) : EndIf
+  If MamuteVramSize <> 16384 And MamuteVramSize <> 131072 And MamuteVramSize <> 196608
+    MamuteVramSize = 16384 ; valor invalido/corrompido - volta pro padrao seguro
+  EndIf
 
   Protected CellsElem = GetJSONMember(Root, "Cells")
   If CellsElem
@@ -289,6 +1108,17 @@ Procedure MamuteCfg_Load()
       EndIf
     Next
   EndIf
+
+  ; Teclado do comando S - array plano de 16 strings de 1 caractere,
+  ; indexado pelo VALOR do nibble (0-15), nao pela ordem de exibicao.
+  Protected SKeysElem = GetJSONMember(Root, "SKeys")
+  If SKeysElem And JSONArraySize(SKeysElem) = 16
+    Protected KIdx
+    For KIdx = 0 To 15
+      Protected KItem = GetJSONElement(SKeysElem, KIdx)
+      If KItem : MamuteSKeyMap(KIdx) = GetJSONString(KItem) : EndIf
+    Next
+  EndIf
   FreeJSON(Json)
 EndProcedure
 
@@ -298,6 +1128,7 @@ Procedure MamuteCfg_Save()
   SetJSONString(AddJSONMember(Root, "FontName"), MamuteFontName)
   SetJSONInteger(AddJSONMember(Root, "FontSize"), MamuteFontSize)
   SetJSONBoolean(AddJSONMember(Root, "FontBold"), MamuteFontBold)
+  SetJSONInteger(AddJSONMember(Root, "VramSize"), MamuteVramSize)
   Protected CellsElem = SetJSONArray(AddJSONMember(Root, "Cells"))
 
   Protected Slot, Pagina, Elem
@@ -311,6 +1142,12 @@ Procedure MamuteCfg_Save()
       SetJSONString(AddJSONMember(Elem, "Arquivo"), MamuteCfgCell(Slot, Pagina)\FilePath)
       SetJSONInteger(AddJSONMember(Elem, "Offset"), MamuteCfgCell(Slot, Pagina)\FileOffset)
     Next
+  Next
+
+  Protected SKeysElem = SetJSONArray(AddJSONMember(Root, "SKeys"))
+  Protected KIdx2
+  For KIdx2 = 0 To 15
+    SetJSONString(AddJSONElement(SKeysElem), MamuteSKeyMap(KIdx2))
   Next
 
   SaveJSON(Json, MamuteCfg_FilePath(), #PB_JSON_PrettyPrint)
@@ -354,7 +1191,7 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
     Next
   Next
 
-  Protected WinW = 820, WinH = 620
+  Protected WinW = 820, WinH = 830
   Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configurar - Mamute Assembler",
                                           #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -421,6 +1258,57 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
 
   Protected G_TermFontBold = CheckBoxGadget(#PB_Any, 510, FontY + 3, 140, 22, "Negrito")
   SetGadgetState(G_TermFontBold, MamuteFontBold)
+
+  ; Teclado do comando S (MamuteMGui.pbi) - pedido explicito do usuario:
+  ; "escolher quais teclas do teclado ele vai usar como
+  ; 1,2,3,4,5,6,7,8,9,A,B,C,D,E,F,0". Grade 4x4 na MESMA ordem de exibicao
+  ; pedida (nao a ordem de armazenamento por valor, ver MamuteSKeyMap() em
+  ; MamuteSupport.pbi) - com o padrao 1,2,3,4/Q,W,E,R/A,S,D,F/Z,X,C,V isso
+  ; visualmente cai exatamente sobre essas 4 fileiras do teclado QWERTY.
+  Protected KeysY = FontY + 48
+  TextGadget(#PB_Any, 24, KeysY, WinW - 48, 20,
+            "Teclado do comando S - qual tecla digitar pra cada digito hexa (0-9, A-F):")
+  KeysY + 26
+
+  ; DisplayOrder(i) = o VALOR do nibble mostrado na posicao i da grade
+  ; (0..15, varrendo esquerda->direita, cima->baixo) - "1,2,3,4,5,6,7,8,9,A,
+  ; B,C,D,E,F,0" pedido explicito do usuario, valor 0 por ultimo de proposito.
+  Protected Dim DisplayOrder.i(15)
+  DisplayOrder(0)=1 : DisplayOrder(1)=2 : DisplayOrder(2)=3 : DisplayOrder(3)=4
+  DisplayOrder(4)=5 : DisplayOrder(5)=6 : DisplayOrder(6)=7 : DisplayOrder(7)=8
+  DisplayOrder(8)=9 : DisplayOrder(9)=10 : DisplayOrder(10)=11 : DisplayOrder(11)=12
+  DisplayOrder(12)=13 : DisplayOrder(13)=14 : DisplayOrder(14)=15 : DisplayOrder(15)=0
+
+  Protected Dim G_SKey(15)
+  Protected KeyCol.i, KeyRow.i, KeyCellW.i = (WinW - 48) / 4, KeyIdx.i, KeyValue.i, KeyX.i, KeyRowY.i
+  For KeyRow = 0 To 3
+    KeyRowY = KeysY + KeyRow * 34
+    For KeyCol = 0 To 3
+      KeyIdx = KeyRow * 4 + KeyCol
+      KeyValue = DisplayOrder(KeyIdx)
+      KeyX = 24 + KeyCol * KeyCellW
+      TextGadget(#PB_Any, KeyX, KeyRowY + 3, 30, 20, Mid("0123456789ABCDEF", KeyValue + 1, 1) + ":")
+      G_SKey(KeyIdx) = StringGadget(#PB_Any, KeyX + 34, KeyRowY, 50, 24, MamuteSKeyMap(KeyValue))
+    Next
+  Next
+  KeysY + 4 * 34 + 8
+
+  ; VRAM simulada (comandos V, futuros VLOAD/VSAVE) - pedido explicito do
+  ; usuario: "permita incluir tambem configuracao de VRAM... escolha entre
+  ; 16, 128 ou 192 Kb". Enderecamento plano (sem bancos - ver comentario de
+  ; MamuteVRAM() em MamuteSupport.pbi), entao a unica escolha real aqui e o
+  ; tamanho/limite superior.
+  TextGadget(#PB_Any, 24, KeysY + 4, 140, 20, "Tamanho da VRAM:")
+  Protected G_VramSize = ComboBoxGadget(#PB_Any, 170, KeysY, 160, 24)
+  AddGadgetItem(G_VramSize, 0, "16 KB (MSX1)")
+  AddGadgetItem(G_VramSize, 1, "128 KB")
+  AddGadgetItem(G_VramSize, 2, "192 KB")
+  Select MamuteVramSize
+    Case 131072 : SetGadgetState(G_VramSize, 1)
+    Case 196608 : SetGadgetState(G_VramSize, 2)
+    Default     : SetGadgetState(G_VramSize, 0)
+  EndSelect
+  KeysY + 34
 
   Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
   GadgetToolTip(G_Save, "Salvar")
@@ -539,6 +1427,21 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
     If TypedSize > 72 : TypedSize = 72 : EndIf
     MamuteFontSize = TypedSize
     MamuteFontBold = GetGadgetState(G_TermFontBold)
+
+    Protected KIdxSave.i, TypedKey.s
+    For KIdxSave = 0 To 15
+      TypedKey = Trim(GetGadgetText(G_SKey(KIdxSave)))
+      If TypedKey <> ""
+        MamuteSKeyMap(DisplayOrder(KIdxSave)) = UCase(Left(TypedKey, 1))
+      EndIf
+    Next
+
+    Select GetGadgetState(G_VramSize)
+      Case 1 : MamuteVramSize = 131072
+      Case 2 : MamuteVramSize = 196608
+      Default : MamuteVramSize = 16384
+    EndSelect
+
     MamuteCfg_Save()
   EndIf
 

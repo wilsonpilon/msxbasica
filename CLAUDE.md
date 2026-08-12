@@ -97,6 +97,26 @@ label in every dialog automatically. Both fixes verified with a real screenshot 
 this native Win32 GUI, so one-off scripting was necessary), not just code inspection — this class of bug
 does not show up from reading the source, per the project's own `7.31.4` history.
 
+**Real crash found writing the Z80 disassembler (`L`/`LP` commands, 2026-08-12, `7.33.31`)** — a
+`Procedure` with a `*OutText.String` out-parameter (the documented PureBasic idiom for "pass a string
+by reference so the callee can write into the caller's variable", used via `*OutText\s = SomeLocalText`)
+crashed with a genuine access violation (`0xC0000005`) the very first time it was called, in this
+specific ~30,000-line single-compilation-unit `BadigEditor.pb`/`XIncludeFile` context — confirmed with a
+step-by-step `WriteStringN`+`FlushFileBuffers` trace (`PrintN`/`Debug` don't reliably surface from this
+environment's process launches, same lesson as the `--menuids` finding below) showing execution reaching
+right up to `*OutText\s = Text` and dying exactly there, with everything before it (including computing
+`Text` correctly, confirmed via the trace printing its final value) working fine. No `Structure`/
+`Interface` named `String` exists anywhere in the codebase to explain it as a name collision — the root
+cause was never fully isolated (may be specific to this file's size/nesting, or to `/CONSOLE` builds, or
+a genuine PureBasic 6.40/6.41 bug with `.String`-typed out-parameters specifically), but the fix is
+simple and now the established pattern for this codebase: **return the string as the Procedure's own
+value (`Procedure.s Foo(...)`) instead of writing through a `*Ptr.String` out-parameter** — `*Ptr.Integer`/
+`*Ptr.Byte`/etc. out-parameters are unaffected (used successfully throughout `MamuteSupport.pbi`, e.g.
+`Mamute_ParseHexAddr`) and remain fine to use; it's specifically the `.String` pointer-write pattern that's
+suspect here. If a future `Procedure` needs to output MULTIPLE strings at once (where a single return
+value isn't enough), reach for a `Structure` return or a `List`/`Array` out-parameter instead of multiple
+`*Ptr.String` out-parameters, until this is understood better.
+
 ```powershell
 # Compile editor\BadigEditor.pb -> editor\BadigEditor.exe (finds pbcompiler.exe automatically,
 # or pass -C once and it's remembered in build.config.json, gitignored/machine-local)

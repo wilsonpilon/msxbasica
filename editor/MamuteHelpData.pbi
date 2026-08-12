@@ -42,15 +42,26 @@ Procedure MamuteHelp_BuildData()
     "terminal de verdade daquela epoca, nao um dialogo moderno." + #CRLF$ + #CRLF$ +
     "**Nao e o Editor Hexa nem os assemblers ja existentes** (nativo, N80, asMSX) - e uma " +
     "ferramenta a parte, com seu proprio pequeno conjunto de comandos, que vai crescer aos " +
-    "poucos, sessao a sessao. Comandos disponiveis ate agora: **BA / QUIT**, **PAGE**, **DM** e " +
-    "**ZAP**, ver ao lado. **Os enderecos/setores digitados em qualquer comando sao sempre em " +
-    "hexadecimal** - o padrao de entrada do Mamute Assembler inteiro." + #CRLF$ + #CRLF$ +
+    "poucos, sessao a sessao. Comandos disponiveis ate agora: **BA / QUIT**, **PAGE**, **DM**, " +
+    "**ZAP**, **SCR**, **SH**, **MS**, **LOAD**, **SAVE**, **M**, **S**, **C**, **D**, **P**, " +
+    "**V**, **T**, **F**, **G**, **X**, **R**, **L** e **LP**, ver ao lado (**G** e **R** ainda so " +
+    "validam a sintaxe e confirmam no log - a execucao de programas e o carregamento de assemblados " +
+    "ficam pra uma fase futura). **Os enderecos/setores digitados em qualquer " +
+    "comando sao sempre em hexadecimal** - o padrao de entrada do Mamute Assembler inteiro. **Setas " +
+    "Cima/Baixo** " +
+    "no campo `MON>` navegam pelo historico de comandos ja digitados (Cima = mais recente, Baixo = " +
+    "volta pro presente) - esse historico e salvo no arquivo de projeto atual (ou num projeto padrao, " +
+    "se nenhum estiver aberto) e continua disponivel na proxima vez que o Mamute Assembler abrir." + #CRLF$ + #CRLF$ +
     "O Mamute Assembler simula o **sistema de slots do MSX de verdade**: 4 slots (0-3), cada um " +
     "com 4 paginas de 16KB (`Pagina 0` = `0000-3FFF`, `Pagina 1` = `4000-7FFF`, `Pagina 2` = " +
     "`8000-BFFF`, `Pagina 3` = `C000-FFFF`) - 16 blocos de memoria ao todo. `Configurar -> " +
     "Mamute Assembler...` define o que existe FISICAMENTE em cada um desses 16 blocos (Vazio/" +
-    "RAM/ROM/BASIC, e um arquivo pra carregar quando for ROM/BASIC - por enquanto a memoria " +
-    "comeca sempre em branco, o carregamento de arquivo de verdade vem numa sessao futura).")
+    "RAM/ROM/BASIC, e um arquivo pra carregar quando for ROM/BASIC). Blocos RAM comecam sempre " +
+    "em branco; blocos ROM/BASIC com arquivo configurado sao lidos de verdade toda vez que esta " +
+    "janela abre - se o arquivo for menor que 16KB, o resto do bloco fica em branco." + #CRLF$ + #CRLF$ +
+    "A mesma tela de configuracao tambem define o **tamanho da VRAM simulada** (16KB/128KB/192KB, " +
+    "usada pelo comando `V`) - endereco plano, sem banco/pagina, ja que a VRAM de um MSX de " +
+    "verdade nunca fica mapeada no espaco de enderecos do Z80 (e acessada pelas portas do VDP).")
 
   MamuteHelp_Add("BA / QUIT", "Comandos",
     "Encerra a janela do Mamute Assembler - equivalente a fechar pelo X da janela. Sem " +
@@ -171,4 +182,456 @@ Procedure MamuteHelp_BuildData()
     "So o setor sob o cursor e gravado (gravacao cirurgica, nao o disco inteiro). O titulo da " +
     "janela ganha um `*` enquanto houver qualquer alteracao ainda nao salva; fechar a janela nesse " +
     "estado (`ESC` ou o X) pede confirmacao antes de descartar.")
+
+  MamuteHelp_Add("SCR", "Comandos",
+    "**Display grafico da memoria** - mostra uma tela FIXA de 256x192 pixels (32x24 caracteres " +
+    "8x8, a mesma resolucao de um SCREEN 2/1 real do MSX) preenchida com a memoria a partir de um " +
+    "endereco, cada caractere formado por 8 bytes/8 pixels (1 bit = 1 pixel), exatamente como a " +
+    "Pattern Generator Table do SCREEN 1/2 ou a Sprite Pattern Table de um MSX real - util pra " +
+    "visualizar fontes de caracteres e sprites direto na memoria simulada." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SCR <endinic>,<dx>,<dy>[,<modo>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Todos os numeros sao hexa. `<endinic>` (obrigatorio) - endereco do primeiro caractere. A " +
+    "TELA em si e sempre 256x192 - `<dx>`/`<dy>` (obrigatorios, >=1) NAO mudam esse tamanho, eles " +
+    "definem o " + Chr(34) + "azulejo" + Chr(34) + " (bloco de `dx`x`dy` caracteres) usado pra " +
+    "ladrilhar a tela inteira, da esquerda pra direita e de cima pra baixo. `<modo>` (opcional, " +
+    "`0` ou `1`, default `0`) - ordem em que os blocos de 8 bytes sao lidos DENTRO de cada " +
+    "azulejo:" + #CRLF$ +
+    "- **`0` (horizontal)** - linha por linha dentro do azulejo." + #CRLF$ +
+    "- **`1` (vertical)** - coluna por coluna dentro do azulejo, a mesma ordem real de " +
+    "armazenamento de sprites do MSX (por isso o manual original chama esse modo de " +
+    Chr(34) + "formato sprite" + Chr(34) + ")." + #CRLF$ + #CRLF$ +
+    "Exemplo pra ver a tabela de caracteres ASCII de uma ROM de fonte carregada em " +
+    "`Configurar -> Mamute Assembler...` (endereco 1BBF e onde a maioria das BIOS de MSX guarda o " +
+    "inicio da Pattern Generator Table; `<dx>`=`<dy>`=`1` ladrilha a tela toda com 1 caractere por " +
+    "azulejo, ou seja, uma leitura sequencial simples - a tela fica identica ao MegaAssembler " +
+    "original rodando de verdade):" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SCR 1BBF,1,1" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "**Navegacao** (fora do modo de edicao):" + #CRLF$ +
+    "- **Setas esquerda/direita** - deslocam o endereco base **1 byte** (ajuste fino, util pra " +
+    "achar o alinhamento certo de uma tabela)." + #CRLF$ +
+    "- **Setas cima/baixo** - deslocam o endereco base **1 azulejo inteiro** (`dx`*`dy`*8 bytes)." + #CRLF$ +
+    "- **`TAB`** (ou o botao **MOL**) - liga/desliga o contorno de uma **moldura**: um cursor de " +
+    "edicao de tamanho FIXO, sempre **2x2 CARACTERES** (16x16 pixels), sempre no canto superior " +
+    "esquerdo da tela (os 2 primeiros caracteres da 1a linha + os 2 primeiros da 2a linha). Nao ha " +
+    "tecla pra mover a moldura pela tela - a unica forma de trazer outro pedaco da memoria pra " +
+    "dentro dela e rolar o endereco base com as setas." + #CRLF$ +
+    "- **`E`** (ou o botao **END**) - mostra/oculta o rotulo com o endereco base atual." + #CRLF$ +
+    "- **`ENTER`** - entra no modo de edicao, ampliando exatamente os 16x16 pixels da moldura num " +
+    "painel a parte, ao lado da tela." + #CRLF$ +
+    "- **`ESC`** - encerra o comando (fecha a janela)." + #CRLF$ + #CRLF$ +
+    "**Modo de edicao** (`ENTER`) - so afeta os 16x16 pixels da moldura, mostrados ampliados no " +
+    "painel da direita com um cursor (contorno vermelho):" + #CRLF$ +
+    "- **Setas** - movem o cursor de pixel dentro da moldura (nunca sai dos 16x16 pixels dela)." + #CRLF$ +
+    "- **`ESPACO`** - inverte (acende/apaga) o pixel sob o cursor." + #CRLF$ +
+    "- **`I`** (ou o botao **INV**) - inverte (XOR) os 16x16 pixels INTEIROS da moldura de uma " +
+    "vez." + #CRLF$ +
+    "- **`L`** (ou o botao **APG**) - apaga (zera) esses mesmos 16x16 pixels de uma vez." + #CRLF$ +
+    "- **`ENTER`** - sai do modo de edicao (as alteracoes ja foram gravadas, pixel a pixel, na " +
+    "memoria simulada)." + #CRLF$ +
+    "- **`ESC`** - cancela TODAS as alteracoes feitas desde que entrou no modo de edicao " +
+    "(restaura a moldura pra como estava) e sai do modo de edicao." + #CRLF$ + #CRLF$ +
+    "**Se a moldura cair sobre uma celula que nao seja RAM agora** (ROM/BASIC/Vazio, conforme " +
+    "`PAGE`) - o painel de edicao mostra o conteudo REAL normalmente (util pra so dar zoom e ver " +
+    "um detalhe da tela, sem intencao de editar) e todas as teclas de edicao continuam " +
+    "respondendo ao toque, MAS nada e gravado de verdade - ROM e fisicamente somente-leitura " +
+    "(mesma regra do `DM`), entao o pixel so volta a mostrar o mesmo valor real no proximo " +
+    "desenho. Um aviso amarelo " + Chr(34) + "ROM - somente leitura (alteracoes nao sao " +
+    "gravadas)" + Chr(34) + " aparece abaixo da tela nesse caso.")
+
+  MamuteHelp_Add("SH", "Comandos",
+    "**Busca de bytes ou texto na memoria** - procura uma sequencia de bytes exatos (com curingas " +
+    "opcionais) ou um texto (testando automaticamente todos os deslocamentos possiveis). Nao abre " +
+    "janela nenhuma - so mostra o resultado direto no log do `MON>`." + #CRLF$ + #CRLF$ +
+    "**Sintaxe (modo bytes):**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SH [<endereco>],<byte>[,<byte>...]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endereco>` (hexa) - onde comecar a busca. Se for omitido (a virgula continua ali, so o " +
+    "numero antes dela que falta - ex.: `SH ,2A,40`), a busca continua do endereco onde a ULTIMA " +
+    "busca deste comando achou algo, mais 1 - so funciona depois de um `SH` que ja tenha achado " +
+    "algo nesta mesma sessao da janela do Mamute Assembler." + #CRLF$ + #CRLF$ +
+    "Cada `<byte>` e 1-2 digitos hexa. **Deixar um `<byte>` vazio (virgula dupla) vira curinga** - " +
+    "" + Chr(34) + "esse byte pode ser qualquer um" + Chr(34) + ". Exemplos:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SH 4000,2A,40,0C" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "procura a sequencia exata `2A 40 0C` a partir de `4000`;" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SH 4000,2A,,0C" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "procura 3 bytes onde o 1o e `2A`, o 2o pode ser qualquer coisa, e o 3o e `0C`." + #CRLF$ + #CRLF$ +
+    "**Sintaxe (modo texto):**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SH [<endereco>],'<texto>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Um apostrofo seguido do texto (sem precisar fechar com outro apostrofo), 2+ caracteres. " +
+    "Diferente do modo bytes, a busca de texto testa TODOS os deslocamentos possiveis (`-7F` a " +
+    "`80`, mesma faixa do `DM`/`ZAP`) em cada posicao candidata - acha tanto o texto puro " +
+    "(deslocamento `+00`) quanto texto " + Chr(34) + "cifrado" + Chr(34) + " por um deslocamento " +
+    "fixo (truque comum em jogos antigos pra nao deixar dialogo legivel num editor de disco cru). " +
+    "Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SH 3F41,'teste" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "**Resultado:** `ACHADO EM <endereco>` (modo bytes) ou `ACHADO EM <endereco> DESLOC " +
+    "<deslocamento>` (modo texto, com sinal `+`/`-`), ou `NAO ENCONTRADO` se a busca varrer os " +
+    "65536 enderecos (com volta ao inicio) sem achar nada.")
+
+  MamuteHelp_Add("MS", "Comandos",
+    "**Grava uma string na memoria** - escreve o texto digitado, byte a byte, a partir de um " +
+    "endereco, com um deslocamento opcional. Nao abre janela nenhuma - so confirma no log do " +
+    "`MON>`." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>MS <endereco>,[<deslocamento>],'<texto>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endereco>` (obrigatorio, hexa) - onde comeca a gravacao. `<deslocamento>` (opcional, hexa " +
+    "com sinal `+`/`-`, `-7F` a `80`, mesma faixa do `DM`/`ZAP`/`SH`) - `0` se omitido. Um " +
+    "apostrofo seguido do texto (sem precisar fechar com outro apostrofo) - qualquer virgula " +
+    "dentro do texto NAO quebra o comando, tudo depois do apostrofo vira parte do texto." + #CRLF$ + #CRLF$ +
+    "Cada caractere e gravado como `(codigo do caractere - deslocamento) & FF` - a MESMA formula " +
+    "usada pelo bloco de texto do `DM` ao editar. Isso significa que o texto gravado com um " +
+    "deslocamento diferente de zero fica " + Chr(34) + "cifrado" + Chr(34) + " nos bytes crus - " +
+    "so volta a aparecer legivel se depois for lido (`DM`) ou procurado (`SH`) com esse MESMO " +
+    "deslocamento. Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>MS 9A15,20,'nome" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "grava a string `nome` a partir do endereco `9A15` com deslocamento `+20` - `DM 9A15,20` (ou " +
+    "`SH ,'nome` apos ajustar o deslocamento) mostraria `nome` de volta." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas mapeadas como RAM agora** (`PAGE`) - mesma regra do `DM`, " +
+    "ROM/BASIC/Vazio sao somente-leitura (recusa silenciosa, sem aviso separado).")
+
+  MamuteHelp_Add("LOAD", "Comandos",
+    "**Carrega um arquivo na memoria simulada** - totalmente interativo, diferente do manual " +
+    "original: nao se digita nome de arquivo nem `CAS:`/`A:` no comando. Basta digitar `LOAD` " +
+    "sozinho:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>LOAD" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Um nome de arquivo pode ser digitado depois do `LOAD` (`MON>LOAD alfabeto.alf`) - mas ele NAO " +
+    "carrega nada sozinho, so pre-preenche o campo de nome na janela de escolher arquivo e " +
+    "acrescenta a extensao dele ao filtro padrao (nesse exemplo, o filtro passa a mostrar " +
+    "`*.alf;*.bin;*.rom`). O arquivo que de fato vai ser carregado e sempre o que for confirmado na " +
+    "janela." + #CRLF$ + #CRLF$ +
+    "Uma janela normal de escolher arquivo do Windows abre primeiro. Cancelar a escolha cancela o " +
+    "comando inteiro, sem gravar nada." + #CRLF$ + #CRLF$ +
+    "Em seguida, **sempre** e perguntado em qual **Slot (0-3)** carregar - o slot que tiver RAM " +
+    "configurada (`Configurar -> Mamute Assembler...`) e sugerido como padrao, mas qualquer slot " +
+    "pode ser escolhido." + #CRLF$ + #CRLF$ +
+    "**O que acontece depois depende da extensao do arquivo:**" + #CRLF$ +
+    "- **`.ROM`** (cartucho) - carregado a partir do endereco `4000` (Pagina 1). Se tiver mais de " +
+    "16KB (ate 32KB), ocupa tambem a Pagina 2 (`8000`). Arquivos com mais de 32KB nao sao " +
+    "suportados (precisariam de troca de banco, que este simulador nao faz) - `?ROM MAIOR QUE " +
+    "32KB NAO SUPORTADA`." + #CRLF$ +
+    "- **Binario com cabecalho BLOAD** (qualquer outra extensao, ex.: `.bin`) - se o arquivo " +
+    "comecar com o cabecalho real do BSAVE do MSX (byte `FE` seguido de endereco inicial/final/" +
+    "execucao, 2 bytes cada), carrega automaticamente no endereco indicado pelo cabecalho." + #CRLF$ +
+    "- **Binario sem cabecalho** - se nao comecar com `FE`, pergunta o **endereco inicial** (hexa) " +
+    "antes de carregar." + #CRLF$ + #CRLF$ +
+    "**`.CAS` ainda nao e suportado** - mostra `?ARQUIVOS .CAS NAO SUPORTADOS AINDA` e cancela, em " +
+    "vez de tentar interpretar errado." + #CRLF$ + #CRLF$ +
+    "Ao final, o resultado e mostrado no log: `CARREGADO NO SLOT <slot> EM <endereco> - TAMANHO " +
+    "<tamanho> - FIM <endereco final>`." + #CRLF$ + #CRLF$ +
+    "**Diferente do `DM`/`MS`**: `LOAD` grava DIRETO na memoria fisica do slot escolhido, " +
+    "independente do que o `PAGE` tem mapeado ativo agora (simula " + Chr(34) +
+    "inserir um cartucho/carregar dado naquele slot" + Chr(34) + ", nao escrever pela CPU). " +
+    "Tambem ajusta a configuracao fisica das paginas tocadas (RAM pro binario, ROM pro `.rom`) - " +
+    "mas so em memoria, nunca grava em `mamute_settings.json`; fechar e reabrir a janela do Mamute " +
+    "Assembler volta pra configuracao salva de antes, igual desligar e ligar um MSX de verdade " +
+    "tira o cartucho.")
+
+  MamuteHelp_Add("SAVE", "Comandos",
+    "**Grava um bloco de memoria num arquivo** - o inverso do `LOAD`, tambem com janela propria " +
+    "(diferente do `SAVE <arquivo>,<endi>,<endf>,[<ende>]` de linha de comando do manual original: " +
+    "aqui o nome e os enderecos digitados no comando so PRE-PREENCHEM a janela, nunca gravam nada " +
+    "sozinhos)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SAVE [<nome>][,<endinic>,<endfim>[,<endexec>]]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Tudo opcional - `MON>SAVE` sozinho abre a janela em branco. `<nome>` sugere o campo Arquivo. " +
+    "Se `<endinic>`/`<endfim>` forem informados (sempre os dois juntos, `<endexec>` opcional " +
+    "separado - vazio assume igual ao inicial), pre-preenchem os campos de endereco - a janela " +
+    "abre mesmo assim, so ja vem com esses valores prontos. Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>SAVE rom.bin,4000,7FFF" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "**Campos da janela:**" + #CRLF$ +
+    "- **Arquivo** - campo editavel + botao " + Chr(34) + "..." + Chr(34) + " (janela normal de " +
+    "Salvar Como do Windows)." + #CRLF$ +
+    "- **Slot (0-3)** - de qual slot fisico ler os bytes. Sugerido a partir do que o `PAGE` tem " +
+    "mapeado ATIVO agora na pagina do endereco inicial - sempre editavel pra qualquer slot." + #CRLF$ +
+    "- **Endereco inicial / final** - o bloco a gravar (inclusive nos dois extremos), obrigatorios " +
+    "na hora de salvar." + #CRLF$ +
+    "- **Endereco de execucao** - vai no cabecalho; deixar vazio usa o mesmo valor do inicial " +
+    "(mesma regra do manual original)." + #CRLF$ +
+    "- **Formato** - `BIN` (cabecalho real do BSAVE do MSX: byte `FE` + inicial + final + execucao, " +
+    "2 bytes cada) ou `ROM` (mesma ideia, mas com `AB` no lugar do `FE` - formato proprio deste " +
+    "simulador, NAO e o cabecalho real de 16 bytes de um cartucho MSX de verdade). Sugerido " +
+    "automaticamente como `ROM` se o nome do arquivo terminar em `.rom` (ou `BIN` caso contrario), " +
+    "mas pode ser trocado livremente - o que valer na hora de gravar e sempre o combo, nao a " +
+    "extensao." + #CRLF$ +
+    "- **Salvar sem cabecalho** - checkbox: se marcado, grava so os bytes crus, sem `FE`/`AB`/" +
+    "enderecos nenhum na frente, ignorando o Formato escolhido." + #CRLF$ + #CRLF$ +
+    "Ao gravar com sucesso, confirma no log do `MON>`: `SALVO " + Chr(34) + "<arquivo>" + Chr(34) +
+    " - SLOT <slot> - <inicial>-<final> - TAMANHO <tamanho>`." + #CRLF$ + #CRLF$ +
+    "**Igual o `LOAD`**: le DIRETO de `MamuteMem(Slot,...)`, sem passar pelo `PAGE` - o slot lido e " +
+    "sempre exatamente o escolhido na janela, nao o que estiver mapeado ativo no momento.")
+
+  MamuteHelp_Add("M", "Comandos",
+    "**Edicao rapida de memoria** - mesma grade de 128 bytes (16 linhas de 8, hexa+ASCII) e mesma " +
+    "navegacao do `DM` (setas, `PgUp`/`PgDn`, `TAB`, botoes, `+`/`-` pro deslocamento da " +
+    "interpretacao ASCII exibida) - a diferenca e como um byte e editado." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>M [<endereco>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endereco>` opcional (hexa) - se nao for informado, a janela reabre exatamente onde ficou da " +
+    "ultima vez (so funciona depois que o `M` ja abriu pelo menos uma vez nesta sessao)." + #CRLF$ + #CRLF$ +
+    "**Editar um byte** - com o cursor no bloco hexa, digite dois digitos hexa (`0-9`, `A-F`) " +
+    "DIRETO, sem abrir campo de edicao nenhum: o primeiro digito fica mostrado com um " + Chr(34) +
+    "_" + Chr(34) + " no lugar do segundo (ex.: `3_`) esperando o proximo; o segundo confirma o " +
+    "byte inteiro (`3F`) e avanca o cursor sozinho pro proximo endereco. `ESC` cancela o primeiro " +
+    "digito se ainda estiver pendente, ou sai da janela se nao houver nada pendente. `RETURN` " +
+    "sempre sai da janela." + #CRLF$ + #CRLF$ +
+    "O bloco de texto (ASCII) e SOMENTE LEITURA neste comando - `TAB` ainda alterna o destaque " +
+    "visual entre hexa/texto (so pra acompanhar o `DM`), mas nao abre edicao no bloco de texto." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas mapeadas como RAM agora** (`PAGE`) - mesma regra do `DM`.")
+
+  MamuteHelp_Add("S", "Comandos",
+    "**Igual ao `M`** (mesma grade, mesma navegacao, mesmo jeito de editar um byte digitando dois " +
+    "digitos hexa direto) - a UNICA diferenca e QUAIS teclas do teclado representam cada digito " +
+    "hexa. Em vez de `0-9`/`A-F` fixos, usa um teclado numerico reduzido configuravel em " +
+    "**Configurar -> Mamute Assembler...** - por padrao:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "1 2 3 4        1 2 3 4" + #CRLF$ +
+    "Q W E R   =>   5 6 7 8" + #CRLF$ +
+    "A S D F        9 A B C" + #CRLF$ +
+    "Z X C V        D E F 0" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "(o mesmo layout classico de teclado numerico usado em varios emuladores - as 4 fileiras da " +
+    "esquerda do teclado QWERTY). Qualquer uma das 16 teclas pode ser trocada individualmente na " +
+    "tela de configuracao pra qualquer letra ou digito." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>S [<endereco>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endereco>` opcional, mesma regra do `M` - mas o `S` guarda seu proprio " + Chr(34) +
+    "ultimo endereco" + Chr(34) + ", separado do `M`.")
+
+  MamuteHelp_Add("C", "Comandos",
+    "**Escolhe o modo de exibicao** que os comandos `D`, `P` e `V` (dump de memoria formatado) " +
+    "vao usar. Sozinho nao mostra nada alem da confirmacao - so guarda a escolha pra esses tres " +
+    "comandos consultarem." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>C <modo>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<modo>` de `0` a `3`:" + #CRLF$ +
+    "- **`0`** - hexadecimal + ASCII, 4 bytes por linha." + #CRLF$ +
+    "- **`1`** - igual ao `0`, mas 16 bytes por linha (pra telas/impressoras de 80 colunas)." + #CRLF$ +
+    "- **`2`** - so hexadecimal, 8 bytes por linha, com um checksum no final de cada linha = soma " +
+    "dos 8 bytes + o byte baixo do endereco inicial da linha (tudo modulo 256)." + #CRLF$ +
+    "- **`3`** - igual ao `2`, mas o checksum e so a soma dos bytes, sem somar o endereco." + #CRLF$ + #CRLF$ +
+    "Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>C 1" + #CRLF$ +
+    "MODO 1: HEXA+ASCII, 16 BYTES/LINHA" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "*Nota: precisa de espaco entre `C` e o numero (`C 1`) - o `C1` colado do manual original do " +
+    "MegaAssembler nao e reconhecido, porque todo comando aqui separa o verbo dos argumentos pelo " +
+    "primeiro espaco digitado.*" + #CRLF$ + #CRLF$ +
+    "O modo escolhido dura so enquanto a janela do Mamute Assembler estiver aberta - fechar e " +
+    "reabrir volta pro modo `0`.")
+
+  MamuteHelp_Add("D", "Comandos",
+    "**Despejo formatado de memoria, direto no log do `MON>`** - mesma memoria RAM/ROM que o `DM` " +
+    "enxerga (`Mamute_ReadByte`, resolve pelo mapeamento `PAGE` ativo agora), formatado conforme " +
+    "o modo escolhido em `C` (padrao: modo `0`)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>D <endinic>[,<endfim>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Sem `<endfim>`, mostra so 16 bytes a partir de `<endinic>`. Com os dois, mostra o intervalo " +
+    "inteiro (inclusive) - `<endfim>` nao pode ser menor que `<endinic>`, e nenhum dos dois " +
+    "passa de `FFFF` (sem dar a volta pro `0000` como o `SH`/`M` fazem)." + #CRLF$ + #CRLF$ +
+    "Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>D 4000,400F" + #CRLF$ +
+    "```")
+
+  MamuteHelp_Add("P", "Comandos",
+    "**Igual ao `D`**, mas ao inves de mandar o despejo pro log, gera uma listagem num arquivo " +
+    "**PDF A4** (fonte Courier, cabecalho com o intervalo/modo usado) e abre uma janela " +
+    Chr(34) + "Salvar como" + Chr(34) + " no final. Simula " + Chr(34) + "a impressora" + Chr(34) +
+    " do MegaAssembler original - um driver de verdade pra impressora Epson FX-80 " +
+    "(ponto-a-ponto, matriz de pontos) e um projeto separado pra uma sessao futura; por enquanto " +
+    "o PDF resolve a listagem." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>P <endinic>[,<endfim>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Mesmas regras de `<endinic>`/`<endfim>` do `D` (le a mesma RAM/ROM mapeada agora). " +
+    "Cancelar a janela " + Chr(34) + "Salvar como" + Chr(34) + " nao gera arquivo nenhum - so " +
+    "mostra `CANCELADO`.")
+
+  MamuteHelp_Add("V", "Comandos",
+    "**Igual ao `P`**, mas le da **VRAM simulada** em vez da RAM/ROM - endereco plano, sem " +
+    "`PAGE` nem banco algum (a VRAM de verdade de um MSX nunca fica mapeada no espaco de " +
+    "enderecos do Z80; e acessada pelas portas do VDP, entao esta ferramenta simula ela num " +
+    "bloco de memoria a parte, `Configurar -> Mamute Assembler...` -> tamanho de VRAM: **16KB** " +
+    "(MSX1, mesmo tamanho que o MegaAssembler original enxergava), **128KB** ou **192KB** " +
+    "(MSX2/2+, ampliacao desta ferramenta sobre o original)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>V <endinic>[,<endfim>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endinic>`/`<endfim>` aqui podem ter ate 5 digitos hexa (a VRAM maxima configuravel, 192KB, " +
+    "passa de `FFFF`) e sao validados contra o tamanho de VRAM configurado agora - passar do teto " +
+    "e `?ERRO DE SINTAXE`, sem dar a volta." + #CRLF$ + #CRLF$ +
+    "*Nota: ainda nao existe nenhum comando que ESCREVA na VRAM simulada nesta versao (isso fica " +
+    "pra uma sessao futura - `VLOAD`/`VSAVE` ou uma extensao do `LOAD`/`SAVE`) - por enquanto ela " +
+    "comeca sempre zerada.*")
+
+  MamuteHelp_Add("T", "Comandos",
+    "**Transfere (copia) um bloco de memoria** RAM/ROM (mesma memoria mapeada agora pelo `PAGE`) de " +
+    "um intervalo de enderecos pra outro." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>T <endinic>,<endfim>,<enddest>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Copia o bloco de `<endinic>` a `<endfim>` (inclusive) pro bloco do mesmo tamanho iniciado em " +
+    "`<enddest>`. Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>T 4000,7FFF,8000" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "copia o bloco de `4000` a `7FFF` para `8000` em diante." + #CRLF$ + #CRLF$ +
+    "Se origem e destino se sobrepoem, a copia e feita na ordem certa pra nao corromper dado ainda " +
+    "nao lido (de tras pra frente quando o destino vem depois da origem, de frente pra tras caso " +
+    "contrario) - mesmo cuidado de um `memmove` de verdade." + #CRLF$ + #CRLF$ +
+    "`<endfim>` nao pode ser menor que `<endinic>`, e o bloco copiado nao pode passar de `FFFF` no " +
+    "destino (sem dar a volta pro `0000`) - qualquer um dos dois casos e `?ERRO DE SINTAXE`. Escrita " +
+    "silenciosa em celulas do destino que nao sejam RAM (mesma regra do `DM`/`MS`).")
+
+  MamuteHelp_Add("F", "Comandos",
+    "**Preenche um bloco de memoria** RAM/ROM (mesma memoria mapeada agora pelo `PAGE`) inteiro com " +
+    "um unico byte repetido." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>F <endinic>,<endfim>,<byte>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>F 8000,C000,FF" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "preenche o bloco de `8000` a `C000` (inclusive) com `FF` em todo byte." + #CRLF$ + #CRLF$ +
+    "`<endfim>` nao pode ser menor que `<endinic>`. Escrita silenciosa em celulas que nao sejam RAM " +
+    "(mesma regra do `DM`/`MS`/`T`).")
+
+  MamuteHelp_Add("G", "Comandos",
+    "**Ainda NAO executa nada** - por enquanto so reconhece e valida a sintaxe do comando, " +
+    "confirmando no log que o Mamute Assembler entendeu o pedido. A execucao de verdade de " +
+    "programas na memoria simulada (com breakpoints, registradores etc.) fica pra uma fase futura " +
+    "deste projeto." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>G <endinic>[,<brkpnt1>[,<brkpnt2>]]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endinic>` (obrigatorio) e ate dois enderecos de breakpoint opcionais - todos validados como " +
+    "endereco hexa de 4 digitos, mesma sintaxe planejada pro comando de verdade quando existir " +
+    "(iniciaria a execucao em `<endinic>`, carregando os registradores com o que o `X` guardou, " +
+    "parando ao atingir `<brkpnt1>`/`<brkpnt2>`).")
+
+  MamuteHelp_Add("X", "Comandos",
+    "**Mostra ou edita os registradores do Z80 simulado.** Sem argumento, mostra os 7 pares de " +
+    "registrador de uma vez. Com argumento, entra num modo de edicao sequencial - aceita tanto um " +
+    "PAR de registrador (`AF`, `BC`, `DE`, `HL`, `IX`, `IY`, `SP` - editado como um valor unico de " +
+    "16 bits/4 digitos hexa) quanto um registrador de UM BYTE isolado (`A`, `F`, `B`, `C`, `D`, " +
+    "`E`, `H`, `L` - 2 digitos hexa)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>X [<reg>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Exemplos:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>X" + #CRLF$ +
+    "AF=0000 BC=0000 DE=0000 HL=0000" + #CRLF$ +
+    "IX=0000 IY=0000 SP=0000" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>X BC" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "abre uma caixa de dialogo perguntando o novo valor de `BC` (valor atual ja preenchido) - " +
+    "confirmar com **ENTER sem editar mantem** o valor (e passa pro proximo registrador da " +
+    "sequencia: `DE`, `HL`, `IX`, `IY`, `SP`); **apagar o campo e confirmar (ou Cancelar)** para a " +
+    "edicao inteira." + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>X A" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "mesma ideia, mas caminhando pelos BYTES isolados: `A`, `F`, `B`, `C`, `D`, `E`, `H`, `L`." + #CRLF$ + #CRLF$ +
+    "*Nota: o manual original do MegaAssembler so tem os registradores de 1 byte (`A`-`L`) mais " +
+    "`X`/`Y`/`S` como abreviacao de `IX`/`IY`/`SP` - os nomes de par diretos (`AF`/`BC`/`DE`/`HL`) " +
+    "editaveis como um valor so de 16 bits sao uma extensao desta ferramenta, pedida explicitamente " +
+    "pelo usuario.*" + #CRLF$ + #CRLF$ +
+    "Os registradores duram so enquanto a janela do Mamute Assembler estiver aberta - fechar e " +
+    "reabrir zera todos de novo (mesmo espirito volatil do `PAGE`/`C`). Quando o comando `G` " +
+    "(execucao de programas) for implementado de verdade, vai carregar o Z80 simulado com estes " +
+    "valores.")
+
+  MamuteHelp_Add("R", "Comandos",
+    "**Ainda NAO faz nada alem de confirmar no log** que o carregamento de um programa assemblado " +
+    "(gravado pela opcao `I` do comando `A` do manual original) depende do assemblador Z80 embutido " +
+    "nesta ferramenta - que tambem fica pra uma fase futura. Nenhum argumento e validado por " +
+    "enquanto." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>R [<offset>]" + #CRLF$ +
+    "```")
+
+  MamuteHelp_Add("L", "Comandos",
+    "**Disassembla a memoria RAM/ROM** (mesma memoria mapeada agora pelo `PAGE`) direto no log do " +
+    "`MON>` - um disassembler Z80 de verdade, com o conjunto de instrucoes documentado inteiro mais " +
+    "as formas nao documentadas mais estaveis/conhecidas (`IXH`/`IXL`/`IYH`/`IYL`, formas indexadas " +
+    "do `CB` com copia-sombra)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>L [<endinic>[,<endfim>]]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "- **Os dois enderecos** - disassembla de `<endinic>` ate ultrapassar `<endfim>` (a instrucao " +
+    "que comeca dentro do intervalo entra inteira, mesmo que os ultimos bytes dela passem um pouco " +
+    "de `<endfim>`)." + #CRLF$ +
+    "- **So `<endinic>`** - disassembla exatamente 10 instrucoes a partir dali." + #CRLF$ +
+    "- **Nenhum endereco** - continua de onde o `L`/`LP` mais recente parou, tambem 10 instrucoes." + #CRLF$ + #CRLF$ +
+    "Cada linha mostra o endereco, os bytes crus em hexa (1 a 4 bytes, conforme o tamanho da " +
+    "instrucao) e o mnemonico com os operandos - saltos relativos (`JR`/`DJNZ`) ja mostram o " +
+    "**endereco de destino absoluto**, nao o deslocamento cru." + #CRLF$ + #CRLF$ +
+    "Exemplo:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>L 4000,4010" + #CRLF$ +
+    "4000  E5           PUSH HL" + #CRLF$ +
+    "4001  CD 39 54     CALL 5439" + #CRLF$ +
+    "4004  44           LD B,H" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "*Nota: o `<CTRL+STOP>` do manual original pra interromper a disassemblagem no meio nao se " +
+    "aplica aqui - a listagem inteira e calculada de uma vez, nao ha nada rodando em tempo real pra " +
+    "interromper.*")
+
+  MamuteHelp_Add("LP", "Comandos",
+    "**Igual ao `L`**, mas ao inves de mandar a listagem pro log, gera um arquivo **PDF A4** (fonte " +
+    "Courier) e abre uma janela " + Chr(34) + "Salvar como" + Chr(34) + " no final - mesma ideia do " +
+    "`P`/`V` (a impressora Epson FX-80 de verdade fica pra uma sessao futura, projeto separado do " +
+    "usuario)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>LP [<endinic>[,<endfim>]]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Mesmas regras de `<endinic>`/`<endfim>` do `L` (inclusive continuar de onde o `L`/`LP` mais " +
+    "recente parou, se nenhum endereco for passado). Cancelar a janela " + Chr(34) + "Salvar como" +
+    Chr(34) + " nao gera arquivo nenhum - so mostra `CANCELADO`.")
 EndProcedure
