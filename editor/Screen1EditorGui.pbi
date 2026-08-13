@@ -1,5 +1,6 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Pixelossauro (tema pre-historico do projeto, ver README.md)
 ;  Screen1EditorGui.pbi - Criar -> Screen 1...: editor de tela de texto MSX
 ;  SCREEN 1 (Graphic 1), no mesmo espirito de Screen0EditorGui.pbi (editor
 ;  de tela estilo TheDraw/AcidDraw, mas fiel ao hardware MSX real), porem

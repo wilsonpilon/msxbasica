@@ -1,5 +1,6 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Pixelossauro (tema pre-historico do projeto, ver README.md)
 ;  Criar -> Draw Screen 2...: editor grafico SCREEN 2 (modulo 5) - desenha
 ;  direto numa tela 256x192 (zoom 2x = 512x384 no canvas) via PSET/PRESET/
 ;  LINE/CIRCLE/PAINT/DRAW/TEXTO, com paleta MSX1 e simulacao real do color

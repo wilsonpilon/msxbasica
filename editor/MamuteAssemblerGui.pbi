@@ -1,5 +1,7 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Mamute (tema pre-historico do projeto, ver README.md -
+;  este ja era o nome oficial do modulo antes da troca de nomes do projeto)
 ;  Executar -> Mamute Assembler...: janela "monitor" inspirada nos antigos
 ;  montadores de linha de comando dos computadores de 8 bits dos anos 80 -
 ;  pedido explicito do usuario, referencia direta o MegaAssembler dele (tem

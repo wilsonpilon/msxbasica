@@ -1,5 +1,6 @@
 ﻿;
 ; ------------------------------------------------------------
+;  Apelido interno: Raptor (tema pre-historico do projeto, ver README.md)
 ;  Basic Dignified - pre-processador nativo
 ;  Converte codigo no dialeto "Dignified" (labels, defines,
 ;  variaveis de nome longo, comentarios especiais, etc) para

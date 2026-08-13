@@ -2,6 +2,9 @@
 ; **                                                         **
 ; **                MSXDisk.pbi                              **
 ; **                                                         **
+; **     Apelido interno: Diplodoco (tema pre-historico,     **
+; **              ver README.md do projeto)                  **
+; **                                                         **
 ; ** PureBasic Include Module for MSX Disk Image Management  **
 ; **                                                         **
 ; ** Re-implemented from Arnold Metselaar's C tools          **

@@ -10,6 +10,14 @@ meant to become a self-contained `.exe` (no Python/other runtime dependencies) c
 dev workflow: editing, preprocessing/tokenizing, assembling, disk image management, and running/
 debugging in the openMSX emulator.
 
+**Codename (2026-08-13): "Paleobasic"** — `#App_Title` in `editor/BadigEditor.pb` (window title/About
+dialog). Cosmetic only, no files or procedures were renamed. Internal modules also got prehistoric-theme
+nicknames used in header comments/conversation (Raptor = preprocessor, Compsognato = tokenizer, Diplodoco
+= disk manager, Pixelossauro = SCREEN 0/1/2 pixel editors, Pteranodonte = openMSX bridge, Mamute =
+Z80 assembler, pre-existing). Full table in `README.md`. Do not confuse this with "Basic Dignified",
+which stays the actual name of the input *dialect* (ported from the original Python project) — that one
+is not being renamed.
+
 **`docs/SPEC.md` is the source of truth for architecture and scope decisions** — read it before
 proposing structural changes. `README.md` has a running changelog and a quick "what already exists"
 summary. `docs/MANUAL.md` is the end-user guide (editor keybindings, disk manager, config screens).

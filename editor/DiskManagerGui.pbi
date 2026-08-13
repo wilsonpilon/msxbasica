@@ -1,5 +1,6 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Diplodoco (tema pre-historico do projeto, ver README.md)
 ;  Criar -> Disco...: gerenciador grafico de discos MSX (.dsk)
 ;  Interface com dois paineis (estilo Norton/Total Commander): esquerda =
 ;  sistema de arquivos local (comeca no diretorio corrente do BadigEditor),

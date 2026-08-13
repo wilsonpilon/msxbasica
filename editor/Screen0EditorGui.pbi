@@ -1,5 +1,6 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Pixelossauro (tema pre-historico do projeto, ver README.md)
 ;  Screen0EditorGui.pbi - Criar -> Screen 0...: editor de tela de texto MSX
 ;  SCREEN 0, no espirito dos classicos editores de tela ANSI da era BBS
 ;  (TheDraw/AcidDraw/DarkDraw), mas fiel ao hardware MSX real: uma grade

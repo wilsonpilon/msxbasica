@@ -1,4 +1,6 @@
-# MSX BASIC + Z80 IDE
+# Paleobasic
+
+*(IDE MSX BASIC + Z80, antigo "Basic Dignified Editor")*
 
 ![MSX BASIC + Z80 IDE — Basic Dignified, Assembly, integrado](msxbasica.png)
 
@@ -27,6 +29,20 @@ autocontido (Windows/Linux), sem exigir Python nem outras dependências externas
 O dialeto de entrada é o **Basic Dignified** (labels em vez de números de linha, includes, macros,
 proto-funções, etc.), inspirado e compatível com o [Basic Dignified Suite](#agradecimentos) original em
 Python — que serve de referência de comportamento a ser portada, não de dependência de runtime.
+
+## Apelidos dos módulos (tema pré-histórico)
+
+Puramente cosmético/interno — os nomes de arquivo e procedimentos continuam os mesmos, isso é só como
+o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
+
+| Apelido | Módulo real |
+|---|---|
+| 🦣 **Mamute** | `editor/MamuteAssemblerGui.pbi` — assembler Z80 |
+| 🦖 **Raptor** | `editor/DignifiedPreprocessor.pbi` — pré-processador Dignified → ASCII |
+| 🦕 **Compsognato** | `editor/MsxTokenizer.pbi` — ASCII → binário tokenizado |
+| 🦕 **Diplodoco** | `editor/MSXDisk.pbi` + `editor/DiskManagerGui.pbi` — imagens `.dsk` |
+| 🎨 **Pixelossauro** | `editor/Screen0EditorGui.pbi`, `Screen1EditorGui.pbi`, `Screen2EditorGui.pbi`, `Screen12EditorGui.pbi` — editores de tela pixel-a-pixel |
+| 🦅 **Pteranodonte** | `editor/OpenMSXBridge.pbi` — ponte/lançamento do openMSX |
 
 ## O que já temos
 

@@ -1,8 +1,13 @@
-# Especificação — IDE MSX BASIC + Z80 (PureBasic)
+# Especificação — Paleobasic, IDE MSX BASIC + Z80 (PureBasic)
 
 > Documento vivo de especificação. Reorganizado a partir de `transcricao.md` (chat de planejamento
 > exportado do claude.ai). Atualizar esta página conforme a especificação evoluir; usar `transcricao.md`
 > só como material bruto de referência histórica.
+
+> **Nomenclatura (2026-08-13):** o projeto passou a usar o codinome **Paleobasic** (`#App_Title` em
+> `editor/BadigEditor.pb`), com apelidos de tema pré-histórico para os módulos internos usados em
+> comentários/conversa — puramente cosmético, sem renomear arquivos/procedimentos. Lista completa em
+> [`README.md`](../README.md#apelidos-dos-módulos-tema-pré-histórico).
 
 ## Visão geral
 

@@ -1,5 +1,6 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Pixelossauro (tema pre-historico do projeto, ver README.md)
 ;  Screen12EditorGui.pbi - Criar -> Screen 1+2...: editor de tela de texto
 ;  MSX no espirito de Screen1EditorGui.pbi (mesma grade FIXA 32x24 de bytes
 ;  MSX crus, mesmas ferramentas Texto/Caractere/Quadro/Sombra/Bloco/

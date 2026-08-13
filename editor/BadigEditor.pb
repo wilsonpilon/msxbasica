@@ -606,7 +606,7 @@ EndEnumeration
 ; mandar SCI_AUTOCSHOW) e adiado igual ao #Event_Rehighlight.
 #Event_AutoComplete = #PB_Event_FirstCustomValue + 3
 
-#App_Title      = "Basic Dignified Editor"
+#App_Title      = "Paleobasic"
 #App_SplashW    = 600  ; splash na abertura (msxbasica.png, 3:2) - ver App_ShowSplash/App_CloseSplash
 #App_SplashH    = 400
 #App_SplashMinMs = 2200
@@ -3335,7 +3335,7 @@ EndProcedure
 ; (via /CONSTANT) - ver fallback no topo do arquivo para compilacao direto
 ; pela IDE do PureBasic.
 Procedure ShowAboutDialog()
-  Protected Text.s = #App_Title + Chr(10) + Chr(10) +
+  Protected Text.s = #App_Title + " - IDE MSX BASIC + Z80" + Chr(10) + Chr(10) +
     "Versao: " + #App_Version + Chr(10) +
     "Build: " + #App_Build + Chr(10) +
     "Data: " + #App_BuildDate + Chr(10) + Chr(10) +

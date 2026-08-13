@@ -1,5 +1,6 @@
 ﻿;
 ; ------------------------------------------------------------
+;  Apelido interno: Pteranodonte (tema pre-historico do projeto, ver README.md)
 ;  OpenMSXBridge.pbi - ponte com o openMSX pra controle externo (menu
 ;  "Executar -> openMSX", janela em OpenMSXConsoleGui.pbi).
 ;

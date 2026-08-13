@@ -1,5 +1,6 @@
 ;
 ; ------------------------------------------------------------
+;  Apelido interno: Compsognato (tema pre-historico do projeto, ver README.md)
 ;  MSX Basic Tokenizer (nativo)
 ;  Converte MSX-BASIC classico em ASCII (com numeros de linha)
 ;  para o formato binario tokenizado (.bmx) que o MSX carrega.
