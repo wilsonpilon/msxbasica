@@ -85,6 +85,14 @@ Global MamuteFontName.s = "Consolas"
 Global MamuteFontSize.i = 16
 Global MamuteFontBold.b = #True
 
+; Fonte carregada (HFONT) a partir dos 3 campos acima - Global aqui (nao em
+; MamuteAssemblerGui.pbi, onde MamuteGui_EnsureFont() de fato a carrega/
+; recarrega) so pela ordem de declaracao: MamuteEditGui.pbi (janela do
+; comando EDIT) e' XIncludeFile'd ANTES de MamuteAssemblerGui.pbi e tambem
+; precisa ler este Global - mesmo idioma "hoist a declaracao, nao a
+; logica" ja documentado em CLAUDE.md pra este projeto.
+Global MamuteGui_Font.i = -1
+
 ; Teclado numerico reduzido do comando S (MamuteMGui.pbi) - pedido explicito
 ; do usuario: "vamos criar uma opcao no Configurar -> Mamute Assembler pra
 ; o usuario escolher quais teclas do teclado ele vai usar como
@@ -1446,4 +1454,1147 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
   EndIf
 
   CloseModelessChildWindow(ParentWindow, Win)
+EndProcedure
+
+; ------------------------------------------------------------
+; Editor de linhas do Assembly do Mamute (comando EDIT, MamuteEditGui.pbi) -
+; formato do manual original (megasm/exe/MEGASM.TXT, secao "Programas em
+; Assembly"): "NN Label: instrucao operando ;comentario", NN obrigatorio,
+; Label/comentario opcionais. Mudanca pedida explicitamente pelo usuario em
+; relacao ao manual original: numeros SEM sufixo agora sao HEXADECIMAL por
+; padrao (o manual original usava decimal como padrao), "para ficar
+; uniforme" com o resto do Mamute (enderecos hexa ja sao o padrao de
+; entrada em todo comando do MON>, DM em diante). Sufixos continuam os tres
+; do manual - H (hexa, redundante com o padrao agora, mantido por
+; compatibilidade), B (binario), D (decimal, o unico jeito de escrever
+; decimal agora que deixou de ser o padrao). A regra do manual original "se
+; comecar por letra, precisa de zero na frente" agora vale tambem SEM
+; sufixo, ja que hexa e' o padrao - e o que garante que um token comecando
+; em LETRA e' sempre label/identificador, nunca numero (so um token que
+; comeca com digito 0-9 chega a ser tratado como numero em qualquer lugar
+; deste bloco).
+; ------------------------------------------------------------
+
+Structure MamuteEditLine
+  LineNum.i
+  RawText.s   ; corpo completo digitado (sem o NN) - guardado a parte pra um futuro LIST
+  LabelText.s ; sem o ":" final; "" se nao tiver
+  Instr.s     ; mnemonico/pseudo-instrucao, sempre maiusculo
+  Operand.s   ; texto cru do operando (antes do ";")
+  Comment.s   ; texto depois do ";", sem o ";"; "" se nao tiver
+EndStructure
+
+; Programa-fonte em memoria - Global (nao dentro do estado de uma janela)
+; porque sobrevive a varias aberturas/fechamentos da janela EDIT dentro da
+; mesma sessao do editor, mesmo espirito de MamuteGui_History()
+; (MamuteAssemblerGui.pbi) - "o programa fica na memoria do EMA" (manual
+; original) ate um NEW (comando de gerenciamento do fonte, ainda nao
+; implementado - fora do escopo desta sessao, que e' so aceitar/guardar
+; linhas).
+Global NewList MamuteEditProgram.MamuteEditLine()
+
+; Resultados do ultimo SEARCH/LSEARCH bem-sucedido - indices (0-based) em
+; MamuteEditProgram() das linhas que bateram, em ordem crescente. Global
+; (mesmo espirito de MamuteEditProgram() acima, nao embutido no estado da
+; janela - evita depender de passar List embutido numa Structure por
+; parametro, caso incerto o suficiente pra nao arriscar) - consumido pelo
+; modo "filtro" do EDIT (MamuteEditState\FilterMode, MamuteEditGui.pbi) pra
+; mostrar so essas linhas na tela.
+Global NewList MamuteSearchMatches.i()
+
+; Resultado da ULTIMA montagem BEM-SUCEDIDA (A ou A O - os dois calculam o
+; mesmo intervalo de enderecos, ver comando MAP abaixo) - Global, mesmo
+; espirito de MamuteEditProgram()/MamuteSearchMatches() acima, sobrevive a
+; fechamentos/reaberturas da janela EDIT. Uma tentativa de montagem que
+; FALHA (erro de sintaxe) NAO mexe nisso - "ultimo resultado bem-sucedido
+; conhecido" fica intacto ate a PROXIMA montagem bem-sucedida (mesmo
+; espirito de HasLastSh/LastShAddr no MON> - so' atualiza em sucesso,nunca
+; some por causa de uma tentativa falha). NEW (Mamute_AsmNew() abaixo) e' a
+; UNICA acao que zera isso de proposito, ja que apaga o programa que gerou
+; o resultado.
+Global MamuteAsmHasResult.b = #False
+Global MamuteAsmLastStartAddr.u
+Global MamuteAsmLastEndAddr.u
+Global MamuteAsmLastByteCount.i
+
+; Listagem formatada (linhas de texto ja' prontas pra desenhar) da ULTIMA
+; montagem bem-sucedida - pedido explicito do usuario, reproduzindo o
+; formato classico do comando A do MegaAssembler original: "numero da
+; linha, o endereco ou o valor do EQU, ate 4 codigos hexa (mais linhas se
+; precisar), o conteudo da linha". Preenchida por
+; Mamute_AsmBuildListingLines() logo abaixo, chamada de dentro de
+; Mamute_AsmAssemble() em toda montagem bem-sucedida - mesmo espirito
+; Global de MamuteSearchMatches() (evita passar List por parametro atraves
+; de ponteiro pra Structure).
+Global NewList MamuteAsmListingLines.s()
+
+; Referencia cruzada de simbolos formatada (opcao R do comando A, pedido
+; explicito do usuario com um print real do MegaAssembler original de
+; exemplo - images/msxbasica-19.png): uma linha por simbolo (EQU/DEFL/ASET
+; OU rotulo posicional - o print nao distingue os dois, o valor mostrado ja'
+; e' correto pros dois casos, ver Z80Asm::Z80XrefRow), nome + valor/endereco
+; de definicao + enderecos de uso (ate 4 por linha, linhas extras se
+; precisar - mesmo idioma do MamuteAsmListingLines() acima). Preenchida por
+; Mamute_AsmBuildXrefLines() logo abaixo, chamada INCONDICIONALMENTE de
+; dentro de Mamute_AsmAssemble() em toda montagem bem-sucedida (barato de
+; calcular mesmo quando "R" nao foi pedido) - o comando "A R"
+; (MamuteEditGui.pbi) decide se anexa isso ao final de
+; MamuteAsmListingLines() antes de mostrar na tela.
+Global NewList MamuteAsmXrefLines.s()
+
+; Listagem alfabetica simples de labels formatada (opcao S do comando A,
+; pedido explicito do usuario: "gera ao final uma listagem dos labels em
+; ordem alfabetica e o endereco onde foram definidos, digo o endereco para
+; onde apontam") - mesmos dados de MamuteAsmXrefLines() acima (mesma tabela
+; Z80Asm::XrefRows(), ja ordenada alfabeticamente), so' NOME + VALOR, SEM os
+; enderecos de uso (Mamute_AsmBuildLabelListLines() abaixo ignora
+; Row\AddrCount/Addr0..3, aproveita so' as linhas com Row\HasValue - pula as
+; de continuacao, que em MamuteAsmXrefLines() so existem por causa dos
+; enderecos de uso que aqui nao aparecem). Preenchida por Mamute_
+; AsmBuildLabelListLines() logo abaixo, chamada INCONDICIONALMENTE de
+; dentro de Mamute_AsmAssemble() em toda montagem bem-sucedida, mesmo
+; espirito de MamuteAsmXrefLines() - "A S" (MamuteEditGui.pbi) decide se
+; anexa isso ao final de MamuteAsmListingLines().
+Global NewList MamuteAsmLabelListLines.s()
+
+; Listagem de labels em ORDEM DE APARICAO (opcao D do comando A, pedido
+; explicito do usuario: "e' identica a A S, porem a lista de labels e' por
+; ordem de aparicao e nao alfabetica") - mesmo layout "NOME  VALOR" de
+; MamuteAsmLabelListLines() acima, mas a fonte dos nomes e'
+; Z80Asm::GetLabelDefOrderCount()/GetLabelDefOrderName() (ordem de
+; DEFINICAO no fonte, ver comentario em DefineSymbolSeg(), Z80Asm.pbi) em
+; vez de Z80Asm::XrefRows() (alfabetica) - valor de cada um continua vindo
+; de Z80Asm::GetSymbolValue() (ja publico, sem precisar de API nova pra
+; isso). Preenchida por Mamute_AsmBuildLabelOrderLines() logo abaixo,
+; chamada INCONDICIONALMENTE de dentro de Mamute_AsmAssemble(), mesmo
+; espirito de MamuteAsmLabelListLines() - "A D" (MamuteEditGui.pbi) decide
+; se anexa isso ao final de MamuteAsmListingLines().
+Global NewList MamuteAsmLabelOrderLines.s()
+
+; Motor comum de SEARCH/LSEARCH (MEGASM.TXT linhas 738/750, pedido explicito
+; do usuario com sintaxe adaptada): `'<string>'` entre aspas = busca
+; LITERAL, case-sensitive, texto exato; sem aspas = busca LIVRE,
+; case-insensitive ("strings, comandos, labels, etc" - qualquer palavra,
+; sem diferenciar maiusculas/minusculas, do jeito que mnemonicos/labels ja
+; sao tratados no resto do EDIT - Z80Asm::IsMnemonic()/
+; Mamute_IsValidAsmLabel() ja normalizam por UCase). Busca no CORPO cru
+; (RawText) de cada linha - label+instrucao+operando+comentario juntos,
+; mesmo escopo do CHANGE. Preenche MamuteSearchMatches() (efeito colateral
+; deliberado, ver nota acima). Retorna a quantidade de ocorrencias achadas;
+; -1 = erro de sintaxe (termo de busca vazio).
+Procedure.i Mamute_AsmSearch(Args.s)
+  ClearList(MamuteSearchMatches())
+  Protected Trimmed.s = Trim(Args)
+  If Trimmed = ""
+    ProcedureReturn -1
+  EndIf
+
+  Protected Needle.s
+  Protected CaseSensitive.b
+  If Left(Trimmed, 1) = "'"
+    Protected ClosePos.i = FindString(Trimmed, "'", 2)
+    If ClosePos > 0
+      Needle = Mid(Trimmed, 2, ClosePos - 2)
+    Else
+      Needle = Mid(Trimmed, 2)
+    EndIf
+    CaseSensitive = #True
+  Else
+    Needle = Trimmed
+    CaseSensitive = #False
+  EndIf
+  If Needle = ""
+    ProcedureReturn -1
+  EndIf
+
+  Protected NeedleCmp.s = Needle
+  If Not CaseSensitive
+    NeedleCmp = UCase(Needle)
+  EndIf
+
+  Protected Idx.i = 0
+  Protected Hay.s
+  ForEach MamuteEditProgram()
+    Hay = MamuteEditProgram()\RawText
+    If Not CaseSensitive
+      Hay = UCase(Hay)
+    EndIf
+    If FindString(Hay, NeedleCmp) > 0
+      AddElement(MamuteSearchMatches())
+      MamuteSearchMatches() = Idx
+    EndIf
+    Idx + 1
+  Next
+
+  ProcedureReturn ListSize(MamuteSearchMatches())
+EndProcedure
+
+; Numero no dialeto do EDIT do Mamute - ver comentario de topo desta secao.
+; Token PRECISA comecar com digito 0-9 (quem chama ja filtrou por isso -
+; nenhum token comecando em letra chega aqui). Sufixo opcional no ULTIMO
+; caractere (H/B/D, maiusculo ou minusculo) decide a base explicitamente e
+; SEMPRE vence sobre a leitura hexa padrao - unica forma de resolver a
+; ambiguidade real entre "ultimo digito hexa B/D" e "sufixo B/D" (H nunca e'
+; digito hexa valido, mas B e D sao) - decisao de interpretacao do Claude,
+; o usuario nao detalhou este caso especifico. Pra escrever um hexa que
+; termine em B/D sem ambiguidade, use o sufixo H explicito (ex.: "1BH").
+Procedure.b Mamute_ParseAsmNumber(Token.s, *OutValue.Integer)
+  If Token = ""
+    ProcedureReturn #False
+  EndIf
+  If Mid(Token, 1, 1) < "0" Or Mid(Token, 1, 1) > "9"
+    ProcedureReturn #False
+  EndIf
+
+  Protected LastCh.s = UCase(Right(Token, 1))
+  Protected Digits.s, Base.i
+  Select LastCh
+    Case "H"
+      Digits = Left(Token, Len(Token) - 1) : Base = 16
+    Case "B"
+      Digits = Left(Token, Len(Token) - 1) : Base = 2
+    Case "D"
+      Digits = Left(Token, Len(Token) - 1) : Base = 10
+    Default
+      Digits = Token : Base = 16
+  EndSelect
+  If Digits = ""
+    ProcedureReturn #False
+  EndIf
+
+  Protected HexDigits.s = "0123456789ABCDEF"
+  Protected i.i, Ch.s, DigVal.i, Value.i = 0
+  For i = 1 To Len(Digits)
+    Ch = UCase(Mid(Digits, i, 1))
+    DigVal = FindString(HexDigits, Ch, 1) - 1
+    If DigVal < 0 Or DigVal >= Base
+      ProcedureReturn #False
+    EndIf
+    Value = Value * Base + DigVal
+  Next
+
+  *OutValue\i = Value
+  ProcedureReturn #True
+EndProcedure
+
+; Identificador de label - primeiro caractere letra ou "_", resto
+; letras/digitos/"_" - regra generica de qualquer assembler (o manual
+; original nao detalha a gramatica exata de nomes de label).
+Procedure.b Mamute_IsValidAsmLabel(Text.s)
+  If Text = ""
+    ProcedureReturn #False
+  EndIf
+  Protected First.s = UCase(Mid(Text, 1, 1))
+  If (First < "A" Or First > "Z") And First <> "_"
+    ProcedureReturn #False
+  EndIf
+  Protected i.i, Ch.s
+  For i = 2 To Len(Text)
+    Ch = UCase(Mid(Text, i, 1))
+    If (Ch < "A" Or Ch > "Z") And (Ch < "0" Or Ch > "9") And Ch <> "_"
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+; Pseudo-instrucoes do editor Assembly do Mamute - as 6 do manual original
+; pedidas explicitamente pelo usuario (ORG/DEFB/DEFW/DEFM/DEFS/EQU) MAIS
+; END (nao estava na lista do usuario, mas e' a ultima linha do PROPRIO
+; exemplo do manual original - "120 END", megasm/exe/MEGASM.TXT linha 1113
+; - sem ela nem o exemplo oficial do manual seria aceito; adicionada por
+; interpretacao do Claude). Deliberadamente NAO o vocabulario inteiro de
+; diretivas do Nestor80 (Z80Asm::IsDirective() tem muito mais - MACRO/IF/
+; PUBLIC/etc. - fora de escopo aqui).
+Procedure.b Mamute_IsAsmPseudoOp(Word.s)
+  Select UCase(Word)
+    Case "ORG", "DEFB", "DEFW", "DEFM", "DEFS", "EQU", "END"
+      ProcedureReturn #True
+    Default
+      ProcedureReturn #False
+  EndSelect
+EndProcedure
+
+; Varre Operand procurando tokens alfanumericos (fora de trechos entre
+; apostrofos - texto/char literal de DEFB/DEFM/etc, nunca numero) - todo
+; token que comeca com digito 0-9 precisa passar por
+; Mamute_ParseAsmNumber(); tokens comecando em letra (label/registrador) nao
+; sao validados aqui (sem tabela de simbolos nesta fase - "por hora vamos
+; apenas aceitar o programa", pedido explicito do usuario - validacao
+; semantica/enderecamento fica pro futuro comando de montagem, igual o
+; manual original so detecta esse tipo de erro durante o "A" - ver a tabela
+; de erros D/F/M/U/Q/O do comando A, MEGASM.TXT).
+Procedure.b Mamute_ValidateAsmOperandNumbers(Operand.s)
+  Protected InQuote.b = #False
+  Protected L.i = Len(Operand)
+  Protected i.i, Ch.s, Token.s = ""
+  Protected DummyVal.i
+
+  For i = 1 To L + 1
+    If i <= L
+      Ch = Mid(Operand, i, 1)
+    Else
+      Ch = " " ; sentinela pra fechar o ultimo token pendente
+    EndIf
+
+    If InQuote
+      If Ch = "'"
+        InQuote = #False
+      EndIf
+      Continue
+    EndIf
+
+    If Ch = "'"
+      InQuote = #True
+      If Token <> ""
+        If Mid(Token, 1, 1) >= "0" And Mid(Token, 1, 1) <= "9"
+          If Not Mamute_ParseAsmNumber(Token, @DummyVal)
+            ProcedureReturn #False
+          EndIf
+        EndIf
+        Token = ""
+      EndIf
+      Continue
+    EndIf
+
+    If (Ch >= "0" And Ch <= "9") Or (Ch >= "A" And Ch <= "Z") Or (Ch >= "a" And Ch <= "z")
+      Token + Ch
+    Else
+      If Token <> ""
+        If Mid(Token, 1, 1) >= "0" And Mid(Token, 1, 1) <= "9"
+          If Not Mamute_ParseAsmNumber(Token, @DummyVal)
+            ProcedureReturn #False
+          EndIf
+        EndIf
+        Token = ""
+      EndIf
+    EndIf
+  Next
+
+  ProcedureReturn #True
+EndProcedure
+
+; Parser de UMA linha completa "NN Label: instrucao operando ;comentario"
+; (grafia do manual original, secao "Programas em Assembly") pro formato
+; interno (MamuteEditLine). So validacao SINTATICA (numero de linha,
+; rotulo, instrucao reconhecida, formato dos numeros no operando) - nao
+; valida modo de enderecamento nem resolve labels, isso fica pro futuro
+; comando de montagem ("por hora vamos apenas aceitar o programa, depois
+; trataremos a compilacao", pedido explicito do usuario). Retorna #False
+; (linha rejeitada, *Out inalterado) em qualquer desvio da gramatica.
+Procedure.b Mamute_ParseAsmLine(RawText.s, *Out.MamuteEditLine)
+  Protected Text.s = RawText ; sem Trim aqui - o NN precisa comecar na coluna 1
+
+  ; NN - 1+ digitos obrigatorios logo no inicio, seguidos de espaco.
+  Protected i.i = 1
+  Protected L.i = Len(Text)
+  While i <= L And Mid(Text, i, 1) >= "0" And Mid(Text, i, 1) <= "9"
+    i + 1
+  Wend
+  If i = 1
+    ProcedureReturn #False ; sem nenhum digito - NN e' obrigatorio
+  EndIf
+  Protected LineNumToken.s = Left(Text, i - 1)
+  If Len(LineNumToken) > 5 ; mesmo teto pratico do numero de linha do BASIC/MSX (0-65529)
+    ProcedureReturn #False
+  EndIf
+  Protected LineNum.i = Val(LineNumToken)
+  If LineNum > 65529
+    ProcedureReturn #False
+  EndIf
+  If i > L Or Mid(Text, i, 1) <> " "
+    ProcedureReturn #False ; precisa de espaco separando NN do resto
+  EndIf
+  Protected Body.s = Trim(Mid(Text, i + 1))
+  If Body = ""
+    ProcedureReturn #False ; corpo vazio - "apagar digitando so o numero" fica pro futuro comando DELETE
+  EndIf
+
+  ; Separa comentario (";" fora de apostrofos) do resto da linha.
+  Protected InQuote.b = #False
+  Protected CommentPos.i = 0
+  Protected BL.i = Len(Body)
+  Protected ScanCh.s
+  For i = 1 To BL
+    ScanCh = Mid(Body, i, 1)
+    If ScanCh = "'"
+      InQuote = Bool(Not InQuote)
+    ElseIf ScanCh = ";" And Not InQuote
+      CommentPos = i
+      Break
+    EndIf
+  Next
+  Protected Comment.s = ""
+  Protected MainPart.s = Body
+  If CommentPos > 0
+    Comment = Trim(Mid(Body, CommentPos + 1))
+    MainPart = Trim(Left(Body, CommentPos - 1))
+  EndIf
+  If MainPart = ""
+    ProcedureReturn #False ; so tinha comentario - falta a instrucao
+  EndIf
+
+  ; Label opcional - primeiro token termina em ":" (sem espaco antes dele).
+  Protected SpacePos.i = FindString(MainPart, " ")
+  Protected FirstTok.s, RestAfterFirst.s
+  If SpacePos > 0
+    FirstTok = Left(MainPart, SpacePos - 1)
+    RestAfterFirst = LTrim(Mid(MainPart, SpacePos + 1))
+  Else
+    FirstTok = MainPart
+    RestAfterFirst = ""
+  EndIf
+
+  Protected LabelText.s = ""
+  Protected InstrSection.s
+  If Right(FirstTok, 1) = ":"
+    LabelText = Left(FirstTok, Len(FirstTok) - 1)
+    If Not Mamute_IsValidAsmLabel(LabelText)
+      ProcedureReturn #False
+    EndIf
+    InstrSection = RestAfterFirst
+  Else
+    InstrSection = MainPart
+  EndIf
+
+  If InstrSection = ""
+    ProcedureReturn #False ; tinha so o label, sem instrucao
+  EndIf
+
+  Protected SpacePos2.i = FindString(InstrSection, " ")
+  Protected InstrTok.s, Operand.s
+  If SpacePos2 > 0
+    InstrTok = Left(InstrSection, SpacePos2 - 1)
+    Operand = Trim(Mid(InstrSection, SpacePos2 + 1))
+  Else
+    InstrTok = InstrSection
+    Operand = ""
+  EndIf
+
+  Protected Instr.s = UCase(InstrTok)
+  If Not Z80Asm::IsMnemonic(Instr) And Not Mamute_IsAsmPseudoOp(Instr)
+    ProcedureReturn #False ; instrucao/pseudo-instrucao desconhecida
+  EndIf
+  If Instr = "EQU" And LabelText = ""
+    ProcedureReturn #False ; "Label: EQU endereco" - label e' obrigatorio pro EQU
+  EndIf
+  ; As 6 pseudo-instrucoes do manual (nao o END, que nao leva operando) tem
+  ; sintaxe fixa de 1 operando sempre obrigatorio.
+  If Operand = "" And (Instr = "ORG" Or Instr = "DEFB" Or Instr = "DEFW" Or Instr = "DEFM" Or Instr = "DEFS" Or Instr = "EQU")
+    ProcedureReturn #False
+  EndIf
+
+  If Instr = "DEFM"
+    If Left(Operand, 1) <> "'"
+      ProcedureReturn #False ; "DEFM 'texto'" - precisa comecar com apostrofo
+    EndIf
+  Else
+    If Not Mamute_ValidateAsmOperandNumbers(Operand)
+      ProcedureReturn #False
+    EndIf
+  EndIf
+
+  *Out\LineNum = LineNum
+  *Out\RawText = Body
+  *Out\LabelText = LabelText
+  *Out\Instr = Instr
+  *Out\Operand = Operand
+  *Out\Comment = Comment
+  ProcedureReturn #True
+EndProcedure
+
+; Guarda/substitui uma linha no programa em memoria (MamuteEditProgram()),
+; mantendo a lista sempre ordenada por LineNum - mesmo comportamento
+; "digitar de novo o mesmo numero substitui a linha" do BASIC/MegaAssembler
+; original ("as linhas podem ser editadas como se fossem em BASIC").
+Procedure Mamute_StoreAsmLine(*Line.MamuteEditLine)
+  ForEach MamuteEditProgram()
+    If MamuteEditProgram()\LineNum = *Line\LineNum
+      MamuteEditProgram()\RawText = *Line\RawText
+      MamuteEditProgram()\LabelText = *Line\LabelText
+      MamuteEditProgram()\Instr = *Line\Instr
+      MamuteEditProgram()\Operand = *Line\Operand
+      MamuteEditProgram()\Comment = *Line\Comment
+      ProcedureReturn
+    ElseIf MamuteEditProgram()\LineNum > *Line\LineNum
+      InsertElement(MamuteEditProgram())
+      MamuteEditProgram()\LineNum = *Line\LineNum
+      MamuteEditProgram()\RawText = *Line\RawText
+      MamuteEditProgram()\LabelText = *Line\LabelText
+      MamuteEditProgram()\Instr = *Line\Instr
+      MamuteEditProgram()\Operand = *Line\Operand
+      MamuteEditProgram()\Comment = *Line\Comment
+      ProcedureReturn
+    EndIf
+  Next
+  ; maior que todas as existentes (ou lista vazia) - acrescenta no fim
+  AddElement(MamuteEditProgram())
+  MamuteEditProgram()\LineNum = *Line\LineNum
+  MamuteEditProgram()\RawText = *Line\RawText
+  MamuteEditProgram()\LabelText = *Line\LabelText
+  MamuteEditProgram()\Instr = *Line\Instr
+  MamuteEditProgram()\Operand = *Line\Operand
+  MamuteEditProgram()\Comment = *Line\Comment
+EndProcedure
+
+; ------------------------------------------------------------
+; Comandos de gerenciamento do programa-fonte do EDIT (NEW/DELETE/RENUM/
+; CHANGE/LOAD/SAVE, MEGASM.TXT secao "Programas em Assembly") - pedido
+; explicito do usuario depois de ver o EDIT em estilo ZX-81 funcionando.
+; ------------------------------------------------------------
+
+; Token so com digitos 0-9 - usado pelos numeros de linha de DELETE/RENUM
+; (decimais puros, diferente dos enderecos hexa do resto do Mamute).
+Procedure.b Mamute_IsDecimalString(Token.s)
+  If Token = ""
+    ProcedureReturn #False
+  EndIf
+  Protected i.i
+  For i = 1 To Len(Token)
+    If Mid(Token, i, 1) < "0" Or Mid(Token, i, 1) > "9"
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+; NEW - apaga o programa-fonte inteiro da memoria, sem confirmacao (mesmo
+; comportamento direto do manual original: "o comando NEW simplesmente
+; apaga o programa-fonte existente na memoria do EMA"). Tambem invalida o
+; ultimo resultado de montagem (MamuteAsmHasResult) - o programa que gerou
+; aquele resultado nao existe mais, entao MAP nao deve continuar mostrando
+; um intervalo de enderecos de um programa apagado.
+Procedure Mamute_AsmNew()
+  ClearList(MamuteEditProgram())
+  MamuteAsmHasResult = #False
+EndProcedure
+
+; DELETE <lininic>[-[<linfin>]] (MEGASM.TXT linha 666) - apaga linhas do
+; programa-fonte:
+;   <lininic>             so essa linha
+;   <lininic>-<linfin>    intervalo [lininic,linfin], inclusive (forma do manual)
+;   <lininic>-            de lininic ate o FIM do programa - extensao sobre o
+;                         manual (que so documenta a forma com <linfin> explicito),
+;                         pedido explicito do usuario ("[-[<linha final>]]"), mesma
+;                         convencao do proprio "LIST <li>-" do manual original.
+; Devolve quantas linhas foram apagadas; -1 = erro de sintaxe.
+Procedure.i Mamute_AsmDelete(Args.s)
+  Protected DashPos.i = FindString(Args, "-")
+  Protected StartTok.s, EndTok.s
+  Protected HasEnd.b = #False
+  Protected EndLine.i
+
+  If DashPos > 0
+    StartTok = Trim(Left(Args, DashPos - 1))
+    EndTok = Trim(Mid(Args, DashPos + 1))
+    If EndTok <> ""
+      If Not Mamute_IsDecimalString(EndTok)
+        ProcedureReturn -1
+      EndIf
+      HasEnd = #True
+      EndLine = Val(EndTok)
+    EndIf
+  Else
+    StartTok = Trim(Args)
+  EndIf
+
+  If Not Mamute_IsDecimalString(StartTok)
+    ProcedureReturn -1
+  EndIf
+  Protected StartLine.i = Val(StartTok)
+
+  If DashPos = 0
+    EndLine = StartLine
+  ElseIf Not HasEnd
+    EndLine = 65529 ; "ate o fim" - teto pratico do numero de linha (mesmo do NN do EDIT)
+  EndIf
+  If EndLine < StartLine
+    ProcedureReturn -1
+  EndIf
+
+  Protected Deleted.i = 0
+  ForEach MamuteEditProgram()
+    If MamuteEditProgram()\LineNum >= StartLine And MamuteEditProgram()\LineNum <= EndLine
+      DeleteElement(MamuteEditProgram())
+      Deleted + 1
+    EndIf
+  Next
+  ProcedureReturn Deleted
+EndProcedure
+
+; RENUM [<novali>[,<antigali>[,<incr>]]] (MEGASM.TXT linha 675, mesma ordem
+; de parametros do manual - "novali,antigali,incr" - NAO a ordem
+; "novalinha,incremento,linhainicialtroca" que o usuario escreveu ao pedir
+; este comando; seguido o manual por ser a fonte de verdade documentada
+; pra este comando especifico, mas sinalizado aqui pro usuario corrigir se
+; realmente quiser a ordem que ele digitou):
+;   <novali>   novo numero da PRIMEIRA linha do trecho renumerado (default 10)
+;   <antigali> numero (na numeracao ANTIGA) a partir de onde comeca a
+;              renumeracao - linhas com NN < antigali ficam intocadas
+;              (default: a primeira linha existente, ou seja, o programa
+;              INTEIRO e' renumerado)
+;   <incr>     incremento entre as linhas renumeradas (default 10)
+; Sem nenhum parametro: renumera tudo, comecando em 10, incremento 10 (regra
+; explicita do manual). Rejeita a operacao INTEIRA (nada e' alterado) se a
+; nova numeracao colidir com uma linha nao renumerada ou passar do teto
+; 65529 - nunca aplica uma renumeracao pela metade.
+Procedure.b Mamute_AsmRenum(Args.s)
+  Protected NovaLi.i = 10
+  Protected AntigaLi.i = -1 ; -1 = sentinela "nao especificado"
+  Protected Incr.i = 10
+
+  If Args <> ""
+    Protected FieldCount.i = CountString(Args, ",") + 1
+    If FieldCount > 3
+      ProcedureReturn #False
+    EndIf
+    Protected T1.s = Trim(StringField(Args, 1, ","))
+    If T1 <> ""
+      If Not Mamute_IsDecimalString(T1) : ProcedureReturn #False : EndIf
+      NovaLi = Val(T1)
+    EndIf
+    If FieldCount >= 2
+      Protected T2.s = Trim(StringField(Args, 2, ","))
+      If T2 <> ""
+        If Not Mamute_IsDecimalString(T2) : ProcedureReturn #False : EndIf
+        AntigaLi = Val(T2)
+      EndIf
+    EndIf
+    If FieldCount >= 3
+      Protected T3.s = Trim(StringField(Args, 3, ","))
+      If T3 <> ""
+        If Not Mamute_IsDecimalString(T3) : ProcedureReturn #False : EndIf
+        Incr = Val(T3)
+        If Incr <= 0 : ProcedureReturn #False : EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  If ListSize(MamuteEditProgram()) = 0
+    ProcedureReturn #True ; nada pra renumerar - nao e' erro
+  EndIf
+
+  If AntigaLi = -1
+    FirstElement(MamuteEditProgram())
+    AntigaLi = MamuteEditProgram()\LineNum
+  EndIf
+
+  Protected NewLines.i = 0
+  ForEach MamuteEditProgram()
+    If MamuteEditProgram()\LineNum >= AntigaLi
+      NewLines + 1
+    EndIf
+  Next
+  If NewLines = 0
+    ProcedureReturn #True ; antigali depois de todo mundo - nada pra fazer
+  EndIf
+
+  Protected LastNew.i = NovaLi + (NewLines - 1) * Incr
+  If NovaLi < 0 Or LastNew > 65529
+    ProcedureReturn #False
+  EndIf
+
+  ; a faixa nova [NovaLi..LastNew] nao pode encostar em nenhuma linha
+  ; MANTIDA (NN < AntigaLi) - senao a lista deixaria de ficar ordenada.
+  ForEach MamuteEditProgram()
+    If MamuteEditProgram()\LineNum < AntigaLi And MamuteEditProgram()\LineNum >= NovaLi
+      ProcedureReturn #False
+    EndIf
+  Next
+
+  Protected NextNum.i = NovaLi
+  ForEach MamuteEditProgram()
+    If MamuteEditProgram()\LineNum >= AntigaLi
+      MamuteEditProgram()\LineNum = NextNum
+      NextNum + Incr
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+; CHANGE '<string1>'[,'<string2>'] - sintaxe adaptada pedida pelo usuario
+; (o manual original mostra "CHANGE '<string1>'[<string2>]", sem virgula
+; nem aspas no <string2> - aqui usado o mesmo idioma de virgula+apostrofo
+; ja estabelecido pelo SH/MS deste projeto, mais uniforme). Troca todas as
+; ocorrencias de String1 por String2 no CORPO de cada linha (RawText -
+; label+instrucao+operando+comentario juntos, igual o manual: "troca as
+; ocorrencias de <string1> no programa-fonte"); String2 vazio APAGA as
+; ocorrencias de String1 (regra explicita do manual). Cada linha alterada
+; e' RE-VALIDADA via Mamute_ParseAsmLine() antes de aplicar - se a troca
+; quebrar a gramatica da linha, essa linha especifica fica como estava
+; (sem meio-termo "salvo com erro"). Devolve quantas linhas foram
+; efetivamente alteradas; -1 = erro de sintaxe (String1 vazio).
+Procedure.i Mamute_AsmChange(String1.s, String2.s)
+  If String1 = ""
+    ProcedureReturn -1
+  EndIf
+
+  Protected Changed.i = 0
+  Protected NewBody.s, FullLine.s
+  Protected Reparsed.MamuteEditLine
+  ForEach MamuteEditProgram()
+    If FindString(MamuteEditProgram()\RawText, String1) > 0
+      NewBody = ReplaceString(MamuteEditProgram()\RawText, String1, String2)
+      FullLine = Str(MamuteEditProgram()\LineNum) + " " + NewBody
+      If Mamute_ParseAsmLine(FullLine, @Reparsed)
+        MamuteEditProgram()\RawText = Reparsed\RawText
+        MamuteEditProgram()\LabelText = Reparsed\LabelText
+        MamuteEditProgram()\Instr = Reparsed\Instr
+        MamuteEditProgram()\Operand = Reparsed\Operand
+        MamuteEditProgram()\Comment = Reparsed\Comment
+        Changed + 1
+      EndIf
+    EndIf
+  Next
+  ProcedureReturn Changed
+EndProcedure
+
+; SAVE - abre "Salvar como" (sem digitar nome, mesmo padrao ja usado pelo
+; LOAD do MON> - MamuteGui_CmdLoad, MamuteAssemblerGui.pbi) e grava o
+; programa-fonte inteiro em ASCII puro, uma linha por linha ("NN corpo" -
+; o MESMO texto que, digitado de volta no EDIT, reproduz a linha via
+; Mamute_ParseAsmLine - round-trip garantido). Formato PROPRIO desta porta,
+; NAO o formato binario proprietario do MegaAssembler original - pedido
+; explicito do usuario ("inicialmente vamos salvar em ASCII... em outra
+; oportunidade vamos tentar ler e interpretar o padrao [proprietario] pra
+; poder importar arquivos originais do mega assembler" - fora de escopo
+; desta sessao). Devolve mensagem de status pro G_Status ("" = cancelado).
+Procedure.s Mamute_AsmSave()
+  Protected FilePath.s = SaveFileRequester("Salvar programa-fonte - SAVE", "",
+    "Programas Mamute (*.mza)|*.mza|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    ProcedureReturn ""
+  EndIf
+  If GetExtensionPart(FilePath) = ""
+    FilePath + ".mza"
+  EndIf
+
+  Protected Fh = CreateFile(#PB_Any, FilePath)
+  If Not Fh
+    ProcedureReturn "?ERRO AO GRAVAR ARQUIVO"
+  EndIf
+  ForEach MamuteEditProgram()
+    WriteStringN(Fh, Str(MamuteEditProgram()\LineNum) + " " + MamuteEditProgram()\RawText)
+  Next
+  CloseFile(Fh)
+  ProcedureReturn "GRAVADO: " + GetFilePart(FilePath)
+EndProcedure
+
+; Motor comum de LOAD/MERGE - abre "Abrir" (sem digitar nome, mesmo padrao
+; do SAVE acima) e le um arquivo no mesmo formato ASCII de Mamute_AsmSave()
+; (NAO o formato proprietario do MegaAssembler original, ver nota lá) -
+; cada linha lida passa pelo MESMO Mamute_ParseAsmLine() da digitacao ao
+; vivo, depois Mamute_StoreAsmLine() (que ja SUBSTITUI automaticamente
+; qualquer linha existente com o MESMO NN, mantendo a lista ordenada) -
+; e' exatamente a regra "em caso de colisao de numero, a linha lida do
+; arquivo prevalece" do comando MERGE do manual original (equivalente ao
+; MERGE do BASIC), sem precisar de logica extra pra isso. Linhas invalidas
+; no arquivo (ex.: editado a mao, corrompido) sao ignoradas silenciosamente,
+; nao abortam a leitura inteira. ClearFirst=#True (LOAD) apaga o programa
+; em memoria ANTES de ler, o que faz a substituicao-por-NN virar
+; efetivamente "so o arquivo importa"; #False (MERGE) nao apaga nada -
+; funde de verdade com o que ja estava la. Devolve quantas linhas foram
+; lidas com sucesso; -1 = dialogo cancelado.
+Procedure.i Mamute_AsmLoadOrMerge(Title.s, ClearFirst.b)
+  Protected FilePath.s = OpenFileRequester(Title, "",
+    "Programas Mamute (*.mza)|*.mza|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    ProcedureReturn -1
+  EndIf
+
+  Protected Fh = ReadFile(#PB_Any, FilePath)
+  If Not Fh
+    ProcedureReturn -1
+  EndIf
+
+  If ClearFirst
+    ClearList(MamuteEditProgram())
+  EndIf
+  Protected Loaded.i = 0
+  Protected LineText.s
+  Protected Parsed.MamuteEditLine
+  While Not Eof(Fh)
+    LineText = ReadString(Fh, #PB_UTF8)
+    If Trim(LineText) <> ""
+      If Mamute_ParseAsmLine(LineText, @Parsed)
+        Mamute_StoreAsmLine(@Parsed)
+        Loaded + 1
+      EndIf
+    EndIf
+  Wend
+  CloseFile(Fh)
+  ProcedureReturn Loaded
+EndProcedure
+
+; LOAD - SUBSTITUI o programa-fonte em memoria pelo conteudo do arquivo
+; escolhido. Ver Mamute_AsmLoadOrMerge() acima pro detalhe completo.
+Procedure.i Mamute_AsmLoad()
+  ProcedureReturn Mamute_AsmLoadOrMerge("Carregar programa-fonte - LOAD", #True)
+EndProcedure
+
+; MERGE - pedido explicito do usuario, "igual ao MERGE do BASIC": mostra o
+; MESMO dialogo do LOAD, mas NAO apaga o programa em memoria - funde os
+; dois. Linhas do arquivo com o MESMO numero de uma linha ja existente
+; SOBREPOEM a existente (regra explicita do usuario, tambem a regra do
+; manual original: "a existente na memoria sera apagada, prevalecendo a
+; linha lida da fita"). Ver Mamute_AsmLoadOrMerge() acima pro detalhe.
+Procedure.i Mamute_AsmMerge()
+  ProcedureReturn Mamute_AsmLoadOrMerge("Merge de programa-fonte - MERGE", #False)
+EndProcedure
+
+; ------------------------------------------------------------
+; Comando A (assembla o programa-fonte, MEGASM.TXT linha 786) - pedido
+; explicito do usuario, respondido com uma pergunta antes de escrever
+; codigo: "acha que da pra implementar o compilador?" A resposta foi NAO
+; escrever um compilador novo - `Z80Asm.pbi` (modulo 2 do projeto, mesmo
+; motor de "Executar -> Montar Assembly" da IDE principal) JA' e' um
+; assembler Z80 completo, compativel M80/Nestor80, validado byte a byte
+; contra o N80.exe real. Como o vocabulario do EDIT (Mamute_IsAsmPseudoOp/
+; Z80Asm::IsMnemonic) ja' e' um SUBCONJUNTO do que Z80Asm.pbi entende, cada
+; linha de MamuteEditProgram() (via RawText, ja sem o NN) ja' e' texto-
+; fonte Nestor80 valido - "montar" e' so juntar as linhas e chamar
+; Z80Asm::Assemble(), sem tradutor nenhum no meio.
+;
+; Mensagens de erro: o manual original usa codigos de 1 letra (D/F/M/U/Q/O)
+; por cima da linha - pedido explicito do usuario pra usar as mensagens
+; DESCRITIVAS de Z80Asm::GetAssembleErrorText() em vez disso ("vai
+; facilitar"), sem tentar reconstruir os codigos antigos.
+; ------------------------------------------------------------
+
+Structure MamuteAsmResult
+  Ok.b          ; #True = montado sem erro (mesmo que ByteCount=0, so rotulos/EQU/diretivas)
+  ErrorLine.i    ; NN do Mamute onde o erro ocorreu (0 = nao aplicavel/nao mapeado)
+  ErrorText.s
+  ByteCount.i    ; quantos bytes foram gerados (0 = nada)
+  StartAddr.u
+  EndAddr.u
+EndStructure
+
+; Devolve o NN (numero de linha do Mamute) correspondente a' LinhaFonte
+; (1-based - mesma numeracao que Z80Asm::GetAssembleErrorLine() devolve).
+; Como o texto-fonte pra Z80Asm::Assemble() e' montado juntando
+; MamuteEditProgram() em ordem, 1 linha de texto por elemento (nunca
+; linhas em branco - Mamute_ParseAsmLine ja rejeita corpo vazio), a linha K
+; do fonte e' SEMPRE o K-esimo elemento da lista, sem precisar de nenhuma
+; tabela de mapeamento a parte. -1 se fora da faixa.
+Procedure.i Mamute_AsmLineNumberAtSourceLine(LinhaFonte.i)
+  If LinhaFonte < 1 Or LinhaFonte > ListSize(MamuteEditProgram())
+    ProcedureReturn -1
+  EndIf
+  SelectElement(MamuteEditProgram(), LinhaFonte - 1)
+  ProcedureReturn MamuteEditProgram()\LineNum
+EndProcedure
+
+; Se Token comeca com digito 0-9 e NAO tem sufixo H/B/D reconhecido no
+; final, acrescenta "H" - achado real desta sessao (usuario reportou "0a2 e'
+; invalido" ao compilar): o EDIT aceita numeros SEM sufixo como HEXADECIMAL
+; por padrao (Mamute_ParseAsmNumber, pedido explicito do usuario "pra ficar
+; uniforme" com o resto do Mamute), mas Z80Asm.pbi (o motor reaproveitado
+; pra montar de verdade) segue a convencao classica M80/Nestor80 - numero
+; SEM sufixo e' DECIMAL por padrao (conferido lendo TokenizeExpr() em
+; Z80Asm.pbi). "0A2" digitado no EDIT significa hexa 162 pro usuario, mas
+; o Z80Asm tentaria ler "0A2" como decimal (tem letra, nao bate) e
+; rejeitaria com "Numero invalido: 0A2" - exatamente o erro relatado. A
+; traducao so' precisa ACRESCENTAR "H" - sufixos que JA' existem (H/B/D)
+; tem o MESMO significado nos dois sistemas (conferido no mesmo
+; TokenizeExpr), entao ficam intocados.
+Procedure.s Mamute_MaybeAddHexSuffix(Token.s)
+  If Token = "" Or Mid(Token, 1, 1) < "0" Or Mid(Token, 1, 1) > "9"
+    ProcedureReturn Token
+  EndIf
+  Protected LastCh.s = UCase(Right(Token, 1))
+  If LastCh = "H" Or LastCh = "B" Or LastCh = "D"
+    ProcedureReturn Token
+  EndIf
+  ProcedureReturn Token + "H"
+EndProcedure
+
+; Aplica Mamute_MaybeAddHexSuffix() a cada token numerico do Operando,
+; preservando tudo o mais (pontuacao, registradores, labels, texto entre
+; apostrofos nunca e' tocado) - mesmo scanner quote-aware de
+; Mamute_ValidateAsmOperandNumbers() acima, so' que RECONSTRUINDO o texto
+; em vez de so validar.
+Procedure.s Mamute_TranslateOperandForZ80Asm(Operand.s)
+  Protected Result.s = ""
+  Protected InQuote.b = #False
+  Protected L.i = Len(Operand)
+  Protected i.i, Ch.s, Token.s = ""
+
+  For i = 1 To L + 1
+    If i <= L
+      Ch = Mid(Operand, i, 1)
+    Else
+      Ch = " "
+    EndIf
+
+    If InQuote
+      Result + Ch
+      If Ch = "'"
+        InQuote = #False
+      EndIf
+      Continue
+    EndIf
+
+    If Ch = "'"
+      If Token <> ""
+        Result + Mamute_MaybeAddHexSuffix(Token)
+        Token = ""
+      EndIf
+      InQuote = #True
+      Result + Ch
+      Continue
+    EndIf
+
+    If (Ch >= "0" And Ch <= "9") Or (Ch >= "A" And Ch <= "Z") Or (Ch >= "a" And Ch <= "z")
+      Token + Ch
+    Else
+      If Token <> ""
+        Result + Mamute_MaybeAddHexSuffix(Token)
+        Token = ""
+      EndIf
+      If i <= L
+        Result + Ch
+      EndIf
+    EndIf
+  Next
+
+  ProcedureReturn Result
+EndProcedure
+
+; Formata Z80Asm::GetListingRow() (ja' preenchida pela ultima
+; Z80Asm::Assemble() bem-sucedida) em texto pronto pra desenhar, colunas
+; fixas com ESPACOS (nao TAB literal - GDI num CanvasGadget nao expande
+; tab de forma confiavel, mesmo achado ja documentado pra
+; MamuteEdit_PadToColumn() no EDIT): "NN  ENDR  XX XX XX XX  conteudo" -
+; NN/ENDR em branco numa linha de CONTINUACAO (mais de 4 bytes na mesma
+; linha-fonte). O conteudo usa RawText cru (nao o alinhamento em tab-stop
+; de MamuteEdit_FormatLine(), que vive em MamuteEditGui.pbi - incluido
+; DEPOIS de MamuteSupport.pbi, chamar de dentro daqui violaria a ordem de
+; declaracao) - suficiente pra uma listagem, que e' um documento a parte,
+; nao a tela viva de edicao. Preenche MamuteAsmListingLines() acima.
+;
+; HideLineNumbers (opcao N do comando A do manual original, MEGASM.TXT
+; linha 793: "Nao lista o numero das linhas") - so' a coluna NN fica em
+; branco, ENDR/hex/conteudo continuam exatamente iguais (pedido explicito
+; do usuario: "de resto e' igual").
+Procedure Mamute_AsmBuildListingLines(HideLineNumbers.b = #False)
+  ClearList(MamuteAsmListingLines())
+  Protected RowCount.i = Z80Asm::GetListingRowCount()
+  Protected i.i, b.i, Idx0.i
+  Protected Row.Z80Asm::Z80ListingRow
+  Protected Line.s, HexPart.s, Content.s, NumPart.s
+
+  For i = 0 To RowCount - 1
+    Z80Asm::GetListingRow(i, @Row)
+
+    Content = ""
+    If Row\HasAddr
+      Idx0 = Row\SourceLine - 1
+      If Idx0 >= 0 And Idx0 < ListSize(MamuteEditProgram())
+        SelectElement(MamuteEditProgram(), Idx0)
+        Content = MamuteEditProgram()\RawText
+        If HideLineNumbers
+          NumPart = Space(5)
+        Else
+          NumPart = RSet(Str(MamuteEditProgram()\LineNum), 5)
+        EndIf
+        Line = NumPart + "  " + Mamute_Hex4(Row\Addr) + "  "
+      Else
+        Line = Space(5) + "  " + Space(4) + "  "
+      EndIf
+    Else
+      Line = Space(5) + "  " + Space(4) + "  "
+    EndIf
+
+    HexPart = ""
+    For b = 0 To Row\ByteCount - 1
+      Select b
+        Case 0 : HexPart + Mamute_Hex2(Row\Byte0) + " "
+        Case 1 : HexPart + Mamute_Hex2(Row\Byte1) + " "
+        Case 2 : HexPart + Mamute_Hex2(Row\Byte2) + " "
+        Case 3 : HexPart + Mamute_Hex2(Row\Byte3) + " "
+      EndSelect
+    Next
+    Line + LSet(HexPart, 12) + " " + Content
+
+    AddElement(MamuteAsmListingLines())
+    MamuteAsmListingLines() = Line
+  Next
+EndProcedure
+
+; Formata Z80Asm::GetXrefRow() (ja' preenchida pela ultima Z80Asm::Assemble()
+; bem-sucedida) em texto pronto pra desenhar: "NOME  VALOR  ENDR ENDR ..."
+; - NOME/VALOR em branco numa linha de CONTINUACAO (simbolo com mais de 4
+; usos). Mesmas colunas fixas com ESPACOS de Mamute_AsmBuildListingLines()
+; acima (motivo identico: GDI num CanvasGadget nao expande tab). Preenche
+; MamuteAsmXrefLines() acima.
+Procedure Mamute_AsmBuildXrefLines()
+  ClearList(MamuteAsmXrefLines())
+  Protected RowCount.i = Z80Asm::GetXrefRowCount()
+  Protected i.i, a.i
+  Protected Row.Z80Asm::Z80XrefRow
+  Protected Line.s, AddrPart.s
+
+  For i = 0 To RowCount - 1
+    Z80Asm::GetXrefRow(i, @Row)
+
+    If Row\HasValue
+      Line = LSet(Row\SymName, 8) + "  " + Mamute_Hex4(Row\Value) + "  "
+    Else
+      Line = Space(8) + "  " + Space(4) + "  "
+    EndIf
+
+    AddrPart = ""
+    For a = 0 To Row\AddrCount - 1
+      Select a
+        Case 0 : AddrPart + Mamute_Hex4(Row\Addr0) + " "
+        Case 1 : AddrPart + Mamute_Hex4(Row\Addr1) + " "
+        Case 2 : AddrPart + Mamute_Hex4(Row\Addr2) + " "
+        Case 3 : AddrPart + Mamute_Hex4(Row\Addr3) + " "
+      EndSelect
+    Next
+    Line + Trim(AddrPart)
+
+    AddElement(MamuteAsmXrefLines())
+    MamuteAsmXrefLines() = Line
+  Next
+EndProcedure
+
+; Formata a mesma tabela de Z80Asm::GetXrefRow() (ja' ordenada
+; alfabeticamente) em "NOME  VALOR" simples - opcao S do comando A, pedido
+; explicito do usuario: so' o nome e o endereco/valor de definicao, SEM os
+; enderecos de uso (isso e' o "R"). So' aproveita as linhas com HasValue
+; (a 1a de cada simbolo em Z80Asm::XrefRows()) - pula as de continuacao,
+; que so existem por causa dos enderecos de uso que aqui nao interessam.
+; Preenche MamuteAsmLabelListLines() acima.
+Procedure Mamute_AsmBuildLabelListLines()
+  ClearList(MamuteAsmLabelListLines())
+  Protected RowCount.i = Z80Asm::GetXrefRowCount()
+  Protected i.i
+  Protected Row.Z80Asm::Z80XrefRow
+
+  For i = 0 To RowCount - 1
+    Z80Asm::GetXrefRow(i, @Row)
+    If Row\HasValue
+      AddElement(MamuteAsmLabelListLines())
+      MamuteAsmLabelListLines() = LSet(Row\SymName, 8) + "  " + Mamute_Hex4(Row\Value)
+    EndIf
+  Next
+EndProcedure
+
+; Mesmo layout "NOME  VALOR" de Mamute_AsmBuildLabelListLines() acima, mas
+; usando Z80Asm::GetLabelDefOrderCount()/GetLabelDefOrderName() (ordem de
+; DEFINICAO no fonte) em vez de Z80Asm::XrefRows() (alfabetica) - opcao D
+; do comando A, pedido explicito do usuario: "identica a A S, porem a
+; lista de labels e' por ordem de aparicao e nao alfabetica". Preenche
+; MamuteAsmLabelOrderLines() acima.
+Procedure Mamute_AsmBuildLabelOrderLines()
+  ClearList(MamuteAsmLabelOrderLines())
+  Protected Count.i = Z80Asm::GetLabelDefOrderCount()
+  Protected i.i, Name.s
+
+  For i = 0 To Count - 1
+    Name = Z80Asm::GetLabelDefOrderName(i)
+    AddElement(MamuteAsmLabelOrderLines())
+    MamuteAsmLabelOrderLines() = LSet(Name, 8) + "  " + Mamute_Hex4(Z80Asm::GetSymbolValue(Name))
+  Next
+EndProcedure
+
+; Monta MamuteEditProgram() inteiro via Z80Asm::Assemble() - so' faz a
+; passagem/validacao (sem gravar em lugar nenhum ainda; quem chama decide o
+; que fazer com OutBytes()/StartAddr/EndAddr em caso de sucesso - ver
+; comando "A O" em MamuteEditGui.pbi). OutBytes precisa vir dimensionado
+; pelo chamador (Array OutBytes.a(65535), mesma exigencia de
+; Z80Asm::Assemble()).
+;
+; **Limitacao conhecida, aceita por ora**: se o programa tiver MAIS de um
+; ORG com um vao entre os dois blocos, StartAddr/EndAddr cobrem o vao
+; INTEIRO (Z80Asm::Assemble() so' rastreia o endereco minimo/maximo
+; tocado, nao um mapa byte a byte) - o vao vem preenchido com zeros. Isso
+; e' exatamente a MESMA limitacao que "Executar -> Montar Assembly" da IDE
+; principal ja aceita pra exportar em arquivo (Z80Out_ChooseAndExport);
+; aqui importa mais porque "A O" ESCREVE na RAM simulada por cima do que
+; ja estava la' - um programa com um unico ORG (caso comum, e' o que o
+; usuario descreveu) nao tem esse problema.
+Procedure Mamute_AsmAssemble(*Out.MamuteAsmResult, Array OutBytes.a(1), HideLineNumbers.b = #False, OffsetValue.i = 0)
+  *Out\Ok = #False
+  *Out\ErrorLine = 0
+  *Out\ErrorText = ""
+  *Out\ByteCount = 0
+  *Out\StartAddr = 0
+  *Out\EndAddr = 0
+
+  ; Reconstroi cada linha a partir dos campos JA' separados (Label/Instr/
+  ; Operand), em vez de usar RawText direto - precisa traduzir o Operando
+  ; pro dialeto numerico do Z80Asm (Mamute_TranslateOperandForZ80Asm() logo
+  ; acima, ver comentario la' pro achado completo). Comentario incluido de
+  ; volta so' por fidelidade (Z80Asm ja ignora comentario de qualquer jeito
+  ; - nunca precisa de traducao).
+  ;
+  ; OffsetValue (opcao /<offset> do comando A, pedido explicito do usuario:
+  ; "compila o programa mas adiciona o OFFSET ao ORG para gerar em outro
+  ; endereco") - somado ao operando de toda linha `ORG` (envolvido entre
+  ; parenteses, "0" na frente do literal hexa garantindo que o Z80Asm nao
+  ; confunda com um label mesmo se comecar com A-F) ANTES de reconstruir o
+  ; texto-fonte - o resto da montagem (rotulos, saltos, listagem) segue
+  ; automaticamente o ORG deslocado, sem precisar mexer em mais nada (nao
+  ; ha necessidade de tocar Z80Asm.pbi pra isso - a expressao aritmetica ja
+  ; resolve tudo). Se o programa tiver MAIS de um `ORG`, o MESMO offset e'
+  ; somado a todos, consistente.
+  Protected SourceText.s = ""
+  Protected LineOut.s
+  Protected OrgOperand.s
+  ForEach MamuteEditProgram()
+    If SourceText <> ""
+      SourceText + Chr(10)
+    EndIf
+    LineOut = ""
+    If MamuteEditProgram()\LabelText <> ""
+      LineOut = MamuteEditProgram()\LabelText + ": "
+    EndIf
+    LineOut + MamuteEditProgram()\Instr
+    If MamuteEditProgram()\Operand <> ""
+      OrgOperand = Mamute_TranslateOperandForZ80Asm(MamuteEditProgram()\Operand)
+      If OffsetValue <> 0 And MamuteEditProgram()\Instr = "ORG"
+        OrgOperand = "(" + OrgOperand + ")+0" + Mamute_Hex4(OffsetValue) + "H"
+      EndIf
+      LineOut + " " + OrgOperand
+    EndIf
+    If MamuteEditProgram()\Comment <> ""
+      LineOut + " ;" + MamuteEditProgram()\Comment
+    EndIf
+    SourceText + LineOut
+  Next
+
+  Protected N.i = Z80Asm::Assemble(SourceText, OutBytes())
+  If N < 0
+    Protected SrcLine.i = Z80Asm::GetAssembleErrorLine()
+    Protected MappedLine.i = Mamute_AsmLineNumberAtSourceLine(SrcLine)
+    If MappedLine >= 0
+      *Out\ErrorLine = MappedLine
+    EndIf
+    *Out\ErrorText = Z80Asm::GetAssembleErrorText()
+    ProcedureReturn
+  EndIf
+
+  *Out\Ok = #True
+  *Out\ByteCount = N
+  If N > 0
+    *Out\StartAddr = Z80Asm::GetAssembleStartAddr()
+    *Out\EndAddr = Z80Asm::GetAssembleEndAddr()
+  EndIf
+
+  ; Guarda o resultado pro comando MAP (MamuteEditGui.pbi) - QUALQUER
+  ; montagem bem-sucedida atualiza isso, "A" sozinho ou "A O" (os dois
+  ; calculam o mesmo intervalo, so' "A O" tambem grava na RAM - ver
+  ; comentario de MamuteAsmHasResult acima). Uma tentativa que falha (N<0)
+  ; nunca chega aqui (o ProcedureReturn do bloco de erro acima ja' saiu).
+  MamuteAsmHasResult = #True
+  MamuteAsmLastByteCount = N
+  MamuteAsmLastStartAddr = *Out\StartAddr
+  MamuteAsmLastEndAddr = *Out\EndAddr
+  Mamute_AsmBuildListingLines(HideLineNumbers)
+  Mamute_AsmBuildXrefLines()
+  Mamute_AsmBuildLabelListLines()
+  Mamute_AsmBuildLabelOrderLines()
 EndProcedure

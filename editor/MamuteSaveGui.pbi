@@ -32,7 +32,21 @@
 ;
 ;  Le direto de MamuteMem(Slot,...) pro range pedido (mesma logica do LOAD,
 ;  bypass do PAGE/Mamute_ReadByte - o usuario escolhe explicitamente de
-;  qual slot fisico ler, nao do que estiver mapeado ativo agora).
+;  qual slot fisico ler, nao do que estiver mapeado ativo agora) - EXCETO
+;  quando chamado com UseExplicitBuffer = #True (opcao I do comando A do
+;  EDIT, MamuteEditGui.pbi, pedido explicito do usuario: "a I... salva em
+;  DISCO o arquivo, abre o dialogo de save, e salva o header &HFE, os
+;  enderecos inicial, final e execucao (ja sugira no dialogo), o slot (ja
+;  sugira os ativos no momento)... o binario e criado no formato para o
+;  BLOAD do BASIC ou LOAD do Mamute Assembler") - nesse caso os bytes vem
+;  DIRETO de ExplicitBuf() (o codigo-objeto recem montado, indice 0 =
+;  InStart), sem depender de nada ja ter sido escrito em MamuteMem (ao
+;  contrario de "A O", que escreve na RAM simulada - "A I" nao precisa de
+;  "A O" antes, exporta o buffer da montagem direto pro arquivo). O campo
+;  Slot da janela nesse modo e' so' INFORMATIVO/sugestao (o formato
+;  BLOAD/BSAVE real do MSX nao tem byte de slot) - editar o intervalo de
+;  enderecos na janela ALEM do que foi montado preenche com zero (protegido
+;  contra estourar ExplicitBuf(), que so' tem ByteCount elementos).
 ;
 ;  Devolve uma string de resultado (log do MON>) em vez de tocar
 ;  G_Log/MamuteGui_State diretamente - MamuteGui_State so e declarado mais
@@ -63,7 +77,7 @@ Procedure MamuteSave_SyncFormat(G_File, G_Format)
   EndIf
 EndProcedure
 
-Procedure.s MamuteSave_Open(ParentWindow, SuggestedName.s, HasAddrs.b, InStart.i, InEnd.i, InExec.i)
+Procedure.s MamuteSave_Open(ParentWindow, SuggestedName.s, HasAddrs.b, InStart.i, InEnd.i, InExec.i, UseExplicitBuffer.b, Array ExplicitBuf.a(1))
   Protected WinW = 560
   Protected Margin = 20, RowH = 32, LabelW = 160
 
@@ -197,12 +211,26 @@ Procedure.s MamuteSave_Open(ParentWindow, SuggestedName.s, HasAddrs.b, InStart.i
             EndIf
 
             Protected i.i, Addr.i, Pagina.i, Offset.i
-            For i = 0 To SvLen - 1
-              Addr = (SvStart + i) & $FFFF
-              Pagina = (Addr >> 14) & 3
-              Offset = Addr & 16383
-              FullBuf(hp + i) = MamuteMem(SvSlot, Pagina, Offset)
-            Next
+            If UseExplicitBuffer
+              ; "A I" - bytes vem direto do buffer da montagem recem feita,
+              ; nao de MamuteMem(). Fora do alcance realmente montado
+              ; (usuario editou o intervalo na janela pra algo maior) vira
+              ; zero, protegido contra estourar ExplicitBuf().
+              For i = 0 To SvLen - 1
+                If i <= ArraySize(ExplicitBuf())
+                  FullBuf(hp + i) = ExplicitBuf(i)
+                Else
+                  FullBuf(hp + i) = 0
+                EndIf
+              Next
+            Else
+              For i = 0 To SvLen - 1
+                Addr = (SvStart + i) & $FFFF
+                Pagina = (Addr >> 14) & 3
+                Offset = Addr & 16383
+                FullBuf(hp + i) = MamuteMem(SvSlot, Pagina, Offset)
+              Next
+            EndIf
 
             Protected Fh = CreateFile(#PB_Any, SaveFilePath)
             If Not Fh

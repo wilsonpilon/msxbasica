@@ -2,11 +2,11 @@
 
 *(IDE MSX BASIC + Z80, antigo "Basic Dignified Editor")*
 
-![MSX BASIC + Z80 IDE — Basic Dignified, Assembly, integrado](msxbasica.png)
+![MSX BASIC + Z80 IDE — Basic Dignified, Assembly, integrado](paleobasic.png)
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.33.32** ("`TELA MAIOR`") — versão e build (data/hora UTC de compilação, em
+**Versão atual: 7.33.43** ("`OFFSET DE ORG`") — versão e build (data/hora UTC de compilação, em
 hexadecimal) são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -127,7 +127,7 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
   diretório separado `msxDiskUtil/` que serviu de origem foi removido do repositório, 2026-07-28)
   agora também é exposto de duas formas prontas para uso, além de montar o disco de "rodar no
   openMSX":
-  - **CLI embutida** (`BadigEditor.exe --diskmanipulator <create|list|add|extract|delete> disco.dsk
+  - **CLI embutida** (`PaleoBasic.exe --diskmanipulator <create|list|add|extract|delete> disco.dsk
     ...`) — mesma sintaxe do `msxdisk.exe` original, roda e sai sem abrir janela nenhuma.
   - **Menu Criar → Disco...** (`editor/DiskManagerGui.pbi`) — gerenciador gráfico com dois painéis
     (estilo Norton/Total Commander): esquerda é o sistema de arquivos local, direita é o conteúdo do
@@ -2519,6 +2519,214 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   da fonte de 14 para 16 (negrito já vinha `#True` por padrão) — fonte/tamanho/negrito continuam
   configuráveis em `Configurar → Mamute Assembler...` (recurso que já existia antes desta sessão, só
   não era do conhecimento do usuário). Verificado com uma captura de tela real da janela redimensionada.
+- **2026-08-13 — comando `EDIT` do Mamute Assembler: editor de linhas do programa-fonte Z80, estilo
+  ZX-81 (`7.33.33`, "TELA DE VERDADE")**: nova janela (`MamuteEditGui.pbi`) pra digitar o programa-fonte
+  no formato de linhas numeradas do MegaAssembler original (`NN Label: instrução operando ;comentário`).
+  Passou por duas reescritas na mesma sessão a partir de feedback direto do usuário vendo cada versão
+  rodando, até chegar num pedido bem específico: "um editor exatamente idêntico ao do ZX-81... exceto as
+  teclas tokenizadas" (sem sentido com teclado de PC de verdade). Resultado final: a **listagem é a
+  própria tela** (sem log de comandos, sem mensagem "OK"), um cursor **`>`** entre o número da linha e o
+  comando marca a linha atual, **setas Cima/Baixo** navegam a listagem, **ENTER com o campo vazio** puxa
+  a linha do cursor pra editar (**ENTER com o campo preenchido** grava, nova linha ou substituindo por
+  número), **ESC** descarta uma edição pendente, a tela **rola meia-tela sozinha** quando enche
+  digitando linhas novas, e o comando **`LIST`** relista do início, paginando tela-cheia-por-tela-cheia
+  com uma pergunta "Rolar mais uma tela? (S/N)" quando o programa não cabe inteiro. Aceita mnemônicos
+  Z80 reais (reaproveitando `Z80Asm::IsMnemonic()`, o assembler nativo do projeto) e as pseudo-
+  instruções `ORG`/`DEFB`/`DEFW`/`DEFM`/`DEFS`/`EQU`/`END`. Mudança pedida explicitamente em relação ao
+  manual original: números sem sufixo agora são **hexadecimal por padrão** (não mais decimal), pra
+  ficar uniforme com o resto do Mamute — sufixos `H`/`B`/`D` continuam disponíveis (`D` agora é o único
+  jeito de escrever decimal). Por hora só ACEITA/edita/lista o programa (`MamuteEditProgram()`) — a
+  montagem de verdade (comando `A` do manual original) fica pra uma sessão futura. Validado com 26 casos
+  de gramática/número num harness `/CONSOLE` descartável e, na versão final da janela, com automação
+  real ao vivo (`PostMessage`/`WM_SETTEXT` + capturas de tela reais) cobrindo entrada de linha, erro de
+  sintaxe, navegação por seta, puxar/editar/substituir uma linha, descarte por `ESC`, o auto-scroll de
+  meia-tela e a paginação completa do `LIST`. Complemento na mesma sessão: **indentação automática da
+  listagem** — label alinhado na coluna 0, instrução (com ou sem label) sempre alinhada na mesma coluna
+  (1 "tab stop"), comentário sempre alinhado numa coluna própria mais à direita (3 tab stops) — afeta só
+  o desenho da tela, o texto guardado/editado continua exatamente como foi digitado.
+- **2026-08-13 — comandos `NEW`/`DELETE`/`RENUM`/`CHANGE`/`SAVE`/`LOAD` do `EDIT` do Mamute Assembler
+  (`7.33.33`, "GERENCIAMENTO COMPLETO")**: gerenciamento completo do programa-fonte, seção "Programas
+  em Assembly" do manual original — todos reconhecidos no mesmo campo, sem número de linha na frente
+  (mesma convenção do `LIST`). `NEW` apaga o programa inteiro. `DELETE <lininic>[-[<linfin>]]` apaga uma
+  linha, um intervalo, ou (`<lininic>-` sem final) até o fim do programa. `RENUM
+  [<novali>[,<antigali>[,<incr>]]]` renumera a partir de uma linha antiga pra uma nova sequência, sem
+  aplicar nada se colidir com uma linha não renumerada. `CHANGE '<string1>'[,'<string2>']` troca (ou
+  apaga, se a segunda string for omitida) todas as ocorrências em qualquer linha, revalidando a sintaxe
+  de cada uma antes de aplicar. `SAVE`/`LOAD` abrem os diálogos nativos de arquivo (sem digitar nome) e
+  gravam/leem o programa num formato **ASCII próprio desta porta** (`.mza`) — não o formato binário
+  proprietário do MegaAssembler original, cujo suporte fica pra uma sessão futura. Validado com
+  automação real ao vivo cobrindo os seis comandos em sequência sobre o programa de exemplo do manual,
+  incluindo um round-trip completo `SAVE` → `NEW` → `LOAD` conferido byte a byte.
+- **2026-08-13 — comando `MERGE` do `EDIT` do Mamute Assembler (`7.33.33`)**: "igual ao MERGE do BASIC",
+  pedido explícito do usuário — mostra o mesmo diálogo do `LOAD`, mas sem apagar o programa em memória:
+  funde os dois, e uma linha do arquivo com o mesmo número de uma já existente sobrepõe a existente
+  (mesma regra do `MERGE` do manual original do MegaAssembler). Reaproveita a mesma lógica de
+  substituição-por-número já usada por toda gravação de linha — não precisou de código novo além de não
+  limpar o programa antes de ler o arquivo. Validado ao vivo: programa em memória com 3 linhas + arquivo
+  externo com uma linha sobrepondo e outra nova resultou exatamente no esperado (duas linhas mantidas,
+  uma sobrescrita, uma adicionada).
+- **2026-08-13 — comandos `SEARCH`/`LSEARCH` do `EDIT` do Mamute Assembler (`7.33.33`, "OLHOS NA
+  LISTAGEM")**: busca uma string no programa e lista as linhas onde aparece — `SEARCH '<string>'`
+  (entre aspas) busca literal, case-sensitive; `SEARCH <string>` (sem aspas) busca livre,
+  case-insensitive. Um `SEARCH` bem-sucedido faz a tela passar a mostrar SÓ as linhas encontradas
+  (navegáveis com as mesmas setas/`ENTER` de sempre) até digitar `LIST` ou qualquer outro comando, que
+  volta ao programa completo automaticamente. `LSEARCH` faz a mesma busca, mas em vez de filtrar a
+  tela gera um PDF com a listagem das linhas encontradas (mesma infraestrutura já usada por
+  `L`/`LP`/`P`/`V`). Validado ao vivo cobrindo busca literal, busca case-insensitive, navegação dentro
+  do filtro, saída do filtro via `LIST`, geração real de PDF (conferida byte a byte) e o caso sem
+  ocorrências.
+- **2026-08-13 — comandos `FIND`/`QUIT` do `EDIT` do Mamute Assembler (`7.33.33`)**: `FIND` é
+  literalmente um apelido de `SEARCH` — no manual original ele só buscava no início de cada linha (mais
+  rápido que o `SEARCH`, que busca em qualquer posição), uma otimização sem sentido num PC moderno, por
+  isso a distinção não foi replicada. `QUIT` fecha a janela do `EDIT` e volta pro `MON>` sem apagar o
+  programa da memória — como o programa já vive numa lista `Global`, "não apagar" já era o
+  comportamento natural, sem precisar de nenhuma lógica extra; abrir `EDIT` de novo continua
+  exatamente de onde parou. Validado ao vivo: `FIND` filtrando as mesmas linhas que um `SEARCH`
+  equivalente, e um ciclo completo `QUIT` → reabrir `EDIT` confirmando o programa intacto.
+- **2026-08-13 — comandos `A`/`A O` do `EDIT` do Mamute Assembler: monta de verdade (`7.33.34`, "O
+  COMPILADOR")**: o programa-fonte digitado no `EDIT` agora pode ser realmente assemblado. Em vez de
+  escrever um compilador do zero, reaproveita `Z80Asm.pbi` (o assembler Z80 nativo do projeto,
+  compatível M80/Nestor80, já validado byte a byte contra o `N80.exe` real) — como o vocabulário que o
+  `EDIT` já aceita é um subconjunto do que esse assembler entende, cada linha já é texto-fonte válido
+  assim que se tira o número da linha, sem tradutor no meio. `A` sozinho só valida (erro com o número
+  de linha certo e o cursor pulando pra ele automaticamente); `A O` (espaço obrigatório) além de
+  validar **escreve o código-objeto direto na RAM simulada**, no endereço do `ORG`, resolvido pelo
+  mapeamento de `PAGE` ativo no momento — se o `ORG` cai numa página mapeada pra um slot com RAM, é lá
+  que os bytes vão parar; a opção de compilar direto pra um arquivo em disco fica pra uma sessão
+  futura. Validado com dados reais: um programa pequeno assemblado corretamente (contagem de bytes e
+  endereços conferidos à mão), um erro real de símbolo desconhecido detectado na linha certa, e depois
+  do `A O`, os bytes lidos de volta de forma independente pelo comando `DM` do `MON>` — bateram
+  exatamente com o esperado.
+- **2026-08-13 (mesma sessão) — dois bugs reais corrigidos com o primeiro programa de verdade do
+  usuário**: um número sem sufixo com letra hexa (`0a2`) era aceito ao digitar no `EDIT` (hexadecimal
+  por padrão) mas rejeitado pelo assembler de verdade na hora de montar (que segue a convenção clássica
+  M80/Nestor80, decimal por padrão) — corrigido traduzindo os números do `EDIT` pro formato que o
+  assembler espera antes de montar, sem mudar o assembler em si (ele serve outros consumidores que
+  dependem da convenção clássica). E um bug real, mais antigo, dentro do próprio assembler nativo do
+  projeto: uma linha como `"CHPUT: EQU 0A2H"` (label com dois-pontos + `EQU`) definia o símbolo duas
+  vezes, o que colidia consigo mesmo e gerava um falso "símbolo já definido" numa linha com uma única
+  definição real — nunca tinha aparecido antes porque todo outro uso do assembler escreve `EQU` sem
+  dois-pontos no label. Corrigido no motor, verificado sem nenhuma regressão na suíte de testes
+  existente (67 + 7 casos) e byte a byte contra o assembler `N80.exe` real.
+- **2026-08-13 (mesma sessão) — comando `MAP` do `EDIT` do Mamute Assembler (`7.33.34`)**: mostra o
+  endereço inicial e final do código-objeto da última montagem bem-sucedida — `A` sozinho já basta (não
+  precisa de `A O`), já que os dois calculam o mesmo intervalo de endereços por baixo, `O` só decide se
+  além disso grava na RAM. Se nada foi montado com sucesso ainda, mostra uma mensagem pedindo pra rodar
+  `A` (ou `A O`) primeiro em vez de um endereço sem sentido; `NEW` invalida o resultado guardado, já que
+  apaga o programa que gerou aquele endereço. Validado ao vivo nos três casos: antes de qualquer
+  montagem, logo depois de um `A` simples, e depois de um `NEW`.
+- **2026-08-13 (mesma sessão) — listagem detalhada PASSO-1/PASSO-2 de `A`/`A O` (`7.33.35`)**: `A` agora
+  mostra `PASSO-1` e depois `PASSO-2` (mesma sequência do Mega Assembler original) antes de montar de
+  verdade, e a montagem bem-sucedida vira uma listagem coluna a coluna — número da linha, endereço (ou o
+  valor de um `EQU`), até 4 bytes de código-objeto em hexa (linhas extras pra instruções/diretivas com
+  mais de 4 bytes) e o conteúdo original da linha. A listagem entra no mesmo mecanismo de rolagem por
+  tela cheia já usado pelo `LIST` (`Rolar mais uma tela? (S/N)`) em vez de duplicar a lógica de
+  paginação, e funciona igual com `A` ou `A O` (a única diferença continua sendo se os bytes também vão
+  pra RAM). `ORG`/`END` não geram linha na listagem por enquanto — decisão não confirmada com o usuário,
+  fácil de mudar se for o comportamento esperado. Validado ao vivo: listagem de um programa de 12 linhas
+  conferida byte a byte (incluindo uma string de 14 caracteres corretamente quebrada em 4+4+4+2), um
+  programa de 50+ linhas forçando duas telas de rolagem com a numeração/endereços continuando
+  corretamente na segunda tela, e `A O` mostrando a listagem junto com a confirmação de gravação na RAM.
+  Suíte de regressão (67+7 casos) e comparação byte a byte contra o `N80.exe` real rodadas de novo sem
+  nenhuma regressão.
+- **2026-08-13 (mesma sessão) — opção `N` do comando `A`/`A O` (`7.33.36`)**: "opção N (por exemplo A O,
+  ou A ON) não mostra os números de linha, de resto é igual" — pedido explícito do usuário. `N` é a
+  opção do manual original que suprime a coluna de número de linha da listagem; combinável com `O` no
+  mesmo bloco de opções, em qualquer ordem (`A N`, `A ON`, `A NO`), já que o manual original também junta
+  as letras de opção coladas. Só a coluna do número da linha fica em branco — endereço, valor de `EQU`,
+  bytes hexa e conteúdo da linha continuam exatamente iguais. Validado ao vivo: `A ON` mostrou a mesma
+  listagem de sempre com a coluna de linha em branco e a confirmação de gravação na RAM; `A N` (sem `O`)
+  mostrou a coluna em branco sem gravar nada; uma opção não implementada (`A P`, já implementada na
+  entrada seguinte) continuou sendo rejeitada normalmente.
+- **2026-08-13 (mesma sessão) — opção `P` do comando `A`/`A O`/`A N` (`7.33.37`)**: "o Modificador P do
+  comando A gera a listagem na impressora, ou seja, no PDF, pode ser combinado com as outras opções por
+  exemplo A NP, A ONP etc" — pedido explícito do usuário. `P` manda a mesma listagem que aparece na tela
+  pra um PDF A4 (mesma infra já usada pelo `LSEARCH`/`L`/`LP`/`P`/`V` — nenhum driver de impressora real,
+  só um PDF simples), combinável com `O` e `N` em qualquer ordem no mesmo bloco de opções (`A P`, `A NP`,
+  `A ONP`). Como o PDF usa a mesma lista já formatada que vai pra tela, combinar com `N` já sai sem
+  número de linha automaticamente, sem lógica extra. O diálogo "Salvar como" abre antes da mensagem de
+  status final, e o resultado (nome do arquivo gravado, erro, ou nada se cancelado) é anexado a essa
+  mensagem em vez de substituí-la — cancelar o diálogo é silencioso, igual a qualquer outro "Salvar
+  como" do projeto. Validado ao vivo: `A ONP` gravou na RAM, escondeu os números de linha e salvou um PDF
+  conferido byte a byte contra a listagem da tela; `A P` sozinho com o diálogo cancelado se comportou
+  exatamente como um `A` sem `P` nenhum.
+- **2026-08-13 (mesma sessão) — opção `I` do comando `A`/`A O`/`A N`/`A P` (`7.33.38`)**: "a I... funciona
+  similar a O, salva em disco o arquivo, abre o diálogo de save, e salva o header &HFE, os endereços
+  inicial, final e execução (já sugira no diálogo), o slot (já sugira os ativos no momento)... o binário
+  é criado no formato para o BLOAD do BASIC ou LOAD do Mamute Assembler" — pedido explícito do usuário.
+  `I` reaproveita a mesma janela do comando `SAVE` do monitor do Mamute Assembler (arquivo, slot 0-3,
+  endereço inicial/final/execução, formato BIN com cabeçalho real do BSAVE do MSX), agora capaz de gravar
+  o código-objeto recém-montado diretamente, sem precisar que `A O` tenha rodado antes — o slot ativo e
+  os três endereços já vêm pré-preenchidos, tudo editável antes de gravar. Combina livremente com
+  `O`/`N`/`P` no mesmo bloco de opções (`A I`, `A ONPI`). Validado ao vivo: `A I` salvou um arquivo
+  conferido byte a byte — cabeçalho `FE` + endereço inicial/final/execução em little-endian, seguidos dos
+  27 bytes exatos da montagem; `A ONI` com o diálogo de gravação cancelado continuou gravando na RAM e
+  escondendo os números de linha normalmente, sem nenhum efeito colateral da opção cancelada.
+- **2026-08-13 (mesma sessão) — opção `R` do comando `A`/`A O`/`A N`/`A P`/`A I` (`7.33.39`)**: "ela gera
+  no final da listagem uma referência cruzada dos labels equ gera o valor e os endereços onde é usado, os
+  labels mostra onde foram definidos e onde são usados" — pedido explícito do usuário, com um print real
+  do MegaAssembler original de exemplo (`images/msxbasica-19.png`, usando o mesmo programa de teste já
+  usado nesta sessão inteira). `R` acrescenta ao final da listagem uma linha por símbolo (ordem
+  alfabética) mostrando o valor (constante `EQU` ou endereço de definição do rótulo — o mesmo layout
+  serve pros dois) e todos os endereços onde ele foi referenciado, com até 4 por linha e continuação nas
+  linhas seguintes se precisar. Isso exigiu um mecanismo novo no motor de montagem compartilhado
+  (`Z80Asm.pbi`): toda vez que uma expressão referencia um símbolo já conhecido durante a passagem final
+  de montagem, o endereço da linha que fez a referência é registrado — daí a referência cruzada é montada
+  automaticamente ao final de qualquer montagem bem-sucedida. Validado ao vivo com o programa exato do
+  print de exemplo: saída idêntica, símbolo por símbolo, valor por valor, endereço por endereço. Testado
+  também com um símbolo referenciado 6 vezes (o print original só mostra casos de uso único) — o
+  agrupamento em blocos de 4 endereços por linha e a integração com a rolagem de tela cheia funcionaram
+  corretamente. Suíte de regressão completa rodada de novo sem nenhuma regressão.
+- **2026-08-13 (mesma sessão) — opção `S` do comando `A`/`A O`/`A N`/`A P`/`A I`/`A R` (`7.33.40`)**: "ele
+  gera ao final uma listagem dos labels em ordem alfabética e o endereço onde foram definidos, digo o
+  endereço para onde apontam" — pedido explícito do usuário. `S` reaproveita a mesma tabela alfabética já
+  construída pra `R` (entrada anterior), mostrando só nome e valor de cada símbolo, sem os endereços de
+  uso — zero mudança no motor de montagem, só uma formatação diferente dos mesmos dados. Combina
+  livremente com as outras opções (`A S`, `A RS`, `A ONPIRS`), aparecendo depois do bloco de `R` quando
+  os dois estão ativos. Validado ao vivo: `A RS` mostrou os dois blocos na mesma listagem/rolagem, com a
+  paginação cortando corretamente entre eles; `A S` sozinho mostrou a listagem simples de rótulos sem
+  nenhum endereço de uso.
+- **2026-08-13 (mesma sessão) — opção `D` do comando `A`/`A O`/`A N`/`A P`/`A I`/`A R`/`A S` (`7.33.41`)**:
+  "e' identica a A S, porem a lista de labels e' por ordem de aparicao e nao alfabetica" — pedido
+  explícito do usuário. Mesmo layout nome+valor de `S`, mas os símbolos aparecem na ordem em que foram
+  DEFINIDOS no fonte, não em ordem alfabética. Isso exigiu um mecanismo novo no motor de montagem: o
+  momento exato em que cada símbolo passa de "desconhecido" pra "definido de verdade" é registrado — e
+  como a montagem varre o programa de cima pra baixo, essa é automaticamente a ordem de aparição no
+  fonte, mesmo para símbolos referenciados antes de serem definidos (referência pra frente). Combina
+  livremente com as outras opções, aparecendo depois do bloco de `S` quando os dois estão ativos.
+  Validado ao vivo com um caso onde as duas ordens realmente divergem: `A DS` no programa de teste (onde
+  `SALT` é definido antes de `PRINT` no fonte, mas viria depois alfabeticamente) mostrou claramente as
+  duas ordens diferentes lado a lado — `S` alfabético (`CHPUT`/`PRINT`/`SALT`) e `D` por aparição
+  (`CHPUT`/`SALT`/`PRINT`). Suíte de regressão rodada de novo sem nenhuma regressão.
+- **2026-08-13 (mesma sessão) — opção `H` do comando `A`, combinada com `S` ou `D` (`7.33.42`)**: "mais
+  um comando A H lista os labels na impressora, deve ser usado com o D ou S" — pedido explícito do
+  usuário. `H` manda só a(s) lista(s) de labels (alfabética e/ou por ordem de aparição, conforme `S`/`D`
+  estiverem ativas) pra um PDF separado — diferente de `P`, que manda a listagem inteira com o código.
+  Usar `H` sozinho, sem `S` nem `D`, é rejeitado com uma mensagem explicando o motivo, já que não haveria
+  nenhuma lista pra imprimir. Se `S` e `D` estiverem ativos junto com `H`, as duas listas vão pro mesmo
+  PDF, separadas por uma linha em branco. Validado ao vivo: `A H` sozinho foi rejeitado corretamente;
+  `A DSH` abriu o diálogo de salvar, e o PDF resultante continha as duas listas de labels (alfabética e
+  por ordem de aparição) exatamente como aparecem na tela.
+- **2026-08-13 (mesma sessão) — opção `/<offset>` do comando `A`, última desta série (`7.33.43`)**: "este
+  comando compila o programa mas adiciona o OFFSET ao ORG para gerar em outro endereço" — pedido
+  explícito do usuário. `A O/8000`, por exemplo, monta o programa como se todo `ORG` tivesse `8000`
+  somado ao valor original — o programa inteiro se desloca de forma consistente (rótulos, saltos
+  relativos, listagem), não só um resumo superficial de endereços. A opção combina com qualquer outra no
+  mesmo bloco (`A O/8000`, `A ONR/1000`), e um offset ausente ou inválido é rejeitado antes de tentar
+  montar. Validado ao vivo: `A O/1000` no programa de teste (`ORG 0C100H`) assemblou tudo em `D100-D11A`
+  em vez de `C100-C11A`, com a referência interna `LD HL,PRINT` corretamente apontando pro endereço já
+  deslocado, enquanto a constante `EQU` e o salto relativo continuaram intactos, como esperado.
+- **2026-08-13 (mesma sessão) — release `paleobasic-v073343.zip`**: capítulo **Mamute Assembler** de
+  `docs/MANUAL.md` reescrito do zero (cobria só `PAGE`/`DM`/`ZAP` antes, agora documenta o conjunto
+  completo — `SCR`/`SH`/`MS`/`LOAD`/`SAVE`/`M`/`S`/`C`/`D`/`P`/`V`/`T`/`F`/`G`/`X`/`R`/`L`/`LP`/`EDIT` e
+  todas as opções do `A`). **O executável mudou de nome**: `editor\BadigEditor.exe` →
+  **`editor\PaleoBasic.exe`** (o arquivo-fonte `editor\BadigEditor.pb` continua com o mesmo nome —
+  mudança cosmética no artefato final, `build.ps1`/`build.sh` já compilam com o nome novo por padrão).
+  **Ícone e splash screen também renomeados**: `msxbasica.ico` → `paleobasic.ico`, `msxbasica.png` →
+  `paleobasic.png` — verificado ao vivo (ícone na barra de título, splash screen na abertura). Pacote de
+  distribuição gerado via `build.ps1 -D` e publicado como `paleobasic-v073343.zip`. Ver
+  `docs/RELEASE_NOTES.md` para as notas de lançamento formais desta versão e das anteriores desde
+  `7.33.32`.
 
 ## Ferramentas e ambiente
 

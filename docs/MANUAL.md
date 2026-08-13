@@ -157,7 +157,18 @@
     - [Configurar → Mamute Assembler...](#configurar--mamute-assembler)
     - [Comandos disponíveis](#comandos-disponíveis)
     - [DM - navegação e edição](#dm---navegação-e-edição)
+    - [M e S - edição rápida de memória](#m-e-s---edição-rápida-de-memória)
     - [ZAP - editor de setores de disco](#zap---editor-de-setores-de-disco)
+    - [SCR - display gráfico da memória](#scr---display-gráfico-da-memória)
+    - [SH - busca de bytes ou texto](#sh---busca-de-bytes-ou-texto)
+    - [MS - grava uma string na memória](#ms---grava-uma-string-na-memória)
+    - [LOAD e SAVE](#load-e-save)
+    - [C, D, P e V - despejo formatado de memória](#c-d-p-e-v---despejo-formatado-de-memória)
+    - [T e F - transferir e preencher blocos](#t-e-f---transferir-e-preencher-blocos)
+    - [G e X - execução e registradores](#g-e-x---execução-e-registradores)
+    - [R, L e LP - referência de fita e disassembler](#r-l-e-lp---referência-de-fita-e-disassembler)
+    - [EDIT - editor do programa-fonte Z80](#edit---editor-do-programa-fonte-z80)
+    - [A - montar o programa](#a---montar-o-programa)
 
 ---
 
@@ -171,7 +182,7 @@ PureBasic — o script cuida de tudo pelo PowerShell.
 .\build.ps1
 ```
 
-Isso compila `editor\BadigEditor.pb` e gera `editor\BadigEditor.exe`.
+Isso compila `editor\BadigEditor.pb` e gera `editor\PaleoBasic.exe`.
 
 ### Onde o script encontra o `pbcompiler.exe`
 
@@ -204,7 +215,7 @@ um traço).
 | `-H`, `--help` | Mostra a lista de opções e sai. |
 | `-V`, `--version <versão>` | Versão embutida no executável (padrão `7.1.1`). |
 | `-i`, `--sourcefile <arquivo>` | Arquivo fonte a compilar (padrão `editor\BadigEditor.pb`). |
-| `-o`, `--outputexe <arquivo>` | Caminho do executável de saída (padrão `editor\BadigEditor.exe`). |
+| `-o`, `--outputexe <arquivo>` | Caminho do executável de saída (padrão `editor\PaleoBasic.exe`). |
 
 ```powershell
 # Compila e ja abre o programa
@@ -236,7 +247,7 @@ Essas informações aparecem dentro do programa em **Ajuda → Sobre...**.
 Depois de compilado, basta rodar o executável gerado:
 
 ```powershell
-.\editor\BadigEditor.exe
+.\editor\PaleoBasic.exe
 ```
 
 ou usar `.\build.ps1 -Run` para compilar e abrir em um único passo.
@@ -606,7 +617,7 @@ montar imagens de disco MSX (`.dsk`) sem sair do editor:
 - **Campo "Arquivo do disco"** (topo) — o botão **"..."** abre o diálogo padrão do Windows para
   escolher um `.dsk` já existente (abre para edição) ou digitar um caminho novo (cria um disco em
   branco de 720 KB).
-- **Painel esquerdo** — sistema de arquivos local, começando no diretório onde o `BadigEditor.exe`
+- **Painel esquerdo** — sistema de arquivos local, começando no diretório onde o `PaleoBasic.exe`
   está rodando. Duplo-clique numa pasta entra nela; duplo-clique em `..` sobe um nível.
 - **Painel direito** — conteúdo do disco aberto/em criação.
 - **`Adicionar >>` / `<< Extrair`** — transferem os arquivos selecionados (seleção múltipla suportada)
@@ -631,11 +642,11 @@ O mesmo motor de disco também está disponível como utilitário de linha de co
 nenhuma janela — útil em scripts:
 
 ```powershell
-BadigEditor.exe --diskmanipulator create disco.dsk
-BadigEditor.exe --diskmanipulator list disco.dsk -l
-BadigEditor.exe --diskmanipulator add disco.dsk arquivo.bas *.txt
-BadigEditor.exe --diskmanipulator extract disco.dsk -d pasta_saida *.bas
-BadigEditor.exe --diskmanipulator delete disco.dsk arquivo.bas
+PaleoBasic.exe --diskmanipulator create disco.dsk
+PaleoBasic.exe --diskmanipulator list disco.dsk -l
+PaleoBasic.exe --diskmanipulator add disco.dsk arquivo.bas *.txt
+PaleoBasic.exe --diskmanipulator extract disco.dsk -d pasta_saida *.bas
+PaleoBasic.exe --diskmanipulator delete disco.dsk arquivo.bas
 ```
 
 | Comando | Descrição |
@@ -1658,7 +1669,7 @@ uma variável).
    uso, comandos/funções estendidos, diretivas de recurso...);
 3. Monta a Ajuda a partir disso (ver abaixo).
 
-Os arquivos baixados ficam em `tools/msxbas2rom/` (pasta irmã de `editor/BadigEditor.exe`) — o binário
+Os arquivos baixados ficam em `tools/msxbas2rom/` (pasta irmã de `editor/PaleoBasic.exe`) — o binário
 em si e a pasta `help/` com o conteúdo já convertido. Clicar em "Baixar" de novo no futuro atualiza os
 dois.
 
@@ -2373,11 +2384,13 @@ de tela ou criar uma nova sem ter registrado avisa antes de descartar as altera�
 
 ## Mamute Assembler
 
-> ⚠️ **Ferramenta ainda em fase inicial.** O nome já promete um assembler completo, mas hoje o Mamute
-> Assembler só oferece um "monitor" de memória/disco (comandos `PAGE`, `DM`, `ZAP` — ver abaixo). Ele
-> **não** monta código Z80, não tem editor de fonte próprio, e não substitui o Assembler Z80 nativo, o
-> N80 nem o asMSX (esses continuam sendo os caminhos reais pra montar um `.asm`). Novos comandos entram
-> aos poucos, um de cada vez, ao longo de futuras versões.
+> O **Mamute Assembler** já monta código Z80 de verdade (comando `EDIT`/`A`, reaproveitando o mesmo
+> motor nativo do menu **Executar → Montar Assembly**), além do "monitor" de memória/disco original
+> (`PAGE`, `DM`, `ZAP` e o resto do conjunto abaixo). Ele continua sendo uma ferramenta separada dos
+> assemblers já existentes (nativo via menu, N80, asMSX) — um jeito alternativo, no estilo dos
+> montadores de linha de comando dos anos 80, de escrever e montar Z80 dentro da mesma janela onde
+> também dá pra inspecionar/editar memória e disco. Comandos de execução de programa (`G`) e
+> carregamento de assemblado por fita (`R`) ainda só validam sintaxe — ficam pra uma fase futura.
 
 `Executar → Mamute Assembler...` abre uma janela "monitor" — inspirada nos montadores de linha de
 comando dos computadores de 8 bits dos anos 80 (o **MegaAssembler** foi a referência direta pedida pelo
@@ -2386,6 +2399,10 @@ não é uma tela de campos/botões: um prompt `MON>` aceita comandos digitados, 
 resultado aparecendo logo acima, igual um terminal de verdade. Fundo preto, texto monoespaçado verde —
 visual deliberadamente fora do tema claro do resto da IDE; fonte (nome/tamanho/negrito) configurável em
 [Configurar → Mamute Assembler...](#configurar--mamute-assembler) logo abaixo.
+
+**Setas Cima/Baixo** no campo `MON>` navegam pelo histórico de comandos já digitados (Cima = mais
+recente, Baixo = volta pro presente) — esse histórico é salvo no arquivo de projeto atual (ou num
+projeto padrão, se nenhum estiver aberto) e continua disponível na próxima vez que a janela abrir.
 
 A ferramenta simula o **sistema de slots do MSX de verdade**: 4 slots (numerados 0 a 3), cada um com 4
 páginas de 16KB — os mesmos endereços do hardware real:
@@ -2439,6 +2456,9 @@ aberto.
 
 ### Comandos disponíveis
 
+**Todo endereço/setor digitado em qualquer comando do Mamute Assembler é hexadecimal** — o padrão de
+entrada da ferramenta inteira, incluindo dentro do editor `EDIT`.
+
 - **`BA`** ou **`QUIT`** — encerra a janela do Mamute Assembler (equivalente a fechar pelo X). Não
   diferencia maiúsculas de minúsculas. Sem argumentos.
 - **`PAGE`** — mostra ou troca o **mapeamento ativo agora mesmo** (qual slot está comutado em cada uma
@@ -2453,14 +2473,37 @@ aberto.
     páginas 2 e 3 no slot 3.
 
   O mapeamento ativo é recalculado sozinho ("estado de boot") toda vez que a janela abre, a partir da
-  configuração salva em `Configurar → Mamute Assembler...`. É esse mapeamento que o comando `DM` (abaixo)
-  usa pra decidir de qual bloco de memória ler/escrever em cada endereço.
-- **`DM <endereço>[,<deslocamento>]`** — abre uma janela de despejo/edição de memória. Ver [DM -
-  navegação e edição](#dm---navegação-e-edição) logo abaixo, seção própria (é o comando mais rico até
-  agora).
-
-**Todo endereço digitado em qualquer comando do Mamute Assembler é hexadecimal** — o padrão de entrada
-da ferramenta inteira.
+  configuração salva em `Configurar → Mamute Assembler...`. É esse mapeamento que a maioria dos comandos
+  abaixo usa pra decidir de qual bloco de memória ler/escrever em cada endereço.
+- **`DM <endereço>[,<deslocamento>]`** — despejo/edição de memória numa janela à parte. Ver [DM -
+  navegação e edição](#dm---navegação-e-edição).
+- **`M [<endereço>]`** / **`S [<endereço>]`** — edição rápida de memória, digitando os 2 dígitos hexa de
+  cada byte direto (sem abrir campo). `S` usa um teclado numérico configurável em vez de `0-9`/`A-F`
+  fixos. Ver [M e S](#m-e-s---edição-rápida-de-memória).
+- **`ZAP <setor>[,<deslocamento>]`** — edição de setores crus de uma imagem `.dsk`. Ver [ZAP](#zap---editor-de-setores-de-disco).
+- **`SCR <endinic>,<dx>,<dy>[,<modo>]`** — mostra a memória como uma tela gráfica 256×192, útil pra
+  visualizar fontes/sprites. Ver [SCR](#scr---display-gráfico-da-memória).
+- **`SH [<endereço>],<byte>[,<byte>...]`** ou **`SH [<endereço>],'<texto>`** — busca bytes (com curinga)
+  ou texto na memória. Ver [SH](#sh---busca-de-bytes-ou-texto).
+- **`MS <endereço>,[<deslocamento>],'<texto>`** — grava uma string na memória. Ver [MS](#ms---grava-uma-string-na-memória).
+- **`LOAD`** / **`SAVE`** — carrega/grava um bloco de memória num arquivo (binário BLOAD, `.rom`), com
+  janela própria. Ver [LOAD e SAVE](#load-e-save).
+- **`C <modo>`** — escolhe o modo de exibição usado por `D`/`P`/`V`. **`D <endinic>[,<endfim>]`** —
+  despejo formatado no log. **`P <endinic>[,<endfim>]`** — igual ao `D`, mas gera PDF. **`V
+  <endinic>[,<endfim>]`** — igual ao `P`, mas lê da VRAM simulada. Ver [C, D, P e
+  V](#c-d-p-e-v---despejo-formatado-de-memória).
+- **`T <endinic>,<endfim>,<enddest>`** — copia um bloco de memória. **`F <endinic>,<endfim>,<byte>`** —
+  preenche um bloco com um byte repetido. Ver [T e F](#t-e-f---transferir-e-preencher-blocos).
+- **`G <endinic>[,<brkpnt1>[,<brkpnt2>]]`** — ainda só valida sintaxe (execução de programas fica pra
+  uma fase futura). **`X [<reg>]`** — mostra/edita os registradores do Z80 simulado. Ver [G e
+  X](#g-e-x---execução-e-registradores).
+- **`R [<offset>]`** — ainda só valida sintaxe (carregar um assemblado gravado por fita fica pra uma
+  fase futura). **`L [<endinic>[,<endfim>]]`** — disassembla a memória no log. **`LP
+  [<endinic>[,<endfim>]]`** — igual ao `L`, mas gera PDF. Ver [R, L e
+  LP](#r-l-e-lp---referência-de-fita-e-disassembler).
+- **`EDIT`** — abre o editor de linhas do programa-fonte Z80 (estilo ZX-81), com o comando **`A`**
+  (montar/assemblar) dentro dele. Ver [EDIT](#edit---editor-do-programa-fonte-z80) e [A - montar o
+  programa](#a---montar-o-programa).
 
 ### DM - navegação e edição
 
@@ -2502,6 +2545,40 @@ andamento sem gravar nada — ou, se não havia edição em curso, fecha a janel
 verdade (fisicamente não há o que escrever ali). Tentar editar uma célula assim não dá erro nem trava —
 só não muda nada.
 
+### M e S - edição rápida de memória
+
+`M [<endereço>]` abre a **mesma grade de 128 bytes** (16 linhas de 8, hexa+ASCII) e a **mesma
+navegação** do `DM` (setas, `PgUp`/`PgDn`, `TAB`, botões, `+`/`-` pro deslocamento da interpretação
+ASCII exibida) — a diferença é como um byte é editado.
+
+`<endereço>` é opcional: se não for informado, a janela reabre exatamente onde ficou da última vez (só
+funciona depois que `M` já abriu pelo menos uma vez nesta sessão).
+
+**Editar um byte** — com o cursor no bloco hexa, digite dois dígitos hexa (`0-9`, `A-F`) direto, sem
+abrir campo de edição nenhum: o primeiro dígito fica mostrado com um `_` no lugar do segundo (ex.: `3_`)
+esperando o próximo; o segundo confirma o byte inteiro (`3F`) e avança o cursor sozinho pro próximo
+endereço. `ESC` cancela o primeiro dígito se ainda estiver pendente, ou sai da janela se não houver nada
+pendente. `RETURN` sempre sai da janela.
+
+O bloco de texto (ASCII) é **somente leitura** neste comando — `TAB` ainda alterna o destaque visual
+entre hexa/texto, mas não abre edição no bloco de texto.
+
+**`S [<endereço>]`** é **igual ao `M`** (mesma grade, mesma navegação, mesmo jeito de editar um byte
+digitando dois dígitos hexa direto) — a única diferença é **quais teclas do teclado representam cada
+dígito hexa**. Em vez de `0-9`/`A-F` fixos, usa um teclado numérico reduzido configurável em
+`Configurar → Mamute Assembler...`, por padrão:
+
+```
+1 2 3 4        1 2 3 4
+Q W E R   =>   5 6 7 8
+A S D F        9 A B C
+Z X C V        D E F 0
+```
+
+(o mesmo layout clássico de teclado numérico usado em vários emuladores — as 4 fileiras da esquerda do
+teclado QWERTY). Qualquer uma das 16 teclas pode ser trocada individualmente na tela de configuração
+para qualquer letra ou dígito. `S` guarda seu próprio "último endereço", separado do `M`.
+
 ### ZAP - editor de setores de disco
 
 `ZAP <setor inicial>[,<deslocamento>]` é muito parecido com o `DM`, mas em vez de mostrar a memória
@@ -2539,3 +2616,432 @@ confirmação antes de descartá-las — igual o restante da IDE (ver o Gerencia
 **Também importante: no ZAP, qualquer byte do disco pode ser editado** — diferente do `DM`, onde células
 ROM/BASIC/Vazio são somente-leitura. Não existe conceito de "só RAM é editável" numa imagem de disco, então
 a proteção de escrita do `DM` não se aplica aqui.
+
+### SCR - display gráfico da memória
+
+`SCR <endinic>,<dx>,<dy>[,<modo>]` mostra uma tela **fixa de 256×192 pixels** (32×24 caracteres 8×8, a
+mesma resolução de um SCREEN 2/1 real do MSX) preenchida com a memória a partir de um endereço, cada
+caractere formado por 8 bytes/8 pixels (1 bit = 1 pixel) — exatamente como a Pattern Generator Table do
+SCREEN 1/2 ou a Sprite Pattern Table de um MSX real. Útil pra visualizar fontes de caracteres e sprites
+direto na memória simulada.
+
+Todos os números são hexa. `<endinic>` (obrigatório) é o endereço do primeiro caractere. A tela em si é
+sempre 256×192 — `<dx>`/`<dy>` (obrigatórios, ≥1) não mudam esse tamanho, eles definem o "azulejo"
+(bloco de `dx`×`dy` caracteres) usado pra ladrilhar a tela inteira, da esquerda pra direita e de cima
+pra baixo. `<modo>` (opcional, `0` ou `1`, padrão `0`) define a ordem em que os blocos de 8 bytes são
+lidos dentro de cada azulejo: **`0`** (horizontal) lê linha por linha dentro do azulejo; **`1`**
+(vertical) lê coluna por coluna, a mesma ordem real de armazenamento de sprites do MSX.
+
+Exemplo pra ver a tabela de caracteres ASCII de uma ROM de fonte carregada em `Configurar → Mamute
+Assembler...` (endereço `1BBF` é onde a maioria das BIOS de MSX guarda o início da Pattern Generator
+Table; `<dx>`=`<dy>`=`1` ladrilha a tela toda com 1 caractere por azulejo, leitura sequencial simples):
+
+```
+MON>SCR 1BBF,1,1
+```
+
+**Navegação** (fora do modo de edição):
+
+| Tecla | Efeito |
+|---|---|
+| Setas esquerda/direita | Deslocam o endereço base **1 byte** (ajuste fino) |
+| Setas cima/baixo | Deslocam o endereço base **1 azulejo inteiro** (`dx`×`dy`×8 bytes) |
+| `TAB` (ou botão **MOL**) | Liga/desliga o contorno de uma **moldura** de edição, tamanho fixo 2×2 caracteres (16×16 pixels), sempre no canto superior esquerdo |
+| `E` (ou botão **END**) | Mostra/oculta o rótulo com o endereço base atual |
+| `ENTER` | Entra no modo de edição, ampliando os 16×16 pixels da moldura num painel à parte |
+| `ESC` | Encerra o comando (fecha a janela) |
+
+Não há tecla pra mover a moldura pela tela — a única forma de trazer outro pedaço da memória pra dentro
+dela é rolar o endereço base com as setas.
+
+**Modo de edição** (`ENTER`) — só afeta os 16×16 pixels da moldura, ampliados num painel à direita com
+um cursor de contorno vermelho:
+
+| Tecla | Efeito |
+|---|---|
+| Setas | Movem o cursor de pixel dentro da moldura |
+| `ESPAÇO` | Inverte (acende/apaga) o pixel sob o cursor |
+| `I` (ou botão **INV**) | Inverte (XOR) os 16×16 pixels inteiros da moldura de uma vez |
+| `L` (ou botão **APG**) | Apaga (zera) esses mesmos 16×16 pixels de uma vez |
+| `ENTER` | Sai do modo de edição (as alterações já foram gravadas, pixel a pixel) |
+| `ESC` | Cancela TODAS as alterações feitas desde que entrou no modo de edição e sai |
+
+**Se a moldura cair sobre uma célula que não seja RAM agora** (ROM/BASIC/Vazio, conforme `PAGE`), o
+painel de edição mostra o conteúdo real normalmente e todas as teclas de edição continuam respondendo,
+mas nada é gravado de verdade — um aviso amarelo "ROM - somente leitura (alterações não são gravadas)"
+aparece abaixo da tela nesse caso.
+
+### SH - busca de bytes ou texto
+
+`SH` procura uma sequência de bytes exatos (com curingas opcionais) ou um texto (testando
+automaticamente todos os deslocamentos possíveis) na memória simulada. Não abre janela nenhuma — o
+resultado aparece direto no log do `MON>`.
+
+**Modo bytes:**
+
+```
+MON>SH [<endereço>],<byte>[,<byte>...]
+```
+
+`<endereço>` (hexa) é onde começar a busca. Se for omitido (a vírgula continua ali, só o número antes
+dela que falta — ex.: `SH ,2A,40`), a busca continua do endereço onde a **última** busca deste comando
+achou algo, mais 1 — só funciona depois de um `SH` que já tenha achado algo nesta mesma sessão da
+janela.
+
+Cada `<byte>` é 1-2 dígitos hexa. **Deixar um `<byte>` vazio (vírgula dupla) vira curinga** — "esse byte
+pode ser qualquer um". Exemplos:
+
+```
+MON>SH 4000,2A,40,0C
+```
+
+procura a sequência exata `2A 40 0C` a partir de `4000`;
+
+```
+MON>SH 4000,2A,,0C
+```
+
+procura 3 bytes onde o 1º é `2A`, o 2º pode ser qualquer coisa, e o 3º é `0C`.
+
+**Modo texto:**
+
+```
+MON>SH [<endereço>],'<texto>
+```
+
+Um apostrofo seguido do texto (sem precisar fechar com outro apostrofo), 2+ caracteres. Diferente do
+modo bytes, a busca de texto testa TODOS os deslocamentos possíveis (`-7F` a `80`, mesma faixa do
+`DM`/`ZAP`) em cada posição candidata — acha tanto o texto puro (deslocamento `+00`) quanto texto
+"cifrado" por um deslocamento fixo (truque comum em jogos antigos pra não deixar diálogo legível num
+editor de disco cru). Exemplo:
+
+```
+MON>SH 3F41,'teste
+```
+
+**Resultado:** `ACHADO EM <endereço>` (modo bytes) ou `ACHADO EM <endereço> DESLOC <deslocamento>` (modo
+texto, com sinal `+`/`-`), ou `NAO ENCONTRADO` se a busca varrer os 65536 endereços (com volta ao
+início) sem achar nada.
+
+### MS - grava uma string na memória
+
+`MS` escreve um texto digitado, byte a byte, a partir de um endereço, com um deslocamento opcional. Não
+abre janela nenhuma — só confirma no log do `MON>`.
+
+```
+MON>MS <endereço>,[<deslocamento>],'<texto>
+```
+
+`<endereço>` (obrigatório, hexa) é onde começa a gravação. `<deslocamento>` (opcional, hexa com sinal
+`+`/`-`, `-7F` a `80`, mesma faixa do `DM`/`ZAP`/`SH`) é `0` se omitido. Um apostrofo seguido do texto
+(sem precisar fechar com outro apostrofo) — qualquer vírgula dentro do texto NÃO quebra o comando, tudo
+depois do apostrofo vira parte do texto.
+
+Cada caractere é gravado como `(código do caractere - deslocamento) & FF` — a mesma fórmula usada pelo
+bloco de texto do `DM` ao editar. Isso significa que o texto gravado com um deslocamento diferente de
+zero fica "cifrado" nos bytes crus — só volta a aparecer legível se depois for lido (`DM`) ou procurado
+(`SH`) com esse MESMO deslocamento. Exemplo:
+
+```
+MON>MS 9A15,20,'nome
+```
+
+grava a string `nome` a partir do endereço `9A15` com deslocamento `+20` — `DM 9A15,20` (ou `SH ,'nome`
+após ajustar o deslocamento) mostraria `nome` de volta.
+
+Escrita só tem efeito em células mapeadas como RAM agora (`PAGE`) — mesma regra do `DM`, ROM/BASIC/Vazio
+são somente-leitura (recusa silenciosa, sem aviso separado).
+
+### LOAD e SAVE
+
+`LOAD` carrega um arquivo na memória simulada — totalmente interativo: não se digita nome de arquivo no
+comando. Basta digitar `LOAD` sozinho:
+
+```
+MON>LOAD
+```
+
+Um nome de arquivo pode ser digitado depois do `LOAD` (`MON>LOAD alfabeto.alf`), mas ele não carrega
+nada sozinho — só pré-preenche o campo de nome na janela de escolher arquivo e acrescenta a extensão
+dele ao filtro padrão. O arquivo que de fato vai ser carregado é sempre o que for confirmado na janela
+(cancelar a escolha cancela o comando inteiro, sem gravar nada).
+
+Em seguida, sempre é perguntado em qual **Slot (0-3)** carregar — o slot que tiver RAM configurada é
+sugerido como padrão, mas qualquer slot pode ser escolhido. O que acontece depois depende da extensão:
+
+- **`.ROM`** (cartucho) — carregado a partir do endereço `4000` (Página 1). Se tiver mais de 16KB (até
+  32KB), ocupa também a Página 2 (`8000`). Arquivos com mais de 32KB não são suportados.
+- **Binário com cabeçalho BLOAD** (qualquer outra extensão, ex.: `.bin`) — se o arquivo começar com o
+  cabeçalho real do BSAVE do MSX (byte `FE` seguido de endereço inicial/final/execução, 2 bytes cada),
+  carrega automaticamente no endereço indicado pelo cabeçalho.
+- **Binário sem cabeçalho** — se não começar com `FE`, pergunta o endereço inicial (hexa) antes de
+  carregar.
+- **`.CAS` ainda não é suportado** — mostra um erro e cancela, em vez de tentar interpretar errado.
+
+Ao final, o resultado é mostrado no log: `CARREGADO NO SLOT <slot> EM <endereço> - TAMANHO <tamanho> -
+FIM <endereço final>`.
+
+`LOAD` grava direto na memória física do slot escolhido, independente do que o `PAGE` tem mapeado ativo
+agora (simula "inserir um cartucho/carregar dado naquele slot", não escrever pela CPU). Também ajusta a
+configuração física das páginas tocadas (RAM pro binário, ROM pro `.rom`) — mas só em memória, nunca
+grava em `mamute_settings.json`; fechar e reabrir a janela volta pra configuração salva de antes.
+
+`SAVE` é o inverso, também com janela própria:
+
+```
+MON>SAVE [<nome>][,<endinic>,<endfim>[,<endexec>]]
+```
+
+Tudo opcional — `SAVE` sozinho abre a janela em branco. `<nome>` sugere o campo Arquivo; se
+`<endinic>`/`<endfim>` forem informados (sempre os dois juntos, `<endexec>` opcional separado — vazio
+assume igual ao inicial), pré-preenchem os campos de endereço, mas a janela sempre abre pra revisar
+antes de gravar — nada é salvo só por digitar o comando. Exemplo:
+
+```
+MON>SAVE rom.bin,4000,7FFF
+```
+
+**Campos da janela:**
+
+- **Arquivo** — campo editável + botão "..." (Salvar Como do Windows).
+- **Slot (0-3)** — de qual slot físico ler os bytes, sugerido a partir do mapeamento `PAGE` ativo na
+  página do endereço inicial, sempre editável.
+- **Endereço inicial / final** — o bloco a gravar (inclusive nos dois extremos).
+- **Endereço de execução** — vai no cabeçalho; vazio usa o mesmo valor do inicial.
+- **Formato** — `BIN` (cabeçalho real do BSAVE do MSX: `FE` + 3 endereços de 2 bytes) ou `ROM` (mesma
+  ideia, com `AB` no lugar do `FE` — formato próprio deste simulador, não o cabeçalho real de 16 bytes
+  de um cartucho MSX). Sugerido automaticamente a partir da extensão do arquivo, mas editável.
+- **Salvar sem cabeçalho** — checkbox: grava só os bytes crus, ignorando o Formato escolhido.
+
+Ao gravar, confirma no log: `SALVO "<arquivo>" - SLOT <slot> - <inicial>-<final> - TAMANHO <tamanho>`.
+Igual o `LOAD`, lê direto do slot escolhido, sem passar pelo `PAGE`.
+
+### C, D, P e V - despejo formatado de memória
+
+`C <modo>` escolhe o modo de exibição que `D`, `P` e `V` vão usar — sozinho não mostra nada além da
+confirmação, só guarda a escolha (dura enquanto a janela estiver aberta; fechar e reabrir volta pro modo
+`0`):
+
+- **`0`** — hexadecimal + ASCII, 4 bytes por linha.
+- **`1`** — igual ao `0`, mas 16 bytes por linha (pra telas/impressoras de 80 colunas).
+- **`2`** — só hexadecimal, 8 bytes por linha, com um checksum no final de cada linha (soma dos 8 bytes
+  + o byte baixo do endereço inicial da linha, tudo módulo 256).
+- **`3`** — igual ao `2`, mas o checksum é só a soma dos bytes, sem somar o endereço.
+
+```
+MON>C 1
+MODO 1: HEXA+ASCII, 16 BYTES/LINHA
+```
+
+`D <endinic>[,<endfim>]` mostra um despejo formatado direto no log do `MON>`, conforme o modo escolhido
+em `C`. Sem `<endfim>`, mostra só 16 bytes a partir de `<endinic>`; com os dois, mostra o intervalo
+inteiro (inclusive) — `<endfim>` não pode ser menor que `<endinic>`, e nenhum dos dois passa de `FFFF`.
+
+```
+MON>D 4000,400F
+```
+
+`P <endinic>[,<endfim>]` é igual ao `D`, mas em vez de mandar o despejo pro log, gera uma listagem num
+**PDF A4** (fonte Courier, cabeçalho com o intervalo/modo usado) e abre uma janela "Salvar como" no
+final — simula "a impressora" (um driver de verdade pra impressora Epson FX-80 fica pra uma sessão
+futura). Cancelar a janela não gera arquivo, só mostra `CANCELADO`.
+
+`V <endinic>[,<endfim>]` é igual ao `P`, mas lê da **VRAM simulada** em vez da RAM/ROM — endereço plano,
+sem `PAGE` nem banco algum (a VRAM real de um MSX nunca fica mapeada no espaço de endereços do Z80, é
+acessada pelas portas do VDP). O tamanho de VRAM é configurado em `Configurar → Mamute Assembler...`:
+**16KB** (MSX1), **128KB** ou **192KB** (MSX2/2+). `<endinic>`/`<endfim>` podem ter até 5 dígitos hexa e
+são validados contra o tamanho configurado — passar do teto é erro de sintaxe, sem dar a volta. Ainda
+não existe nenhum comando que escreva na VRAM simulada — ela começa sempre zerada.
+
+### T e F - transferir e preencher blocos
+
+`T <endinic>,<endfim>,<enddest>` copia um bloco de memória (RAM/ROM mapeada agora pelo `PAGE`) de um
+intervalo de endereços pra outro:
+
+```
+MON>T 4000,7FFF,8000
+```
+
+copia o bloco de `4000` a `7FFF` para `8000` em diante. Se origem e destino se sobrepõem, a cópia é
+feita na ordem certa pra não corromper dado ainda não lido (mesmo cuidado de um `memmove` de verdade).
+`<endfim>` não pode ser menor que `<endinic>`, e o bloco copiado não pode passar de `FFFF` no destino.
+
+`F <endinic>,<endfim>,<byte>` preenche um bloco inteiro com um único byte repetido:
+
+```
+MON>F 8000,C000,FF
+```
+
+preenche o bloco de `8000` a `C000` (inclusive) com `FF` em todo byte. Escrita silenciosa em células que
+não sejam RAM, em ambos os comandos (mesma regra do `DM`/`MS`).
+
+### G e X - execução e registradores
+
+`G <endinic>[,<brkpnt1>[,<brkpnt2>]]` ainda **não executa nada** — por enquanto só valida a sintaxe e
+confirma no log que o comando foi entendido. A execução de verdade de programas na memória simulada
+(com breakpoints, registradores, etc.) fica pra uma fase futura.
+
+`X [<reg>]` mostra ou edita os registradores do Z80 simulado. Sem argumento, mostra os 7 pares de
+registrador de uma vez:
+
+```
+MON>X
+AF=0000 BC=0000 DE=0000 HL=0000
+IX=0000 IY=0000 SP=0000
+```
+
+Com argumento, entra num modo de edição sequencial — aceita tanto um par de registrador (`AF`, `BC`,
+`DE`, `HL`, `IX`, `IY`, `SP`, editado como um valor de 16 bits/4 dígitos hexa) quanto um registrador de
+1 byte isolado (`A`, `F`, `B`, `C`, `D`, `E`, `H`, `L`, 2 dígitos hexa):
+
+```
+MON>X BC
+```
+
+abre uma caixa de diálogo perguntando o novo valor de `BC` (valor atual já preenchido) — confirmar com
+ENTER sem editar mantém o valor e passa pro próximo registrador da sequência (`DE`, `HL`, `IX`, `IY`,
+`SP`); apagar o campo e confirmar (ou Cancelar) para a edição inteira.
+
+Os registradores duram só enquanto a janela estiver aberta — fechar e reabrir zera todos de novo. Quando
+o comando `G` (execução de programas) for implementado de verdade, vai carregar o Z80 simulado com estes
+valores.
+
+### R, L e LP - referência de fita e disassembler
+
+`R [<offset>]` ainda **não faz nada** além de confirmar no log — carregar um programa assemblado
+gravado por fita (opção `I` do comando `A`, ver abaixo) depende de um leitor que ainda não existe.
+
+`L [<endinic>[,<endfim>]]` disassembla a memória (RAM/ROM mapeada agora pelo `PAGE`) direto no log do
+`MON>` — um disassembler Z80 de verdade, com o conjunto de instruções documentado inteiro mais as formas
+não documentadas mais estáveis/conhecidas (`IXH`/`IXL`/`IYH`/`IYL`, formas indexadas do `CB` com
+cópia-sombra).
+
+- **Os dois endereços** — disassembla de `<endinic>` até ultrapassar `<endfim>` (a instrução que começa
+  dentro do intervalo entra inteira, mesmo que os últimos bytes dela passem um pouco de `<endfim>`).
+- **Só `<endinic>`** — disassembla exatamente 10 instruções a partir dali.
+- **Nenhum endereço** — continua de onde o `L`/`LP` mais recente parou, também 10 instruções.
+
+Cada linha mostra o endereço, os bytes crus em hexa (1 a 4 bytes) e o mnemônico com os operandos —
+saltos relativos (`JR`/`DJNZ`) já mostram o **endereço de destino absoluto**, não o deslocamento cru:
+
+```
+MON>L 4000,4010
+4000  E5           PUSH HL
+4001  CD 39 54     CALL 5439
+4004  44           LD B,H
+```
+
+`LP [<endinic>[,<endfim>]]` é igual ao `L`, mas em vez de mandar a listagem pro log, gera um PDF A4
+(fonte Courier) e abre uma janela "Salvar como" — mesma ideia do `P`/`V`. Cancelar não gera arquivo, só
+mostra `CANCELADO`.
+
+### EDIT - editor do programa-fonte Z80
+
+`EDIT` abre uma janela separada com um editor de linhas pro programa-fonte Z80, modelado no editor de
+BASIC do ZX-81/ZX Spectrum — **a listagem é a própria tela** (sem log de comandos nem mensagem "OK"),
+com um cursor `>` marcando a linha atual.
+
+**Sintaxe de cada linha** (formato do manual original do MegaAssembler):
+
+```
+NN Label: instrucao operando ;comentario
+```
+
+- **`NN`** — número da linha, **obrigatório**. Digitar de novo o mesmo número **substitui** a linha.
+- **`Label:`** — opcional, termina em `:`.
+- **`instrução`** — um mnemônico Z80 válido ou uma das pseudo-instruções `ORG`/`DEFB`/`DEFW`/`DEFM`/
+  `DEFS`/`EQU`/`END`. `EQU` exige `Label:`.
+- **`;comentário`** — opcional, até o fim da linha.
+
+**Números** — diferença deliberada em relação ao manual original: **sem sufixo, um número é
+HEXADECIMAL por padrão** (o manual original usava decimal), pra ficar uniforme com o resto do Mamute.
+Se começar com letra (`A`-`F`), precisa de um `0` na frente — senão vira label. Sufixos opcionais no
+final: `H` (hexa, redundante com o padrão), `B` (binário), `D` (decimal — único jeito de escrever
+decimal agora).
+
+**Navegação e edição, ao estilo ZX-81:**
+
+- **Setas Cima/Baixo** movem o cursor `>` pela listagem.
+- **ENTER com o campo vazio** puxa a linha do cursor `>` pro campo, pronta pra editar.
+- **ENTER com o campo preenchido** grava a linha digitada (nova ou substituindo por `NN`).
+- **ESC** descarta o que estiver no campo, sem gravar nada.
+- **Tela cheia**: ao digitar linhas novas, quando a tela enche ela é limpa e rola **meia tela**
+  automaticamente, pra caber mais.
+- **`LIST`** (digitado no campo, sem `NN` na frente): limpa a tela e lista a partir da 1ª linha. Se o
+  programa não couber inteiro, pergunta "Rolar mais uma tela? (S/N)" no rodapé (responda no mesmo campo
+  + ENTER) — respondendo Sim, mostra a próxima tela CHEIA com o cursor na 1ª linha dela, perguntando de
+  novo se ainda sobrar programa.
+
+*Diferente do ZX-81 real, não há teclas tokenizadas (cada palavra-chave BASIC numa única tecla) — sem
+sentido com teclado de PC de verdade, digite normalmente.*
+
+**Comandos de gerenciamento** (também digitados no campo, sem `NN` na frente):
+
+- **`NEW`** — apaga o programa inteiro da memória, sem confirmação.
+- **`DELETE <lininic>[-[<linfin>]]`** — apaga uma linha (`DELETE 50`), um intervalo inclusive (`DELETE
+  50-90`), ou da linha até o fim do programa (`DELETE 50-`, sem número final).
+- **`RENUM [<novali>[,<antigali>[,<incr>]]]`** — renumera a partir da linha antiga `antigali` pra uma
+  nova sequência começando em `novali` com passo `incr` (`RENUM` sozinho: tudo, começando em 10, passo
+  10). Só os números de linha mudam — referências por LABEL continuam funcionando normalmente.
+- **`CHANGE '<string1>'[,'<string2>']`** — troca todas as ocorrências de `<string1>` por `<string2>` em
+  qualquer lugar de cada linha (label, instrução, operando ou comentário); se `<string2>` for omitido,
+  apaga as ocorrências de `<string1>`.
+- **`SAVE`** / **`LOAD`** — abrem os diálogos nativos "Salvar como"/"Abrir" (sem digitar nome) — gravam/
+  leem o programa-fonte inteiro num arquivo `.mza` em **ASCII simples** (formato desta porta, não o
+  formato binário proprietário do MegaAssembler original). `LOAD` substitui o programa em memória pelo
+  conteúdo do arquivo.
+- **`MERGE`** — igual ao `MERGE` do BASIC: mostra o mesmo diálogo do `LOAD`, mas não apaga o programa em
+  memória — funde os dois. Uma linha do arquivo com o mesmo número de uma linha já existente sobrepõe a
+  existente; números que só existem de um lado ficam como estão.
+- **`SEARCH '<string>'`** (entre aspas) — busca literal, sensível a maiúsculas/minúsculas. **`SEARCH
+  <string>`** (sem aspas) — busca livre, insensível a maiúsculas/minúsculas (strings, comandos, labels,
+  etc). Bem-sucedida, a tela passa a mostrar só as linhas encontradas (mesmas setas/ENTER de sempre
+  navegam entre elas) — digite `LIST` (ou qualquer outro comando) pra voltar ao programa completo.
+- **`LSEARCH`** — igual ao `SEARCH` (mesmas duas formas com/sem aspas), mas em vez de filtrar a tela,
+  manda a listagem das linhas encontradas pra um PDF.
+- **`FIND`** — apelido de `SEARCH` (mesmas duas formas, mesmo resultado).
+- **`QUIT`** — fecha a janela do `EDIT` e volta pro `MON>`, sem apagar o programa da memória — abrir
+  `EDIT` de novo continua exatamente de onde parou.
+
+### A - montar o programa
+
+`A` monta (compila) o programa-fonte de verdade, reaproveitando o mesmo assembler Z80 nativo do projeto
+(compatível M80/Nestor80). Mostra `PASSO-1` e depois `PASSO-2` (mesma sequência do MegaAssembler
+original) antes de montar.
+
+**`A` sozinho** só valida — o resultado vira uma **listagem detalhada**, coluna a coluna: número da
+linha, endereço (ou o valor de um `EQU`), até 4 bytes de código-objeto em hexa (linhas extras se a
+instrução/diretiva gerar mais de 4 bytes) e o conteúdo original da linha — a mesma tela cheia/rolagem do
+`LIST` se não couber tudo de uma vez. `ORG`/`END` não aparecem na listagem. Em caso de erro, mostra a
+mensagem descritiva e o cursor `>` pula direto pra linha com problema (sem listagem nesse caso).
+
+Exemplo (do manual original, adaptado pra hexa por padrão):
+
+```
+10              ORG 0C100H
+20 CHPUT:       EQU 0A2H
+30              LD HL,PRINT
+100 PRINT:      DEFM 'MEGA ASSEMBLER'
+120             END
+```
+
+**Opções**, digitadas coladas depois de `A ` (um espaço, depois as letras juntas, na ordem que quiser —
+`A O`, `A ON`, `A ONPIRSDH/1000`, etc.):
+
+| Opção | Efeito |
+|---|---|
+| **`O`** | Além de validar, **escreve** o código-objeto na RAM simulada, no endereço do `ORG`, resolvido pelo mapeamento de `PAGE` ativo agora (mesma regra do `DM`/`SCR` — só grava de verdade se a célula mapeada for RAM). |
+| **`N`** | A listagem não mostra a coluna do número da linha (o resto é idêntico). |
+| **`P`** | Além de mostrar a listagem na tela, manda a mesma listagem pra um PDF (diálogo "Salvar como"). Cancelar o diálogo é silencioso — segue exatamente como sem `P`. |
+| **`I`** | Grava o código-objeto recém montado em **disco**, no formato real do BSAVE/BLOAD do MSX (cabeçalho `FE` + endereço inicial/final/execução). Abre a mesma janela do comando `SAVE` do `MON>`, já com tudo pré-preenchido (slot sugerido a partir do mapeamento `PAGE` ativo, endereços vindos da montagem) — tudo editável antes de gravar. Diferente de `O`, não precisa que os bytes já estejam na RAM simulada — funciona sozinho. |
+| **`R`** | Anexa ao final da listagem uma **referência cruzada** dos símbolos, em ordem alfabética: nome, valor (constante `EQU` ou endereço de definição do rótulo) e todos os endereços onde foi usado (até 4 por linha, continua nas linhas seguintes se precisar). |
+| **`S`** | Anexa ao final da listagem uma lista alfabética **simples** dos símbolos (nome + valor/endereço de definição), sem os endereços de uso — se `R` e `S` estiverem ativos juntos, o bloco de `S` aparece depois do de `R`. |
+| **`D`** | Igual ao `S`, mas a lista de símbolos vem em **ordem de aparição** no fonte (a ordem em que cada um foi definido), não em ordem alfabética. Se `S` e `D` estiverem ativos juntos, o bloco de `D` aparece depois do de `S`. |
+| **`H`** | Manda só a(s) lista(s) de labels (`S` e/ou `D` — pelo menos uma das duas precisa estar ativa) pra um PDF **separado** do de `P`. Se `S` e `D` estiverem ativos junto com `H`, as duas listas vão pro mesmo PDF, separadas por uma linha em branco. |
+| **`/<offset>`** | Monta o programa como se **todo `ORG`** tivesse `<offset>` (hexa, 0000-FFFF) somado ao valor original — ex. `A O/8000` com `ORG 0C100H` monta em `0C100H+8000H`. O programa inteiro acompanha o deslocamento (rótulos, saltos, listagem), não é só um resumo de endereço. A `/` fica separada das letras de opção — tudo depois dela é o offset, não mais uma flag. |
+
+A opção `U` do manual original (não lista o programa) ainda não foi implementada.
+
+**`MAP`** (fora do `A`, comando próprio) — mostra o endereço inicial e final do código-objeto da última
+montagem bem-sucedida (`A` sozinho já basta, não precisa de `A O`). Se nada foi montado com sucesso
+ainda, pede pra rodar `A` primeiro; `NEW` invalida esse resultado guardado.

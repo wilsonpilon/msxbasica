@@ -5343,6 +5343,766 @@ qualquer comando futuro, não só `DM`).
     "saída errada", reproduzir com automação real contra os dados reais do usuário primeiro - neste
     caso isso evitou alterar (e possivelmente quebrar) um disassembler que já estava 100% correto, e
     revelou que o problema real era outro completamente diferente do que o relato inicial sugeria.
+- **Comando `EDIT` - editor de linhas do programa-fonte Z80 (2026-08-13, `7.33.33`, "ARQUIVO NOVO")** -
+  décima-nona leva. Pedido explícito do usuário, em duas partes na mesma conversa: primeiro uma
+  decisão de arquitetura ("um editor de tela cheia como o do MSX-BASIC" vs. "um comando EDIT que abre
+  uma janela") - o Claude recomendou a janela (aditivo, reaproveita padrões já validados no projeto,
+  menor risco que reescrever o modelo de interação do monitor inteiro) e o usuário decidiu por ela,
+  "no estilo das outras ferramentas, um console simples com a mesma letra/cor das outras ferramentas".
+  Depois, a especificação completa da gramática, citando `docs/Manual do Mega Assembler.pdf` (o PDF em
+  si não pôde ser lido nesta sessão - `pdftoppm`/poppler-utils não está instalado neste ambiente - mas
+  o mesmo conteúdo já existia digitado em `megasm/exe/MEGASM.TXT`, seção "Programas em Assembly",
+  usado como fonte de verdade em vez do PDF).
+  - **Escopo explícito**: "por hora vamos apenas aceitar o programa depois trataremos a compilação" -
+    só validar a sintaxe de cada linha digitada e guardar num programa-fonte em memória
+    (`MamuteEditProgram()`), sem nenhuma lógica de montagem/geração de código. Isso espelha o próprio
+    manual original: a tabela de erros do comando `A` (D/F/M/U/Q/O) só existe no momento de assemblar,
+    nunca no momento de digitar a linha - `Mamute_ParseAsmLine()` deliberadamente não faz resolução de
+    símbolo nem checagem de faixa numérica, só forma léxica.
+  - **`editor/MamuteEditGui.pbi`** (novo arquivo), passou por DUAS reescritas na mesma sessão a partir
+    de feedback direto do usuário depois de ver cada versão rodando:
+    - **1ª versão**: clone quase literal do `MON>` (`EditorGadget` somente-leitura como scrollback +
+      `TextGadget` `ASM>` + `StringGadget` de entrada, cada linha ecoada `ASM>`+texto seguida de `OK`/
+      `?ERRO DE SINTAXE`). Rejeitada: "não gostei do edit, ficou tipo REPL também".
+    - **2ª versão**: `ListIconGadget` (colunas NN/Linha) mostrando `MamuteEditProgram()` sempre
+      atualizado + navegação nativa (setas/PgUp/PgDn) + `Tab` alternando foco lista/campo + `Enter` com
+      a lista em foco puxando a linha destacada pro campo. Ainda rejeitada: "não está como do ZX-81".
+    - **3ª versão (final)**: o usuário pediu, literalmente, "um editor exatamente idêntico ao do
+      ZX-81... exceto as teclas tokenizadas" (essas não fazem sentido com teclado de PC de verdade) e
+      descreveu o modelo em detalhe - ver entrada de sessão logo abaixo ("Reescrita final - modelo
+      ZX-81 de verdade") para a implementação que realmente ficou.
+  - **Gramática aceita** (`Mamute_ParseAsmLine()`, novo bloco em `MamuteSupport.pbi`, antes de
+    `MamuteGui_Font` já ter sido hoisted pra lá - ver achado de compilador abaixo):
+    `NN Label: instrucao operando ;comentario`, exatamente a grafia do manual original. `NN`
+    obrigatório (1-5 dígitos, teto 65529 - mesmo limite prático do BASIC/MSX, o manual original não
+    documenta um teto próprio pro MegaAssembler, assumido por analogia já que "as linhas podem ser
+    editadas como se fossem em BASIC"), seguido de espaço obrigatório. `Label:` opcional (identificador
+    validado por `Mamute_IsValidAsmLabel()` - letra/`_` inicial, resto alfanumérico/`_`, gramática
+    genérica já que o manual não detalha uma própria). Instrução = mnemônico Z80 real
+    (`Z80Asm::IsMnemonic()`, reaproveitado do assembler nativo do projeto - módulo 2) OU uma das
+    pseudo-instruções (`Mamute_IsAsmPseudoOp()`, deliberadamente um vocabulário PRÓPRIO pequeno, não
+    `Z80Asm::IsDirective()` inteiro, que tem dezenas de diretivas Nestor80 fora de escopo aqui -
+    `MACRO`/`IF`/`PUBLIC`/etc.). `EQU` exige `Label:` (igual ao manual: "Label: EQU endereço");
+    `ORG`/`DEFB`/`DEFW`/`DEFM`/`DEFS`/`EQU` exigem operando (a única forma documentada pelo manual pra
+    cada uma sempre tem operando). Comentário separado por um `;` fora de apóstrofos (scanner
+    consciente de aspas, mesmo cuidado já usado pelo `SH`/`MS`), pra não cortar um `DEFM 'a;b'` no meio
+    do texto.
+  - **`END` adicionado ao vocabulário de pseudo-instruções por conta própria do Claude** - não estava
+    na lista que o usuário ditou (`ORG`/`DEFB`/`DEFW`/`DEFM`/`DEFS`/`EQU`), mas é a última linha do
+    PRÓPRIO programa de exemplo do manual original (`120 END`, `MEGASM.TXT` linha 1113) - sem aceitar
+    `END`, nem o exemplo oficial do manual passaria pelo `EDIT`. Documentado aqui como uma extensão
+    deliberada da lista literal do usuário, não uma leitura equivocada dela.
+  - **Mudança de formato numérico, pedida explicitamente pelo usuário**: o manual original trata
+    números sem sufixo como DECIMAL por padrão (hexa precisa de sufixo `H`, binário de `B`). O usuário
+    pediu pra inverter isso - sem sufixo agora é HEXADECIMAL, "pra ficar uniforme" com o resto do
+    Mamute (endereços hexa já são o padrão de entrada de todo comando do `MON>` desde o `DM`). Sufixos
+    continuam três: `H` (hexa, redundante com o padrão agora, mantido por compatibilidade com o
+    manual), `B` (binário), `D` (decimal - o único jeito de escrever decimal agora que deixou de ser o
+    padrão). A regra do manual original "se começar por letra, precisa de zero na frente" passa a
+    valer também SEM sufixo (`Mamute_ParseAsmNumber()` só tenta interpretar como número um token que já
+    começa com dígito 0-9 - um token começando em letra nunca chega a essa função, é tratado como
+    label).
+  - **Ambiguidade real não coberta pelo pedido do usuário, resolvida por interpretação do Claude**: como
+    `B` e `D` são dígitos hexa válidos (mas `H` nunca é), um token como `"1D"` é ambíguo - hexa `1Dh`
+    (=29) com `D` como último dígito, ou decimal `1` com `D` como sufixo? Decisão: **o sufixo, quando
+    presente, sempre vence** sobre a leitura hexa padrão - é a única regra determinística possível
+    (documentada em detalhe no comentário de `Mamute_ParseAsmNumber()`, `MamuteSupport.pbi`). Pra
+    escrever um hexa que termine em `B`/`D` sem ambiguidade, usar o sufixo `H` explícito (`"1BH"` em vez
+    de `"1B"`). Não perguntado ao usuário por ser um detalhe de implementação de baixo nível, não uma
+    decisão de produto - documentado aqui pra revisão futura se o comportamento incomodar na prática.
+  - **Achado real de compilador (`EnableExplicit` + inclusão textual)**: `MamuteGui_Font` (a fonte
+    carregada, `HFONT`) estava declarado em `MamuteAssemblerGui.pbi`, mas `MamuteEditGui.pbi` (que
+    também precisa dela pro visual "terminal") é `XIncludeFile`'d ANTES de `MamuteAssemblerGui.pbi` -
+    mesmo padrão "declaração precisa vir antes de quem usa" já documentado em `CLAUDE.md` (seção
+    `EditorSettings`/`Color_*`). Corrigido hoisting só a declaração `Global MamuteGui_Font.i = -1` pra
+    `MamuteSupport.pbi` (perto de `MamuteFontName`/`Size`/`Bold`, que ela depende), deixando a lógica de
+    carregar/recarregar (`MamuteGui_EnsureFont()`) no lugar original - mesmo idioma "hoist a declaração,
+    não a lógica" já usado antes neste projeto.
+  - **Achado real de sintaxe do PureBasic (novo)**: escrever `\"texto\"` (escape estilo C) dentro de uma
+    string literal do PureBasic não funciona - PureBasic não tem escape de barra invertida, só aspas
+    duplicadas (`""`) ou `Chr(34)`. Usado por engano no texto de `Ajuda -> Mamute Assembler... -> EDIT`
+    (`MamuteHelpData.pbi`) e gerou um erro de compilador enganoso ("'como' is not a valid operator" -
+    não menciona aspas em lugar nenhum). Corrigido trocando pro idiom já em uso no resto do arquivo
+    (`Chr(34) + "texto" + Chr(34)`).
+  - **Verificado com um harness `/CONSOLE` descartável** (removido antes do fim da sessão, mesmo
+    idioma do `--disasmtest`) que colava as mesmas procedures VERBATIM (não retranscritas) fora da
+    unidade de compilação inteira do `BadigEditor.pb` - `MamuteSupport.pbi` não compila isolado porque
+    mistura lógica pura com uma janela de configuração completa (`MamuteSettings_OpenWindow`, que usa
+    `OpenModelessChildWindow`, helper definido só dentro de `BadigEditor.pb`). 26 casos cobrindo: todos
+    os três formatos numéricos (hexa padrão/sufixo `H`/binário/decimal), a rejeição de `"FF"` sem zero
+    na frente, a rejeição de dígito inválido pra base (`"0GG"`, `"2B"`), o exemplo completo do manual
+    original linha por linha (`ORG`/`EQU`/`LD`/`DEFM`/`DEFB`/`END`, incluindo o `END` adicionado por
+    conta própria), rejeições esperadas (sem `NN`, `EQU` sem label, pseudo-instrução sem operando,
+    instrução desconhecida, label começando com dígito), comentário com `;` colado sem espaço,
+    `DEFM` com `;` dentro do texto (não deve virar comentário), e substituição de linha por mesmo `NN`
+    (`Mamute_StoreAsmLine()`) - **todos os 26 passaram** (gramática/números não mudaram nas reescritas
+    de GUI que vieram depois, ver abaixo).
+- **Reescrita final do `EDIT` - modelo ZX-81 de verdade (2026-08-13, ainda `7.33.33`, "TELA DE VERDADE")**
+  - pedido explícito do usuário, verbatim: "quando o usuário entrar uma linha, insira a linha e monte a
+  listagem do programa na tela (não mostre o prompt e o OK na tela de cima), quando a tela encher, limpe
+  a tela e role metade dela para caber mais linhas. coloque um cursor (>) entre o número da linha e o
+  comando, e o usuário pode usar as setas para cima e para baixo para escolher a linha que deseja
+  editar. Aceite o comando list... exceto as teclas tokenizadas pois não vejo sentido no PC".
+  - **`editor/MamuteEditGui.pbi` reescrito do zero**: a listagem passou a SER a tela - `G_Screen`
+    (`CanvasGadget` desenhado à mão, `MamuteEdit_Repaint()`, mesma técnica de `MamuteDumpGui.pbi`/
+    `MamuteScrGui.pbi` em vez de um controle nativo) em vez do `EditorGadget`/`ListIconGadget` das duas
+    tentativas anteriores - sem log de comandos, sem `OK` (pedido explícito). Só um `G_Status` fino
+    embaixo, usado exclusivamente pra `?ERRO DE SINTAXE` e a pergunta de rolagem do `LIST`.
+  - **`Structure MamuteEditState`** (`TopIndex`/`CursorIndex`/`VisibleLines`/`PendingScroll`) - estado
+    local da janela (não `Global`, ao contrário de `MamuteEditProgram()` - só a POSIÇÃO na listagem é
+    por-abertura-de-janela, o programa em si continua persistindo entre aberturas). `VisibleLines`
+    calculado 1x na abertura via `TextHeight()` real da fonte configurada dividido pela altura do
+    `CanvasGadget` - não um número fixo chutado.
+  - **Cursor `>`** desenhado entre o número da linha (5 colunas, alinhado à direita) e o corpo -
+    `MamuteEdit_Repaint()` compara o índice de cada linha desenhada contra `State\CursorIndex` e escreve
+    `>` ou um espaço (mantém alinhamento das linhas sem cursor).
+  - **Setas Cima/Baixo são atalhos de JANELA** (`#MamuteEdit_UpShortcut`/`DownShortcut`, mesmo idioma do
+    histórico Cima/Baixo do `MON>` - funcionam com o campo de texto em foco, porque um `StringGadget` de
+    uma linha não usa Cima/Baixo nativamente) - só movem `CursorIndex`, nunca mexem no campo de entrada.
+    Eliminou a necessidade do `Tab` de alternar foco que a 2ª versão tinha - **`Enter` decide pelo
+    CONTEÚDO do campo, não por qual controle tem foco**: campo vazio = puxa a linha do cursor pro campo
+    (mesma reconstrução `NN corpo` + cursor de texto no fim via `#EM_SETSEL` das versões anteriores);
+    campo preenchido = grava (novo ou substituindo por `NN`, igual sempre foi).
+  - **`MamuteEdit_EnsureCursorVisible()`** - toda vez que `CursorIndex` pode ter saído da janela visível
+    (linha nova gravada, ou seta movendo o cursor pra fora de `[TopIndex, TopIndex+VisibleLines-1]`),
+    rola por METADE de `VisibleLines` na direção certa, repetindo até `CursorIndex` caber - exatamente o
+    "role metade dela" pedido. **Decisão do Claude, não especificada pelo usuário**: a MESMA regra de
+    meio-tela cobre tanto "tela encheu digitando" quanto "seta passou da borda" - o pedido só detalhou o
+    primeiro caso; se o usuário preferir rolagem suave linha-a-linha só pra navegação por seta, é uma
+    troca pequena e isolada nessa função.
+  - **Comando `LIST`** (reconhecido no mesmo campo - sem `NN` na frente = comando imediato, mesma
+    convenção de qualquer BASIC clássico): zera `TopIndex`/`CursorIndex` pra 0, redesenha; se o programa
+    não cabe inteiro (`ListSize(MamuteEditProgram()) > VisibleLines`), mostra `Rolar mais uma tela?
+    (S/N)` em `G_Status` e liga `State\PendingScroll` (bloqueia a gravação normal de linha até
+    responder - digitar a resposta usa o MESMO campo+Enter, sem captura de tecla avulsa à parte).
+    Responder `S`/`Y`: avança `TopIndex` por uma tela CHEIA (`+VisibleLines`, diferente do meio-tela
+    automático - pedido explícito era rolar "outra tela", não meia), põe `CursorIndex = TopIndex` (linha
+    1 da tela nova), e pergunta de novo se ainda sobrar programa depois dela ("não para por ali") -
+    continua perguntando até esgotar o programa. Qualquer outra resposta (`N` ou vazio) cancela sem
+    mudar a tela atual.
+  - **Verificado de ponta a ponta com automação real** (não só revisão de código) - descoberta útil
+    desta sessão: a tentativa de `FindWindow()` pelo título exato ("Mamute Assembler"/"Mamute Assembler
+    - EDIT") **falhou silenciosamente** (devolveu handle 0) mesmo com a janela confirmadamente aberta e
+    visível; `EnumWindows()` + comparação de PID (`GetWindowThreadProcessId`) achou a MESMA janela sem
+    problema - motivo exato não isolado, mas `EnumWindows`+PID é o caminho confiável neste ambiente
+    daqui pra frente, não `FindWindow`. Sequência completa automatizada via `PostMessage(WM_COMMAND)`
+    nos IDs dos atalhos (48 pro menu "Mamute Assembler...", calculado contando a `Enumeration
+    MenuItems` em vez de chutado; 9101/9501-9504 pros atalhos já conhecidos do código-fonte) +
+    `WM_SETTEXT` nos campos, com capturas de tela reais (`PrintWindow`) confirmando cada etapa: (1)
+    4 linhas digitadas (3 válidas + 1 inválida) - listagem mostrou só as 3 válidas com `>` na última,
+    `?ERRO DE SINTAXE` no status, texto inválido preservado no campo; (2) duas setas Cima moveram o `>`
+    corretamente pra uma linha anterior; (3) `Enter` com campo vazio puxou exatamente essa linha
+    (`"10 ORG 0C100H"`) pro campo, cursor de texto no fim; (4) editar e regravar a MESMA linha
+    (`NN`=20) confirmou SUBSTITUIÇÃO (contagem de linhas não mudou), `ESC` num campo com texto novo
+    (`"99 NOP"`) confirmou DESCARTE (linha 99 nunca apareceu na listagem); (5) 37 linhas adicionadas em
+    sequência (10 a 400) confirmaram o auto-scroll de meia-tela ao vivo - tela final mostrou exatamente
+    as últimas 20 linhas (`VisibleLines` real medido = 20 com a fonte configurada do usuário), `>` na
+    última linha digitada; (6) `LIST` limpou e mostrou a partir da linha 10 com `>` nela, prompt "Rolar
+    mais uma tela?" apareceu (39 linhas > 20 visíveis); respondendo `S`, avançou uma tela CHEIA (linhas
+    210-400, não meia-tela), `>` na primeira linha da tela nova, e o prompt **não reapareceu** por ser
+    a última tela (comportamento correto de parada). Todos os 6 passos bateram exatamente o esperado na
+    primeira tentativa completa.
+- **Indentação automática na listagem (mesma sessão, ainda `7.33.33`)** - pedido explícito do usuário
+  depois de ver a listagem ZX-81 funcionando: "label: coloque um TAB e o label fica na primeira coluna
+  útil, diretivas como ORG têm um TAB antes, comandos do Z80 também um tab antes, comentário com 3
+  tabs, será que dá certo ou fica bonito?".
+  - **`MamuteEdit_FormatLine()`** (novo, `MamuteEditGui.pbi`) monta a linha exibida a partir dos campos
+    já separados por `Mamute_ParseAsmLine()` (`Label`/`Instr`/`Operand`/`Comment`) em vez do texto cru:
+    `Label:` alinhado na coluna 0, instrução (com ou sem label) sempre alinhada na coluna 8 (1 "tab
+    stop"), comentário sempre alinhado na coluna 24 (3 tab stops) - `#MamuteEdit_TabWidth = 8`, mesma
+    largura clássica de tab de assembler. **Só afeta o DESENHO** (`MamuteEdit_Repaint()`) - o dado
+    guardado (`MamuteEditProgram()`) e o texto puxado pro campo pra editar (`ENTER` com campo vazio)
+    continuam exatamente como foram digitados, sem reformatar - reformatar o que já está sendo digitado
+    atrapalharia mais do que ajudaria.
+  - **Sem caracteres TAB literais** (`Chr(9)`) - `DrawText()`/GDI num `CanvasGadget` não expande tab de
+    forma confiável (diferente de um `RichEdit`/`EditorGadget`), então `MamuteEdit_PadToColumn()`
+    calcula o MESMO alinhamento visual com espaços, numa fonte monoespaçada dá o resultado idêntico.
+    Se o conteúdo já passou da coluna-alvo (label mais longo que 1 tab stop, por exemplo), avança pro
+    próximo múltiplo de 8 em vez de colar sem espaço nenhum - mesmo comportamento que um tab literal
+    teria.
+  - **Verificado ao vivo** (mesma técnica `EnumWindows`+PID+`PostMessage`/`WM_SETTEXT` desta sessão):
+    digitado o programa de exemplo completo do manual original (12 linhas, `ORG`/`EQU`/labels/
+    mnemônicos/`DEFM`/`DEFB`/`END`) mais um comentário (`;pega o char`) - captura de tela real confirmou
+    labels na coluna 0, TODAS as instruções (com ou sem label, incluindo a mais curta `AND A` e a mais
+    longa `CALL CHPUT`) alinhadas na mesma coluna, e o comentário isolado alinhado numa coluna própria
+    mais à direita, sem sobrepor o operando.
+- **Comandos de gerenciamento do programa-fonte - `NEW`/`DELETE`/`RENUM`/`CHANGE`/`SAVE`/`LOAD` (mesma
+  sessão, ainda `7.33.33`, "GERENCIAMENTO COMPLETO")** - pedido explícito do usuário, seção "Programas
+  em Assembly" do manual original (`MEGASM.TXT` linhas 630-786), depois de aprovar o editor estilo
+  ZX-81. Todos reconhecidos no mesmo campo, sem `NN` na frente (mesma convenção "sem número de linha =
+  comando imediato" já usada pelo `LIST`) - `MamuteEdit_Open()` separa Verbo/Argumentos pelo 1º espaço
+  (mesmo idioma de `MamuteGui_Dispatch()`, `MamuteAssemblerGui.pbi`) antes de cair no fallback de
+  `Mamute_ParseAsmLine()` pra linhas de programa normais.
+  - **`NEW`** (`Mamute_AsmNew()`, `MamuteSupport.pbi`) - `ClearList(MamuteEditProgram())`, sem
+    confirmação - mesmo comportamento direto do manual original.
+  - **`DELETE <lininic>[-[<linfin>]]`** (`Mamute_AsmDelete()`) - apaga uma linha, um intervalo
+    `[lininic,linfin]` inclusive (forma documentada no manual), ou (`<lininic>-` sem `<linfin>`) do
+    `lininic` até o FIM do programa - **extensão sobre o manual** (que só documenta a forma com
+    `<linfin>` explícito), pedido explícito do usuário via a notação `[-[<linha final>]]`, mesma
+    convenção do próprio `"LIST <li>-"` do manual original (dash sem número = "até o fim"). Os limites
+    não precisam bater com uma linha existente (`>= inicio And <= fim`, igual o intervalo do `SH`).
+  - **`RENUM [<novali>[,<antigali>[,<incr>]]]`** (`Mamute_AsmRenum()`) - renumera do número ANTIGO
+    `antigali` em diante pra uma nova sequência começando em `novali` com passo `incr` (default
+    `10,10`, mesmo default do manual quando nenhum parâmetro é passado). **Discrepância sinalizada, não
+    resolvida silenciosamente**: o usuário pediu o comando descrevendo a ordem
+    "`<novalinha>,<incremento>,<linhainicialtroca>`", mas o manual original (`MEGASM.TXT` linha 676)
+    documenta a ordem `novali,antigali,incr` - **a ordem do MANUAL foi a implementada** (fonte de
+    verdade documentada pra este comando específico), com o desvio explicitamente sinalizado de volta
+    pro usuário em vez de escolhido sem aviso - fácil de trocar se ele realmente preferir a própria
+    ordem. Rejeita a operação INTEIRA (nada é alterado) se a nova numeração colidiria com uma linha não
+    renumerada ou passasse do teto 65529 - nunca aplica pela metade.
+  - **`CHANGE '<string1>'[,'<string2>']`** (`Mamute_AsmChange()` + `MamuteEdit_ParseChangeArgs()`,
+    `MamuteEditGui.pbi`) - sintaxe com vírgula+aspas em AMBAS as strings, adaptada do idioma já
+    estabelecido pelo `SH`/`MS` deste projeto (o manual original mostra sem vírgula:
+    `"CHANGE '<string1>'<string2>"`, `<string2>` sem aspas - documentado como adaptação deliberada, não
+    leitura equivocada). Troca todas as ocorrências de `String1` por `String2` (ou apaga `String1`, se
+    `String2` vazio - regra explícita do manual) no CORPO cru de cada linha (`RawText` - label+
+    instrução+operando+comentário juntos, igual "troca no programa-fonte" do manual); cada linha
+    alterada é RE-VALIDADA via `Mamute_ParseAsmLine()` antes de aplicar - se a troca quebrar a gramática
+    daquela linha específica, ela fica como estava (sem "salvo com erro" pela metade).
+  - **`SAVE`/`LOAD`** (`Mamute_AsmSave()`/`Mamute_AsmLoad()`) - `SaveFileRequester()`/
+    `OpenFileRequester()` SEM digitar nome (mesmo padrão já estabelecido pelo `LOAD` do `MON>` -
+    `MamuteGui_CmdLoad`, "janela de escolha, sem digitar nome... diferente do manual original").
+    Formato **ASCII puro desta porta** (extensão `.mza`, uma linha `"NN corpo"` por linha do programa -
+    o MESMO texto que, digitado de volta, reproduz a linha via `Mamute_ParseAsmLine()` - round-trip
+    garantido) - **NÃO** o formato binário proprietário do MegaAssembler original (pedido explícito do
+    usuário: "inicialmente vamos salvar em ASCII... em outra oportunidade vamos tentar ler e
+    interpretar o padrão [proprietário] pra poder importar arquivos originais do mega assembler" -
+    fica como lacuna aberta, ver seção correspondente abaixo). `LOAD` SUBSTITUI o programa em memória
+    (`ClearList` antes de reler, mesmo espírito do `NEW`+digitação); linhas inválidas no arquivo (editado
+    à mão, por exemplo) são ignoradas silenciosamente, não abortam o carregamento inteiro.
+  - **Achado real do ambiente de automação (`GetDlgItem` do diálogo de arquivo)**: o campo de nome de
+    arquivo do Common Item Dialog (Vista+) teve `GetDlgItem(hDlg, 1148)` funcionando pro diálogo de
+    ABRIR (`LOAD`), mas devolvendo HWND 0 pro diálogo de SALVAR (`SAVE`) na mesma sessão - o controle
+    real (achado via `EnumChildWindows` + `GetClassName`) tinha `GetDlgCtrlID` = 1001 nesse caso
+    específico, não 1148. Os IDs internos desse diálogo do Windows não são 100% estáveis entre
+    Abrir/Salvar - `EnumChildWindows` procurando a classe `"Edit"` visível é mais confiável que assumir
+    um ID fixo, se um `GetDlgItem` direto falhar (devolver 0) numa sessão de automação futura.
+  - **Verificado de ponta a ponta com automação real** (mesma técnica `EnumWindows`+PID+
+    `PostMessage`/`WM_SETTEXT` desta sessão, incluindo o diálogo nativo de arquivo pra `SAVE`/`LOAD` via
+    `GetDlgItem`+`WM_SETTEXT`+`BM_CLICK`, já confirmada confiável em sessões anteriores pro `ZAP`):
+    programa de 12 linhas do manual → `DELETE 50-60` apagou exatamente `AND A`/`RET Z` (2 linhas) →
+    `RENUM 1000,40,100` renumerou de `40` em diante pra `1000,1100,1200,1300,1400,1500,1600` com passo
+    100, **mantendo `10`/`20`/`30` intocadas E a referência simbólica `JR SALT` correta** (labels não
+    são numéricos, só os `NN` mudam) → `CHANGE 'CHPUT','OUTC'` trocou a ocorrência no LABEL (linha 20)
+    E no OPERANDO (`CALL CHPUT`→`CALL OUTC`), 2 linhas alteradas → `DELETE 1400-` apagou as 3 últimas
+    (`DEFM`/`DEFB`/`END`) → `SAVE` gravou os 7 linhas restantes num `.mza` real, conferido byte a byte
+    (conteúdo exato esperado) → `NEW` limpou a tela inteira → `LOAD` do mesmo arquivo recarregou as
+    MESMAS 7 linhas, confirmando o round-trip completo. Todos os passos bateram exatamente o esperado
+    na primeira tentativa completa.
+- **Comando `MERGE` (mesma sessão, ainda `7.33.33`)** - pedido explícito do usuário logo depois do
+  `LOAD`/`SAVE`: "que faz o MERGE de um programa carregado com o que está na memória, igual ao merge do
+  BASIC. Ao dar MERGE o programa mostra o diálogo de LOAD, só que não deleta o programa que está na
+  memória, junta os dois. Se o programa da memória tiver linhas com numeração igual ao do MERGE,
+  sobreponha" - bate exatamente com o `MERGE` do manual original (`MEGASM.TXT` linha 727: "intercala
+  dois programas... no caso de existir coincidência do número das linhas, a existente na memória será
+  apagada, prevalecendo a linha lida da fita... equivalente ao comando MERGE do BASIC").
+  - **`Mamute_AsmLoadOrMerge(Title.s, ClearFirst.b)`** (`MamuteSupport.pbi`) - refatoração do antigo
+    `Mamute_AsmLoad()` num motor comum: mesmo diálogo/leitura/parser de sempre, só decide se
+    `ClearList(MamuteEditProgram())` roda ANTES de ler (LOAD) ou não (MERGE). A regra "colisão de NN, a
+    linha do arquivo prevalece" não precisou de lógica NENHUMA além da reaproveitada -
+    `Mamute_StoreAsmLine()` já substitui automaticamente uma linha existente com o mesmo `LineNum`,
+    então "não limpar antes de ler" já produz exatamente o comportamento de merge pedido.
+    `Mamute_AsmLoad()`/`Mamute_AsmMerge()` (novo) viraram wrappers de uma linha desse motor comum.
+  - **Verificado de ponta a ponta com dados reais** (mesma técnica de automação desta sessão): programa
+    em memória com linhas `10`/`20`/`30`; arquivo externo `.mza` (escrito fora do app, não pelo `SAVE`)
+    com `20` (conteúdo DIFERENTE do que já estava em memória) e `40` (linha nova) - `MERGE` apontando
+    pra esse arquivo resultou exatamente no esperado: `10` e `30` intocadas, `20` SOBRESCRITA com o
+    conteúdo do arquivo, `40` adicionada - `2 LINHA(S) MESCLADA(S)` no status (as 2 linhas lidas do
+    arquivo), confirmado por captura de tela real.
+- **Comandos `SEARCH`/`LSEARCH` (mesma sessão, ainda `7.33.33`, "OLHOS NA LISTAGEM")** - pedido
+  explícito do usuário: "busca uma string no programa, listando as linhas que ela aparece... `SEARCH
+  '<string>'` que busca strings literais, e `SEARCH <string>` que busca strings, comandos, labels,
+  etc... o `LSEARCH` é a mesma coisa mas despeja na 'impressora', ou seja, gera um PDF com a listagem" -
+  sintaxe deliberadamente diferente do manual original (`MEGASM.TXT` linhas 738/750: `SEARCH <string>`
+  sem aspas nem diferenciação de forma, "note que os espaços entre o comando e o texto da string serão
+  contados" - comportamento cru que este porte não replicou, por decisão do usuário de ter duas formas
+  explícitas em vez de uma só sensível a espaço).
+  - **`Mamute_AsmSearch(Args.s)`** (`MamuteSupport.pbi`) - decide a forma pelo primeiro caractere: `'`
+    → busca LITERAL, **case-sensitive**, texto exato entre aspas; sem aspas → busca LIVRE,
+    **case-insensitive** (decisão de interpretação do Claude pra "busca strings, comandos, labels,
+    etc" - já que mnemônicos/labels já são tratados case-insensitive no resto do `EDIT`, via
+    `Z80Asm::IsMnemonic()`/`Mamute_IsValidAsmLabel()`, ambos normalizando por `UCase()`). Busca no
+    CORPO cru (`RawText`) de cada linha - mesmo escopo do `CHANGE`. Preenche
+    `MamuteSearchMatches()` (`Global NewList`, mesmo espírito não-embutido-em-Structure de
+    `MamuteEditProgram()` - evita depender de passar um `List` embutido numa `Structure` por
+    parâmetro, caso incerto o suficiente pra não arriscar) com os índices das linhas que baterem.
+  - **Modo "filtro" da tela** (`MamuteEditState\FilterMode`, `MamuteEdit_ActiveCount()`/
+    `MamuteEdit_SelectProgramLineAt()`, `MamuteEditGui.pbi`) - em vez de só pular pro primeiro
+    resultado, `SEARCH` bem-sucedido faz a tela mostrar SÓ as linhas que bateram (igual "lista as
+    linhas do programa-fonte que a contêm" do manual), navegáveis com as MESMAS setas/`ENTER`-vazio de
+    sempre - os dois helpers abstraem "sequência ativa é o programa inteiro OU só os resultados" pro
+    resto do código (`Repaint`/`EnsureCursorVisible`/seta Baixo/puxar linha pro campo) não precisar
+    saber a diferença. Digitar `LIST` (ou qualquer outro comando, ou gravar uma linha nova) sai do
+    filtro automaticamente - `St\FilterMode = #False` colocado uma ÚNICA vez, antes do `Select Verb`
+    inteiro, cobrindo todos os outros comandos de uma vez; só o próprio `Case "SEARCH"` liga de volta.
+  - **`LSEARCH`** - mesmo motor de busca (`Mamute_AsmSearch()`), mas em vez de filtrar a tela, monta as
+    linhas encontradas (`MamuteEdit_FormatLine()`, mesmo alinhamento em colunas da listagem normal) e
+    manda pra `Mamute_SavePdfListing()` (`MamutePdf.pbi`, mesma infra do `L`/`LP`/`P`/`V`) com
+    `SaveFileRequester()` - **achado de ordem de `XIncludeFile`**: `MamuteEditGui.pbi` precisou passar
+    a ser incluído DEPOIS de `MamutePdf.pbi` em `BadigEditor.pb` (antes vinha antes) pra
+    `Mamute_SavePdfListing()` já estar declarada quando `MamuteEditGui.pbi` a chama - mesmo padrão
+    "declaração antes de quem usa" já documentado várias vezes neste projeto.
+  - **Verificado de ponta a ponta com automação real**: programa de exemplo do manual (12 linhas) →
+    `SEARCH 'CHPUT'` (literal) filtrou pra exatamente as linhas `20`/`70` (label + referência),
+    `2 OCORRENCIA(S)` no status, seta Baixo moveu o cursor `>` de `20` pra `70` DENTRO do filtro → `LIST`
+    voltou pro programa completo → `SEARCH salt` (sem aspas, minúsculo) bateu `SALT`/`SALT` maiúsculo
+    (case-insensitive confirmado), filtrou `40`/`90` → `LSEARCH 'SALT'` gerou um PDF real, conferido
+    byte a byte (cabeçalho `"LSEARCH 'SALT' - Pagina 1/1"` + as 2 linhas certas, alinhamento de colunas
+    igual a tela) → `SEARCH 'XYZXYZ'` (sem ocorrência) mostrou `NENHUMA OCORRENCIA` e manteve a listagem
+    completa sem entrar em modo filtro. Todos os passos bateram exatamente o esperado.
+- **Comandos `FIND`/`QUIT` (mesma sessão, ainda `7.33.33`)** - dois pedidos pequenos e independentes do
+  usuário logo depois do `SEARCH`/`LSEARCH`.
+  - **`FIND`** - "crie o FIND, mas apenas como um apelido para o SEARCH, não há vantagem real no PC
+    entre o FIND e o SEARCH". No manual original (`MEGASM.TXT` linha 760) `FIND` só procura no INÍCIO
+    de cada linha (mais rápido que o `SEARCH`, que procura em qualquer posição) - otimização real num
+    Z80 de poucos MHz, sem sentido nenhum num PC moderno. Implementado como `Case "SEARCH", "FIND"`
+    (mesmo bloco, `MamuteEditGui.pbi`) - literalmente zero código novo de lógica, só o segundo rótulo
+    no `Case`.
+  - **`QUIT`** - "encerra o editor e volta para o monitor, mas não apague o programa da memória, o
+    usuário dando EDIT novamente continua a sessão de onde parou". `Case "QUIT"` só faz
+    `Quit = #True` (a mesma variável que `#PB_Event_CloseWindow` já usa pra sair do loop de eventos e
+    fechar a janela) - **nenhuma limpeza precisou ser escrita**: `MamuteEditProgram()` já é `Global`
+    (mesmo padrão de `MamuteGui_History()` no `MON>`), sobrevive a fechamentos de janela por definição,
+    então "não apagar o programa" já era o comportamento natural sem fazer nada de especial.
+  - **Verificado de ponta a ponta com automação real**: `FIND 'SALT'` filtrou a tela exatamente igual
+    um `SEARCH 'SALT'` teria (mesmas 2 linhas) - confirmando que é mesmo um alias, não uma cópia com
+    comportamento levemente diferente. `QUIT` fechado com um filtro de `FIND` ainda ativo, confirmado
+    via `EnumWindows` que SÓ a janela "Mamute Assembler - EDIT" desapareceu (o `MON>`/"Mamute
+    Assembler" e a janela principal continuaram abertos) - reabrindo `EDIT` a partir do mesmo `MON>`,
+    o programa reapareceu intacto (as mesmas 2 linhas), listagem completa (não filtrada - o estado de
+    filtro é por-abertura-de-janela, resetado corretamente numa sessão nova), cursor de volta na
+    primeira linha.
+- **Comandos `A`/`A O` - o Mamute Assembler MONTA de verdade (2026-08-13, `7.33.34`, "O
+  COMPILADOR")** - o pedido explícito do usuário veio como uma pergunta antes de qualquer código:
+  "acha que dá pra implementar o compilador? acha que podemos começar com a opção A simples?". A
+  resposta, dada ANTES de escrever qualquer linha (mesmo espírito de outras decisões de arquitetura
+  desta sessão - EDIT janela vs. inline, ZX-81 vs. REPL): **não escrever um compilador novo**. O
+  projeto já tem `Z80Asm.pbi` (módulo 2, assembler Z80 nativo M80/Nestor80, validado byte a byte
+  contra o `N80.exe` real) rodando desde 2026-07-24 - e como o vocabulário que `EDIT` já aceita
+  (`Mamute_IsAsmPseudoOp()`/`Z80Asm::IsMnemonic()`) é um SUBCONJUNTO do que `Z80Asm.pbi` entende, cada
+  linha de `MamuteEditProgram()` já É texto-fonte Nestor80 válido assim que se tira o `NN` - "montar"
+  vira só juntar linhas e chamar `Z80Asm::Assemble()`, sem tradutor no meio. Confirmado com o usuário:
+  usar as mensagens de erro DESCRITIVAS de `Z80Asm::GetAssembleErrorText()` em vez de tentar
+  reconstruir os códigos de 1 letra (`D`/`F`/`M`/`U`/`Q`/`O`) do manual original ("vai facilitar").
+  - **`Structure MamuteAsmResult` + `Mamute_AsmAssemble()`** (`MamuteSupport.pbi`) - junta
+    `MamuteEditProgram()` inteiro (via `RawText`, uma linha por elemento, SEM linhas em branco -
+    `Mamute_ParseAsmLine()` já rejeita corpo vazio) separado por `Chr(10)`, chama
+    `Z80Asm::Assemble()`. Em erro, `Z80Asm::GetAssembleErrorLine()` devolve um número de linha DENTRO
+    do texto-fonte montado - `Mamute_AsmLineNumberAtSourceLine()` mapeia de volta pro `NN` real do
+    Mamute **sem precisar de nenhuma tabela de correspondência**: como o texto-fonte é montado
+    percorrendo a lista em ordem, a linha K do fonte é sempre o K-ésimo elemento de
+    `MamuteEditProgram()`, ponto.
+  - **`A` sozinho** - só valida (nunca escreve em lugar nenhum). Erro: mensagem descritiva no
+    `G_Status` prefixada com o `NN` real (`"ERRO NA LINHA 25: Expressao invalida (NAOEXISTE):
+    NAOEXISTE"`, por exemplo) E o cursor `>` pula pra essa linha automaticamente
+    (`MamuteEdit_IndexOfLine()`, já existente, reaproveitado). Sucesso: mostra o intervalo de
+    endereços e a contagem de bytes que SERIAM gerados (`Z80Asm::GetAssembleStartAddr()`/
+    `GetAssembleEndAddr()`).
+  - **`A O`** (espaço obrigatório entre `A` e `O` - decisão conversada e fechada com o usuário ANTES de
+    implementar: reaproveitar o split Verbo/Argumentos que toda linha do `EDIT` já usa, em vez de
+    escrever um parser dedicado só pra reconhecer `AO`/`AOU`/etc. colados como no manual original -
+    troca deliberada de fidelidade histórica por reaproveitamento de infraestrutura) - além de validar,
+    ESCREVE o código-objeto na RAM SIMULADA, pedido explícito do usuário: "a compilação vai para o
+    endereço em RAM do montador, conforme disposição dos SLOTs, ou seja se o ORG 9000 for encontrado, e
+    a página 2 estiver no slot 3, é ali que vamos escrever os bytes do programa". Implementado com
+    `Mamute_WriteByte()` (já existente, mesma função usada por `DM`/`MS`/`SCR`) para cada byte de
+    `StartAddr` a `EndAddr` - resolve pelo mapeamento de `PAGE` ATIVO agora automaticamente, e já
+    recusa a escrita (silenciosa, mesma regra de sempre) se a célula mapeada não for RAM. "Vai ter
+    opção de compilar em disco, mas por hora apenas no endereço em RAM simulada" (pedido explícito) -
+    exportar pra disco fica pra uma sessão futura.
+  - **Outras opções do comando `A` do manual** (`N`/`U`/`P`/`I`/`R`/`S`/`D`/`H`, `/<offset>`) **não
+    implementadas** - `AsmFlags <> "" And AsmFlags <> "O"` mostra `?OPCAO NAO IMPLEMENTADA` em vez de
+    ignorar silenciosamente, mesmo espírito de honestidade do resto do projeto (nunca fingir suportar
+    algo que não foi construído).
+  - **Limitação conhecida, documentada no código, não perguntada ao usuário por ser detalhe de baixo
+    nível**: `Z80Asm::Assemble()` só rastreia o endereço mínimo/máximo TOCADO, não um mapa byte a byte
+    - um programa com dois `ORG` distantes um do outro teria o VÃO entre eles preenchido com zeros na
+    escrita de `A O` (mesma limitação que "Executar → Montar Assembly" da IDE principal já aceita pra
+    exportar em arquivo - aqui importa mais porque `A O` escreve por cima de RAM existente). Um
+    programa com um único `ORG` (caso comum, o que o usuário descreveu) não tem esse problema.
+  - **Verificado de ponta a ponta com dados reais, não só revisão de código**: programa de 4 linhas
+    (`ORG 0C000H`/`LD A,1`/`LD B,2`/`END`) → `A` confirmou `MONTADO SEM ERROS C000-C003 (4 BYTES)`
+    (contagem/endereços batendo exatamente com a conta manual: `LD A,1`=2 bytes, `LD B,2`=2 bytes) →
+    inserida uma linha `25 CALL NAOEXISTE` (símbolo inexistente de propósito) → `A` de novo mostrou
+    `ERRO NA LINHA 25: Expressao invalida (NAOEXISTE): NAOEXISTE` com o cursor `>` pulando pra linha
+    `25` de verdade (não uma linha interna do `Z80Asm.pbi` desalinhada) → linha `25` apagada
+    (`DELETE 25`) → `A O` confirmou `MONTADO E GRAVADO NA RAM C000-C003 (4 BYTES)` → **confirmação
+    INDEPENDENTE**: fechado o `EDIT` (`QUIT`, necessário porque a janela do `EDIT` roda seu próprio
+    loop de eventos aninhado - `MON>` só volta a processar mensagens depois que essa chamada retorna,
+    achado real desta sessão de teste, não um bug), `DM C000` no `MON>` mostrou os bytes reais em
+    C000-C003: `3E 01 06 02` - exatamente `LD A,1` (`3E 01`) seguido de `LD B,2` (`06 02`), confirmando
+    que a escrita na RAM simulada aconteceu de verdade e no endereço certo, resolvida pelo mapeamento
+    `PAGE3=SLOT3` real da configuração do usuário.
+- **Dois bugs reais encontrados testando com o PRIMEIRO programa de verdade do usuário (mesma sessão,
+  ainda `7.33.34`)** - o teste sintético anterior (`ORG`/`LD A,1`/`LD B,2`/`END`) nunca exercitou nem
+  `EQU` nem um número sem sufixo com letra hexa, então passou limpo; o programa real do usuário
+  (adaptado do exemplo do próprio manual do MegaAssembler) bateu nos dois de uma vez.
+  - **Bug 1 - descompasso de formato numérico entre `EDIT` e `Z80Asm.pbi`**: `"10 chput: equ 0a2"`
+    (sem sufixo) foi aceito pelo `EDIT` na hora de digitar (`Mamute_ParseAsmNumber()` já trata isso como
+    hexa por padrão, decisão desta sessão) mas rejeitado por `Z80Asm::Assemble()` com `"Numero invalido:
+    0A2"` - o motor reaproveitado segue a convenção clássica M80/Nestor80 (decimal por padrão,
+    confirmado lendo `TokenizeExpr()`), que `EDIT` deliberadamente NÃO segue mais. **Corrigido em
+    `MamuteSupport.pbi`, não em `Z80Asm.pbi`** (o motor serve outros consumidores que esperam a
+    convenção clássica, não dá pra mudar o padrão dele) - `Mamute_AsmAssemble()` agora reconstrói cada
+    linha a partir dos campos já separados (`Label`/`Instr`/`Operand`) em vez de usar `RawText` puro, e
+    `Mamute_TranslateOperandForZ80Asm()`/`Mamute_MaybeAddHexSuffix()` (novos) acrescentam `H` em todo
+    token numérico do Operando que não já tenha um sufixo `H`/`B`/`D` reconhecido - como os DOIS
+    sistemas concordam totalmente quando há sufixo explícito, só faltava tornar explícito o que o
+    `EDIT` já tratava como implícito.
+  - **Bug 2 - real, latente, dentro do próprio `Z80Asm.pbi`** (não introduzido nesta sessão, só exposto
+    por ela) - ver entrada detalhada em `CLAUDE.md` (seção de bugs reais, mesmo padrão de documentação
+    já usado pro achado do `L`/`LP`): `RunOnePass`/`RunOnePassRel` definiam o símbolo de uma linha
+    `"NOME: EQU valor"` DUAS vezes (posicional pelo `:` + via `EQU`), o que nunca dava erro no pass 1
+    mas colidia consigo mesmo no pass 2 - `"Simbolo ja definido (EQU nao pode ser redefinido): CHPUT"`
+    numa linha com uma ÚNICA definição real. Corrigido pulando a definição posicional quando o operador
+    é `EQU`/`DEFL`/`ASET`, nas duas funções.
+  - **Verificado de ponta a ponta com o programa real do usuário, do zero**: digitado exatamente como
+    enviado (`"10 chput: equ 0a2"` até `"120 end"`) → `A` parou em `"20 org c100"` com
+    `?ERRO: ORG: C100` - **não é um bug, é a mesma regra do "0 na frente se começar com letra" fazendo
+    o esperado** (`c100` sem `0` na frente é um identificador, não um número, e não existe label `C100`
+    no programa) - corrigido pra `"20 org 0c100h"` (regra já combinada com o usuário nesta mesma sessão,
+    antes de existir o comando `A`) → `A` confirmou `MONTADO SEM ERROS C100-C11A (27 BYTES)` - contagem
+    de bytes conferida à mão bate exatamente (`LD HL,PRINT`=3 + `LD A,(HL)`=1 + `AND A`=1 + `RET Z`=1 +
+    `CALL CHPUT`=3 + `INC HL`=1 + `JR SALT`=2 + `DEFB 'MEGA ASSEMBLER'`=14 + `DEFB 0`=1 = 27). Suíte de
+    regressão existente rodada de novo depois da correção em `Z80Asm.pbi` pra garantir zero regressão:
+    `Z80AsmTestCli.exe` 67/67, `Z80LinkTestCli.exe` 7/7, e `sample/teste_opcodes.asm` comparado byte a
+    byte contra o `N80.exe` real de novo (idêntico, 444 bytes) - a correção só muda comportamento pra a
+    combinação colon+EQU/DEFL/ASET que já estava quebrada antes, nada que já passava foi tocado.
+- **Comando `MAP` (mesma sessão, ainda `7.33.34`)** - pedido explícito do usuário, com uma pergunta de
+  design incluída: "ele mostra o endereço inicial e final do programa que está em memória, faz sentido
+  após um A. A pode já guardar o endereço inicial e calcular endereço final pois faz uma compilação
+  vazia? ou então A O para ter a compilação real... se puder ser calculado Ok, caso não seja possível
+  calcular, indique que precisa compilar com A O primeiro". Resposta confirmada antes de implementar:
+  **`A` sozinho já basta** - `Z80Asm::GetAssembleStartAddr()`/`GetAssembleEndAddr()` já são calculados
+  em QUALQUER montagem bem-sucedida (`Mamute_AsmAssemble()`, ver entrada anterior), `A O` só decide se
+  ALÉM disso grava na RAM - não existe uma "compilação mais completa" que só `A O` faria.
+  - **Adaptação de escopo**: o manual original (`MEGASM.TXT` linha 780) descreve `MAP` mostrando onde o
+    **texto-fonte** está guardado na memória do EMA - conceito que não existe nesta porta
+    (`MamuteEditProgram()` é uma lista comum, não memória simulada por endereço). `MAP` aqui mostra o
+    intervalo do **código-objeto montado** (a única coisa com endereço real no nosso modelo) - a
+    própria pergunta do usuário já assumia essa leitura, então não foi uma decisão nova, só confirmada.
+  - **`MamuteAsmHasResult`/`LastStartAddr`/`LastEndAddr`/`LastByteCount`** (novos `Global`,
+    `MamuteSupport.pbi`, mesmo espírito não-embutido-em-Structure de `MamuteEditProgram()`/
+    `MamuteSearchMatches()`) - `Mamute_AsmAssemble()` atualiza os três em TODA montagem bem-sucedida
+    (`A` ou `A O`, indiferente); uma tentativa que FALHA não mexe neles - "último resultado bem-sucedido
+    conhecido" fica intacto até a PRÓXIMA montagem bem-sucedida, mesmo espírito de `HasLastSh`/
+    `LastShAddr` no `MON>`. `Mamute_AsmNew()` (comando `NEW`) é a ÚNICA ação que zera isso de propósito -
+    o programa que gerou aquele resultado deixou de existir.
+  - **Três respostas distintas**: nunca montou com sucesso ainda → `"PROGRAMA AINDA NAO MONTADO - USE A
+    (OU A O) PRIMEIRO"`; montou mas gerou zero bytes (só rótulos/EQU/diretivas) → mensagem própria
+    distinguindo esse caso de "nunca montou"; montou com bytes de verdade → `"ENDERECO INICIAL: xxxx
+    ENDERECO FINAL: yyyy"`.
+  - **Verificado de ponta a ponta com dados reais**: `MAP` antes de qualquer montagem → mensagem
+    correta pedindo `A`/`A O` primeiro → programa de 4 linhas (`ORG 0C000H`/`LD A,1`/`LD B,2`/`END`) →
+    `A` sozinho (SEM `O`) → `MAP` mostrou `"ENDERECO INICIAL: C000 ENDERECO FINAL: C003"` corretamente,
+    confirmando que `A` sozinho já é suficiente → `NEW` → `MAP` voltou pra mensagem de "ainda não
+    montado", confirmando a invalidação.
+- **Listagem detalhada PASSO-1/PASSO-2 de `A`/`A O` (mesma sessão, `7.33.35`)** - pedido explícito do
+  usuário, com o formato ditado à risca: "o comando A original mostra PASSO-1, depois mostra PASSO-2 e
+  lista as linhas do seguinte jeito: numero_da_linha \<TAB\> o_endereco ou o_valor do EQU \<TAB\>
+  XXXXXXXX codigos hexa do comando gerado, ate 4, em caso de mais de quatro passa para a linha de baixo
+  \<TAB\> o conteudo da linha".
+  - **`Z80Asm.pbi` ganhou uma API de listagem** (módulo 2, motor compartilhado) em vez de a formatação
+    da listagem tentar reconstruir os bytes fora do assembler: `Structure Z80ListingRow` (dentro do
+    `DeclareModule`, mesmo padrão de visibilidade cross-boundary já usado por `Z80ParsedLine`) +
+    `GetListingRowCount()`/`GetListingRow(Index, *Out)` (par contador+getter-por-índice, em vez de expor
+    a `List` interna diretamente através do limite do módulo - mesma cautela já documentada nesta
+    sessão sobre `List`s embutidas em `Structure` acessadas por ponteiro entre Procedures). Uma
+    `ZListing_AddRow()` nova grava exatamente uma linha por `EQU`/`DEFL`/`ASET` bem-sucedido (sem bytes,
+    só o valor) e uma linha por bloco de até 4 bytes de cada diretiva de dado (`DB`/`DEFM`/`DW`/`DS`/
+    etc.) ou instrução de CPU emitida - só no PASSE 2 real (`Not SizeOnly`), tanto em `RunOnePass`
+    (driver absoluto) quanto **não** em `RunOnePassRel` (a saída relocável, módulo 2b, não pediu esse
+    recurso). Zero linhas para `ORG`/`END` - **decisão do Claude, não confirmada com o usuário**: nenhum
+    endereço/byte é naturalmente associado a essas duas diretivas no modelo atual, e não houve pedido
+    explícito cobrindo os dois casos; a infra já suporta uma linha sem bytes (mesmo caminho do `EQU`) se
+    o usuário preferir vê-las listadas no futuro.
+  - **`Mamute_AsmBuildListingLines()`** (`MamuteSupport.pbi`, chamada do fim de `Mamute_AsmAssemble()`)
+    percorre `GetListingRowCount()`/`GetListingRow()` e monta `MamuteAsmListingLines()` (nova `List` de
+    `String`, mesmo espírito não-embutido-em-Structure de `MamuteEditProgram()`/`MamuteSearchMatches()`)
+    já formatada coluna a coluna no layout pedido; linhas de continuação (bloco 2º/3º/4º de uma
+    instrução/diretiva com mais de 4 bytes) repetem só a coluna de hex, com NN e endereço em branco -
+    mapeamento de volta pro conteúdo original da linha via `Row\SourceLine` indexando direto em
+    `MamuteEditProgram()` (1:1, mesma premissa já usada por `Mamute_AsmLineNumberAtSourceLine()`).
+  - **`MamuteEditGui.pbi` ganhou `MamuteEditState\ListingMode`** - `MamuteEdit_ActiveCount()`/
+    `MamuteEdit_Repaint()` agora são de três vias (`ListingMode` → `MamuteAsmListingLines()`;
+    `FilterMode` → `MamuteSearchMatches()`; senão → o programa-fonte normal), reaproveitando o MESMO
+    mecanismo de paginação LIST-style ("Rolar mais uma tela? (S/N)") já existente em vez de duplicar
+    lógica de rolagem - `ListingMode` desenha sem o cursor `>` (não faz sentido "editar" uma linha de
+    listagem). Antes de montar de verdade, `MamuteEdit_ShowPassMessage()`/`MamuteEdit_PumpDelay()`
+    desenham "PASSO-1" e depois "PASSO-2" (~400ms cada) bombeando `WindowEvent()` no meio - `Delay()`
+    puro trava `WM_PAINT` no processo single-thread (mesma classe de problema já documentada em
+    `CLAUDE.md`/outras partes deste arquivo para pausas visuais deliberadas).
+  - **Verificado ao vivo, três cenários**: (1) programa de 12 linhas (`EQU`+8 instruções+`DEFM` de 14
+    bytes+`DEFB`+`END`) montado com `A` → listagem byte-a-byte conferida à mão contra a montagem
+    anterior (`LD HL,PRINT`=21 0C C1, `CALL CHPUT`=CD A2 00, etc.) - **idêntica**, incluindo o `DEFM` de
+    14 bytes corretamente quebrado em 4+4+4+2 linhas de continuação com NN/endereço em branco; (2) o
+    mesmo programa + 40 linhas `NOP` extras montado com `A` → tela cheia disparou "Rolar mais uma tela?
+    (S/N)" corretamente, `S` avançou pra segunda tela retomando exatamente na próxima linha (`118`
+    depois de `117`), endereços contínuos; (3) `A O` no programa de 12 linhas → `ListingMode` ativado
+    IGUAL a `A` sozinho, com a mensagem de status certa (`"MONTADO E GRAVADO NA RAM C100-C11A (27
+    BYTES)"`) em vez da versão sem gravação - confirma que a listagem funciona igualmente com ou sem a
+    flag `O`. Suíte de regressão rodada de novo depois das mudanças em `Z80Asm.pbi` (só aditivas, sem
+    alterar nenhum caminho existente): `Z80AsmTestCli.exe` 67/67, `Z80LinkTestCli.exe` 7/7, e
+    `sample/teste_opcodes.asm` comparado byte a byte contra o `N80.exe` real de novo - **idêntico, 444
+    bytes**, zero regressão.
+- **Opção `N` do comando `A`/`A O` (mesma sessão, `7.33.36`)** - pedido explícito do usuário: "opcao N
+  (por exemplo A O, ou A ON) nao mostra os numeros de linha, de resto e igual". `N` é a opção descrita no
+  manual original (`MEGASM.TXT` linha 793: "Não lista o número das linhas") - só a coluna `NN` da
+  listagem fica em branco, endereço/valor de `EQU`/bytes hexa/conteúdo continuam exatamente iguais.
+  - **Sintaxe combinável**: o token de opções após o espaço aceita `O` e `N` em qualquer ordem/combinação
+    (`A O`, `A N`, `A ON`, `A NO`) - mesmo espírito do manual original, onde as letras de opção vêm
+    coladas num único bloco (`A [NUPOIRSDH/<offset>]`); a única adaptação já feita nesta porta (sessão
+    anterior) foi separar esse bloco do `A` em si por um espaço, não as letras entre si. Reescrito o
+    parsing de `AsmFlags` de uma comparação de string exata (`= "O"`) pra um loop caractere a caractere
+    que aceita `O`/`N` em qualquer posição e rejeita qualquer outra letra - mensagem de erro atualizada
+    pra listar as quatro formas válidas (`'A', 'A O', 'A N' ou 'A ON'`).
+  - **Implementação**: `Mamute_AsmBuildListingLines()` (`MamuteSupport.pbi`) ganhou um parâmetro
+    `HideLineNumbers.b = #False` - quando ativo, a coluna `NN` vira `Space(5)` em vez de
+    `RSet(Str(LineNum), 5)`, sem tocar em mais nada da linha formatada. `Mamute_AsmAssemble()` ganhou o
+    mesmo parâmetro (repassado direto pra `Mamute_AsmBuildListingLines()` no fim da montagem
+    bem-sucedida) - único call site é o `Case "A"` do `EDIT` (`MamuteEditGui.pbi`), que agora passa
+    `AsmHasN` (booleano resultante do parsing das flags) em vez de sempre `#False`. Nenhuma mudança em
+    `Z80Asm.pbi` - a opção é puramente de EXIBIÇÃO da listagem já montada, não afeta o assembler.
+  - **Verificado ao vivo, três casos**: `A ON` no programa de 12 linhas → listagem idêntica à anterior
+    (mesmos endereços/bytes/conteúdo) mas com a coluna `NN` em branco em toda linha, E a mensagem de
+    status confirmando a gravação na RAM (`O` continuou funcionando junto); `A N` (sem `O`) → mesma
+    coluna `NN` em branco, mensagem de status SEM gravação (`"MONTADO SEM ERROS..."`), confirmando que
+    `N` funciona independente de `O`; `A P` (flag não implementada NA ÉPOCA - ver entrada seguinte, já
+    implementada na mesma sessão) → continua rejeitado com a mensagem de erro atualizada, sem entrar em
+    `ListingMode`.
+- **Opção `P` do comando `A`/`A O`/`A N` (mesma sessão, `7.33.37`)** - pedido explícito do usuário: "o
+  Modificador P do comando A gera a listagem na impressora, ou seja, no PDF, pode ser combinado com as
+  outras opções por exemplo A NP, A ONP etc". `P` é a opção do manual original (`MEGASM.TXT` linha 795:
+  "A listagem sairá na impressora"), adaptada pra PDF - mesma decisão de projeto já tomada pro
+  `L`/`LP`/`P`/`V`/`LSEARCH` (nenhum driver de impressora real, só um PDF A4 simples).
+  - **Reaproveita `Mamute_SavePdfListing()`** (`MamutePdf.pbi`, mesma infra do `LSEARCH`) passando a
+    MESMA `List` (`MamuteAsmListingLines()`) que já vai pra tela - como essa lista já é construída
+    respeitando `HideLineNumbers` (opção `N`, entrada anterior) ANTES do `Case "A"` chegar na lógica de
+    `P`, combinar `N`+`P` (`A NP`, `A ONP`) não precisou de nenhuma lógica extra: o PDF sai sem número de
+    linha automaticamente, só porque a lista de origem já está sem eles.
+  - **`SaveFileRequester()` roda ANTES de decidir a mensagem de status final** (pergunta de rolagem,
+    confirmação de gravação na RAM, ou confirmação simples) - o resultado (`" - PDF: <nome>"` em caso de
+    sucesso, `" - ERRO AO GRAVAR PDF"` em caso de falha de gravação, ou nada se o usuário cancelar o
+    diálogo) é ANEXADO à mensagem que já seria mostrada, em vez de substituí-la ou de uma mensagem
+    separada - assim a pergunta "Rolar mais uma tela? (S/N)" continua funcionando normalmente mesmo com
+    `P` ativo (o sufixo do PDF só fica visível até a próxima tela, mas a gravação em si já aconteceu).
+    Cancelar o diálogo é silencioso, mesmo comportamento de desistir de qualquer outro
+    `SaveFileRequester` do projeto - sem mensagem de erro nem de cancelamento.
+  - **Sintaxe combinável estendida pra três letras**: o mesmo loop caractere a caractere do parsing de
+    `N` (entrada anterior) ganhou um `Case "P"` a mais - aceita `O`/`N`/`P` em qualquer ordem/combinação
+    no mesmo token (`A P`, `A NP`, `A ONP`, `A PON`, etc.), mensagem de erro atualizada pra
+    `"?OPCAO NAO IMPLEMENTADA (combine 'O'/'N'/'P', ex. 'A', 'A O', 'A N', 'A ONP')"`.
+  - **Verificado ao vivo, dois casos**: `A ONP` no programa de 12 linhas → RAM gravada, coluna `NN` em
+    branco na tela, diálogo "Salvar montagem (A P) como PDF" apareceu com o nome sugerido correto,
+    arquivo salvo com sucesso, PDF conferido byte a byte contra o texto exibido na tela (mesmo cabeçalho
+    de endereço `MONTAGEM C100-C11A`, mesmas linhas/colunas, incluindo as linhas de continuação do
+    `DEFM` de 14 bytes) - status final `"MONTADO E GRAVADO NA RAM C100-C11A (27 BYTES) - PDF:
+    montagem_test.pdf"`; `A P` sozinho com o diálogo cancelado (`WM_CLOSE`) → comportamento idêntico a um
+    `A` sem `P` nenhum, sem sufixo, sem erro.
+- **Opção `I` do comando `A`/`A O`/`A N`/`A P` (mesma sessão, `7.33.38`)** - pedido explícito do usuário:
+  "A I, ela funciona similar a O, salva em DISCO o arquivo, abre o diálogo de save, e salva o header
+  &HFE, os endereços inicial, final e execução (já sugira no diálogo), o slot (já sugira os ativos no
+  momento) o usuário informa o nome e o binário é criado no formato para o BLOAD do BASIC ou LOAD do
+  Mamute Assembler". `I` é a opção do manual original (`MEGASM.TXT` linha 797: "O código-objeto será
+  armazenado em fita para ser lido pelo comando R"), adaptada de fita pra DISCO nesta porta.
+  - **Reaproveita a MESMA janela do comando `SAVE` do `MON>`** (`MamuteSave_Open()`, `MamuteSaveGui.pbi`)
+    em vez de construir um diálogo novo do zero - essa janela já tinha EXATAMENTE os campos pedidos
+    (arquivo com botão "...", slot 0-3 sugerido a partir do mapeamento `PAGE` ativo, endereço inicial/
+    final/execução pré-preenchidos e editáveis, formato BIN com cabeçalho real do BSAVE do MSX -
+    `FE` + 3 endereços de 2 bytes little-endian). Só faltava uma forma de alimentá-la com os bytes
+    RECÉM montados em vez de ler de `MamuteMem()` (que só teria os bytes certos se `A O` já tivesse
+    rodado antes).
+  - **`MamuteSave_Open()` ganhou um modo "buffer explícito"**: dois parâmetros novos,
+    `UseExplicitBuffer.b` e `Array ExplicitBuf.a(1)` - quando `#True`, o loop que preenche o corpo do
+    arquivo lê de `ExplicitBuf()` (índice 0 = endereço inicial) em vez de `MamuteMem(Slot, Pagina,
+    Offset)`, protegido contra estourar o array (`i <= ArraySize(ExplicitBuf())`, senão grava zero -
+    cobre o caso do usuário esticar o endereço final na janela além do que foi realmente montado). O
+    único call site pré-existente (`MamuteGui_CmdSave()`, comando `SAVE` do `MON>`) foi atualizado pra
+    passar `#False` + um array-dummy de 1 elemento, sem nenhuma mudança de comportamento pra ele -
+    continua lendo de `MamuteMem()` exatamente como antes.
+  - **"I" funciona sozinho, sem precisar de "O" antes**: diferente de reaproveitar o efeito colateral de
+    `A O` (que escreve na RAM simulada, sujeito ao mapeamento `PAGE` ativo E podendo falhar silenciosamente
+    célula a célula se a página não for RAM), `A I` passa `AsmOutBytes()` (o array que
+    `Mamute_AsmAssemble()` acabou de preencher) direto pro buffer explícito - o arquivo sai correto
+    mesmo se a célula de destino não for RAM, mesmo sem `O`, mesmo com `PAGE` mapeado pra outra coisa. O
+    campo Slot da janela nesse modo é só INFORMATIVO/sugestão (o formato BLOAD/BSAVE real não tem byte
+    de slot no arquivo).
+  - **Endereço de execução sugerido = endereço inicial** - mesma convenção já usada pela própria janela
+    quando o campo fica vazio ("execução vazio = igual ao inicial"); não há conceito de "ponto de
+    entrada" separado na gramática do `EDIT` do Mamute ainda, então essa é a única sugestão sensata sem
+    inventar sintaxe nova.
+  - **Combinável com `O`/`N`/`P`** no mesmo bloco de opções (`A ONPI`, `A I`, etc.) - mesmo loop
+    caractere a caractere ganhou um `Case "I"` a mais.
+  - **Verificado ao vivo, dois casos**: `A I` no programa de 12 linhas → janela abriu com `montagem.bin`/
+    Slot 3 (mapeamento ativo)/`C100`/`C11A`/`C100` pré-preenchidos corretamente, salvou com sucesso, e o
+    arquivo resultante conferido byte a byte: `FE 00 C1 1A C1 00 C1` (cabeçalho: FE + C100 + C11A + C100,
+    little-endian) seguido dos 27 bytes exatos já verificados na listagem (`21 0C C1 7E A7 C8 CD A2 00 23
+    18 F7` + os 14 bytes de `'MEGA ASSEMBLER'` + `00`), 34 bytes no total (7 de cabeçalho + 27 de dados)
+    - status final `"...  - SALVO "montagem_i_test.bin" - SLOT 3 - C100-C11A - TAMANHO 001B"`; `A ONI`
+    (três flags combinadas) com o diálogo cancelado (`WM_CLOSE`) → RAM gravada (`O`) e números de linha
+    escondidos (`N`) continuaram funcionando normalmente, sem nenhum sufixo de `I` na mensagem final -
+    cancelar `I` não afeta as outras opções.
+- **Opção `R` do comando `A`/`A O`/`A N`/`A P`/`A I` (mesma sessão, `7.33.39`)** - pedido explícito do
+  usuário, com um print real do MegaAssembler original de exemplo (`images/msxbasica-19.png`, usando o
+  MESMO programa de teste já usado em toda essa sessão): "ela gera no final da listagem uma referência
+  cruzada dos labels: equ gera o valor e os endereços onde é usado, os labels mostra onde foram definidos
+  e onde são usados". `R` é a opção do manual original ("Mostra uma listagem em referência cruzada dos
+  labels após assemblar o programa").
+  - **Novo mecanismo no motor compartilhado (`Z80Asm.pbi`)**: `EvalPostfixExpr()` (avaliador de
+    expressão, `Case #Z80Tk_Symbol`) agora grava um registro `{nome, endereço-da-linha-atual}` em
+    `SymbolRefs()` toda vez que resolve um símbolo CONHECIDO - mas só durante o pass de EMISSÃO. Isso
+    exigiu finalmente **conectar o Global `PassNumber`** (já existia, comentado "1 ou 2 - idem", mas
+    nunca tinha sido escrito de verdade em lugar nenhum) - `RunOnePass()` agora seta `PassNumber = 1`/`2`
+    espelhando `SizeOnly`, e `EvalPostfixExpr()` só grava a referência quando `PassNumber = 2`. `CurLoc`
+    nesse ponto ainda é o endereço da linha-fonte ATUAL (ainda não avançou) - confere exatamente com o
+    endereço de uso mostrado no print de referência (`CALL CHPUT` em `C106` → uso de `CHPUT` registrado em
+    `C106`).
+  - **`XrefBuildRows()`** (chamada do fim de `Assemble()`, incondicional em toda montagem bem-sucedida,
+    mesmo espírito de `Mamute_AsmBuildListingLines()`) coleta todos os nomes de `Symbols()` conhecidos,
+    ordena alfabeticamente (`SortList()` - já em maiúsculas, ordem alfabética direta), e pra cada um
+    agrupa os usos gravados em `SymbolRefs()` em blocos de até 4 (mesmo idioma de fatiamento de
+    `ZListing_AddRow()`) - vira `Z80XrefRow`/`XrefRows()`, exposto via `GetXrefRowCount()`/`GetXrefRow()`
+    (mesmo padrão índice+getter de `GetListingRow()`). Um símbolo sem NENHUM uso ainda ganha 1 linha (só
+    valor, sem endereços) - "definido mas nunca usado" é informação válida.
+  - **Não distingue EQU/DEFL/ASET de rótulo posicional** - o `Value` de um `Z80XrefRow` já É o campo
+    `Symbols()\Addr\Value` correto pros dois casos (valor da constante pra EQU, endereço de definição pro
+    rótulo) sem nenhuma lógica extra - o próprio print de referência confirma isso (`CHPUT 00A2 C106` e
+    `PRINT C10C C100` usam exatamente o mesmo layout de 3 colunas).
+  - **`Mamute_AsmBuildXrefLines()`** (`MamuteSupport.pbi`, chamada incondicionalmente do fim de
+    `Mamute_AsmAssemble()`, junto com `Mamute_AsmBuildListingLines()`) formata em `MamuteAsmXrefLines()`:
+    `NOME` (`LSet` 8) + `VALOR` (4 hexa) + endereços de uso separados por espaço, linha de continuação
+    com nome/valor em branco.
+  - **`Case "A"` (`MamuteEditGui.pbi`) ganhou um `Case "R"`** no mesmo loop de parsing de flags - quando
+    ativo, ANEXA `MamuteAsmXrefLines()` (separada por 1 linha em branco) ao FINAL de
+    `MamuteAsmListingLines()` ANTES de calcular a paginação, então a referência cruzada vira parte da
+    MESMA listagem/rolagem, não um passo separado. Combina livremente com `O`/`N`/`P`/`I` no mesmo bloco
+    (`A ONPIR`, etc.).
+  - **Verificado ao vivo, byte a byte contra o print de referência**: `A R` no programa de 12 linhas
+    (idêntico ao do print) → `CHPUT 00A2 C106` / `PRINT C10C C100` / `SALT C103 C10A`, ordem alfabética,
+    valores/endereços EXATAMENTE iguais ao print original. Teste adicional (não coberto pelo print, só 1
+    uso por símbolo lá): 5 `CALL CHPUT` extras adicionados (6 usos no total de `CHPUT`) → primeira linha
+    da referência cruzada mostrou 4 endereços (`C106 C11B C11E C121`), disparou a paginação da listagem
+    corretamente, e a segunda tela mostrou a linha de continuação (nome/valor em branco, `C124 C127` - os
+    2 usos restantes) seguida de `PRINT`/`SALT` normalmente - confirma o fatiamento em blocos de 4 e a
+    integração com a paginação existente. Suíte de regressão rodada de novo após as mudanças em
+    `Z80Asm.pbi` (aditivas - novo hook em `EvalPostfixExpr()`, `PassNumber` agora usado de verdade, novo
+    `XrefBuildRows()`): `Z80AsmTestCli.exe` 67/67, `Z80LinkTestCli.exe` 7/7, e `sample/teste_opcodes.asm`
+    comparado byte a byte contra o `N80.exe` real de novo - **idêntico, 444 bytes**, zero regressão.
+  - **Nota de verificação**: durante os testes ao vivo desta sessão, o processo de teste fechou
+    inesperadamente uma vez logo depois de um `S` (rolar mais uma tela) numa sequência específica de
+    edições (`DELETE`+5 linhas novas+`A R` de novo). A MESMA sequência exata foi reproduzida duas vezes
+    depois, sem crash nenhum, e a própria ferramenta de captura de tela (`PrintWindow`/GDI+) também
+    apresentou uma falha transitória por volta do mesmo momento - tudo aponta pra um problema pontual de
+    automação/ambiente (não reproduzível), não um bug real na função, mas fica registrado aqui por
+    transparência caso o usuário veja algo parecido no uso real.
+- **Opção `S` do comando `A`/`A O`/`A N`/`A P`/`A I`/`A R` (mesma sessão, `7.33.40`)** - pedido explícito
+  do usuário: "ele gera ao final uma listagem dos labels em ordem alfabética e o endereço onde foram
+  definidos, digo o endereço para onde apontam". `S` é a opção do manual original ("Gera uma listagem em
+  ordem alfabética dos labels após assemblar o programa").
+  - **Zero mudança em `Z80Asm.pbi`** - `S` reaproveita EXATAMENTE a mesma tabela `Z80Asm::XrefRows()` já
+    construída pra `R` (entrada anterior, já ordenada alfabeticamente, já com nome+valor por símbolo em
+    `Z80XrefRow\HasValue`), só que ignorando `AddrCount`/`Addr0..3` (os endereços de USO, que são o que
+    diferencia `R` de `S`). `Mamute_AsmBuildLabelListLines()` (`MamuteSupport.pbi`) percorre
+    `GetXrefRowCount()`/`GetXrefRow()` e só aproveita as linhas com `HasValue` (pula as de continuação de
+    `R`, que nesta lista mais simples nunca existiriam de qualquer forma), formatando `NOME  VALOR` sem
+    coluna de endereços de uso.
+  - **Chamada incondicionalmente** do fim de `Mamute_AsmAssemble()`, mesmo espírito de
+    `Mamute_AsmBuildXrefLines()`/`Mamute_AsmBuildListingLines()` - sempre disponível em
+    `MamuteAsmLabelListLines()`, o `Case "S"` (`MamuteEditGui.pbi`) decide se anexa ao final de
+    `MamuteAsmListingLines()` (depois do bloco de `R`, se os dois estiverem ativos - mesma ordem
+    alfabética das próprias letras de opção).
+  - **Verificado ao vivo**: `A RS` no programa de 12 linhas (idêntico ao usado pra `R`) → bloco `R`
+    completo (com endereços de uso) seguido do bloco `S` (só nome+valor) na mesma tela/rolagem -
+    paginação cortou exatamente entre os dois blocos de rótulos, `SALT` (último rótulo alfabeticamente)
+    apareceu corretamente na segunda tela dentro do bloco `S`; `A S` sozinho (sem `R`) → listagem simples
+    `CHPUT 00A2` / `PRINT C10C` / `SALT C103`, cabendo numa tela só, sem endereços de uso nenhum.
+- **Opção `D` do comando `A`/`A O`/`A N`/`A P`/`A I`/`A R`/`A S` (mesma sessão, `7.33.41`)** - pedido
+  explícito do usuário: "e' identica a A S, porem a lista de labels e' por ordem de aparicao e nao
+  alfabetica". `D` é a opção do manual original ("Gera uma listagem dos labels após assemblar o
+  programa" - SEM "em ordem alfabética", a diferença textual exata em relação a `S` no manual).
+  - **Novo mecanismo no motor compartilhado (`Z80Asm.pbi`)**: `DefineSymbolSeg()` agora captura
+    `WasKnownBefore.b = Bool(FindMapElement(Symbols(), Key) And Symbols()\IsKnown)` ANTES de marcar o
+    símbolo como conhecido, e só grava em `SymbolDefOrder()` (novo `Global NewList` de strings) quando
+    `Not WasKnownBefore` - ou seja, exatamente na transição "ainda não conhecido → conhecido", que só
+    acontece UMA vez por símbolo, na linha-fonte que realmente o DEFINE. Isso foi necessário porque
+    `AddMapElement()` sozinho não bastaria: uma referência PRA FRENTE (`LD HL,PRINT` na linha 30,
+    `PRINT:` só definido na linha 100) já cria a chave do símbolo no Map como placeholder (`IsKnown =
+    #False`) muito antes da definição de verdade - gravar na primeira `AddMapElement()` capturaria a
+    ordem de PRIMEIRA MENÇÃO, não de definição. Como o pass 1 varre o fonte de cima pra baixo e cada
+    rótulo só é definido uma vez, essa ordem de transição já É a ordem de aparição no fonte, sem precisar
+    de `PassNumber` nem de rastrear número de linha nenhum.
+  - **`GetLabelDefOrderCount()`/`GetLabelDefOrderName(Index)`** (novo par índice+getter, mesmo padrão de
+    `GetXrefRowCount()`/`GetXrefRow()`) expõem `SymbolDefOrder()` pra fora do módulo - devolvem só o
+    NOME; o valor de cada um continua vindo de `GetSymbolValue()` (já público, sem precisar de API nova
+    pra isso).
+  - **Zero Structure nova, reaproveita infraestrutura mínima**: ao contrário de `R`/`S` (que usam
+    `Z80XrefRow`/`XrefRows()`), `D` não precisou de nenhuma Structure nova - só uma `List` de strings e
+    dois getters simples, já que não há endereços de uso pra carregar (mesma limitação de `S`).
+  - **`Mamute_AsmBuildLabelOrderLines()`** (`MamuteSupport.pbi`, chamada incondicionalmente do fim de
+    `Mamute_AsmAssemble()`, mesmo espírito das outras) formata em `MamuteAsmLabelOrderLines()` o mesmo
+    layout `NOME  VALOR` de `Mamute_AsmBuildLabelListLines()` (`S`), mas iterando
+    `GetLabelDefOrderCount()`/`GetLabelDefOrderName()` em vez de `Z80Asm::XrefRows()`. `Case "D"`
+    (`MamuteEditGui.pbi`) anexa isso ao final de `MamuteAsmListingLines()`, depois do bloco de `S` se os
+    dois estiverem ativos (mesma ordem alfabética das próprias letras de opção: `R` → `S` → `D`).
+  - **Verificado ao vivo, com um caso onde ordem de aparição REALMENTE difere da alfabética**: no
+    programa de 12 linhas de teste (`CHPUT` linha 10, `SALT` linha 40, `PRINT` linha 100), `A DS` mostrou
+    o bloco `S` (alfabético: `CHPUT`/`PRINT`/`SALT`) seguido do bloco `D` (ordem de aparição:
+    `CHPUT`/`SALT`/`PRINT`) - a diferença de posição entre `PRINT` e `SALT` confirma que os dois modos
+    produzem ordens genuinamente diferentes, não coincidentemente iguais; `A D` sozinho (sem `S`) →
+    `CHPUT 00A2` / `SALT C103` / `PRINT C10C`, mesma ordem de aparição, cabendo numa tela só. Suíte de
+    regressão rodada de novo após as mudanças em `Z80Asm.pbi` (aditivas - novo `Global`, novo hook em
+    `DefineSymbolSeg()`, dois getters novos): `Z80AsmTestCli.exe` 67/67, e `sample/teste_opcodes.asm`
+    comparado byte a byte contra o `N80.exe` real de novo - **idêntico, 444 bytes**, zero regressão.
+- **Opção `H` do comando `A`, combinada com `S` ou `D` (mesma sessão, `7.33.42`)** - pedido explícito do
+  usuário: "mais um comando A H lista os labels na impressora, deve ser usado com o D ou S". `H` é a
+  opção do manual original ("Lista na impressora os labels"). **Zero mudança em `Z80Asm.pbi`** - reusa
+  `MamuteAsmLabelListLines()`/`MamuteAsmLabelOrderLines()` (já construídas incondicionalmente pelas
+  entradas anteriores `S`/`D`) direto, sem depender de estarem anexadas a `MamuteAsmListingLines()`.
+  - **Diferença deliberada em relação a `P`**: `P` manda a listagem INTEIRA (código + qualquer bloco
+    `R`/`S`/`D` que também esteja ativo) pro PDF; `H` manda SÓ a(s) lista(s) de labels, num PDF
+    SEPARADO, independente de `P` também estar ativo ou não - reflete a leitura literal do pedido do
+    usuário ("lista os labels", não "a listagem inteira").
+  - **Validação explícita, ANTES de montar**: `H` sem `S` nem `D` não tem lista nenhuma pra imprimir -
+    rejeitado com mensagem própria (`"?OPCAO H PRECISA DE 'S' OU 'D' JUNTO..."`), distinta da mensagem
+    genérica de "opção não implementada", e verificada ANTES de sequer chamar `Mamute_AsmAssemble()`
+    (mesmo padrão do check de flags inválidas já existente).
+  - **`S`+`D`+`H` juntos**: as duas listas (alfabética e por ordem de aparição) vão pro MESMO documento
+    PDF, separadas por 1 linha em branco - mesma convenção de separação já usada na tela quando `R`/`S`/
+    `D` aparecem juntos.
+  - **Verificado ao vivo**: `A H` sozinho → rejeitado corretamente com a mensagem de validação, sem
+    entrar em `ListingMode`; `A DSH` → diálogo "Salvar labels (A H) como PDF" abriu, PDF salvo conferido
+    byte a byte (`LABELS C100-C11A` no cabeçalho, bloco `S` alfabético seguido de linha em branco seguido
+    do bloco `D` por ordem de aparição - conteúdo idêntico ao que aparece na tela), status final
+    combinando a pergunta de rolagem com a confirmação do PDF (`"Rolar mais uma tela? (S/N) - LABELS PDF:
+    labels_test.pdf"`).
+- **Opção `/<offset>` do comando `A` (mesma sessão, `7.33.43`, última desta série de opções)** - pedido
+  explícito do usuário: "este comando compila o programa mas adiciona o OFFSET ao ORG para gerar em
+  outro endereço". É a opção do manual original ("Assembla o programa para o endereço indicado pela
+  pseudo-instrução ORG gerando o código-objeto no endereço dado pelo ORG mais offset").
+  - **Zero mudança em `Z80Asm.pbi`** - em vez de ensinar o motor compartilhado sobre "offset de ORG" (o
+    que afetaria TODOS os outros consumidores dele), a solução ficou inteira em `Mamute_AsmAssemble()`
+    (`MamuteSupport.pbi`): ao reconstruir o texto-fonte a partir de `MamuteEditProgram()`, toda linha com
+    `Instr = "ORG"` tem seu operando envolvido em `(...)+0XXXXh` (parênteses pra segurança em caso de
+    expressão composta, `0` na frente garantindo que o Z80Asm nunca confunda o literal hexa com um label
+    mesmo que comece com A-F) - o resto da montagem (labels, saltos relativos, listagem, cross-
+    reference) segue automaticamente o `ORG` deslocado, porque é uma aritmética resolvida pelo próprio
+    avaliador de expressão do Z80Asm, não um recurso especial. Se o programa tiver mais de um `ORG`, o
+    MESMO offset é somado a todos, consistente.
+  - **Sintaxe**: `/` separado das letras de flag - detectado ANTES do loop caractere-a-caractere que
+    processa `O`/`N`/`P`/`I`/`R`/`S`/`D`/`H` (tudo depois da `/` deixa de ser tratado como flag e vira o
+    valor do offset, parseado com `Mamute_ParseHexAddr()` - mesmo parser hexadecimal de endereço já usado
+    em todo o resto do Mamute, 0000-FFFF). Combina com qualquer outra opção no mesmo token: `A O/8000`,
+    `A ONR/1000`, etc. Offset ausente ou inválido é rejeitado ANTES de montar, com mensagem própria
+    (`"?OFFSET INVALIDO..."`), distinta da mensagem genérica de flag desconhecida.
+  - **Verificado ao vivo, byte a byte**: `A O/1000` no programa de teste padrão (`ORG 0C100H`) → TODO o
+    programa assemblado em `D100-D11A` em vez de `C100-C11A` - incluindo a referência interna `LD
+    HL,PRINT` (que corretamente virou `21 0C D1`, apontando pro `PRINT:` deslocado em `D10C`, em vez do
+    `21 0C C1` original), enquanto `CHPUT` (constante `EQU`, sem relação com `ORG`) e o salto relativo
+    `JR SALT` (`18 F7`, offset relativo entre duas posições que se moveram JUNTAS) continuaram
+    corretamente inalterados - confirma que o deslocamento afeta o programa INTEIRO de forma consistente,
+    não só os endereços absolutos superficiais. `A O/ZZZZ` (offset não-hexadecimal) → rejeitado
+    corretamente com `"?OFFSET INVALIDO (hexa, 0000-FFFF, ex. 'A O/8000')"`, sem tentar montar.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
@@ -5360,17 +6120,19 @@ qualquer comando futuro, não só `DM`).
   original também menciona uma convenção de retorno ao "EMA" (slots em ROM-EMA-RAM-RAM + `JP 4010`)
   que provavelmente não se aplica tal qual a esta simulação (não há endereço `4010` especial nem
   conceito de "EMA" residente aqui) - também precisa de decisão do usuário sobre o que substitui isso.
-- **Assemblador Z80 embutido do Mamute Assembler (comando `R`, seção "Programas em Assembly" do
-  manual)** (2026-08-12, em aberto): `R [<offset>]` hoje só confirma no log que fica pra depois
-  (`MamuteGui_CmdR()`, `7.33.30`), ignorando qualquer argumento. Carregar um "programa assemblado"
-  pressupõe primeiro EXISTIR um assemblador Z80 completo dentro do Mamute Assembler (editor de linhas
-  com `NN Label: instrução operando ;comentário`, pseudo-instruções `ORG`/`DEFB`/`DEFW`/`DEFM`/`DEFS`/
-  `EQU`, `NEW`/`AUTO`/`LIST`/`LLIST`) - todo esse subsistema ainda não foi portado (ver `megasm/exe/
-  MEGASM.TXT` a partir da linha 542, "Programas em Assembly"). Note que o projeto já tem outros dois
-  assemblers Z80 completos (nativo e asMSX, ver módulos correspondentes) - **quando esta lacuna for
-  revisitada, considerar com o usuário se o Mamute Assembler precisa mesmo de um assemblador PRÓPRIO
-  (fidelidade histórica ao MegaAssembler original) ou se pode reaproveitar um dos assemblers já
-  existentes do projeto** - decisão de escopo que só o usuário pode tomar, não presumir uma resposta.
+- ~~Assemblador Z80 embutido do Mamute Assembler (comando `R`, seção "Programas em Assembly" do
+  manual)~~ - **resolvida na parte que importa (2026-08-13)**: o lado EDITOR (`EDIT`,
+  `MamuteEditGui.pbi`) e o lado MONTADOR (`A`/`A O`, mesmo arquivo, ver entrada própria na seção do
+  módulo 31 acima) estão completos - `NEW`/`DELETE`/`RENUM`/`LIST`/`SEARCH`/`LSEARCH`/`FIND`/`CHANGE`/
+  `SAVE`/`LOAD`/`MERGE`/`QUIT` (gerenciamento do programa-fonte) e `A`/`A O` (monta de verdade,
+  reaproveitando `Z80Asm.pbi` - exatamente a resposta que esta lacuna cogitava: "traduzido pro formato
+  de entrada de um dos assemblers já existentes do projeto", confirmado com o usuário antes de
+  implementar). `A O` já escreve o código-objeto direto na RAM simulada (resolvido pelo `PAGE` ativo),
+  cobrindo o caso de uso principal do fluxo "assemblar e testar" sem precisar de um comando `R`
+  separado carregando de "fita". Segue em aberto, escopo menor: `AUTO`/`LLIST` (gerenciamento), as
+  demais opções do comando `A` do manual (`N`/`U`/`P`/`I`/`R`/`S`/`D`/`H`, `/<offset>`) e exportar o
+  código-objeto pra disco em vez de só RAM (pedido explícito do usuário: "vai ter opção de compilar em
+  disco, mas por hora apenas no endereço em RAM simulada").
 - ~~Seção 4 (editor sprite/char): detalhe da conversa original não foi recuperado.~~ — **parcialmente
   resolvida (2026-07-18)**: a parte de sprite foi implementada com spec própria (não precisou do
   detalhe original recuperado, ver seção 4 acima); char/tile continua em aberto.

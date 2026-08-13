@@ -634,4 +634,137 @@ Procedure MamuteHelp_BuildData()
     "Mesmas regras de `<endinic>`/`<endfim>` do `L` (inclusive continuar de onde o `L`/`LP` mais " +
     "recente parou, se nenhum endereco for passado). Cancelar a janela " + Chr(34) + "Salvar como" +
     Chr(34) + " nao gera arquivo nenhum - so mostra `CANCELADO`.")
+
+  MamuteHelp_Add("EDIT", "Comandos",
+    "**Abre uma janela separada** com um editor de linhas pro **programa-fonte Z80**, modelado no " +
+    "editor de BASIC do ZX-81/ZX Spectrum (pedido explicito do usuario) - a LISTAGEM e' a propria " +
+    "tela (sem log de comandos nem mensagem " + Chr(34) + "OK" + Chr(34) + "), com um cursor `>` " +
+    "marcando a linha atual." + #CRLF$ + #CRLF$ +
+    "**Sintaxe de cada linha** (formato do manual original do MegaAssembler):" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "NN Label: instrucao operando ;comentario" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "- **`NN`** - numero da linha, **obrigatorio**. Digitar de novo o mesmo numero **substitui** a " +
+    "linha (mesma edicao " + Chr(34) + "como se fosse BASIC" + Chr(34) + " do manual)." + #CRLF$ +
+    "- **`Label:`** - opcional, termina em `:`." + #CRLF$ +
+    "- **`instrucao`** - um mnemonico Z80 valido ou uma das pseudo-instrucoes `ORG`/`DEFB`/`DEFW`/" +
+    "`DEFM`/`DEFS`/`EQU`/`END`. `EQU` exige `Label:`." + #CRLF$ +
+    "- **`;comentario`** - opcional, ate o fim da linha." + #CRLF$ + #CRLF$ +
+    "**Numeros** - mudanca em relacao ao manual original: **sem sufixo, um numero agora e' " +
+    "HEXADECIMAL por padrao** (o manual original usava decimal), pra ficar uniforme com o resto do " +
+    "Mamute. Se comecar com letra (A-F), precisa de um `0` na frente - senao vira label. Sufixos " +
+    "opcionais no final: `H` (hexa, redundante com o padrao), `B` (binario), `D` (decimal - unico " +
+    "jeito de escrever decimal agora)." + #CRLF$ + #CRLF$ +
+    "**Navegacao e edicao, ao estilo ZX-81:**" + #CRLF$ + #CRLF$ +
+    "- **Setas Cima/Baixo** movem o cursor `>` pela listagem." + #CRLF$ +
+    "- **ENTER com o campo VAZIO** puxa a linha do cursor `>` pro campo, pronta pra editar." + #CRLF$ +
+    "- **ENTER com o campo preenchido** grava a linha digitada (nova ou substituindo por `NN`)." + #CRLF$ +
+    "- **ESC** descarta o que estiver no campo, sem gravar nada." + #CRLF$ +
+    "- **Tela cheia**: ao digitar linhas novas, quando a tela enche ela e' limpa e rola **meia tela** " +
+    "automaticamente, pra caber mais." + #CRLF$ +
+    "- **`LIST`** (digitado no campo, sem `NN` na frente): limpa a tela e lista a partir da 1a linha. " +
+    "Se o programa nao couber inteiro, pergunta " + Chr(34) + "Rolar mais uma tela? (S/N)" + Chr(34) +
+    " no rodape (responda no mesmo campo + ENTER) - respondendo Sim, mostra a proxima tela CHEIA com o " +
+    "cursor na 1a linha dela, perguntando de novo se ainda sobrar programa." + #CRLF$ + #CRLF$ +
+    "*Diferente do ZX-81 real, nao ha teclas tokenizadas (cada palavra-chave BASIC numa unica tecla) - " +
+    "sem sentido com teclado de PC de verdade, digite normalmente.*" + #CRLF$ + #CRLF$ +
+    "**Comandos de gerenciamento** (tambem digitados no campo, sem `NN` na frente):" + #CRLF$ + #CRLF$ +
+    "- **`NEW`** - apaga o programa inteiro da memoria, sem confirmacao." + #CRLF$ +
+    "- **`DELETE <lininic>[-[<linfin>]]`** - apaga uma linha (`DELETE 50`), um intervalo inclusive " +
+    "(`DELETE 50-90`), ou da linha ate o fim do programa (`DELETE 50-`, sem numero final)." + #CRLF$ +
+    "- **`RENUM [<novali>[,<antigali>[,<incr>]]]`** - renumera a partir da linha ANTIGA `antigali` pra " +
+    "uma nova sequencia comecando em `novali` com passo `incr` (`RENUM` sozinho: tudo, comecando em " +
+    "10, passo 10). So os numeros de linha mudam - referencias por LABEL (`JR SALT`, por exemplo) " +
+    "continuam funcionando normalmente." + #CRLF$ +
+    "- **`CHANGE '<string1>'[,'<string2>']`** - troca todas as ocorrencias de `<string1>` por " +
+    "`<string2>` em qualquer lugar de cada linha (label, instrucao, operando ou comentario); se " +
+    "`<string2>` for omitido, apaga as ocorrencias de `<string1>`." + #CRLF$ +
+    "- **`SAVE`**/**`LOAD`** - abrem os dialogos nativos " + Chr(34) + "Salvar como" + Chr(34) + "/" +
+    Chr(34) + "Abrir" + Chr(34) + " (sem digitar nome) - gravam/leem o programa-fonte inteiro num " +
+    "arquivo `.mza` em **ASCII simples** (formato desta porta, nao o formato binario proprietario do " +
+    "MegaAssembler original - suporte a ele fica pra uma sessao futura). `LOAD` SUBSTITUI o programa " +
+    "em memoria pelo conteudo do arquivo." + #CRLF$ +
+    "- **`MERGE`** - igual ao `MERGE` do BASIC: mostra o MESMO dialogo do `LOAD`, mas NAO apaga o " +
+    "programa em memoria - funde os dois. Uma linha do arquivo com o MESMO numero de uma linha ja " +
+    "existente SOBREPOE a existente; numeros que so existem de um lado ficam como estao." + #CRLF$ +
+    "- **`SEARCH '<string>'`** (entre aspas) - busca LITERAL, case-sensitive. **`SEARCH <string>`** " +
+    "(sem aspas) - busca LIVRE, case-insensitive (strings, comandos, labels, etc). Bem-sucedida, a " +
+    "TELA passa a mostrar SO as linhas encontradas (mesmas setas/`ENTER` de sempre navegam entre " +
+    "elas) - digite `LIST` (ou qualquer outro comando) pra voltar ao programa completo." + #CRLF$ +
+    "- **`LSEARCH`** - igual ao `SEARCH` (mesmas duas formas com/sem aspas), mas em vez de filtrar a " +
+    "tela, manda a listagem das linhas encontradas pra um PDF (mesmo mecanismo do `L`/`LP`/`P`/`V`)." + #CRLF$ +
+    "- **`FIND`** - apelido de `SEARCH` (mesmas duas formas, mesmo resultado). No manual original " +
+    "buscava so no inicio da linha, mais rapido que o `SEARCH` - otimizacao sem sentido num PC, entao " +
+    "essa distincao nao existe aqui." + #CRLF$ +
+    "- **`QUIT`** - fecha a janela do `EDIT` e volta pro `MON>`, SEM apagar o programa da memoria - " +
+    "abrir `EDIT` de novo continua exatamente de onde parou.")
+
+  ; Topico separado (nao mais parte do MamuteHelp_Add("EDIT", ...) acima) -
+  ; pbcompiler.exe rejeita literal string composta com mais de 8192
+  ; caracteres numa UNICA chamada (limite encontrado ao acrescentar a opcao
+  ; "S" nesta sessao); dividir em duas chamadas contorna o limite e da
+  ; quebra pra um sub-topico mais focado (comando A e suas opcoes).
+  MamuteHelp_Add("EDIT - Montar (comando A)", "Comandos",
+    "- **`A`** - mostra `PASSO-1` e depois `PASSO-2` (mesma sequencia do Mega Assembler original) e " +
+    "MONTA (compila) o programa-fonte de verdade, reaproveitando o assembler Z80 nativo do projeto " +
+    "(`Z80Asm.pbi`, compativel M80/Nestor80). So' valida - o resultado vira uma LISTAGEM detalhada, " +
+    "coluna a coluna: numero da linha, endereco (ou o valor de um `EQU`), ate 4 bytes de codigo-objeto " +
+    "em hexa (linhas extras se a instrucao/diretiva gerar mais de 4 bytes) e o conteudo original da " +
+    "linha - a mesma tela cheia/rolagem do `LIST` (`Rolar mais uma tela? (S/N)`) se nao couber tudo de " +
+    "uma vez. `ORG`/`END` nao aparecem na listagem. Em caso de erro, mostra a mensagem descritiva e o " +
+    "cursor `>` pula direto pra linha com problema (sem listagem nesse caso)." + #CRLF$ +
+    "- **`A O`** - igual ao `A` (mesma sequencia PASSO-1/PASSO-2/listagem), mas alem de validar " +
+    "ESCREVE o codigo-objeto na RAM simulada, no endereco do `ORG`, resolvido pelo mapeamento de " +
+    "`PAGE` ativo agora (se o `ORG` cair numa pagina mapeada pra RAM, os bytes vao parar la' de " +
+    "verdade - mesma regra do `DM`/`SCR`)." + #CRLF$ +
+    "- **`A N`** - igual ao `A`, mas a listagem NAO mostra a coluna do numero da linha (o resto e' " +
+    "identico - endereco/valor de `EQU`, bytes hexa e conteudo continuam iguais)." + #CRLF$ +
+    "- **`A P`** - igual ao `A`, mas ALEM de mostrar a listagem na tela, manda a MESMA listagem pra um " +
+    "PDF (dialogo " + Chr(34) + "Salvar como" + Chr(34) + ", mesma infra do `LSEARCH`/`L`/`LP`/`P`/`V` - " +
+    "nao ha driver de impressora de verdade, so' um PDF A4 simples). Cancelar o dialogo e' silencioso - " +
+    "segue exatamente como um `A` sem `P`." + #CRLF$ +
+    "- **`A I`** - igual ao `A`, mas ALEM disso grava o codigo-objeto recem montado em DISCO, no " +
+    "formato real do BSAVE/BLOAD do MSX (cabecalho `FE` + endereco inicial/final/execucao, 2 bytes " +
+    "cada). Abre a MESMA janela do comando `SAVE` do `MON>` (arquivo, slot 0-3, os tres enderecos), ja' " +
+    "com tudo pre-preenchido (slot sugerido a partir do mapeamento `PAGE` ativo agora, enderecos vindos " +
+    "da montagem) - tudo editavel antes de gravar de verdade. Diferente de `A O`, `A I` NAO precisa que " +
+    "os bytes ja' estejam na RAM simulada - grava direto do resultado da montagem, funciona sozinho. " +
+    "Cancelar o dialogo e' silencioso - as outras opcoes (`O`/`N`/`P`) continuam valendo normalmente." + #CRLF$ +
+    "- **`A R`** - igual ao `A`, mas ALEM disso ANEXA ao final da listagem uma REFERENCIA CRUZADA dos " +
+    "simbolos (ordem alfabetica): nome, valor (constante `EQU` ou endereco de definicao do rotulo - o " +
+    "mesmo layout serve pros dois) e todos os enderecos onde foi usado (ate 4 por linha, continua nas " +
+    "linhas seguintes se precisar). Vira parte da MESMA listagem/rolagem - nao um passo separado." + #CRLF$ +
+    "- **`A S`** - igual ao `A`, mas ALEM disso ANEXA ao final da listagem uma lista alfabetica SIMPLES " +
+    "dos simbolos (nome + valor/endereco de definicao), SEM os enderecos de uso (isso e' o `R`). Se `R` " +
+    "e `S` estiverem ativos juntos, o bloco de `S` aparece depois do bloco de `R`." + #CRLF$ +
+    "- **`A D`** - igual ao `A S`, mas a lista de simbolos vem em ORDEM DE APARICAO no fonte (a ordem em " +
+    "que cada um foi DEFINIDO), nao em ordem alfabetica. Se `S` e `D` estiverem ativos juntos, o bloco " +
+    "de `D` aparece depois do bloco de `S`." + #CRLF$ +
+    "- **`A SH`/`A DH`** - manda SO' a(s) lista(s) de labels (nao a listagem inteira, isso e' o `P`) pra " +
+    "um PDF SEPARADO - **`H` precisa vir com `S` e/ou `D`**, sozinho e' rejeitado (nao ha lista pra " +
+    "imprimir). Se `S` e `D` estiverem ativos junto com `H`, as duas listas vao pro MESMO PDF, " +
+    "separadas por 1 linha em branco." + #CRLF$ +
+    "- **`A O/<offset>`** - monta o programa como se TODO `ORG` tivesse `<offset>` (hexa, 0000-FFFF) " +
+    "somado ao valor original - ex. `A O/8000` com `ORG 0C100H` vira `ORG 0C100H+8000H`. O programa " +
+    "INTEIRO acompanha o deslocamento (rotulos, saltos, listagem) - nao e' so' um resumo de endereco, " +
+    "e' a montagem de verdade recalculada com o novo `ORG`. A `/` fica SEPARADA das letras de opcao " +
+    "(tudo depois dela e' o offset, nao mais uma flag) - combina com qualquer outra opcao no mesmo " +
+    "bloco (`A O/8000`, `A ONR/1000`)." + #CRLF$ +
+    "- Todas as opcoes acima combinam livremente no MESMO bloco, em qualquer ordem: **`A ON`**, " +
+    "**`A NP`**, **`A ONPIRSDH/1000`**, etc - grava na RAM, omite numeros de linha, manda pra PDF, " +
+    "grava em disco, anexa referencia cruzada, listas de labels, imprime so' os labels e/ou desloca o " +
+    "`ORG` ao mesmo tempo, conforme as letras/offset presentes. A unica opcao do manual original ainda " +
+    "nao implementada e' `U` (nao lista o programa)." + #CRLF$ +
+    "- **`MAP`** - mostra o endereco inicial e final do codigo-objeto da ULTIMA montagem bem-sucedida " +
+    "(`A` sozinho ja' basta, nao precisa de `A O` - os dois calculam o mesmo intervalo). Se nada foi " +
+    "montado com sucesso ainda, pede pra rodar `A` (ou `A O`) primeiro; `NEW` invalida esse resultado " +
+    "guardado, ja' que apaga o programa que o gerou." + #CRLF$ + #CRLF$ +
+    "Exemplo (do manual original, adaptado pra hexa por padrao):" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "10              ORG 0C100H" + #CRLF$ +
+    "20 CHPUT:       EQU 0A2H" + #CRLF$ +
+    "30              LD HL,PRINT" + #CRLF$ +
+    "100 PRINT:      DEFM 'MEGA ASSEMBLER'" + #CRLF$ +
+    "120             END" + #CRLF$ +
+    "```")
 EndProcedure

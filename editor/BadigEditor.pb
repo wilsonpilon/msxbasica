@@ -223,11 +223,12 @@ XIncludeFile "MamuteScrGui.pbi"
 XIncludeFile "MamuteSaveGui.pbi"
 XIncludeFile "MamuteMGui.pbi"
 XIncludeFile "MamutePdf.pbi"
+XIncludeFile "MamuteEditGui.pbi"
 XIncludeFile "MamuteAssemblerGui.pbi"
 XIncludeFile "ProjectSettingsGui.pbi"
 
 ;- ------------------------------------------------------------
-;- CLI de manipulacao de disco MSX: "BadigEditor.exe --diskmanipulator
+;- CLI de manipulacao de disco MSX: "PaleoBasic.exe --diskmanipulator
 ;- <comando> <disco.dsk> [argumentos...]" - mesmos comandos/sintaxe do
 ;- msxdisk.exe original (msxDiskUtil/msxdisk.pb), rodando com o modulo
 ;- MSXDisk.pbi ja incorporado no proprio executavel (sem chamar msxdisk.exe
@@ -237,8 +238,8 @@ XIncludeFile "ProjectSettingsGui.pbi"
 ;- ------------------------------------------------------------
 
 Procedure CliShowHelp()
-  PrintN("MSX Disk Manager (embutido no Basic Dignified Editor)")
-  PrintN("Uso: BadigEditor.exe --diskmanipulator <comando> <imagem_disco.dsk> [argumentos...]")
+  PrintN("MSX Disk Manager (embutido no Paleobasic)")
+  PrintN("Uso: PaleoBasic.exe --diskmanipulator <comando> <imagem_disco.dsk> [argumentos...]")
   PrintN("")
   PrintN("Comandos disponiveis:")
   PrintN("  create <disk.dsk> [bootsector.bin]")
@@ -607,7 +608,7 @@ EndEnumeration
 #Event_AutoComplete = #PB_Event_FirstCustomValue + 3
 
 #App_Title      = "Paleobasic"
-#App_SplashW    = 600  ; splash na abertura (msxbasica.png, 3:2) - ver App_ShowSplash/App_CloseSplash
+#App_SplashW    = 600  ; splash na abertura (paleobasic.png, 3:2) - ver App_ShowSplash/App_CloseSplash
 #App_SplashH    = 400
 #App_SplashMinMs = 2200
 #File_Pattern     = "MSX-BASIC Dignified (*.dmx)|*.dmx|MSX Basic ASCII (*.amx)|*.amx|Todos os arquivos (*.*)|*.*"
@@ -632,7 +633,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.33.9"
+  #App_Version = "7.33.43"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2669,7 +2670,7 @@ Procedure.s EnsureExtension(Path.s, Ext.s)
   ProcedureReturn Path
 EndProcedure
 
-; Splashscreen na abertura do programa: mostra msxbasica.png (a arte de capa
+; Splashscreen na abertura do programa: mostra paleobasic.png (a arte de capa
 ; do README, na raiz do repositorio - GetPathPart(ProgramFilename()) e a
 ; pasta "editor\" do .exe, entao ".." sobe pra raiz) numa janela sem borda,
 ; centralizada e sempre no topo, por pelo menos #App_SplashMinMs no total.
@@ -2686,7 +2687,7 @@ Global App_SplashImg.i = -1
 Global App_SplashStartTime.i
 
 Procedure App_ShowSplash()
-  Protected SplashPath.s = GetPathPart(ProgramFilename()) + "..\msxbasica.png"
+  Protected SplashPath.s = GetPathPart(ProgramFilename()) + "..\paleobasic.png"
   App_SplashImg = LoadImage(#PB_Any, SplashPath)
   If Not App_SplashImg
     ProcedureReturn
@@ -2727,7 +2728,7 @@ Procedure App_CloseSplash()
   App_SplashWin = -1
 EndProcedure
 
-; Icone do aplicativo (msxbasica.ico) para toda janela top-level (barra de
+; Icone do aplicativo (paleobasic.ico) para toda janela top-level (barra de
 ; titulo/sistema, barra de tarefas, Alt+Tab) - extraido do proprio .exe em
 ; runtime via ExtractIconEx, nao de um arquivo .ico ao lado do executavel:
 ; o .ico ja fica embutido como recurso do binario pelo /ICON do build.ps1
@@ -4322,7 +4323,7 @@ EndProcedure
 ;- Programa principal
 ;- ------------------------------------------------------------
 
-; "BadigEditor.exe --diskmanipulator ..." roda so a CLI de disco (ver
+; "PaleoBasic.exe --diskmanipulator ..." roda so a CLI de disco (ver
 ; RunDiskManipulatorCli()) e sai, sem abrir nenhuma janela.
 If ProgramParameter(0) = "--diskmanipulator"
   End RunDiskManipulatorCli()

@@ -31,7 +31,7 @@
 # /CONSOLE do Windows — "-c" sozinho e --commented, outra coisa), -co/
 # --constant Name=Value (um par por flag, mesmo espirito do /CONSTANT do
 # Windows). Nao ha opcao "-h"/"--help" que aceite abreviacao de "--icon" nem
-# nada parecido: /ICON (embutir msxbasica.ico como recurso do executavel) e um
+# nada parecido: /ICON (embutir paleobasic.ico como recurso do executavel) e um
 # recurso especifico de PE/Windows sem equivalente aqui, entao esta build nao
 # tenta embutir icone nenhum (ExtractIconEx em App_ApplyWindowIcon(),
 # BadigEditor.pb, tambem e API do Windows e so roda nesse OS).
@@ -66,11 +66,11 @@ Opcoes:
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                               (padrao: editor/BadigEditor.pb).
   -o, --outputexe <arquivo>  Caminho do executavel de saida
-                              (padrao: editor/BadigEditor).
+                              (padrao: editor/PaleoBasic).
   -D, --distribute           Depois de compilar com sucesso, monta o pacote de
                               distribuicao na pasta distribute-linux/
                               (executavel final, README.md, docs/MANUAL.md,
-                              LICENSE, pasta sample/, msxbasica.png).
+                              LICENSE, pasta sample/, paleobasic.png).
 
 Exemplos:
   ./build.sh
@@ -87,7 +87,7 @@ COMPILER=""
 RUN=0
 VERSION="7.33.9"
 SOURCE_FILE="$SCRIPT_DIR/editor/BadigEditor.pb"
-OUTPUT_EXE="$SCRIPT_DIR/editor/BadigEditor"
+OUTPUT_EXE="$SCRIPT_DIR/editor/PaleoBasic"
 DISTRIBUTE=0
 
 while [ $# -gt 0 ]; do
@@ -245,7 +245,7 @@ if [ "$DISTRIBUTE" -eq 1 ]; then
     copy_dist_item "$SCRIPT_DIR/docs/MANUAL.md"
     copy_dist_item "$SCRIPT_DIR/LICENSE"
     copy_dist_item "$SCRIPT_DIR/sample"
-    copy_dist_item "$SCRIPT_DIR/msxbasica.png"
+    copy_dist_item "$SCRIPT_DIR/paleobasic.png"
 
     echo "Pacote de distribuicao criado em: $DISTRIBUTE_DIR"
 fi

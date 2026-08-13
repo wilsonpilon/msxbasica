@@ -70,9 +70,9 @@
 # Pacote de distribuicao gerado por build.sh -D/--distribute (Linux).
 /distribute-linux/
 
-# Executavel Linux gerado por build.sh (equivalente ao editor/BadigEditor.exe
+# Executavel Linux gerado por build.sh (equivalente ao editor/PaleoBasic.exe
 # do Windows, sem extensao).
-/editor/BadigEditor
+/editor/PaleoBasic
 
 # Preferencias locais persistidas pelo proprio editor (Configurar -> ...),
 # especificas de cada maquina/usuario.

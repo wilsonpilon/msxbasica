@@ -56,11 +56,11 @@ Opcoes:
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
-                             (padrao: editor\BadigEditor.exe).
+                             (padrao: editor\PaleoBasic.exe).
   -D, --distribute          Depois de compilar com sucesso, monta o pacote de
                              distribuicao na pasta distribute\ (executavel
                              final, README.md, docs\MANUAL.md, LICENSE,
-                             pasta sample\, msxbasica.ico, msxbasica.png).
+                             pasta sample\, paleobasic.ico, paleobasic.png).
 
 Exemplos:
   .\build.ps1
@@ -75,9 +75,9 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "7.33.32"
+$Version = "7.33.43"
 $SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
-$OutputExe = Join-Path $PSScriptRoot "editor\BadigEditor.exe"
+$OutputExe = Join-Path $PSScriptRoot "editor\PaleoBasic.exe"
 $Distribute = $false
 
 # $args e uma variavel automatica por escopo (uma funcao chamada daqui teria
@@ -184,7 +184,7 @@ $BuildDateText = $UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
 # reextrai esse mesmo recurso do proprio .exe (ExtractIconEx) pra aplicar em
 # cada janela (barra de titulo/sistema, barra de tarefas, Alt+Tab) - nao
 # depende do arquivo .ico sobreviver ao lado do executavel depois do build.
-$IconFile = Join-Path $PSScriptRoot "msxbasica.ico"
+$IconFile = Join-Path $PSScriptRoot "paleobasic.ico"
 $IconArgs = @()
 if (Test-Path $IconFile) {
     $IconArgs = @("/ICON", $IconFile)
@@ -243,8 +243,8 @@ if ($Distribute) {
     Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\fonts") -Recurse
     Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\redbook_images") -Recurse
     Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\th2handbook_images") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.ico")
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "msxbasica.png")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "paleobasic.ico")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "paleobasic.png")
 
     Write-Host "Pacote de distribuicao criado em: $DistributeDir"
 }

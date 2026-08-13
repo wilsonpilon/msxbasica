@@ -125,8 +125,31 @@ suspect here. If a future `Procedure` needs to output MULTIPLE strings at once (
 value isn't enough), reach for a `Structure` return or a `List`/`Array` out-parameter instead of multiple
 `*Ptr.String` out-parameters, until this is understood better.
 
+**Real latent bug found in `Z80Asm.pbi`'s core 2-pass driver (2026-08-13, `7.33.34`)** — only surfaced
+once the Mamute Assembler's `A` command started feeding it real source, but the bug was already present
+in the shared engine (`RunOnePass`/`RunOnePassRel`) and would hit any caller who writes an `EQU`/`DEFL`/
+`ASET` line with a colon-terminated label (`"CHPUT: EQU 0A2H"`). Both functions unconditionally define a
+*positional* symbol at the current location counter whenever `HasLabel And LabelHasColon` is true,
+**before** checking the operator — so a colon-labeled `EQU` line defines its own symbol twice: once
+wrongly (at `CurLoc`) and once correctly (via the `EQU` branch immediately after). On pass 1 this
+self-overwrites silently and produces the right final value; on pass 2, the wrong positional value
+collides with the constant already committed at the end of pass 1 (different values → the "already
+defined" guard in `DefineSymbolSeg`/`DefineSymbol` trips), producing a spurious `Simbolo ja definido (EQU
+nao pode ser redefinido)` error on a program with a genuinely single, valid `EQU`. Never caught before
+because every other consumer of this engine (the IDE's own "Montar Assembly", the whole `Z80AsmTestCli`/
+`Z80LinkTestCli` regression suite) follows the classic M80/Nestor80 convention of writing `EQU` labels
+**without** a colon (`"CHPUT EQU 0A2H"`, matching the `LabelHasColon` field comment itself) — Mamute's own
+`EDIT` grammar is the first caller that always emits the colon form. **Fix**: both functions now skip the
+positional-symbol definition when the line's operator is `EQU`/`DEFL`/`ASET`, regardless of colon — the
+operator-specific branch already defines the symbol with the correct value either way. Verified with the
+existing regression suite (`Z80AsmTestCli.exe`: 67/67; `Z80LinkTestCli.exe`: 7/7) plus a byte-for-byte
+re-check of `sample/teste_opcodes.asm` against the real `N80.exe` oracle (identical) — the fix only
+changes behavior for the previously-broken colon+constant-opcode combination, nothing already passing.
+If you ever see `"Simbolo ja definido"` on what looks like a single valid `EQU`, check whether the label
+has a colon before assuming it's a real duplicate.
+
 ```powershell
-# Compile editor\BadigEditor.pb -> editor\BadigEditor.exe (finds pbcompiler.exe automatically,
+# Compile editor\BadigEditor.pb -> editor\PaleoBasic.exe (finds pbcompiler.exe automatically,
 # or pass -C once and it's remembered in build.config.json, gitignored/machine-local)
 .\build.ps1
 .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"   # first time on a new machine
@@ -179,7 +202,7 @@ The disk tooling can also be exercised headlessly through the shipped `.exe` its
 fastest way to validate `MSXDisk.pbi` changes:
 
 ```powershell
-editor\BadigEditor.exe --diskmanipulator create|list|add|extract|delete disco.dsk ...
+editor\PaleoBasic.exe --diskmanipulator create|list|add|extract|delete disco.dsk ...
 ```
 
 ## Architecture
@@ -242,7 +265,7 @@ has zero dependency on the external directory; a Unicode `MatchesFAT11` bugfix t
 applied to the vendored copy was ported back into `msxDiskUtil/MSXDisk.pbi` before deletion, so the two
 were in sync at removal time. `editor/MSXDisk.pbi` is now the sole source of truth for disk format
 logic. It's exposed three ways: internally by
-`RunOnOpenMSX()`, as a headless CLI (`BadigEditor.exe --diskmanipulator ...`, detected at the very start
+`RunOnOpenMSX()`, as a headless CLI (`PaleoBasic.exe --diskmanipulator ...`, detected at the very start
 of the "Programa principal" section before any window opens), and as the graphical
 `DiskMgr_OpenWindow()` (`DiskManagerGui.pbi`). The GUI tool stages all edits on a temp copy
 (`GetTemporaryDirectory()`) and only writes the user's chosen `.dsk` on Salvar/Salvar como/Duplicar —

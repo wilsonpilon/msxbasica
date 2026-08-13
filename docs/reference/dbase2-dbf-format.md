@@ -10,7 +10,7 @@
 Extraído com a própria ferramenta desta IDE:
 
 ```powershell
-editor\BadigEditor.exe --diskmanipulator extract sc2\msx\msxdos1.dsk -d sc2\extracted pessoal.dbf
+editor\PaleoBasic.exe --diskmanipulator extract sc2\msx\msxdos1.dsk -d sc2\extracted pessoal.dbf
 ```
 
 O arquivo é pequeno (1024 bytes, 6 registros) e todo o conteúdo é texto legível — deu pra decodificar

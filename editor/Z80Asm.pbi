@@ -39,6 +39,46 @@ DeclareModule Z80Asm
     IsBlank.b        ; linha vazia ou so comentario (sem label nem operador)
   EndStructure
 
+  ; Uma LINHA de listagem estilo assembler classico (endereco/valor + ate 4
+  ; bytes hexa + linha-fonte), pedido explicito do usuario reproduzindo o
+  ; formato do comando A do MegaAssembler original - ver comentario de
+  ; GetListingRowCount()/GetListingRow() abaixo pro detalhe completo. Uma
+  ; UNICA linha-fonte que gera mais de 4 bytes (DEFM de string longa, por
+  ; exemplo) vira VARIAS Z80ListingRow em sequencia - so a PRIMEIRA tem
+  ; SourceLine/HasAddr preenchidos, as de continuacao tem so os bytes.
+  Structure Z80ListingRow
+    SourceLine.i  ; numero da linha-fonte (1-based, mesma numeracao de GetAssembleErrorLine())
+                   ; - 0 numa linha de CONTINUACAO (bytes extras da MESMA linha-fonte anterior)
+    HasAddr.b      ; #True so' na 1a linha de cada grupo - #False nas de continuacao
+    IsEqu.b        ; #True = Addr abaixo e' na verdade o VALOR resolvido do EQU/DEFL/ASET,
+                    ; nao um endereco de memoria
+    Addr.u
+    ByteCount.b    ; quantos dos 4 campos Byte0..Byte3 abaixo sao validos nesta linha (0-4)
+    Byte0.a
+    Byte1.a
+    Byte2.a
+    Byte3.a
+  EndStructure
+
+  ; Uma LINHA de referencia cruzada de simbolos (opcao R do comando A - ver
+  ; comentario de GetXrefRowCount()/GetXrefRow() abaixo). Um simbolo com mais
+  ; de 4 usos vira VARIAS Z80XrefRow em sequencia (mesmo idioma de
+  ; Z80ListingRow acima) - so a PRIMEIRA linha de cada simbolo tem
+  ; SymName/HasValue/Value preenchidos, as de continuacao so' tem os
+  ; enderecos de uso extras.
+  Structure Z80XrefRow
+    SymName.s      ; nome do simbolo (maiusculas) - "" numa linha de CONTINUACAO
+    HasValue.b     ; #True so' na 1a linha de cada simbolo - #False nas de continuacao
+    Value.u        ; valor guardado do simbolo (endereco de definicao pra rotulo
+                    ; posicional, valor constante pra EQU/DEFL/ASET - Assemble() nao
+                    ; distingue os dois casos, e' o MESMO campo Symbols()\Addr\Value)
+    AddrCount.b    ; quantos dos 4 campos Addr0..Addr3 abaixo sao validos nesta linha (0-4)
+    Addr0.u
+    Addr1.u
+    Addr2.u
+    Addr3.u
+  EndStructure
+
   Declare InitKeywordMaps()
   Declare.i IsMnemonic(Word.s)
   Declare.i IsRegister(Word.s)
@@ -147,6 +187,35 @@ DeclareModule Z80Asm
   ; AssembleZ80FromActiveTab() em BadigEditor.pb.
   Declare.u GetAssembleStartAddr()
   Declare.u GetAssembleEndAddr()
+
+  ; Listagem estilo assembler classico (Z80ListingRow acima) da ULTIMA
+  ; chamada a Assemble() - so' populada de verdade quando Assemble() tem
+  ; SUCESSO (gravada durante o PASS 2/emissao de RunOnePass, unico pass com
+  ; enderecos/valores ja resolvidos de verdade - pass 1 nunca escreve aqui).
+  ; Pedido explicito do usuario, reproduzindo o formato do comando A do
+  ; MegaAssembler original: "numero_da_linha, o_endereco ou o_valor do EQU,
+  ; ate 4 codigos hexa (mais linhas se precisar), o conteudo da linha".
+  ; Padrao indice+getter (como GetAssembleErrorLine/Text acima) em vez de
+  ; devolver um List() direto - mais simples, sem depender de passar List
+  ; por parametro atraves da fronteira do Module.
+  Declare.i GetListingRowCount()
+  Declare GetListingRow(Index.i, *Out.Z80ListingRow)
+
+  ; Referencia cruzada de simbolos (Z80XrefRow acima) da ULTIMA chamada a
+  ; Assemble() com sucesso - mesmo padrao indice+getter de GetListingRow()
+  ; acima, mesma razao (nao passar List pela fronteira do Module). Ordenada
+  ; alfabeticamente por nome de simbolo; dentro de cada simbolo, os
+  ; enderecos de uso vem em ORDEM DE OCORRENCIA no fonte (= ordem crescente
+  ; de endereco, ja que o pass 2 varre o programa de cima pra baixo).
+  Declare.i GetXrefRowCount()
+  Declare GetXrefRow(Index.i, *Out.Z80XrefRow)
+
+  ; Nomes de simbolo em ordem de DEFINICAO/aparicao no fonte (opcao D do
+  ; comando A, Mamute - "identica ao S, porem por ordem de aparicao e nao
+  ; alfabetica") - indice+getter de novo, devolve so' o NOME; o valor/
+  ; endereco de cada um ja e' publico via GetSymbolValue(Name) (acima).
+  Declare.i GetLabelDefOrderCount()
+  Declare.s GetLabelDefOrderName(Index.i)
 EndDeclareModule
 
 Module Z80Asm
@@ -344,6 +413,180 @@ Module Z80Asm
   Global LastEvalUnknownSymbol.s
   Global AsmErrorLine.i    ; erro do driver de 2 passes (absoluto OU relocavel - GetAssembleErrorLine/Text
   Global AsmErrorText.s    ; ja precisam disso aqui em cima porque RunOnePassRel usa antes de RunOnePass no arquivo)
+
+  ; Listagem estilo assembler classico (ver Z80ListingRow/GetListingRow no
+  ; DeclareModule) - so' RunOnePass (driver ABSOLUTO) grava aqui por hora,
+  ; so' durante o pass de EMISSAO (SizeOnly=#False) - RunOnePassRel nao
+  ; participa disso ainda (ninguem pediu listagem pro modo relocavel).
+  Global NewList ZListingRows.Z80ListingRow()
+
+  ; Registro CRU de cada uso de simbolo (nome + endereco de quem referenciou),
+  ; gravado dentro de EvalPostfixExpr() (Case #Z80Tk_Symbol, mais abaixo) toda
+  ; vez que um simbolo CONHECIDO e' resolvido durante o pass de EMISSAO
+  ; (PassNumber=2, agora finalmente usado pra isso - ver comentario do
+  ; proprio Global acima). XrefBuildRows() (mais abaixo) consome isso pra
+  ; montar XrefRows() (agrupado por simbolo, ordenado, fatiado em blocos de
+  ; ate 4 - mesmo idioma de Z80ListingRow/ZListing_AddRow acima).
+  Structure Z80SymbolRef
+    SymName.s
+    Addr.u
+  EndStructure
+  Global NewList SymbolRefs.Z80SymbolRef()
+  Global NewList XrefRows.Z80XrefRow()
+
+  ; Nomes de simbolo em ORDEM DE DEFINICAO (= ordem de aparicao no fonte,
+  ; ver comentario dentro de DefineSymbolSeg() acima) - opcao D do comando A
+  ; (Mamute), "identica ao S, porem a lista de labels e' por ordem de
+  ; aparicao e nao alfabetica" (pedido explicito do usuario). Cada nome
+  ; aparece UMA vez so', gravado no momento exato em que o simbolo vira
+  ; conhecido de verdade (nao na 1a MENCAO, que pode ser uma referencia pra
+  ; frente antes da definicao de verdade).
+  Global NewList SymbolDefOrder.s()
+
+  ; Acrescenta 1+ Z80ListingRow cobrindo ByteVals() (List.a(), qualquer
+  ; tamanho) em fatias de ate 4 bytes - so' a PRIMEIRA fatia leva
+  ; SourceLine/HasAddr/IsEqu/Addr; as de continuacao ficam com esses campos
+  ; zerados/em branco (ver comentario de Z80ListingRow). Chamada tanto pra
+  ; instrucoes de CPU quanto pra diretivas de dados - os dois emissores
+  ; convergem aqui em vez de duplicar a logica de fatiamento.
+  Procedure ZListing_AddRow(SrcLine.i, IsEquLine.b, AddrOrValue.u, List ByteVals.a())
+    Protected First.b = #True
+    Protected Chunk.i = 0
+    ForEach ByteVals()
+      If Chunk = 0
+        AddElement(ZListingRows())
+        If First
+          ZListingRows()\SourceLine = SrcLine
+          ZListingRows()\HasAddr = #True
+          ZListingRows()\IsEqu = IsEquLine
+          ZListingRows()\Addr = AddrOrValue
+          First = #False
+        EndIf
+      EndIf
+      Select Chunk
+        Case 0 : ZListingRows()\Byte0 = ByteVals()
+        Case 1 : ZListingRows()\Byte1 = ByteVals()
+        Case 2 : ZListingRows()\Byte2 = ByteVals()
+        Case 3 : ZListingRows()\Byte3 = ByteVals()
+      EndSelect
+      ZListingRows()\ByteCount + 1
+      Chunk + 1
+      If Chunk >= 4 : Chunk = 0 : EndIf
+    Next
+    ; linha SEM bytes (EQU/DEFL/ASET, ou DS sem preenchimento) - ainda
+    ; precisa de 1 linha na listagem, so' com o endereco/valor.
+    If ListSize(ByteVals()) = 0
+      AddElement(ZListingRows())
+      ZListingRows()\SourceLine = SrcLine
+      ZListingRows()\HasAddr = #True
+      ZListingRows()\IsEqu = IsEquLine
+      ZListingRows()\Addr = AddrOrValue
+      ZListingRows()\ByteCount = 0
+    EndIf
+  EndProcedure
+
+  ; Monta XrefRows() a partir de Symbols() (tabela final, pos-pass2) +
+  ; SymbolRefs() (usos gravados por EvalPostfixExpr() durante o pass de
+  ; emissao) - chamada do fim de Assemble() em toda montagem bem-sucedida.
+  ; Ordena por NOME (SortList() em maiusculas = ordem alfabetica classica,
+  ; mesma convencao do print do MegaAssembler original); dentro de cada
+  ; simbolo, os enderecos de uso ficam na ORDEM em que SymbolRefs() foi
+  ; preenchido (= ordem de ocorrencia no fonte = ordem crescente de
+  ; endereco). Simbolo sem NENHUM uso ainda ganha 1 linha (so' com o valor,
+  ; AddrCount=0) - aparece na referencia cruzada mesmo assim, mesmo espirito
+  ; de um "definido mas nunca usado" ser informacao util pro programador.
+  Procedure XrefBuildRows()
+    ClearList(XrefRows())
+
+    NewList Names.s()
+    ForEach Symbols()
+      If Symbols()\IsKnown
+        AddElement(Names())
+        Names() = MapKey(Symbols())
+      EndIf
+    Next
+    SortList(Names(), #PB_Sort_Ascending)
+
+    Protected SymValue.u, UseCount.i, Remaining.i, ThisChunk.i, b.i
+    Protected FirstRow.b
+    ForEach Names()
+      SymValue = Symbols(Names())\Addr\Value
+
+      NewList UseAddrs.u()
+      ForEach SymbolRefs()
+        If SymbolRefs()\SymName = Names()
+          AddElement(UseAddrs())
+          UseAddrs() = SymbolRefs()\Addr
+        EndIf
+      Next
+      UseCount = ListSize(UseAddrs())
+      ResetList(UseAddrs())
+
+      FirstRow = #True
+      If UseCount = 0
+        AddElement(XrefRows())
+        XrefRows()\SymName = Names()
+        XrefRows()\HasValue = #True
+        XrefRows()\Value = SymValue
+        XrefRows()\AddrCount = 0
+      Else
+        Remaining = UseCount
+        While Remaining > 0
+          AddElement(XrefRows())
+          If FirstRow
+            XrefRows()\SymName = Names()
+            XrefRows()\HasValue = #True
+            XrefRows()\Value = SymValue
+            FirstRow = #False
+          EndIf
+          ThisChunk = Remaining
+          If ThisChunk > 4 : ThisChunk = 4 : EndIf
+          XrefRows()\AddrCount = ThisChunk
+          For b = 0 To ThisChunk - 1
+            NextElement(UseAddrs())
+            Select b
+              Case 0 : XrefRows()\Addr0 = UseAddrs()
+              Case 1 : XrefRows()\Addr1 = UseAddrs()
+              Case 2 : XrefRows()\Addr2 = UseAddrs()
+              Case 3 : XrefRows()\Addr3 = UseAddrs()
+            EndSelect
+          Next
+          Remaining - ThisChunk
+        Wend
+      EndIf
+    Next
+  EndProcedure
+
+  Procedure.i GetXrefRowCount()
+    ProcedureReturn ListSize(XrefRows())
+  EndProcedure
+
+  Procedure GetXrefRow(Index.i, *Out.Z80XrefRow)
+    If Index < 0 Or Index >= ListSize(XrefRows())
+      ProcedureReturn
+    EndIf
+    SelectElement(XrefRows(), Index)
+    *Out\SymName = XrefRows()\SymName
+    *Out\HasValue = XrefRows()\HasValue
+    *Out\Value = XrefRows()\Value
+    *Out\AddrCount = XrefRows()\AddrCount
+    *Out\Addr0 = XrefRows()\Addr0
+    *Out\Addr1 = XrefRows()\Addr1
+    *Out\Addr2 = XrefRows()\Addr2
+    *Out\Addr3 = XrefRows()\Addr3
+  EndProcedure
+
+  Procedure.i GetLabelDefOrderCount()
+    ProcedureReturn ListSize(SymbolDefOrder())
+  EndProcedure
+
+  Procedure.s GetLabelDefOrderName(Index.i)
+    If Index < 0 Or Index >= ListSize(SymbolDefOrder())
+      ProcedureReturn ""
+    EndIf
+    SelectElement(SymbolDefOrder(), Index)
+    ProcedureReturn SymbolDefOrder()
+  EndProcedure
 
   ; Macros basicas (MACRO/ENDM/EXITM/LOCAL) - ver ExpandLines() mais abaixo.
   ; BodyText guarda o corpo cru com as linhas unidas por Chr(10) (mesmo
@@ -1094,6 +1337,16 @@ Module Z80Asm
             LastEvalUnknownSymbol = Toks()\SymName
             ProcedureReturn #False
           EndIf
+          ; Referencia cruzada (opcao R do comando A, Mamute) - todo simbolo
+          ; CONHECIDO resolvido aqui durante o pass de EMISSAO conta como um
+          ; "uso" no endereco da linha atual (CurLoc ainda nao avancou pra
+          ; alem da linha corrente nesse ponto). So' pass 2 (PassNumber=2) -
+          ; pass 1 resolveria os MESMOS usos de novo e duplicaria tudo.
+          If PassNumber = 2
+            AddElement(SymbolRefs())
+            SymbolRefs()\SymName = Toks()\SymName
+            SymbolRefs()\Addr = CurLoc\Value
+          EndIf
           AddElement(Stack())
           CopyStructure(@Symbols(Toks()\SymName)\Addr, @Stack(), Z80Addr)
 
@@ -1263,12 +1516,29 @@ Module Z80Asm
       LastEvalError = "Simbolo ja definido (EQU nao pode ser redefinido): " + Key
       ProcedureReturn #False
     EndIf
+    ; Precisa saber se o simbolo JA estava #True em IsKnown ANTES desta
+    ; chamada - uma referencia direta (EvalPostfixExpr, Case #Z80Tk_Symbol)
+    ; pode ja ter criado a chave do Map como placeholder (IsKnown=#False)
+    ; numa referencia PRA FRENTE (rotulo usado antes de ser definido no
+    ; fonte) - "Not FindMapElement()" sozinho nao bastaria pra detectar
+    ; "esta e' a definicao de verdade" nesse caso (ver uso logo abaixo, opcao
+    ; D do comando A - ordem de DEFINICAO, nao de 1a mencao).
+    Protected WasKnownBefore.b = Bool(FindMapElement(Symbols(), Key) And Symbols()\IsKnown)
     If Not FindMapElement(Symbols(), Key)
       AddMapElement(Symbols(), Key)
     EndIf
     Z80Addr_Make(@Symbols()\Addr, Value, SegType, CommonName)
     Symbols()\IsKnown = #True
     Symbols()\IsConstant = IsConstant
+    ; Referencia cruzada em ORDEM DE APARICAO (opcao D do comando A, Mamute)
+    ; - grava so' na transicao "ainda nao conhecido -> conhecido", que so'
+    ; acontece UMA vez por simbolo, na linha-fonte que realmente o define -
+    ; como o pass 1 varre o fonte de cima pra baixo, essa ordem JA e' a
+    ; ordem de aparicao, sem precisar de PassNumber nem indice de linha.
+    If Not WasKnownBefore
+      AddElement(SymbolDefOrder())
+      SymbolDefOrder() = Key
+    EndIf
     ProcedureReturn #True
   EndProcedure
 
@@ -2857,10 +3127,27 @@ Module Z80Asm
         Continue
       EndIf
 
+      ; Achado real (2026-08-13, exposto pelo comando A do Mamute Assembler):
+      ; uma linha com label DE DOIS PONTOS ("NOME:") E operador EQU/DEFL/
+      ; ASET nao pode definir o simbolo AQUI (posicional, no CurLoc) - isso
+      ; e' so pro caso de label "normal" (rotulo de instrucao/dado). Se o
+      ; operador for um "constantDefinitionOpcode", o Select abaixo ja'
+      ; define o simbolo com o VALOR CERTO (o resultado da expressao, nao o
+      ; endereco corrente) - definir os DOIS fazia o mesmo nome colidir
+      ; consigo mesmo no pass 2 (2o valor <> 1o valor -> "simbolo ja
+      ; definido"), mesmo com uma unica definicao real no fonte. O dialeto
+      ; M80/Nestor80 classico evita isso nunca colocando ":" no label de um
+      ; EQU ("NOME EQU valor", sem dois-pontos - ver comentario de
+      ; LabelHasColon no topo do arquivo) - mas o Mamute Assembler (unico
+      ; consumidor que gera "NOME: EQU valor" COM dois-pontos) precisa que
+      ; isso funcione tambem.
+      Protected IsConstDefOpRel.b = Bool(PL\HasOperator And (PL\Operator = "EQU" Or PL\Operator = "DEFL" Or PL\Operator = "ASET"))
       If PL\HasLabel And PL\LabelHasColon
-        If Not DefineSymbolSeg(PL\Label, CurLoc\Value, RelCurArea, RelCurCommonName, #False)
-          AsmErrorLine = LineNum : AsmErrorText = LastEvalError
-          ProcedureReturn #False
+        If Not IsConstDefOpRel
+          If Not DefineSymbolSeg(PL\Label, CurLoc\Value, RelCurArea, RelCurCommonName, #False)
+            AsmErrorLine = LineNum : AsmErrorText = LastEvalError
+            ProcedureReturn #False
+          EndIf
         EndIf
         If PL\LabelIsPublic And Not RelPublicSeen(UCase(PL\Label))
           RelPublicSeen(UCase(PL\Label)) = #True
@@ -3291,6 +3578,26 @@ Module Z80Asm
 
   Procedure.u GetAssembleEndAddr()
     ProcedureReturn MaxAddrTouched & $FFFF
+  EndProcedure
+
+  Procedure.i GetListingRowCount()
+    ProcedureReturn ListSize(ZListingRows())
+  EndProcedure
+
+  Procedure GetListingRow(Index.i, *Out.Z80ListingRow)
+    If Index < 0 Or Index >= ListSize(ZListingRows())
+      ProcedureReturn
+    EndIf
+    SelectElement(ZListingRows(), Index)
+    *Out\SourceLine = ZListingRows()\SourceLine
+    *Out\HasAddr = ZListingRows()\HasAddr
+    *Out\IsEqu = ZListingRows()\IsEqu
+    *Out\Addr = ZListingRows()\Addr
+    *Out\ByteCount = ZListingRows()\ByteCount
+    *Out\Byte0 = ZListingRows()\Byte0
+    *Out\Byte1 = ZListingRows()\Byte1
+    *Out\Byte2 = ZListingRows()\Byte2
+    *Out\Byte3 = ZListingRows()\Byte3
   EndProcedure
 
   Procedure SplitSourceLines(SourceText.s, List Lines.s())
@@ -3754,6 +4061,22 @@ Module Z80Asm
     Protected V1.Z80Addr, V2.Z80Addr, V3.Z80Addr
     Protected EmitNow.b
     EmitNow = Bool(Not SizeOnly)
+    ; PassNumber (Global, ver comentario na declaracao) finalmente usado de
+    ; verdade - EvalPostfixExpr() checa isso pra so' gravar referencia
+    ; cruzada de simbolo (SymbolRefs()) durante o pass de EMISSAO.
+    If SizeOnly
+      PassNumber = 1
+    Else
+      PassNumber = 2
+    EndIf
+    ; Lista reaproveitada pra alimentar ZListing_AddRow() no caso de
+    ; instrucao de CPU (Bytes() acima e' um Array de tamanho fixo, nao um
+    ; List) - declarada UMA vez aqui fora (nao dentro do loop) e limpa
+    ; explicitamente antes de cada uso, mesmo cuidado que EncodeDataDirective()
+    ; ja' toma sozinho pra DataBytes() (ClearList() como 1a acao) - um
+    ; NewList sozinho, sem ClearList, NAO reseta nada entre passagens pela
+    ; mesma linha de codigo num loop.
+    NewList InstrBytesForListing.a()
 
     Z80Addr_Make(@CurLoc, 0, #Z80Seg_Absolute)
     RealPos = 0
@@ -3777,7 +4100,11 @@ Module Z80Asm
         Continue
       EndIf
 
-      If PL\HasLabel And PL\LabelHasColon
+      ; Mesmo achado/correcao do RunOnePassRel acima (ver comentario la') -
+      ; label de dois-pontos + EQU/DEFL/ASET nao pode definir o simbolo
+      ; POSICIONALMENTE aqui, so' pelo Select abaixo (valor certo da
+      ; expressao) - senao colide consigo mesmo no pass 2.
+      If PL\HasLabel And PL\LabelHasColon And Not (PL\HasOperator And (PL\Operator = "EQU" Or PL\Operator = "DEFL" Or PL\Operator = "ASET"))
         If Not DefineSymbol(PL\Label, CurLoc\Value, #False)
           AsmErrorLine = LineNum : AsmErrorText = LastEvalError
           ProcedureReturn #False
@@ -3795,6 +4122,10 @@ Module Z80Asm
               AsmErrorLine = LineNum : AsmErrorText = LastEvalError
               ProcedureReturn #False
             EndIf
+            If Not SizeOnly
+              NewList EmptyBytesEqu.a()
+              ZListing_AddRow(LineNum, #True, V1\Value, EmptyBytesEqu())
+            EndIf
           ElseIf Not SizeOnly
             AsmErrorLine = LineNum : AsmErrorText = "EQU: " + LastEvalError + LastEvalUnknownSymbol
             ProcedureReturn #False
@@ -3810,6 +4141,10 @@ Module Z80Asm
             Z80Addr_Make(@Symbols()\Addr, V2\Value, #Z80Seg_Absolute)
             Symbols()\IsKnown = #True
             Symbols()\IsConstant = #False
+            If Not SizeOnly
+              NewList EmptyBytesDefl.a()
+              ZListing_AddRow(LineNum, #True, V2\Value, EmptyBytesDefl())
+            EndIf
           ElseIf Not SizeOnly
             AsmErrorLine = LineNum : AsmErrorText = "DEFL/ASET: " + LastEvalError + LastEvalUnknownSymbol
             ProcedureReturn #False
@@ -3880,6 +4215,7 @@ Module Z80Asm
               EndIf
               DIdx + 1
             Next
+            ZListing_AddRow(LineNum, #False, RealPos, DataBytes())
           EndIf
           CurLoc\Value = (CurLoc\Value + ListSize(DataBytes())) & $FFFF
           RealPos = (RealPos + ListSize(DataBytes())) & $FFFF
@@ -3909,6 +4245,12 @@ Module Z80Asm
             If A > MaxAddrTouched : MaxAddrTouched = A : EndIf
           EndIf
         Next
+        ClearList(InstrBytesForListing())
+        For Idx = 0 To Len4 - 1
+          AddElement(InstrBytesForListing())
+          InstrBytesForListing() = Bytes(Idx)
+        Next
+        ZListing_AddRow(LineNum, #False, RealPos, InstrBytesForListing())
       EndIf
 
       CurLoc\Value = (CurLoc\Value + Len4) & $FFFF
@@ -3926,6 +4268,9 @@ Module Z80Asm
     ResetState()
     AsmErrorLine = 0 : AsmErrorText = ""
     MinAddrTouched = 0 : MaxAddrTouched = 0 : AnyByteWritten = #False
+    ClearList(ZListingRows())
+    ClearList(SymbolRefs())
+    ClearList(SymbolDefOrder())
 
     SplitSourceLines(SourceText, Lines())
 
@@ -3936,6 +4281,8 @@ Module Z80Asm
     If Not RunOnePass(Lines(), #False, Mem())
       ProcedureReturn -1
     EndIf
+
+    XrefBuildRows()
 
     If Not AnyByteWritten
       ProcedureReturn 0

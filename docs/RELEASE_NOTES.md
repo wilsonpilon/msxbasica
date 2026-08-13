@@ -6,6 +6,234 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.33.43 — "OFFSET DE ORG" (2026-08-13)
+
+**Tema da versão**: última opção da série do comando `A` — `/<offset>`, que desloca o `ORG` de toda a
+montagem em tempo de compilação, sem editar o fonte.
+
+### Novidades
+
+- **`A O/<offset>`** monta o programa como se todo `ORG` tivesse `<offset>` (hexa) somado ao valor
+  original — ex. `A O/8000` com `ORG 0C100H` monta em `0C100H+8000H`. O programa inteiro acompanha o
+  deslocamento (rótulos, saltos, listagem), não é um resumo superficial de endereço.
+- Combina livremente com qualquer outra opção do `A` no mesmo bloco (`A O/8000`, `A ONR/1000`).
+
+### Bastidores
+
+- Zero mudança no motor de montagem compartilhado (`Z80Asm.pbi`) — a solução ficou inteira em
+  `Mamute_AsmAssemble()`, envolvendo o operando de toda linha `ORG` em `(...)+0XXXXh` antes de montar.
+  O resto da montagem segue o deslocamento automaticamente, por ser aritmética resolvida pelo próprio
+  avaliador de expressão.
+- Verificado byte a byte: `A O/1000` deslocou um programa de `ORG 0C100H` inteiro para `D100-D11A`,
+  incluindo a referência interna `LD HL,PRINT` corretamente reapontando pro endereço deslocado, com a
+  constante `EQU` e o salto relativo permanecendo intactos, como esperado.
+
+Com esta versão, toda a lista de opções do comando `A` do manual original do MegaAssembler
+(`A [NUPOIRSDH/<offset>]`) está implementada, exceto `U` (não lista o programa).
+
+### Empacotamento deste lançamento
+
+- **O executável mudou de nome**: `editor\BadigEditor.exe` → **`editor\PaleoBasic.exe`** (o arquivo-fonte
+  `editor\BadigEditor.pb` continua com o mesmo nome — mudança cosmética no artefato final, mesmo
+  espírito da rebatização do projeto como "Paleobasic"). `build.ps1`/`build.sh` já compilam com o nome
+  novo por padrão; qualquer atalho/script que apontava pro `.exe` antigo precisa ser atualizado.
+- **Ícone e splash screen também renomeados**: `msxbasica.ico` → **`paleobasic.ico`** (embutido no `.exe`
+  via `/ICON`, reextraído em runtime pra toda janela top-level) e `msxbasica.png` → **`paleobasic.png`**
+  (arte de capa mostrada na splash screen de abertura). Verificado ao vivo: ícone aparece corretamente na
+  barra de título, splash screen carrega e mostra a arte normalmente.
+- O capítulo **Mamute Assembler** de `docs/MANUAL.md` foi reescrito do zero — cobria só `PAGE`/`DM`/`ZAP`
+  antes, agora documenta o conjunto completo de comandos (`SCR`, `SH`, `MS`, `LOAD`/`SAVE`, `M`/`S`,
+  `C`/`D`/`P`/`V`, `T`/`F`, `G`/`X`, `R`/`L`/`LP`, `EDIT` e todas as opções do `A`).
+- Pacote de distribuição gerado via `build.ps1 -D` (pasta `distribute\`) e publicado como
+  `paleobasic-v073343.zip`.
+
+---
+
+## 7.33.42 — "LABELS NA IMPRESSORA" (2026-08-13)
+
+**Tema da versão**: opção `H` do comando `A` — imprime só as listas de labels (não o código) em PDF.
+
+### Novidades
+
+- **`A SH`/`A DH`** manda só a(s) lista(s) de labels (alfabética `S` e/ou por ordem de aparição `D`)
+  pra um PDF separado do de `P`. `H` precisa vir acompanhada de `S` e/ou `D` — sozinha é rejeitada com
+  mensagem explicando o motivo.
+- Se `S` e `D` estiverem ativas junto com `H`, as duas listas vão pro mesmo PDF, separadas por uma
+  linha em branco.
+
+---
+
+## 7.33.41 — "ORDEM DE APARICAO" (2026-08-13)
+
+**Tema da versão**: opção `D` do comando `A` — lista de labels por ordem de definição no fonte, não
+alfabética.
+
+### Novidades
+
+- **`A D`** é idêntica à `A S`, mas os símbolos aparecem na ordem em que foram definidos no fonte, não
+  em ordem alfabética.
+
+### Bastidores
+
+- Exigiu um mecanismo novo no motor de montagem: `DefineSymbolSeg()` (`Z80Asm.pbi`) agora detecta a
+  transição exata "símbolo ainda não conhecido → conhecido" e grava essa ordem — necessário porque uma
+  referência pra frente (`LD HL,PRINT` antes de `PRINT:` ser definido) já cria a entrada do símbolo na
+  tabela antes da definição de verdade acontecer.
+- Validado com um caso onde a ordem de aparição realmente diverge da alfabética (`SALT` definido antes
+  de `PRINT` no fonte, mas depois na ordem alfabética) — as duas listagens (`S` e `D`) mostraram ordens
+  visivelmente diferentes, confirmando que não são coincidentemente iguais.
+
+---
+
+## 7.33.40 — "LISTA DE LABELS" (2026-08-13)
+
+**Tema da versão**: opção `S` do comando `A` — lista alfabética simples de labels (sem endereços de
+uso).
+
+### Novidades
+
+- **`A S`** anexa ao final da listagem uma lista alfabética simples dos símbolos (nome + valor/endereço
+  de definição), sem os endereços de uso (isso é o `R`). Combina com `R` no mesmo bloco.
+
+---
+
+## 7.33.39 — "REFERENCIA CRUZADA" (2026-08-13)
+
+**Tema da versão**: opção `R` do comando `A` — referência cruzada de símbolos, reproduzindo fielmente
+um print real do MegaAssembler original.
+
+### Novidades
+
+- **`A R`** anexa ao final da listagem uma referência cruzada dos símbolos em ordem alfabética: nome,
+  valor (constante `EQU` ou endereço de definição do rótulo) e todos os endereços onde foi usado (até 4
+  por linha, com continuação se precisar).
+
+### Bastidores
+
+- Exigiu rastrear cada uso de símbolo durante a montagem (`EvalPostfixExpr()`, `Z80Asm.pbi`) — gravado
+  só durante a passagem de emissão, pra não duplicar contagens.
+- Validado contra um print de tela real do MegaAssembler original fornecido pelo usuário: saída
+  idêntica, símbolo por símbolo, valor por valor, endereço por endereço.
+
+---
+
+## 7.33.38 — "OPCAO I" (2026-08-13)
+
+**Tema da versão**: opção `I` do comando `A` — grava o código-objeto direto em disco, no formato real
+de BLOAD do MSX.
+
+### Novidades
+
+- **`A I`** grava o código-objeto recém montado em disco (cabeçalho `FE` + endereço inicial/final/
+  execução, formato real do BSAVE/BLOAD do MSX), reaproveitando a mesma janela do comando `SAVE` do
+  monitor — tudo pré-preenchido (slot, endereços) e editável antes de gravar. Diferente de `O`, não
+  precisa que os bytes já estejam na RAM simulada.
+
+---
+
+## 7.33.37 — "OPCAO P" (2026-08-13)
+
+**Tema da versão**: opção `P` do comando `A` — listagem completa em PDF.
+
+### Novidades
+
+- **`A P`** manda a listagem completa (código incluído) pra um PDF, além de mostrá-la na tela — mesma
+  infraestrutura já usada por `L`/`LP`/`P`/`V`/`LSEARCH`.
+
+---
+
+## 7.33.36 — "OPCAO N" (2026-08-13)
+
+**Tema da versão**: opção `N` do comando `A` — listagem sem a coluna de número de linha.
+
+### Novidades
+
+- **`A N`** omite a coluna de número de linha da listagem — endereço/valor, bytes hexa e conteúdo
+  continuam iguais. Combina com `O` e as demais opções no mesmo bloco.
+
+---
+
+## 7.33.35 — "PASSO-1 PASSO-2" (2026-08-13)
+
+**Tema da versão**: listagem detalhada, coluna a coluna, do comando `A` — reproduzindo o formato
+clássico do MegaAssembler original.
+
+### Novidades
+
+- `A` agora mostra `PASSO-1` e depois `PASSO-2` (mesma sequência do assembler original) antes de
+  montar, e o resultado vira uma listagem coluna a coluna: número da linha, endereço (ou valor de
+  `EQU`), até 4 bytes de código-objeto em hexa por linha (com continuação se a instrução gerar mais) e
+  o conteúdo original da linha.
+- A listagem usa a mesma paginação de tela cheia do `LIST` quando não cabe inteira.
+
+### Bastidores
+
+- A listagem é construída dentro do próprio `Z80Asm.pbi` durante a passagem de emissão, sem
+  reimplementar nenhuma lógica de montagem.
+
+---
+
+## 7.33.34 — "O COMPILADOR" (2026-08-13)
+
+**Tema da versão**: o comando `A` passa a montar código Z80 de verdade — o Mamute Assembler deixa de
+ser só um monitor de memória.
+
+### Novidades
+
+- **`A`** monta o programa-fonte digitado no `EDIT`, reaproveitando o assembler Z80 nativo do projeto
+  (compatível M80/Nestor80) — valida a sintaxe e mostra erros descritivos com o cursor pulando direto
+  pra linha com problema.
+- **`A O`** além de validar, escreve o código-objeto na RAM simulada, no endereço do `ORG`, resolvido
+  pelo mapeamento de `PAGE` ativo.
+- **`MAP`** mostra o endereço inicial/final da última montagem bem-sucedida.
+
+### Bastidores
+
+- Dois bugs reais corrigidos com o primeiro programa de teste do usuário: um número hexadecimal sem
+  sufixo digitado no `EDIT` (aceito por lá) era rejeitado pelo assembler de verdade (que segue a
+  convenção clássica decimal-por-padrão) — corrigido traduzindo os números na fronteira entre os dois.
+  E um bug mais antigo, latente no próprio motor `Z80Asm.pbi`: uma linha como `"CHPUT: EQU 0A2H"`
+  (label com dois-pontos + `EQU`) definia o símbolo duas vezes, colidindo consigo mesma — corrigido no
+  motor, verificado sem regressão na suíte de testes existente e byte a byte contra o assembler `N80.exe`
+  real.
+
+---
+
+## 7.33.33 — "TELA DE VERDADE" / "GERENCIAMENTO COMPLETO" (2026-08-13)
+
+**Tema da versão**: o comando `EDIT` — um editor de linhas completo pro programa-fonte Z80, no estilo
+do ZX-81/ZX Spectrum, com todos os comandos de gerenciamento do manual original do MegaAssembler.
+
+### Novidades
+
+- **`EDIT`** abre uma janela separada onde a listagem É a própria tela (sem log de comandos nem
+  mensagem "OK") — um cursor `>` marca a linha atual, setas Cima/Baixo navegam, ENTER com o campo vazio
+  puxa a linha do cursor pra editar, ENTER com o campo preenchido grava. A tela rola meia-tela sozinha
+  quando enche digitando linhas novas.
+- Sintaxe de linha `NN Label: instrução operando ;comentário`, aceitando mnemônicos Z80 reais e as
+  pseudo-instruções `ORG`/`DEFB`/`DEFW`/`DEFM`/`DEFS`/`EQU`/`END`. Números sem sufixo são hexadecimal
+  por padrão (diferente do manual original, que usa decimal) — sufixos `H`/`B`/`D` continuam
+  disponíveis.
+- **`LIST`** relista do início, paginando tela cheia por tela cheia com "Rolar mais uma tela? (S/N)".
+- **`NEW`**, **`DELETE <lininic>[-[<linfin>]]`**, **`RENUM [<novali>[,<antigali>[,<incr>]]]`**,
+  **`CHANGE '<string1>'[,'<string2>']`** — gerenciamento completo do programa-fonte.
+- **`SAVE`**/**`LOAD`** gravam/leem o programa num arquivo `.mza` em ASCII simples (não o formato
+  binário proprietário do MegaAssembler original).
+- **`MERGE`** funde um arquivo no programa em memória sem apagá-lo, sobrepondo linhas de mesmo número.
+- **`SEARCH '<string>'`**/**`SEARCH <string>`** (literal/livre) filtram a tela pras linhas encontradas;
+  **`LSEARCH`** manda o resultado pra PDF; **`FIND`** é um apelido de `SEARCH`.
+- **`QUIT`** fecha a janela sem apagar o programa da memória — reabrir `EDIT` continua de onde parou.
+
+### Bastidores
+
+- Indentação automática da listagem (label na coluna 0, instrução alinhada numa tab stop, comentário
+  numa coluna própria mais à direita) — afeta só o desenho da tela, o texto guardado continua exatamente
+  como digitado.
+- Passou por duas reescritas na mesma sessão a partir de feedback direto do usuário, até chegar num
+  pedido específico: "um editor exatamente idêntico ao do ZX-81... exceto as teclas tokenizadas".
+
+---
+
 ## 7.33.32 — "TELA MAIOR" (2026-08-12)
 
 **Tema da versão**: janela do Mamute Assembler maior e fonte padrão maior/mais legível, depois de

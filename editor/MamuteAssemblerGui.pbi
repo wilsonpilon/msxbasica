@@ -88,6 +88,24 @@
 ;  fonte/tamanho/negrito continuam configuraveis em "Configurar -> Mamute
 ;  Assembler..." (ja existia antes desta sessao, so nao era do conhecimento
 ;  do usuario).
+;  Decima-nona leva: EDIT - abre uma janela separada (MamuteEditGui.pbi,
+;  XIncludeFile'd antes deste arquivo) pra digitar o programa-fonte Z80 no
+;  formato de linhas numeradas do manual original ("NN Label: instrucao
+;  operando ;comentario"). Passou por 2 reescritas na mesma sessao a partir
+;  de feedback direto do usuario: 1a versao (clone do MON>, REPL) e 2a
+;  versao (ListIconGadget) foram rejeitadas; a 3a e final reproduz o editor
+;  de BASIC do ZX-81 de verdade (pedido explicito: "um editor exatamente
+;  identico ao do ZX-81... exceto as teclas tokenizadas") - a listagem E' a
+;  tela (CanvasGadget desenhado a mao), cursor ">" entre NN e o corpo da
+;  linha, setas Cima/Baixo movem o cursor, ENTER com campo vazio puxa a
+;  linha do cursor pra editar, tela cheia rola meia-tela sozinha, comando
+;  LIST pagina tela-cheia-por-tela-cheia com pergunta S/N. Ver comentario
+;  de topo de MamuteEditGui.pbi pro detalhe completo. Numeros sem sufixo
+;  passam a ser hexadecimal por padrao (mudanca pedida em relacao ao manual
+;  original, que usava decimal). So aceita/edita/lista o programa por hora
+;  (Mamute_ParseAsmLine/Mamute_StoreAsmLine, MamuteSupport.pbi) - NEW/AUTO/
+;  DELETE/RENUM e o assemblador de verdade (comando A) ficam pra sessoes
+;  futuras.
 ;  Mais comandos entram aos poucos, sessao a sessao.
 ;
 ;  Historico de comandos (mesma sessao do SCR, pedido explicito do usuario):
@@ -112,7 +130,8 @@
 #MamuteGui_UpShortcut    = 9102
 #MamuteGui_DownShortcut  = 9103
 
-Global MamuteGui_Font.i = -1
+; MamuteGui_Font agora e' declarado em MamuteSupport.pbi (hoisted pra la -
+; MamuteEditGui.pbi, incluido antes deste arquivo, tambem precisa dele).
 
 ; Historico de comandos digitados no MON> - navegavel com Setas Cima/Baixo
 ; (pedido explicito do usuario), persistido entre sessoes (ver
@@ -813,7 +832,8 @@ Procedure MamuteGui_CmdSave(Win, G_Log, *State.MamuteGui_State, Args.s)
     EndSelect
   EndIf
 
-  Protected ResultMsg.s = MamuteSave_Open(Win, SuggestedName, HasAddrs, InStart, InEnd, InExec)
+  Protected Dim NoExplicitBuf.a(0)
+  Protected ResultMsg.s = MamuteSave_Open(Win, SuggestedName, HasAddrs, InStart, InEnd, InExec, #False, NoExplicitBuf())
   If ResultMsg <> ""
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, ResultMsg)
   EndIf
@@ -1538,6 +1558,9 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
 
     Case "LP"
       MamuteGui_CmdLp(G_Log, *State, Args)
+
+    Case "EDIT"
+      MamuteEdit_Open(Win)
 
     Default
       *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?COMANDO INVALIDO")

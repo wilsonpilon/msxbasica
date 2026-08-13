@@ -19,7 +19,7 @@ MSX) contém **os dois formatos do mesmo arquivo lado a lado** — `EXEMPLO.CAL`
 verdadeiro, sem precisar rodar o `SDI.COM` num emulador. Extraídos com a própria ferramenta desta IDE:
 
 ```powershell
-editor\BadigEditor.exe --diskmanipulator extract sc2\msx\supercalc2L.dsk -d sc2\extracted exemplo.cal exemplo.sdi
+editor\PaleoBasic.exe --diskmanipulator extract sc2\msx\supercalc2L.dsk -d sc2\extracted exemplo.cal exemplo.sdi
 ```
 
 `sc2/extracted/exemplo.sdi` (texto, 768 bytes) documenta a planilha completa célula a célula — 6 linhas
