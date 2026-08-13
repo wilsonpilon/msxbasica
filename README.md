@@ -2727,6 +2727,21 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   distribuição gerado via `build.ps1 -D` e publicado como `paleobasic-v073343.zip`. Ver
   `docs/RELEASE_NOTES.md` para as notas de lançamento formais desta versão e das anteriores desde
   `7.33.32`.
+- **2026-08-13 (sessão seguinte, máquina nova) — estudo de debugger visual Z80 para o Mamute Assembler,
+  sem código**: pedido explícito do usuário, voltando ao escopo do monitor (não implementado ainda) —
+  coluna de disassembly, registradores, stack/heap, minimapa de memória, step into/over/out. Escopo
+  decidido: começar por um simulador de **Z80 puro**, sem tentar simular o MSX inteiro de cara. Usuário
+  adicionou `fmsx/` (gitignored, código-fonte do **fMSX** de Marat Fayzullin) como material de estudo do
+  núcleo Z80 e do hardware MSX. Estudo completo — peças já reaproveitáveis (disassembler nativo `L`/`LP`,
+  memória/páginas simuladas, técnica de grade do `DM`), o que falta (núcleo de execução Z80 do zero,
+  maior motor ainda por escrever no projeto) e um roteiro em 3 fases (debugger Z80-only nativo →
+  reaproveitar o mesmo pipe do `OpenMSXBridge.pbi` para um debugger contra MSX real via protocolo de
+  debug do openMSX, esforço menor do que parece já que o transporte já existe → simulador de MSX completo
+  portado do fMSX, grande e provavelmente baixa prioridade) — registrado em `docs/SPEC.md`, módulo 32.
+  Também: crédito a Marat Fayzullin/fMSX acrescentado em Agradecimentos abaixo, e `/fMSX/` adicionado ao
+  `.gitignore` (não estava — achado real, a pasta apareceu como untracked pronta pra ser commitada por
+  engano, junto de ROMs de sistema com copyright próprio e um fonte não-comercial incompatível com a
+  licença GPL v3 deste projeto).
 
 ## Ferramentas e ambiente
 
@@ -2764,6 +2779,13 @@ Este projeto não existiria sem o trabalho de:
   replay original (`SEE3PLAY.ASC`) foram a especificação de comportamento (estudada por engenharia
   reversa do driver, campo a campo) para o editor **SEE Tracker** nativo desta IDE (`Criar → SEE
   Tracker...`) e seu driver de replay Z80 embutido, uma porta própria do driver original.
+- **[Marat Fayzullin](https://fms.komkon.org/)**, autor do **[fMSX](https://fms.komkon.org/fMSX/)**
+  (emulador MSX portátil desde 1994) — código-fonte do núcleo Z80 e do hardware MSX (VDP V9938, PSG
+  AY8910, FDC WD1793) estudado como especificação de comportamento para o **debugger visual Z80**
+  planejado para o Mamute Assembler (ver `docs/SPEC.md`, módulo 32) — mesma relação de "espec a portar,
+  não dependência de runtime" já usada com o Basic Dignified Suite e o Nestor80 acima; o fMSX é
+  distribuído sob licença própria não-comercial, então nenhum código dele é copiado para este projeto
+  (GPL v3), só sua semântica de comportamento.
 
 ## Licença
 

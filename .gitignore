@@ -55,6 +55,17 @@
 # Baixavel via Configurar -> asMSX... -> "Baixar versao mais recente".
 /asmsx/
 
+# Copia local do fMSX (Marat Fayzullin) - emulador MSX portatil, fonte do
+# nucleo Z80 e do hardware MSX (VDP/PSG/FDC) estudado como referencia de
+# comportamento para o debugger visual Z80 planejado (ver docs/SPEC.md,
+# modulo 32), nao dependencia de runtime. Inclui ROMs de sistema com
+# copyright proprio (MSX.ROM/MSX2*.ROM/DISK.ROM/FMPAC.ROM/PAINTER.ROM) e o
+# fMSX.exe - nada disso deve ser distribuido com o repositorio; licenca
+# propria nao-comercial do fMSX tambem impede copiar/adaptar codigo dele
+# direto para este projeto (GPL v3), ver nota no modulo 32.
+/fMSX/
+/fmsx/
+
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
 

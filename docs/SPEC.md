@@ -6104,6 +6104,132 @@ qualquer comando futuro, não só `DM`).
     não só os endereços absolutos superficiais. `A O/ZZZZ` (offset não-hexadecimal) → rejeitado
     corretamente com `"?OFFSET INVALIDO (hexa, 0000-FFFF, ex. 'A O/8000')"`, sem tentar montar.
 
+### 32. Debugger visual Z80 (Mamute Assembler) — estudo/planejamento (2026-08-13)
+
+Pedido explícito do usuário, voltando um pouco no escopo do monitor (módulo 31): um **debugger visual**
+de verdade, não mais só o prompt `MON>` de texto — mockup de tela ainda por vir numa conversa futura,
+mas já descrito em palavras: coluna de disassembly, registradores num canto, visualização de heap e de
+stack, um minimapa de memória, e comandos de execução passo a passo (instrução a instrução, "chamar
+rotina e voltar" — ou seja step over de `CALL`, pulando a sub-rotina inteira de uma vez — step into,
+step out, e variações). Pedido explícito de **só estudar por enquanto, sem codar nada** — este módulo
+registra esse estudo, para virar trabalho real em sessões futuras, comando por comando/peça por peça,
+no mesmo espírito incremental que o resto do Mamute Assembler já segue.
+
+**Escopo explicitamente decidido com o usuário**: começar por um **simulador de Z80 puro**, sem tentar
+simular o MSX inteiro (VDP, PSG, FDC, mapeador) — o objetivo imediato é rodar/inspecionar pequenos
+trechos de rotina isolados, não um MSX funcional. Um simulador de MSX completo (ou uma integração com o
+openMSX real) fica para depois, com a escolha entre as duas abordagens registrada abaixo.
+
+**Material de referência novo**: o usuário adicionou `fmsx/` ao repositório (gitignored, específico
+desta máquina — mesmo tratamento que `badig/`/`megasm/`) com o código-fonte completo do
+**[fMSX](https://fms.komkon.org/fMSX/)**, de **Marat Fayzullin**: núcleo Z80 (`fmsx/Z80/Z80.c` + `.h` +
+tabelas de opcode `Codes*.h`, 726+~1.400 linhas), hardware MSX (`fmsx/fMSX/MSX.c`, 3.434 linhas, slots/
+mapeador/PPI/VDP/PSG/relógio), VDP V9938 (`fmsx/fMSX/V9938.c`, 1.046 linhas), PSG AY8910 e FDC WD1793
+(`fmsx/EMULib/`), além do executável Windows, manual (`fMSX.html`) e ROMs de sistema (`MSX.ROM`,
+`MSX2.ROM`, `MSX2EXT.ROM`, `MSX2P.ROM`, `MSX2PEXT.ROM`, `DISK.ROM`, `FMPAC.ROM`, `PAINTER.ROM`).
+
+- **Atenção de licença, real e concreta** (não só formalidade): todo arquivo-fonte do fMSX traz o aviso
+  `Copyright (C) Marat Fayzullin 1994-2021 — You are not allowed to distribute this software
+  commercially. Please, notify me, if you make any changes.` — uma licença própria, não-comercial, e
+  **incompatível** com copiar/adaptar trechos de código direto para dentro deste projeto, que é
+  [GPL v3](../LICENSE) (`README.md` → Licença). A relação correta com `fmsx/` é **exatamente a mesma
+  já estabelecida com `badig/` (módulo 1) e com o `N80.exe`/Nestor80 (módulo 18)**: tratar como
+  **especificação de comportamento a estudar e portar de forma independente** (a semântica de um
+  opcode Z80 — quais flags mudam, quantos T-states consome, etc. — é um fato de engenharia, não
+  protegido por copyright), nunca como código-fonte a copiar. Validar o núcleo Z80 nativo rodando os
+  mesmos programas de teste através de `fMSX.exe` (ou de hardware/emulador de terceiros) como oráculo
+  de comportamento, do mesmo jeito que `Z80Asm.pbi` foi validado byte a byte contra `N80.exe` sem
+  depender do código-fonte do Nestor80.
+- **Crédito adicionado ao `README.md`** (seção Agradecimentos) nesta mesma sessão, com link para
+  `https://fms.komkon.org/fMSX/` — mesmo que nenhum código tenha sido portado ainda, o estudo do
+  fonte já embasa o plano abaixo.
+
+**Peças que já existem no projeto e reduzem bastante o trabalho de um debugger Z80-only**:
+- **Disassembler Z80 nativo já pronto e validado** (`Mamute_DisasmOne`/`Mamute_DisasmBuildLines`,
+  `editor/MamuteSupport.pbi`, comandos `L`/`LP` do módulo 31) — dá tanto o texto da instrução quanto o
+  comprimento em bytes, exatamente o que a coluna de disassembly do debugger e o cálculo de "próximo
+  PC" de um step precisam. Não precisa ser reescrito, só reaproveitado.
+- **Memória simulada já existe e já respeita o mapeamento real de slots/páginas** (`MamuteMem()`,
+  `Mamute_ResolveAddress()`/`Mamute_ReadByte()`/`Mamute_WriteByte()`, `MamutePageMap()` — módulo 31) —
+  serve como o barramento de memória do futuro núcleo de execução sem trabalho extra. `MamuteVRAM()`
+  (também módulo 31) cobre o caso de instruções/rotinas que só leem/escrevem VRAM diretamente (pouco
+  comum em Z80 puro, mas existe).
+- **Estado de registrador já existe, mas incompleto** (`MamuteGui_State\Reg*` em
+  `editor/MamuteAssemblerGui.pbi`, hoje só `A/F/B/C/D/E/H/L/IX/IY/SP`, usado pelo comando `X` de edição
+  manual) — falta **PC** (não existe nenhum campo hoje), o **par alternado** `AF'/BC'/DE'/HL'` (`EXX`/
+  `EX AF,AF'`), `I`/`R`, `IFF1`/`IFF2`/`IM` — nenhum desses existe ainda, é trabalho novo, mas é uma
+  extensão de struct simples, não um redesenho.
+- **Técnica de desenho em grade já validada** (`editor/MamuteDumpGui.pbi`, `CanvasGadget` desenhado à
+  mão, usado pelo `DM`) — é o template direto pro minimapa de memória/painel de stack/heap da nova
+  janela, sem inventar mecanismo novo de renderização.
+- **`OpenMSXBridge.pbi` já sabe mandar comando arbitrário pro openMSX de verdade** (`OMSX_SendCommand()`,
+  módulo 12) pelo mesmo pipe já usado pelo painel de controle remoto — isso importa bastante pra Fase 2
+  abaixo, ver detalhe lá.
+
+**O que falta de verdade, e é o grosso do trabalho**: um **núcleo de execução Z80** — hoje não existe
+nenhum (o comando `G` só valida sintaxe e avisa "AINDA NAO IMPLEMENTADA", ver "Lacunas conhecidas"
+abaixo). Isso significa implementar, do zero e nativamente:
+- Tabela de dispatch dos ~5 blocos de opcode do Z80 (base, `CB`, `ED`, `DD`/`FD` — índice X/Y trocando
+  HL por IX/IY —, `DDCB`/`FDCB` — os únicos com o deslocamento ANTES do opcode) — mais de 250 formas de
+  instrução ao todo contando as não-documentadas (`fmsx/Z80/Codes*.h` já mapeia o total real).
+- Cálculo de flags correto por instrução (S/Z/H/P·V/N/C) — incluindo os bits não-documentados F3/F5
+  (cópia de bits do resultado ou de `WZ` interno, conforme a instrução) que algum código real de época
+  chega a depender.
+- Aritmética de 16 bits (`ADD`/`ADC`/`SBC HL,rr`), instruções de bloco (`LDIR`/`LDDR`/`CPIR`/`CPDR`/
+  `INIR`/`OTIR`/etc., que reexecutam sozinhas até `BC=0` ou condição de busca), portas de I/O (`IN`/
+  `OUT` — sem dispositivo real por trás na Fase 1, provavelmente ficam como no-op/retornam `$FF`).
+- Interrupções (`IM 0/1/2`, `EI`/`DI`, `HALT`) — sem fonte de interrupção real (VDP/PSG/teclado) na
+  Fase 1, aceitas na sintaxe mas nunca disparadas até existir uma Fase 2/3 com hardware de verdade por
+  trás.
+
+Em volume de código, esse núcleo de execução é comparável ao maior motor já existente no projeto
+(`Z80Asm.pbi`, ou `DignifiedPreprocessor.pbi`+`MsxTokenizer.pbi` juntos) — realisticamente o maior
+motor novo ainda por escrever em todo o código-fonte hoje. Recomendação: construir e validar
+incrementalmente por grupo de opcode (como o resto do Mamute já faz comando por comando), cada grupo
+testado contra programas pequenos conhecidos, não como uma entrega única.
+
+**Roteiro em 3 fases (a decidir/priorizar com o usuário, aqui só a avaliação)**:
+
+1. **Fase 1 — debugger Z80-only nativo** (o pedido desta conversa): `editor/MamuteZ80Cpu.pbi` (núcleo
+   de execução, novo) + `editor/MamuteDebuggerGui.pbi` (janela nova, layout a definir quando o mockup
+   chegar) reaproveitando disassembler/memória/registradores acima. Isso também finalmente preenche a
+   lacuna do comando `G` (aberta desde `7.33.30`, ver "Lacunas conhecidas" abaixo) — a decidir com o
+   usuário se `G` no `MON>` de texto passa a executar de verdade usando o mesmo núcleo, ou se execução
+   fica reservada só para dentro da janela gráfica do debugger.
+2. **Fase 2 — debugger contra MSX real via openMSX** (esforço bem menor do que parece à primeira
+   vista, graças ao que já existe): o pipe de `OpenMSXBridge.pbi` já manda qualquer comando Tcl pro
+   openMSX (`OMSX_SendCommand()`); o openMSX real expõe, pelo mesmo canal de console/pipe usado pelo
+   painel de controle remoto (módulo 12), um protocolo de debug completo — breakpoints, watchpoints,
+   step (inclusive `stepback`/execução reversa), leitura/escrita de qualquer `debuggable` (memória,
+   VRAM, registradores de CPU), disassembly — historicamente usado pelo openMSX Debugger oficial. A
+   sintaxe exata de cada comando precisa ser confirmada ao vivo antes de codar (mesmo cuidado já
+   documentado neste arquivo para as flags do `pbcompiler` Linux — "confirmado rodando de verdade", não
+   assumido de memória). Se a janela da Fase 1 for desenhada com o "motor" (núcleo Z80 nativo × sessão
+   openMSX real) por trás de uma interface comum, esta fase vira principalmente "trocar o backend da
+   mesma UI", não reescrever do zero — e dá, de brinde, comportamento 100% real de MSX (vídeo, som,
+   disco) sem portar nenhuma linha de hardware.
+3. **Fase 3 — simulador de MSX completo nativo, portado do fMSX** (grande, provavelmente baixa
+   prioridade): portar Z80 (726+~1.400 linhas) + VDP V9938 (1.046) + PSG AY8910 (314) + FDC WD1793
+   (375) + PPI I8255 + mapeador/slots do `MSX.c` (3.434 linhas) — mais de 5.000 linhas de hardware C
+   pra estudar/portar/validar de forma independente (ver nota de licença acima), sem contar que timing
+   ciclo a ciclo entre CPU/VDP/PSG costuma ser a parte mais delicada de qualquer emulador de sistema
+   completo, historicamente mais trabalho que o núcleo de CPU sozinho. **Recomendação**: não começar
+   sem uma necessidade concreta que a Fase 2 (via openMSX real) não resolva primeiro — soa como
+   duplicar, com muito mais esforço, o que a Fase 2 já dá de graça.
+
+**Decisões em aberto, a confirmar com o usuário antes de começar a Fase 1** (mesma cautela já registrada
+para a lacuna do `G` abaixo — não presumir sozinho):
+- O que exatamente a visualização de **"heap"** deveria mostrar num programa Z80 puro, sem sistema
+  operacional — provavelmente um intervalo de endereços configurável pelo usuário (a área que o
+  programa sendo depurado usa como heap próprio), não algo detectável automaticamente feito o "stack"
+  (que tem `SP` como âncora natural).
+- Layout exato da janela — esperar o mockup prometido antes de desenhar `MamuteDebuggerGui.pbi`.
+- Step Over: parar só em `CALL`/`RST` (breakpoint temporário no endereço seguinte) — e as instruções de
+  bloco repetidas (`LDIR` etc.) contam como "um passo" (rodam até completar) ou são passo a passo de
+  verdade (`BC` decrementando a cada Step Into)?
+- Granularidade/paleta de cor do minimapa de memória — por página de 16KB (igual ao `PAGE`), por região
+  menor, ou configurável?
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido
@@ -6120,6 +6246,11 @@ qualquer comando futuro, não só `DM`).
   original também menciona uma convenção de retorno ao "EMA" (slots em ROM-EMA-RAM-RAM + `JP 4010`)
   que provavelmente não se aplica tal qual a esta simulação (não há endereço `4010` especial nem
   conceito de "EMA" residente aqui) - também precisa de decisão do usuário sobre o que substitui isso.
+  **Ampliada, não resolvida (2026-08-13)**: esta lacuna deixou de ser "só o comando `G`" e virou o
+  pedido maior de um **debugger visual** completo (disassembly, registradores, stack/heap, minimapa de
+  memória, step into/over/out) — ver módulo 32 acima para o estudo/roteiro completo. A execução real de
+  código continua não implementada; a ideia do usuário sobre como abordar isso continua não
+  compartilhada em detalhe além do escopo já registrado no módulo 32 (começar Z80-only).
 - ~~Assemblador Z80 embutido do Mamute Assembler (comando `R`, seção "Programas em Assembly" do
   manual)~~ - **resolvida na parte que importa (2026-08-13)**: o lado EDITOR (`EDIT`,
   `MamuteEditGui.pbi`) e o lado MONTADOR (`A`/`A O`, mesmo arquivo, ver entrada própria na seção do
