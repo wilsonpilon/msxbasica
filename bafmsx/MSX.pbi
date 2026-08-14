@@ -57,10 +57,7 @@ Global UPeriod.a = 75             ; % of frames to draw (defaults to 75)
 
 ; Include V9938 VDP Graphics Processor Emulation
 XIncludeFile "V9938.pbi"
-
-; PSG (AY-3-8910 Sound chip) state
-Global PSGLatch.a = 0             ; Selected PSG register index latch
-Global Dim PSGRegs.a(15)          ; PSG Registers
+XIncludeFile "AY8910.pbi"
 
 ; Memory blocks
 Global *EmptyRAM                  ; Pointer to dummy 8KB block initialized to $FF
@@ -319,13 +316,19 @@ EndProcedure
 Procedure.a MSXInZ80(Port.u)
   Port & $FF
   Select Port
-    Case $98, $99
+    Case $98, $99, $9A, $9B
       ProcedureReturn MSXReadVDP(Port)
       
     Case $A0, $A1, $A2
-      ; PSG registers read
       If Port = $A2
-        ProcedureReturn PSGRegs(PSGLatch)
+        Protected reg_idx.a = PSG\Latch
+        If reg_idx = 14
+          ProcedureReturn $7F ; Joystick/mouse idle state
+        ElseIf reg_idx = 15
+          ProcedureReturn PSG\R[15] & $F0
+        Else
+          ProcedureReturn PSG\R[reg_idx]
+        EndIf
       Else
         ProcedureReturn $FF
       EndIf
@@ -344,15 +347,17 @@ EndProcedure
 Procedure MSXOutZ80(Port.u, V.a)
   Port & $FF
   Select Port
-    Case $98, $99
+    Case $98, $99, $9A, $9B
       MSXWriteVDP(Port, V)
       
     Case $A0
-      ; PSG latch register select
-      PSGLatch = V & $0F
+      PSG\Latch = V & $0F
     Case $A1
-      ; PSG write register data
-      PSGRegs(PSGLatch) = V
+      Protected out_reg.a = PSG\Latch
+      PSG\R[out_reg] = V
+      If out_reg = 13
+        ResetPSGEnvelope()
+      EndIf
       
     Case $A8, $A9, $AA, $AB
       Protected oldRout0.a = PPI\Rout[0]
@@ -427,9 +432,9 @@ EndDataSection
 ; Set or reset an interrupt request
 Procedure.u SetIRQ(IRQ.a)
   If IRQ & $80
-    IRQPending & IRQ
+    IRQPending = IRQPending & IRQ
   Else
-    IRQPending | IRQ
+    IRQPending = IRQPending | IRQ
   EndIf
   
   If IRQPending
@@ -442,12 +447,33 @@ EndProcedure
 
 ; MSX main execution timer loop callback (called at each interrupt cycle)
 Procedure.u MSXLoopZ80(*R.Z80)
+  If ThreadExit
+    ProcedureReturn #INT_QUIT
+  EndIf
+  While ThreadPaused
+    Delay(10)
+    If ThreadExit
+      ProcedureReturn #INT_QUIT
+    EndIf
+  Wend
   Static BFlag.a = 0
   Static BCount.a = 0
   Static UCount.l = 0
   Static ACount.a = 0
   Static Drawing.a = 0
-  Protected J.l
+  Static FrameCounter.l = 0
+  
+  If ScanLine = 0 And Drawing = 0
+    FrameCounter = FrameCounter + 1
+    If FrameCounter % 60 = 0 Or FrameCounter < 5
+      Protected logFile.i = OpenFile(#PB_Any, "debug.log", #PB_File_Append)
+      If logFile
+        WriteStringN(logFile, "FRAME=" + Str(FrameCounter) + " PC=" + Hex(*R\PC\W) + " VDP(1)=" + Hex(VDP(1)) + " PSLReg=" + Hex(PSLReg) + " SSLReg(3)=" + Hex(SSLReg(3)))
+        CloseFile(logFile)
+      EndIf
+    EndIf
+  EndIf
+  Protected J.l, displayEndLine.l
   
   ; Flip HRefresh status bit (VDPStatus[2] bit 5)
   VDPStatus(2) = VDPStatus(2) ! $20
@@ -472,10 +498,17 @@ Procedure.u MSXLoopZ80(*R.Z80)
       ScanLine = 0
     EndIf
     
+    displayEndLine = 192
+    If VDP(9) & $80 : displayEndLine = 212 : EndIf
+    
     If ScanLine = 0
       Drawing = 1
       VDPStatus(2) = VDPStatus(2) & $BF ; Clear VRefresh status bit
       UCount + UPeriod
+    EndIf
+    
+    If Drawing And ScanLine < displayEndLine
+      RefreshLine(ScanLine)
     EndIf
     
     Protected coinLine.l = 235
@@ -518,7 +551,7 @@ Procedure.u MSXLoopZ80(*R.Z80)
   EndIf
   *R\IPeriod = #CPU_HPERIOD - activePeriod
   
-  Protected displayEndLine.l = 192
+  displayEndLine = 192
   If VDP(9) & $80
     displayEndLine = 212
   EndIf
@@ -546,6 +579,23 @@ Procedure.u MSXLoopZ80(*R.Z80)
     If VDP(1) & $20
       SetIRQ(#INT_IE0)
     EndIf
+    
+    ; Copy frame buffer to drawing image
+    If StartDrawing(ImageOutput(0))
+      Protected *Buf = DrawingBuffer()
+      Protected pitch.l = DrawingBufferPitch()
+      Protected y.l
+      For y = 0 To 211
+        CopyMemory(@FrameBuffer(y * 512), *Buf + y * pitch, 512 * 4)
+      Next y
+      StopDrawing()
+    EndIf
+    
+    ; Signal Main GUI Thread that frame is ready
+    PostEvent(#PB_Event_FirstCustomValue + 1)
+    
+    ; Throttle frame rate (60 fps)
+    Delay(16)
   EndIf
   
   *R\IRequest = SetIRQ($FF)

@@ -1,21 +1,129 @@
 ; V9938 VDP Graphics Processor Emulation for bamsx
 ; Derived from fMSX V9938.c by Marat Fayzullin
 
+EnableExplicit
+
 ; Globals representing the VDP state
 Global *VRAM                      ; Video RAM buffer (128KB)
 Global *VPAGE                     ; Active 16KB VRAM page pointer
-Global VDPKey.a = 1               ; Write phase indicator (TMS9918 double-write address/register select)
+Global VDPKey.a = 1               ; Write phase indicator
 Global VDPALatch.a = 0            ; Address latch register
 Global VDPAddr.u = 0              ; VRAM access address (14-bit)
 Global VDPData.a = 0              ; VRAM read-ahead buffer
 
-Global Dim VDP.a(63)              ; VDP Control Registers (VDP[0] to VDP[63])
-Global Dim VDPStatus.a(15)        ; VDP Status Registers (VDPStatus[0] to VDPStatus[15])
+Global Dim VDP.a(63)              ; VDP Control Registers
+Global Dim VDPStatus.a(15)        ; VDP Status Registers
 
 Global ScrMode.a = 0              ; Screen Mode index
 Global ScanLine.l = 0             ; Current rendering scanline
 Global FGColor.a = 15             ; Foreground color
 Global BGColor.a = 1              ; Background color
+
+Global Dim Palette.l(15)          ; 32-bit RGBA Palette
+Global PKey.a = 1                 ; Palette write sequencer
+Global PLatch.a = 0               ; Palette register latch
+
+; Core pointers to VRAM tables
+Global ChrTab.i = 0
+Global ChrGen.i = 0
+Global ColTab.i = 0
+Global SprTab.i = 0
+Global SprGen.i = 0
+
+Global ChrTabM.l = 0
+Global ChrGenM.l = 0
+Global ColTabM.l = 0
+Global SprTabM.l = 0
+
+; V9938 MMC structure for CPU-VRAM transfer commands
+Structure VDPCommandState
+  SX.l : SY.l
+  DX.l : DY.l
+  TX.l : TY.l
+  NX.l : NY.l
+  ASX.l : ADX.l
+  CL.a : LO.a : CM.a
+  Active.l
+EndStructure
+
+Global MMC.VDPCommandState
+
+; VDP register masks
+Structure VDPRegMasks
+  R2.a : R3.a : R4.a : R5.a
+  M2.a : M3.a : M4.a : M5.a
+EndStructure
+
+Global Dim MSK.VDPRegMasks(13)
+
+Procedure InitRegMasks()
+  ; SCR 0: TEXT 40x24
+  MSK(0)\R2 = $7F : MSK(0)\R3 = $00 : MSK(0)\R4 = $3F : MSK(0)\R5 = $00
+  MSK(0)\M2 = $00 : MSK(0)\M3 = $00 : MSK(0)\M4 = $00 : MSK(0)\M5 = $00
+  
+  ; SCR 1: TEXT 32x24
+  MSK(1)\R2 = $7F : MSK(1)\R3 = $FF : MSK(1)\R4 = $3F : MSK(1)\R5 = $FF
+  MSK(1)\M2 = $00 : MSK(1)\M3 = $00 : MSK(1)\M4 = $00 : MSK(1)\M5 = $00
+  
+  ; SCR 2: BLK 256x192
+  MSK(2)\R2 = $7F : MSK(2)\R3 = $80 : MSK(2)\R4 = $3C : MSK(2)\R5 = $FF
+  MSK(2)\M2 = $00 : MSK(2)\M3 = $7F : MSK(2)\M4 = $03 : MSK(2)\M5 = $00
+  
+  ; SCR 3: 64x48x16
+  MSK(3)\R2 = $7F : MSK(3)\R3 = $00 : MSK(3)\R4 = $3F : MSK(3)\R5 = $FF
+  MSK(3)\M2 = $00 : MSK(3)\M3 = $00 : MSK(3)\M4 = $00 : MSK(3)\M5 = $00
+  
+  ; SCR 4: BLK 256x192 (MSX2)
+  MSK(4)\R2 = $7F : MSK(4)\R3 = $80 : MSK(4)\R4 = $3C : MSK(4)\R5 = $FC
+  MSK(4)\M2 = $00 : MSK(4)\M3 = $7F : MSK(4)\M4 = $03 : MSK(4)\M5 = $03
+  
+  ; SCR 5: 256x192x16
+  MSK(5)\R2 = $60 : MSK(5)\R3 = $00 : MSK(5)\R4 = $00 : MSK(5)\R5 = $FC
+  MSK(5)\M2 = $1F : MSK(5)\M3 = $00 : MSK(5)\M4 = $00 : MSK(5)\M5 = $03
+  
+  ; SCR 6: 512x192x4
+  MSK(6)\R2 = $60 : MSK(6)\R3 = $00 : MSK(6)\R4 = $00 : MSK(6)\R5 = $FC
+  MSK(6)\M2 = $1F : MSK(6)\M3 = $00 : MSK(6)\M4 = $00 : MSK(6)\M5 = $03
+  
+  ; SCR 7: 512x192x16
+  MSK(7)\R2 = $20 : MSK(7)\R3 = $00 : MSK(7)\R4 = $00 : MSK(7)\R5 = $FC
+  MSK(7)\M2 = $1F : MSK(7)\M3 = $00 : MSK(7)\M4 = $00 : MSK(7)\M5 = $03
+  
+  ; SCR 8: 256x192x256
+  MSK(8)\R2 = $20 : MSK(8)\R3 = $00 : MSK(8)\R4 = $00 : MSK(8)\R5 = $FC
+  MSK(8)\M2 = $1F : MSK(8)\M3 = $00 : MSK(8)\M4 = $00 : MSK(8)\M5 = $03
+  
+  ; SCR 10/11/12
+  Protected I.l
+  For I = 10 To 12
+    MSK(I)\R2 = $20 : MSK(I)\R3 = $00 : MSK(I)\R4 = $00 : MSK(I)\R5 = $FC
+    MSK(I)\M2 = $1F : MSK(I)\M3 = $00 : MSK(I)\M4 = $00 : MSK(I)\M5 = $03
+  Next I
+  
+  ; SCR 0: TEXT 80x24
+  MSK(13)\R2 = $7C : MSK(13)\R3 = $F8 : MSK(13)\R4 = $3F : MSK(13)\R5 = $00
+  MSK(13)\M2 = $03 : MSK(13)\M3 = $07 : MSK(13)\M4 = $00 : MSK(13)\M5 = $00
+EndProcedure
+
+InitRegMasks()
+
+Global Dim PalInit.l(15)
+PalInit(0)  = RGB($00, $00, $00)
+PalInit(1)  = RGB($00, $00, $00)
+PalInit(2)  = RGB($20, $C0, $20)
+PalInit(3)  = RGB($60, $E0, $60)
+PalInit(4)  = RGB($20, $20, $E0)
+PalInit(5)  = RGB($40, $60, $E0)
+PalInit(6)  = RGB($A0, $20, $20)
+PalInit(7)  = RGB($40, $C0, $E0)
+PalInit(8)  = RGB($E0, $20, $20)
+PalInit(9)  = RGB($E0, $60, $60)
+PalInit(10) = RGB($C0, $C0, $20)
+PalInit(11) = RGB($C0, $C0, $80)
+PalInit(12) = RGB($20, $80, $20)
+PalInit(13) = RGB($C0, $40, $A0)
+PalInit(14) = RGB($A0, $A0, $A0)
+PalInit(15) = RGB($E0, $E0, $E0)
 
 ; Forward Declarations
 Declare SetScreen()
@@ -25,10 +133,14 @@ Declare VDPOut(R.a, V.a)
 Declare MSXWriteVDP(Port.u, V.a)
 Declare.a MSXReadVDP(Port.u)
 Declare.u SetIRQ(IRQ.a)
+Declare.a ReadVRAMPixel(X.l, Y.l)
+Declare WriteVRAMPixel(X.l, Y.l, CL.a, OP.a)
+Declare VDPDraw(Op.a)
+Declare.a VDPRead()
+Declare VDPWrite(V.a)
 
-; Dummy SetScreen procedure (will be expanded for UI screen rendering)
+; Set active VRAM address pointers
 Procedure SetScreen()
-  ; Screen mode index calculation from VDP registers
   Protected modeBits.a = ((VDP(0) & $0E) >> 1) | (VDP(1) & $18)
   Select modeBits
     Case $10 : ScrMode = 0
@@ -42,24 +154,39 @@ Procedure SetScreen()
     Case $07 : ScrMode = 8
     Default  : ScrMode = 0
   EndSelect
+  
+  ; Handle special 80-column text mode flag
+  If ScrMode = 0 And (VDP(0) & $04)
+    ScrMode = 13
+  EndIf
+  
+  Protected J.l = ScrMode
+  Protected I.l = 10
+  If J > 6 And J <> 13
+    I = 11
+  EndIf
+  
+  ChrTab  = *VRAM + ((VDP(2) & MSK(J)\R2) << I)
+  ChrGen  = *VRAM + ((VDP(4) & MSK(J)\R4) << 11)
+  ColTab  = *VRAM + ((VDP(3) & MSK(J)\R3) << 6) + (VDP(10) << 14)
+  SprTab  = *VRAM + ((VDP(5) & MSK(J)\R5) << 7) + (VDP(11) << 15)
+  SprGen  = *VRAM + ((VDP(6) & $3F) << 11)
+  
+  ChrTabM = ((VDP(2) | ~MSK(J)\M2) << I) | ((1 << I) - 1)
+  ChrGenM = ((VDP(4) | ~MSK(J)\M4) << 11) | $7FF
+  ColTabM = ((VDP(3) | ~MSK(J)\M3) << 6) | $1C03F
+  SprTabM = ((VDP(5) | ~MSK(J)\M5) << 7) | $1807F
 EndProcedure
 
-; Initialize Video memory and structures
 Procedure InitializeVDP()
-  ; Allocate 128KB Video RAM
-  *VRAM = AllocateMemory($20000)
+  *VRAM = AllocateMemory($20000) ; 128KB VRAM
   FillMemory(*VRAM, $20000, $00)
-  
   *VPAGE = *VRAM
-  
   ResetVDP()
 EndProcedure
 
-; Reset Video Processor registers
 Procedure ResetVDP()
   Protected I.l
-  
-  ; Clear control and status registers
   For I = 0 To 63
     VDP(I) = 0
   Next I
@@ -73,24 +200,35 @@ Procedure ResetVDP()
   VDPData = 0
   *VPAGE = *VRAM
   ScrMode = 0
+  PKey = 1
+  PLatch = 0
+  MMC\Active = 0
+  
+  For I = 0 To 15
+    Palette(I) = PalInit(I)
+  Next I
+  
+  SetScreen()
 EndProcedure
 
-; Write value into VDP control register
 Procedure VDPOut(R.a, V.a)
+  VDP(R) = V
+  If R = 1
+    Protected logFile.i = OpenFile(#PB_Any, "debug.log", #PB_File_Append)
+    If logFile
+      WriteStringN(logFile, "VDPOUT R=1: V=" + Hex(V) + " PC=" + Hex(CPU\PC\W))
+      CloseFile(logFile)
+    EndIf
+  EndIf
   Select R
     Case 0
-      ; Reset HBlank interrupt if disabled
       If (VDPStatus(1) & $01) And (V & $10) = 0
         VDPStatus(1) = VDPStatus(1) & $FE
         SetIRQ(~#INT_IE1)
       EndIf
-      If VDP(0) <> V
-        VDP(0) = V
-        SetScreen()
-      EndIf
+      SetScreen()
       
     Case 1
-      ; Set/Reset VBlank interrupt if enabled/disabled
       If VDPStatus(0) & $80
         If V & $20
           SetIRQ(#INT_IE0)
@@ -98,33 +236,332 @@ Procedure VDPOut(R.a, V.a)
           SetIRQ(~#INT_IE0)
         EndIf
       EndIf
-      If VDP(1) <> V
-        VDP(1) = V
-        SetScreen()
-      EndIf
+      SetScreen()
       
     Case 14
-      ; Select active 16KB VRAM page
       Protected pageIndex.a = V & (VRAMPages - 1)
       *VPAGE = *VRAM + (pageIndex << 14)
       
     Case 15
-      ; Select status register to read on port $99
       VDP(15) = V & $0F
       
     Case 16
-      ; Color palette register select
       VDP(16) = V & $0F
+      PKey = 1 ; Reset palette sequencer
       
     Case 25
-      ; Screen mode control register 25
-      VDP(25) = V
       SetScreen()
       
-    ; Other registers are just stored; graphics routines query them directly
+    Case 44
+      VDPWrite(V)
+      
+    Case 46
+      VDPDraw(V)
+  EndSelect
+EndProcedure
+
+Procedure.i GetVRAMAddr(mode.a, X.l, Y.l)
+  Protected offset.l = 0
+  Select mode
+    Case 5
+      offset = (Y & 1023) * 128 + (X & 255) / 2
+    Case 6
+      offset = (Y & 1023) * 128 + (X & 511) / 4
+    Case 7
+      offset = (Y & 511) * 256 + (X & 511) / 2
+    Case 8
+      offset = (Y & 511) * 256 + (X & 255)
+  EndSelect
+  ProcedureReturn *VRAM + offset
+EndProcedure
+
+Procedure.a ReadVRAMPixel(X.l, Y.l)
+  Protected mode.a = ScrMode
+  If mode < 5 : ProcedureReturn 0 : EndIf
+  Protected *P.Ascii = GetVRAMAddr(mode, X, Y)
+  Select mode
+    Case 5
+      ProcedureReturn (*P\a >> (((~X) & 1) * 4)) & $0F
+    Case 6
+      ProcedureReturn (*P\a >> (((~X) & 3) * 2)) & $03
+    Case 7
+      ProcedureReturn (*P\a >> (((~X) & 1) * 4)) & $0F
+    Case 8
+      ProcedureReturn *P\a
+  EndSelect
+  ProcedureReturn 0
+EndProcedure
+
+Procedure WriteVRAMPixel(X.l, Y.l, CL.a, OP.a)
+  Protected mode.a = ScrMode
+  If mode < 5 : ProcedureReturn : EndIf
+  Protected *P.Ascii = GetVRAMAddr(mode, X, Y)
+  Protected mask.a = $FF
+  Protected shift.a = 0
+  
+  Select mode
+    Case 5, 7
+      shift = ((~X) & 1) * 4
+      mask = ~($0F << shift)
+      CL = (CL & $0F) << shift
+    Case 6
+      shift = ((~X) & 3) * 2
+      mask = ~($03 << shift)
+      CL = (CL & $03) << shift
+    Case 8
+      mask = 0
   EndSelect
   
-  VDP(R) = V
+  Protected oldVal.a = *P\a
+  Protected newVal.a = oldVal
+  
+  Select OP & $0F
+    Case 0 : newVal = (oldVal & mask) | CL ; IMP
+    Case 1 : newVal = oldVal & (CL | mask) ; AND
+    Case 2 : newVal = oldVal | CL          ; OR
+    Case 3 : newVal = oldVal ! CL          ; XOR
+    Case 4 : newVal = (oldVal & mask) | ~(CL | mask) ; NOT
+    Case 8 : If CL : newVal = (oldVal & mask) | CL : EndIf
+    Case 9 : If CL : newVal = oldVal & (CL | mask) : EndIf
+    Case 10 : If CL : newVal = oldVal | CL : EndIf
+    Case 11 : If CL : newVal = oldVal ! CL : EndIf
+    Case 12 : If CL : newVal = (oldVal & mask) | ~(CL | mask) : EndIf
+  EndSelect
+  
+  *P\a = newVal
+EndProcedure
+
+Procedure VDPDraw(Op.a)
+  If ScrMode < 5 : ProcedureReturn : EndIf
+  
+  Protected CM.a = Op >> 4
+  Protected LO.a = Op & $0F
+  
+  Protected SX.l = (VDP(32) | (VDP(33) << 8)) & 511
+  Protected SY.l = (VDP(34) | (VDP(35) << 8)) & 1023
+  Protected DX.l = (VDP(36) | (VDP(37) << 8)) & 511
+  Protected DY.l = (VDP(38) | (VDP(39) << 8)) & 1023
+  Protected NX.l = (VDP(40) | (VDP(41) << 8)) & 1023
+  Protected NY.l = (VDP(42) | (VDP(43) << 8)) & 1023
+  Protected CL.a = VDP(44)
+  Protected TX.l = 1
+  If VDP(45) & $04 : TX = -1 : EndIf
+  Protected TY.l = 1
+  If VDP(45) & $08 : TY = -1 : EndIf
+  
+  VDPStatus(2) = VDPStatus(2) & ~$01 ; CE = 0
+  VDPStatus(2) = VDPStatus(2) & ~$80 ; TR = 0
+  
+  Select CM
+    Case $00 ; ABRT
+      MMC\Active = 0
+      
+    Case $04 ; POINT
+      VDPStatus(7) = ReadVRAMPixel(SX, SY)
+      VDP(44) = VDPStatus(7)
+      
+    Case $05 ; PSET
+      WriteVRAMPixel(DX, DY, CL, LO)
+      
+    Case $06 ; SRCH
+      Protected found.l = 0
+      Protected border.l = 0
+      If VDP(45) & $02 : border = 1 : EndIf
+      Protected x.l = SX
+      While x >= 0 And x < 512
+        Protected val.a = ReadVRAMPixel(x, SY)
+        If (val = CL) = border
+          found = 1
+          Break
+        EndIf
+        x + TX
+      Wend
+      If found
+        VDPStatus(2) = VDPStatus(2) | $10
+      Else
+        VDPStatus(2) = VDPStatus(2) & ~$10
+      EndIf
+      VDPStatus(8) = x & $FF
+      VDPStatus(9) = (x >> 8) | $FE
+      
+    Case $07 ; LINE
+      Protected err.l = (NX - 1) >> 1
+      Protected step_count.l = 0
+      Protected cur_x.l = DX
+      Protected cur_y.l = DY
+      If (VDP(45) & $01) = 0
+        For step_count = 0 To NX - 1
+          WriteVRAMPixel(cur_x, cur_y, CL, LO)
+          cur_x + TX
+          err - NY
+          If err < 0
+            err + NX
+            cur_y + TY
+          EndIf
+        Next
+      Else
+        For step_count = 0 To NX - 1
+          WriteVRAMPixel(cur_x, cur_y, CL, LO)
+          cur_y + TY
+          err - NY
+          If err < 0
+            err + NX
+            cur_x + TX
+          EndIf
+        Next
+      EndIf
+      VDP(38) = cur_y & $FF
+      VDP(39) = (cur_y >> 8) & $03
+      
+    Case $08 ; LMMV
+      Protected ix.l, iy.l
+      For iy = 0 To NY - 1
+        For ix = 0 To NX - 1
+          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, CL, LO)
+        Next ix
+      Next iy
+      
+    Case $09 ; LMMM
+      For iy = 0 To NY - 1
+        For ix = 0 To NX - 1
+          Protected pixel.a = ReadVRAMPixel(SX + ix * TX, SY + iy * TY)
+          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, pixel, LO)
+        Next ix
+      Next iy
+      
+    Case $0C ; HMMV
+      For iy = 0 To NY - 1
+        For ix = 0 To NX - 1
+          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, CL, 0)
+        Next ix
+      Next iy
+      
+    Case $0D ; HMMM
+      For iy = 0 To NY - 1
+        For ix = 0 To NX - 1
+          Protected val_hmmm.a = ReadVRAMPixel(SX + ix * TX, SY + iy * TY)
+          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, val_hmmm, 0)
+        Next ix
+      Next iy
+      
+    Case $0E ; YMMM
+      For iy = 0 To NY - 1
+        For ix = 0 To NX - 1
+          Protected val_ymmm.a = ReadVRAMPixel(SX + ix * TX, SY + iy * TY)
+          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, val_ymmm, 0)
+        Next ix
+      Next iy
+      
+    Case $0B, $0F ; LMMC, HMMC (CPU to VRAM)
+      MMC\SX = SX : MMC\SY = SY
+      MMC\DX = DX : MMC\DY = DY
+      MMC\NX = NX : MMC\NY = NY
+      MMC\TX = TX : MMC\TY = TY
+      MMC\CL = CL : MMC\LO = LO
+      MMC\CM = CM
+      MMC\ASX = 0
+      MMC\ADX = 0
+      MMC\Active = 1
+      VDPStatus(2) = VDPStatus(2) | $01 ; CE = 1
+      VDPStatus(2) = VDPStatus(2) | $80 ; TR = 1
+      
+    Case $0A ; LMCM (VRAM to CPU)
+      MMC\SX = SX : MMC\SY = SY
+      MMC\DX = DX : MMC\DY = DY
+      MMC\NX = NX : MMC\NY = NY
+      MMC\TX = TX : MMC\TY = TY
+      MMC\CL = CL : MMC\LO = LO
+      MMC\CM = CM
+      MMC\ASX = 0
+      MMC\ADX = 0
+      MMC\Active = 1
+      VDPStatus(2) = VDPStatus(2) | $01 ; CE = 1
+      VDPStatus(2) = VDPStatus(2) | $80 ; TR = 1
+  EndSelect
+EndProcedure
+
+Procedure VDPWrite(V.a)
+  VDPStatus(2) = VDPStatus(2) & ~$80 ; Clear TR
+  VDPStatus(7) = V
+  VDP(44) = V
+  
+  If MMC\Active
+    If MMC\CM = $0F ; HMMC
+      ; HMMC: writes a raw byte containing 1, 2 or 4 pixels depending on Screen
+      Protected SM.a = ScrMode
+      Select SM
+        Case 5, 7
+          WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, V >> 4, 0)
+          MMC\ASX + 1
+          If MMC\ASX < MMC\NX
+            WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, V & $0F, 0)
+            MMC\ASX + 1
+          EndIf
+        Case 6
+          WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, (V >> 6) & 3, 0)
+          MMC\ASX + 1
+          If MMC\ASX < MMC\NX
+            WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, (V >> 4) & 3, 0)
+            MMC\ASX + 1
+          EndIf
+          If MMC\ASX < MMC\NX
+            WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, (V >> 2) & 3, 0)
+            MMC\ASX + 1
+          EndIf
+          If MMC\ASX < MMC\NX
+            WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, V & 3, 0)
+            MMC\ASX + 1
+          EndIf
+        Case 8
+          WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, V, 0)
+          MMC\ASX + 1
+      EndSelect
+      
+    ElseIf MMC\CM = $0B ; LMMC
+      ; LMMC: writes 1 pixel per Register 44 write
+      WriteVRAMPixel(MMC\DX + MMC\ASX * MMC\TX, MMC\DY + MMC\ADX * MMC\TY, V, MMC\LO)
+      MMC\ASX + 1
+    EndIf
+    
+    If MMC\ASX >= MMC\NX
+      MMC\ASX = 0
+      MMC\ADX + 1
+      If MMC\ADX >= MMC\NY
+        MMC\Active = 0
+        VDPStatus(2) = VDPStatus(2) & ~$01 ; CE = 0
+        VDPStatus(2) = VDPStatus(2) & ~$80 ; TR = 0
+        ProcedureReturn
+      EndIf
+    EndIf
+    
+    VDPStatus(2) = VDPStatus(2) | $80 ; TR = 1
+  EndIf
+EndProcedure
+
+Procedure.a VDPRead()
+  VDPStatus(2) = VDPStatus(2) & ~$80 ; Clear TR
+  
+  Protected res.a = 0
+  If MMC\Active And MMC\CM = $0A ; LMCM
+    res = ReadVRAMPixel(MMC\SX + MMC\ASX * MMC\TX, MMC\SY + MMC\ADX * MMC\TY)
+    MMC\ASX + 1
+    If MMC\ASX >= MMC\NX
+      MMC\ASX = 0
+      MMC\ADX + 1
+      If MMC\ADX >= MMC\NY
+        MMC\Active = 0
+        VDPStatus(2) = VDPStatus(2) & ~$01 ; CE = 0
+        VDPStatus(2) = VDPStatus(2) & ~$80 ; TR = 0
+        ProcedureReturn res
+      EndIf
+    EndIf
+    VDPStatus(2) = VDPStatus(2) | $80 ; TR = 1
+  EndIf
+  ProcedureReturn res
+EndProcedure
+
+Procedure LoopVDP()
+  ; Dummy as everything runs instantly
 EndProcedure
 
 ; Handle port writes ($98-$99) from MSXOutZ80
@@ -132,13 +569,16 @@ Procedure MSXWriteVDP(Port.u, V.a)
   Port & $FF
   Select Port
     Case $98
-      ; VRAM Write
+      VDPKey = 1
       PokeA(*VPAGE + VDPAddr, V)
       VDPData = V
       VDPAddr = (VDPAddr + 1) & $3FFF
+      If VDPAddr = 0 And ScrMode > 3
+        VDP(14) = (VDP(14) + 1) & (VRAMPages - 1)
+        *VPAGE = *VRAM + (VDP(14) << 14)
+      EndIf
       
     Case $99
-      ; Control port address latch write
       If VDPKey = 1
         VDPALatch = V
         VDPKey = 0
@@ -146,17 +586,41 @@ Procedure MSXWriteVDP(Port.u, V.a)
         VDPKey = 1
         Select V & $C0
           Case $80
-            ; Control register write
             VDPOut(V & $3F, VDPALatch)
           Case $00, $40
-            ; Setup VRAM access address
             VDPAddr = ((V & $3F) << 8) | VDPALatch
-            ; When configured for reading, pre-read the first byte
             If (V & $40) = 0
               VDPData = PeekA(*VPAGE + VDPAddr)
               VDPAddr = (VDPAddr + 1) & $3FFF
+              If VDPAddr = 0 And ScrMode > 3
+                VDP(14) = (VDP(14) + 1) & (VRAMPages - 1)
+                *VPAGE = *VRAM + (VDP(14) << 14)
+              EndIf
             EndIf
         EndSelect
+      EndIf
+      
+    Case $9A
+      If PKey = 1
+        PLatch = V
+        PKey = 0
+      Else
+        PKey = 1
+        Protected J.a = VDP(16)
+        Protected R.a = ((PLatch & $70) * 255) / 112
+        Protected G.a = ((V & $07) * 255) / 7
+        Protected B.a = ((PLatch & $07) * 255) / 7
+        Palette(J) = RGB(R, G, B)
+        VDP(16) = (J + 1) & $0F
+      EndIf
+      
+    Case $9B
+      Protected reg.a = VDP(17) & $3F
+      If reg <> 17
+        VDPOut(reg, V)
+      EndIf
+      If (VDP(17) & $80) = 0
+        VDP(17) = (reg + 1) & $3F
       EndIf
   EndSelect
 EndProcedure
@@ -166,24 +630,250 @@ Procedure.a MSXReadVDP(Port.u)
   Port & $FF
   Select Port
     Case $98
-      ; VRAM Read (auto-increments address within selected 16KB page)
       Protected res.a = VDPData
+      VDPKey = 1
       VDPData = PeekA(*VPAGE + VDPAddr)
       VDPAddr = (VDPAddr + 1) & $3FFF
+      If VDPAddr = 0 And ScrMode > 3
+        VDP(14) = (VDP(14) + 1) & (VRAMPages - 1)
+        *VPAGE = *VRAM + (VDP(14) << 14)
+      EndIf
       ProcedureReturn res
       
     Case $99
-      ; Status Register read
-      Protected statusReg.a = VDP(15)
-      Protected statusVal.a = VDPStatus(statusReg)
+      Protected reg.a = VDP(15)
+      Protected res_st.a = VDPStatus(reg)
       
-      ; Reading status register 0 clears VBlank flag
-      If statusReg = 0
-        VDPStatus(0) = VDPStatus(0) & $7F
+      If reg = 0
+        VDPStatus(0) = VDPStatus(0) & $5F
+        SetIRQ(~#INT_IE0)
+      ElseIf reg = 1
+        VDPStatus(1) = VDPStatus(1) & $FE
+        SetIRQ(~#INT_IE1)
+      ElseIf reg = 7
+        VDPStatus(7) = VDPRead()
+        VDP(44) = VDPStatus(7)
       EndIf
       
-      ProcedureReturn statusVal
+      ProcedureReturn res_st
   EndSelect
   
   ProcedureReturn $FF
+EndProcedure
+
+; --- Sprite rendering helpers ---
+
+Procedure RenderSprites(Y.l, *LineBuf)
+  ; Bit 1 of VDP(8) disables sprites
+  If (VDP(8) & $02) Or ScrMode < 1
+    ProcedureReturn
+  EndIf
+  
+  Protected sprite_size.l = 8
+  If VDP(1) & $02 : sprite_size = 16 : EndIf
+  Protected mag.l = VDP(1) & $01
+  Protected actual_size.l = sprite_size * (mag + 1)
+  
+  ; Draw sprites 31 down to 0, so sprite 0 gets drawn on top
+  Protected s.l
+  For s = 31 To 0 Step -1
+    Protected attr_addr.i = SprTab + s * 4
+    Protected spr_y.l = PeekA(attr_addr)
+    
+    If spr_y = 208 And ScrMode < 5 : Continue : EndIf
+    If spr_y = 216 And ScrMode >= 5 : Continue : EndIf
+    
+    If spr_y > 224
+      spr_y = spr_y - 256
+    EndIf
+    
+    Protected line_offset.l = Y - spr_y
+    If line_offset >= 0 And line_offset < actual_size
+      Protected spr_x.l = PeekA(attr_addr + 1)
+      Protected pattern.l = PeekA(attr_addr + 2)
+      Protected color_byte.a = PeekA(attr_addr + 3)
+      Protected color_idx.a = color_byte & $0F
+      
+      If color_byte & $80
+        spr_x = spr_x - 32
+      EndIf
+      
+      If sprite_size = 16
+        pattern = pattern & $FC
+      EndIf
+      
+      Protected pattern_line.l = line_offset / (mag + 1)
+      Protected pattern_addr.i = SprGen + pattern * 8 + pattern_line
+      
+      Protected pat_byte1.a = PeekA(pattern_addr)
+      Protected pat_byte2.a = 0
+      If sprite_size = 16
+        pat_byte2 = PeekA(pattern_addr + 16)
+      EndIf
+      
+      Protected px.l
+      For px = 0 To sprite_size - 1
+        Protected active.l = 0
+        If px < 8
+          active = (pat_byte1 & ($80 >> px))
+        Else
+          active = (pat_byte2 & ($80 >> (px - 8)))
+        EndIf
+        
+        If active
+          Protected dest_x.l = spr_x + px * (mag + 1)
+          Protected m.l
+          For m = 0 To mag
+            Protected final_x.l = dest_x + m
+            If final_x >= 0 And final_x < 256
+              If color_idx > 0
+                PokeL(*LineBuf + final_x * 4, Palette(color_idx))
+              EndIf
+            EndIf
+          Next m
+        EndIf
+      Next px
+    EndIf
+  Next s
+EndProcedure
+
+; --- Framebuffer rendering procedures ---
+
+Global Dim FrameBuffer.l(512 * 212 - 1)
+
+Procedure.l GetScreen8Color(b.a)
+  Protected red_val.l = ((b >> 2) & $07) * 255 / 7
+  Protected green_val.l = ((b >> 5) & $07) * 255 / 7
+  Protected blue_val.l = (b & $03) * 255 / 3
+  ProcedureReturn RGB(red_val, green_val, blue_val)
+EndProcedure
+
+Procedure RefreshLine(Y.l)
+  If Y < 0 Or Y >= 212 : ProcedureReturn : EndIf
+  
+  Protected *LineDest = @FrameBuffer(Y * 512)
+  Protected bg_color.l = Palette(VDP(7) & $0F)
+  
+  ; 1. Check if Screen is on
+  If (VDP(1) & $40) = 0
+    FillMemory(*LineDest, 512 * 4, bg_color)
+    ProcedureReturn
+  EndIf
+  
+  ; 2. Render background line according to ScrMode
+  Protected mode.a = ScrMode
+  Protected col.l, row.l, char_y.l, char_code.l, font_byte.a, color_byte.a, fg.l, bg.l, px.l
+  Protected temp_line.i = AllocateMemory(256 * 4)
+  FillMemory(temp_line, 256 * 4, bg_color)
+  
+  Select mode
+    Case 0 ; Text 40x24 (centered on 512 canvas, no sprite support)
+      row = Y / 8
+      char_y = Y & 7
+      Protected text_bg.l = Palette(VDP(7) & $0F)
+      Protected text_fg.l = Palette(VDP(7) >> 4)
+      FillMemory(*LineDest, 512 * 4, text_bg)
+      
+      ; Center 240px text area (136px borders)
+      If row < 24
+        For col = 0 To 39
+          char_code = PeekA(ChrTab + row * 40 + col)
+          font_byte = PeekA(ChrGen + char_code * 8 + char_y)
+          For px = 0 To 5
+            Protected c_idx.l = text_bg
+            If font_byte & ($80 >> px)
+              c_idx = text_fg
+            EndIf
+            PokeL(*LineDest + (136 + col * 6 + px) * 4, c_idx)
+          Next px
+        Next col
+      EndIf
+      FreeMemory(temp_line)
+      ProcedureReturn
+      
+    Case 1 ; Text 32x24 (256 width, scaled to 512)
+      row = Y / 8
+      char_y = Y & 7
+      If row < 24
+        For col = 0 To 31
+          char_code = PeekA(ChrTab + row * 32 + col)
+          font_byte = PeekA(ChrGen + char_code * 8 + char_y)
+          color_byte = PeekA(ColTab + char_code / 8)
+          fg = Palette((color_byte >> 4) & $0F)
+          bg = Palette(color_byte & $0F)
+          For px = 0 To 7
+            Protected c.l = bg
+            If font_byte & ($80 >> px)
+              c = fg
+            EndIf
+            PokeL(temp_line + (col * 8 + px) * 4, c)
+          Next px
+        Next col
+      EndIf
+      
+    Case 2, 4 ; Graphic 1 and Graphic 2 (256 width, scaled)
+      Protected I.l = ((Y & $C0) << 5) + (Y & $07)
+      Protected T.i = ChrTab + ((Y & $F8) << 2)
+      For col = 0 To 31
+        char_code = PeekA(T + col)
+        Protected J.l = char_code << 3
+        color_byte = PeekA(ColTab + ((I + J) & ColTabM))
+        font_byte = PeekA(ChrGen + ((I + J) & ChrGenM))
+        fg = Palette((color_byte >> 4) & $0F)
+        bg = Palette(color_byte & $0F)
+        For px = 0 To 7
+          Protected c_gr.l = bg
+          If font_byte & ($80 >> px)
+            c_gr = fg
+          EndIf
+          PokeL(temp_line + (col * 8 + px) * 4, c_gr)
+        Next px
+      Next col
+      
+    Case 3 ; Multicolor 64x48
+      Protected G.i = ChrGen + ((Y & $1C) >> 2)
+      T = ChrTab + ((Y & $F8) << 2)
+      For col = 0 To 31
+        char_code = PeekA(T + col)
+        Protected K.a = PeekA(G + char_code * 8)
+        Protected c1.l = Palette(K >> 4)
+        Protected c2.l = Palette(K & $0F)
+        For px = 0 To 3
+          PokeL(temp_line + (col * 8 + px) * 4, c1)
+          PokeL(temp_line + (col * 8 + 4 + px) * 4, c2)
+        Next px
+      Next col
+      
+    Case 5 ; Graphic 3 (Bitmap 16 colors)
+      Protected VScroll.l = VDP(23)
+      T = ChrTab + (((Y + VScroll) << 7) & ChrTabM & $7FFF)
+      For col = 0 To 127
+        Protected b.a = PeekA(T + col)
+        PokeL(temp_line + (col * 2) * 4, Palette((b >> 4) & $0F))
+        PokeL(temp_line + (col * 2 + 1) * 4, Palette(b & $0F))
+      Next col
+      
+    Case 8 ; Graphic 7 (Bitmap 256 colors)
+      Protected VScroll8.l = VDP(23)
+      T = ChrTab + (((Y + VScroll8) << 8) & ChrTabM & $FFFF)
+      For col = 0 To 255
+        Protected b8.a = PeekA(T + col)
+        PokeL(temp_line + col * 4, GetScreen8Color(b8))
+      Next col
+      
+    Default
+      FillMemory(temp_line, 256 * 4, bg_color)
+  EndSelect
+  
+  ; 3. Render Sprites
+  RenderSprites(Y, temp_line)
+  
+  ; 4. Scale 256x192 to 512x192 line buffer
+  For col = 0 To 255
+    Protected pix.l = PeekL(temp_line + col * 4)
+    PokeL(*LineDest + (col * 2) * 4, pix)
+    PokeL(*LineDest + (col * 2 + 1) * 4, pix)
+  Next col
+  
+  FreeMemory(temp_line)
 EndProcedure

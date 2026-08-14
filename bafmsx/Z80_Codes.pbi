@@ -175,16 +175,16 @@ Case $00
 Case $D3 :  I=ReadOp(*R) : OutZ80(I|(*R\AF\W&$FF00),*R\AF\B\h) 
 Case $DB :  I=ReadOp(*R) : *R\AF\B\h=InZ80(I|(*R\AF\W&$FF00)) 
 Case $76 :  *R\PC\W - 1 
-   *R\IFF | #IFF_HALT 
+   *R\IFF = *R\IFF | #IFF_HALT 
    *R\IBackup=0 
    *R\ICount=0 
 Case $F3 :  If *R\IFF&#IFF_EI : *R\ICount + *R\IBackup-1 : EndIf
-   *R\IFF & ~(#IFF_1|#IFF_2|#IFF_EI) 
-Case $FB :  If  Not (*R\IFF&(#IFF_1|#IFF_EI)) : *R\IFF | #IFF_2|#IFF_EI 
+   *R\IFF = *R\IFF & ~(#IFF_1|#IFF_2|#IFF_EI) 
+Case $FB :  If  Not (*R\IFF&(#IFF_1|#IFF_EI)) : *R\IFF = *R\IFF | #IFF_2|#IFF_EI 
      *R\IBackup=*R\ICount 
      *R\ICount=1 : EndIf
-Case $3F :  *R\AF\B\l ! #C_FLAG : R(#N_FLAG|#H_FLAG) 
-   *R\AF\B\l | (Bool(*R\AF\B\l&#C_FLAG = 0) * (#H_FLAG)) 
+Case $3F :  *R\AF\B\l = *R\AF\B\l ! #C_FLAG : R(#N_FLAG|#H_FLAG) 
+   *R\AF\B\l = *R\AF\B\l | (Bool(*R\AF\B\l&#C_FLAG = 0) * (#H_FLAG)) 
 Case $D9 :  J\W=*R\BC\W : *R\BC\W=*R\BC1\W : *R\BC1\W=J\W 
    J\W=*R\DE\W : *R\DE\W=*R\DE1\W : *R\DE1\W=J\W 
    J\W=*R\HL\W : *R\HL\W=*R\HL1\W : *R\HL1\W=J\W 

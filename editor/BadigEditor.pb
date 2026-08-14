@@ -43,6 +43,16 @@ Declare OpenMsxHelp_OpenWindow(ParentWindow)
 ; abaixo neste arquivo) - mesmo motivo das declaracoes acima.
 Declare RunBasicFromActiveTab()
 
+; Referenciada pelo comando G do Mamute Assembler (MamuteGui_CmdG,
+; MamuteAssemblerGui.pbi) mas definida em MamuteDebuggerGui.pbi, incluido
+; DEPOIS (precisa da Structure MamuteGui_State, definida em
+; MamuteAssemblerGui.pbi, e do nucleo MamuteZ80Cpu.pbi) - mesmo motivo das
+; declaracoes acima, so que na direcao contraria (usado antes de definido).
+; *State fica sem tipo aqui de proposito - a Structure MamuteGui_State ainda
+; nao existe neste ponto do arquivo, e um ponteiro cru basta pro Declare (o
+; tipo real e resolvido na definicao completa, em MamuteDebuggerGui.pbi).
+Declare MamuteDebugger_Open(ParentWindow, *State, StartAddr.u)
+
 ; Structure EditorSettings/Global EditorCfg (definidos "de verdade" em
 ; EditorSettings.pbi, incluido logo abaixo) e os globais Color_* (tab bar/
 ; regua/sintaxe da area de edicao, preenchidos por ApplyTheme() mais adiante
@@ -225,6 +235,8 @@ XIncludeFile "MamuteMGui.pbi"
 XIncludeFile "MamutePdf.pbi"
 XIncludeFile "MamuteEditGui.pbi"
 XIncludeFile "MamuteAssemblerGui.pbi"
+XIncludeFile "MamuteZ80Cpu.pbi"
+XIncludeFile "MamuteDebuggerGui.pbi"
 XIncludeFile "ProjectSettingsGui.pbi"
 
 ;- ------------------------------------------------------------
@@ -633,7 +645,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.33.43"
+  #App_Version = "7.33.44"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"

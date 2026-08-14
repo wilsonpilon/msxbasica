@@ -2,8 +2,8 @@ import os
 import re
 
 # File paths
-Z80_C_PATH = r"e:\bamsx\fMSX\Z80\Z80.c"
-TABLES_H_PATH = r"e:\bamsx\fMSX\Z80\Tables.h"
+Z80_C_PATH = os.path.join(os.path.dirname(__file__), "fMSX", "Z80", "Z80.c")
+TABLES_H_PATH = os.path.join(os.path.dirname(__file__), "fMSX", "Z80", "Tables.h")
 
 # 1. Parse Enums from Z80.c
 with open(Z80_C_PATH, "r", encoding="utf-8") as f:
@@ -87,7 +87,7 @@ daa_table = extract_table("DAATable", 2048)
 print("Tables parsed successfully.")
 
 # Write Z80_Tables.pbi
-with open(r"e:\bamsx\Z80_Tables.pbi", "w", encoding="utf-8") as f:
+with open(os.path.join(os.path.dirname(__file__), "Z80_Tables.pbi"), "w", encoding="utf-8") as f:
     f.write("; Z80 timing and flag lookup tables - Generated automatically\n\n")
     f.write("Global Dim Cycles.a(255)\n")
     f.write("Global Dim CyclesCB.a(255)\n")
@@ -468,8 +468,8 @@ def translate_c_code(code_str, enum_map):
 
 # Translate and save the files
 def process_file(src_name, dest_name, enum_map):
-    src_path = os.path.join(r"e:\bamsx\fMSX\Z80", src_name)
-    dest_path = os.path.join(r"e:\bamsx", dest_name)
+    src_path = os.path.join(os.path.dirname(__file__), "fMSX", "Z80", src_name)
+    dest_path = os.path.join(os.path.dirname(__file__), dest_name)
     
     with open(src_path, "r", encoding="utf-8") as f:
         content = f.read()

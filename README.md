@@ -2742,6 +2742,34 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   `.gitignore` (não estava — achado real, a pasta apareceu como untracked pronta pra ser commitada por
   engano, junto de ROMs de sistema com copyright próprio e um fonte não-comercial incompatível com a
   licença GPL v3 deste projeto).
+- **2026-08-14 — release `7.33.44` "KONPASSO"**: comando `G` do Mamute Assembler sai do estágio de
+  estudo do módulo 32 (`docs/SPEC.md`) e vira debugger visual de verdade — **Fase 1** completa (simulador
+  Z80 puro, sem VDP/PSG/FDC/BIOS). Núcleo de execução novo (`editor/MamuteZ80Cpu.pbi`) implementa a
+  tabela **completa** de opcodes Z80 numa só leva (pedido explícito do usuário) — base, `CB`, `ED`
+  (blocos `LDI/LDD/LDIR/LDDR/CPI/CPD/CPIR/CPDR/INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR`, `ADC`/`SBC
+  HL,rr`, `RRD`/`RLD`, `LD I,A`/`LD A,I` etc.) e `DD`/`FD`/`DDCB`/`FDCB` (`IX`/`IY`, incluindo os
+  indocumentados `IXH`/`IXL`/`IYH`/`IYL` e a exceção real do `EX DE,HL` nunca ser afetado pelo prefixo).
+  Janela nova (`editor/MamuteDebuggerGui.pbi`), layout inspirado no **Konpass** (Nestor Soriano/
+  Konamiman, mockup fornecido pelo usuário): disassembly (acompanha o PC por padrão, ou rola
+  independente), registradores/flags editáveis (incluindo os campos novos — `PC`, par alternado
+  `AF'/BC'/DE'/HL'`, `I`/`R`/`IFF1`/`IFF2`/`IM`, ampliando a `Structure MamuteGui_State` já usada pelo
+  comando `X`), minimonitor de memória hex+ASCII editável (mesma técnica de grade do `DM`), pilha
+  editável, mapa `PAGE`→`SLOT`→`TIPO`, e `Step Into`/`Step Over` (detecta `CALL`/`RST` e roda até o
+  retorno)/`Step Out` (roda até o `SP` desempilhar acima do valor de entrada)/`Run` (até breakpoint/
+  `HALT`, com teto de segurança contra loop infinito) — até 2 breakpoints. Harness de regressão novo
+  (`editor/tools/MamuteZ80CpuTestCli.pb`, autocontido — duplica só a `Structure`/memória mínima em vez de
+  arrastar a GUI inteira do Mamute pra dentro de um `/CONSOLE`) com 60 verificações (ALU/flags incl.
+  overflow e `DAA`, `LD`/`PUSH`/`POP`/`CALL`/`RET`, `StepOver` sobre `CALL`, `IX`+`DDCB` — `SET`/`BIT`
+  indexado —, e o bloco `LDIR` reexecutando passo a passo até `BC=0`), todas passando. Simplificações
+  conscientes documentadas no topo de `MamuteZ80Cpu.pbi` (F3/F5 de `BIT n,(HL)/(IX+d)` usam o byte lido
+  em vez do registrador interno WZ real do hardware; `DD`+`ED`/`FD`+`ED` tratam o prefixo anterior como
+  desperdiçado; flags de `INI`/`IND`/`OUTI`/`OUTD` são aproximadas; sem cronometragem em T-states) — não
+  são bugs, são cortes conscientes de escopo pra Fase 1. Rodada de polimento na mesma sessão: janela e
+  botões maiores (nomes dos botões estavam cortando), disassembly ganhou rolagem independente (checkbox
+  "Seguir PC" + botões `^`/`v`), pilha passou a ser editável por clique, e os 3 painéis desenhados à mão
+  (disassembly/minimonitor/pilha) ganharam borda — mais próximo do visual "boxed panel" do Konpass.
+  Pacote de distribuição gerado via `build.ps1 -D -V "7.33.44"` e publicado como
+  `paleobasic-v073344.zip`. Ver `docs/RELEASE_NOTES.md` para as notas de lançamento formais.
 
 ## Ferramentas e ambiente
 

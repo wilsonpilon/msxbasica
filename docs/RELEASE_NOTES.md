@@ -6,6 +6,62 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 7.33.44 — "KONPASSO" (2026-08-14)
+
+**Tema da versão**: o comando `G` do Mamute Assembler finalmente executa código de verdade — debugger
+visual Z80 completo (Fase 1 do módulo 32 do `docs/SPEC.md`: simulador Z80 puro, sem VDP/PSG/FDC/BIOS).
+
+### Novidades
+
+- **`G <endinic>[,<bp1>[,<bp2>]]`** abre uma janela de debugger visual — disassembly, registradores/
+  flags, minimonitor de memória, pilha, mapa de páginas/slots e controles de execução — em vez de só
+  validar a sintaxe e avisar "ainda não implementada".
+- **Núcleo de execução Z80 nativo, tabela completa** (`editor/MamuteZ80Cpu.pbi`): as 256 instruções
+  base, as 256 `CB`, a tabela `ED` documentada (blocos `LDI`/`LDD`/`LDIR`/`LDDR`/`CPI`/`CPD`/`CPIR`/
+  `CPDR`/`INI`/`IND`/`INIR`/`INDR`/`OUTI`/`OUTD`/`OTIR`/`OTDR`, `ADC`/`SBC HL,rr`, `RRD`/`RLD`, `LD I,A`/
+  `LD A,I`/`LD R,A`/`LD A,R`, `NEG`, `RETN`/`RETI`, `IM 0/1/2`) e `DD`/`FD`/`DDCB`/`FDCB` (`IX`/`IY`,
+  incluindo os indocumentados `IXH`/`IXL`/`IYH`/`IYL` e a regra real de que `EX DE,HL` nunca é afetado
+  pelo prefixo).
+- **Registradores ampliados**: `PC`, par alternado `AF'`/`BC'`/`DE'`/`HL'`, `I`/`R`/`IFF1`/`IFF2`/`IM`
+  — a `Structure MamuteGui_State` que já servia o comando `X` ganhou os campos que faltavam, todos
+  editáveis direto na janela do debugger.
+- **Controles de execução**: `Step Into`, `Step Over` (detecta `CALL`/`RST` e roda até o endereço de
+  retorno), `Step Out` (roda até o `SP` desempilhar acima do valor de entrada), `Run` (até um dos 2
+  breakpoints ou `HALT`) — todos com um teto de segurança contra loop infinito.
+- **Layout inspirado no Konpass** (Nestor Soriano/Konamiman): disassembly acompanhando o `PC` por
+  padrão (ou rolagem independente via checkbox "Seguir PC" + `^`/`v`), minimonitor hex+ASCII editável
+  (mesma técnica de grade do comando `DM`), pilha editável, `PAGE`→`SLOT`→`TIPO` (sem linha `MAPPER` —
+  o modelo de memória do Mamute não tem conceito de sub-slot/segmento).
+
+### Bastidores
+
+- Verificado com um harness de regressão novo, **`editor/tools/MamuteZ80CpuTestCli.pb`** (autocontido —
+  duplica só a `Structure`/uma memória plana mínima em vez de arrastar a GUI inteira do Mamute pra
+  dentro de um `/CONSOLE`): **60 verificações**, cobrindo ALU/flags (incluindo overflow de `ADD`/`SUB` e
+  correção BCD do `DAA`), `LD`/`PUSH`/`POP`/`CALL`/`RET`, `Step Over` sobre um `CALL` real, `IX`+`DDCB`
+  (`SET`/`BIT` indexado, com cópia pro registrador quando aplicável) e o bloco `LDIR` reexecutando a
+  mesma instrução passo a passo até `BC=0` — todas passando.
+- Simplificações conscientes desta primeira leva, documentadas no topo de `MamuteZ80Cpu.pbi` (não são
+  bugs): F3/F5 de `BIT n,(HL)/(IX+d)/(IY+d)` usam o byte lido em vez do registrador interno `WZ`/MEMPTR
+  real do hardware; a combinação não-documentada `DD`+`ED`/`FD`+`ED` trata o prefixo anterior como
+  desperdiçado (mesmo comportamento real do Z80); flags de `INI`/`IND`/`OUTI`/`OUTD`/variantes `R` são
+  aproximadas; sem cronometragem em T-states (não necessário pra um debugger passo-a-passo).
+- Motor portado de forma independente a partir do conhecimento público da arquitetura Z80 — **não** do
+  código-fonte do `bafmsx`/fMSX (mesma política já registrada no módulo 32 do SPEC: fatos de engenharia
+  de opcode, não cópia de código; o fMSX tem licença não-comercial incompatível com a GPL v3 deste
+  projeto).
+- Rodada de polimento: janela (`1180×820`) e botões (`165×38`) maiores — os nomes dos botões estavam
+  sendo cortados; disassembly ganhou rolagem independente; pilha passou a ser editável por clique (igual
+  ao minimonitor); os 3 painéis desenhados à mão (disassembly/minimonitor/pilha) ganharam borda,
+  aproximando do visual "boxed panel" do Konpass.
+
+### Empacotamento deste lançamento
+
+- Pacote de distribuição gerado via `build.ps1 -D -V "7.33.44"` (pasta `distribute\`) e publicado como
+  `paleobasic-v073344.zip`.
+
+---
+
 ## 7.33.43 — "OFFSET DE ORG" (2026-08-13)
 
 **Tema da versão**: última opção da série do comando `A` — `/<offset>`, que desloca o `ORG` de toda a

@@ -181,13 +181,23 @@ Structure MamuteGui_State
   HasLastS.b    ; mesma ideia do M, mas rastreado separado (S tem "memoria" propria)
   LastSAddr.i
   DisplayMode.b ; comando C - modo de exibicao (0-3) que D/P/V vao usar; zero-inicializado = modo 0
-  ; Registradores Z80 simulados (comando X) - zero-inicializados (boot "limpo"), duram so a sessao
-  ; da janela (mesmo espirito volatil do PAGE/DisplayMode) - o comando G (execucao de programas, ainda
-  ; nao implementado) vai carregar o Z80 simulado com estes valores quando existir de verdade.
+  ; Registradores Z80 simulados (comando X, e agora tambem o motor de execucao real do
+  ; comando G - MamuteZ80Cpu.pbi/MamuteDebuggerGui.pbi) - zero-inicializados (boot "limpo"),
+  ; duram so a sessao da janela (mesmo espirito volatil do PAGE/DisplayMode).
   RegA.a : RegF.a : RegB.a : RegC.a : RegD.a : RegE.a : RegH.a : RegL.a
   RegIX.u : RegIY.u : RegSP.u
   HasLastL.b   ; #True depois do 1o L/LP bem-sucedido nesta sessao da janela
   LastLAddr.i  ; endereco logo apos a ultima instrucao mostrada - L/LP sem <endinic> continua dali
+  ; Campos adicionados pro debugger visual (modulo 32 do SPEC, Fase 1) - PC nao existia antes
+  ; (comando X nunca precisou dele), par alternado/I/R/IFF1/IFF2/IM idem. Ate 2 breakpoints,
+  ; mesmo limite que a sintaxe do G ja aceitava desde o stub original.
+  RegPC.u
+  RegA2.a : RegF2.a : RegB2.a : RegC2.a : RegD2.a : RegE2.a : RegH2.a : RegL2.a
+  RegI.a : RegR.a
+  IFF1.b : IFF2.b : IM.a
+  Halted.b
+  HasBreak1.b : Break1Addr.u
+  HasBreak2.b : Break2Addr.u
 EndStructure
 
 ; Persistencia do historico - pedido explicito do usuario ("guarde inclusive
@@ -1152,13 +1162,11 @@ Procedure MamuteGui_CmdF(G_Log, *State.MamuteGui_State, Args.s)
     "PREENCHIDO " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr) + " COM " + Mamute_Hex2(FillByte))
 EndProcedure
 
-; G <endinic>[,<brkpnt1>[,<brkpnt2>]] - EXECUCAO de verdade fica pra uma fase
-; futura (pedido explicito do usuario: "tenho uma ideia de como executar
-; programas, mas prefiro deixar para o final" - ver docs/SPEC.md). Por
-; enquanto so reconhece e valida a sintaxe (endereco inicial obrigatorio,
-; ate 2 breakpoints opcionais, tudo hexa de 4 digitos) e confirma no log que
-; o comando foi entendido, sem executar nada.
-Procedure MamuteGui_CmdG(G_Log, *State.MamuteGui_State, Args.s)
+; G <endinic>[,<brkpnt1>[,<brkpnt2>]] - abre o debugger visual (MamuteDebuggerGui.pbi) no
+; endereco informado, com ate 2 breakpoints opcionais ja armados (modulo 32 do SPEC.md, Fase 1
+; do debugger visual - "simulador Z80 puro", sem VDP/PSG/FDC/BIOS - chamadas de sistema real
+; nao sao simuladas, o usuario pula/ajusta registradores manualmente na janela e segue).
+Procedure MamuteGui_CmdG(G_Log, *State.MamuteGui_State, Win, Args.s)
   Protected Trimmed.s = Trim(Args)
   If Trimmed = ""
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
@@ -1195,11 +1203,17 @@ Procedure MamuteGui_CmdG(G_Log, *State.MamuteGui_State, Args.s)
     ProcedureReturn
   EndIf
 
+  *State\HasBreak1 = Bool(Brk1Token <> "")
+  If *State\HasBreak1 : *State\Break1Addr = Brk1 : EndIf
+  *State\HasBreak2 = Bool(Brk2Token <> "")
+  If *State\HasBreak2 : *State\Break2Addr = Brk2 : EndIf
+
   Protected Msg.s = "G " + Mamute_Hex4(StartAddr)
   If Brk1Token <> "" : Msg + "," + Mamute_Hex4(Brk1) : EndIf
   If Brk2Token <> "" : Msg + "," + Mamute_Hex4(Brk2) : EndIf
-  Msg + " RECONHECIDO - EXECUCAO DE PROGRAMAS AINDA NAO IMPLEMENTADA, FICA PRA UMA FASE FUTURA"
   *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, Msg)
+
+  MamuteDebugger_Open(Win, *State, StartAddr)
 EndProcedure
 
 ; R [<offset>] - carregamento de programa assemblado (gravado pela opcao 'I'
@@ -1545,7 +1559,7 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
       MamuteGui_CmdF(G_Log, *State, Args)
 
     Case "G"
-      MamuteGui_CmdG(G_Log, *State, Args)
+      MamuteGui_CmdG(G_Log, *State, Win, Args)
 
     Case "X"
       MamuteGui_CmdX(G_Log, *State, Args)

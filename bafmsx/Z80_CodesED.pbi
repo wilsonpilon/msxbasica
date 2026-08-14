@@ -57,10 +57,10 @@ Case $5F :  *R\AF\B\h=*R\R
    *R\AF\B\l=(*R\AF\B\l&#C_FLAG)|((Bool(*R\IFF&#IFF_2) * (#P_FLAG)))|ZSTable(*R\AF\B\h) 
 Case $47 :  *R\I=*R\AF\B\h 
 Case $4F :  *R\R=*R\AF\B\h 
-Case $46 :  *R\IFF & ~(#IFF_IM1|#IFF_IM2) 
+Case $46 :  *R\IFF = *R\IFF & ~(#IFF_IM1|#IFF_IM2) 
 Case $56 :  *R\IFF=(*R\IFF&~#IFF_IM2)|#IFF_IM1 
 Case $5E :  *R\IFF=(*R\IFF&~#IFF_IM1)|#IFF_IM2 
-Case $4D, $45 :  If *R\IFF&#IFF_2 : *R\IFF | #IFF_1 : Else : *R\IFF & ~#IFF_1 : EndIf
+Case $4D, $45 :  If *R\IFF&#IFF_2 : *R\IFF = *R\IFF | #IFF_1 : Else : *R\IFF = *R\IFF & ~#IFF_1 : EndIf
                 M_RET 
 Case $44 :  I=*R\AF\B\h : *R\AF\B\h=0 : M_SUB(I) 
 Case $40 :  M_IN(*R\BC\B\h) 

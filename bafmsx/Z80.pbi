@@ -106,11 +106,11 @@ EndMacro
 
 ; Basic CPU helpers
 Macro S(Fl)
-  *R\AF\B\l | (Fl)
+  *R\AF\B\l = *R\AF\B\l | (Fl)
 EndMacro
 
 Macro R(Fl)
-  *R\AF\B\l & (~(Fl))
+  *R\AF\B\l = *R\AF\B\l & (~(Fl))
 EndMacro
 
 Macro FLAGS(Rg, Fl)
@@ -142,13 +142,13 @@ EndProcedure
 Macro M_RLC(Rg)
   *R\AF\B\l = (Rg) >> 7
   Rg = ((Rg) << 1) | *R\AF\B\l
-  *R\AF\B\l | PZSTable(Rg)
+  *R\AF\B\l = *R\AF\B\l | PZSTable(Rg)
 EndMacro
 
 Macro M_RRC(Rg)
   *R\AF\B\l = (Rg) & $01
   Rg = ((Rg) >> 1) | (*R\AF\B\l << 7)
-  *R\AF\B\l | PZSTable(Rg)
+  *R\AF\B\l = *R\AF\B\l | PZSTable(Rg)
 EndMacro
 
 Macro M_RL(Rg)
@@ -174,25 +174,25 @@ EndMacro
 Macro M_SLA(Rg)
   *R\AF\B\l = (Rg) >> 7
   Rg = (Rg) << 1
-  *R\AF\B\l | PZSTable(Rg)
+  *R\AF\B\l = *R\AF\B\l | PZSTable(Rg)
 EndMacro
 
 Macro M_SRA(Rg)
   *R\AF\B\l = (Rg) & #C_FLAG
   Rg = ((Rg) >> 1) | ((Rg) & $80)
-  *R\AF\B\l | PZSTable(Rg)
+  *R\AF\B\l = *R\AF\B\l | PZSTable(Rg)
 EndMacro
 
 Macro M_SLL(Rg)
   *R\AF\B\l = (Rg) >> 7
   Rg = ((Rg) << 1) | $01
-  *R\AF\B\l | PZSTable(Rg)
+  *R\AF\B\l = *R\AF\B\l | PZSTable(Rg)
 EndMacro
 
 Macro M_SRL(Rg)
   *R\AF\B\l = (Rg) & $01
   Rg = (Rg) >> 1
-  *R\AF\B\l | PZSTable(Rg)
+  *R\AF\B\l = *R\AF\B\l | PZSTable(Rg)
 EndMacro
 
 Macro M_BIT(Bit, Rg)
@@ -260,7 +260,7 @@ Macro M_ADD(Rg)
   J\W = *R\AF\B\h + (Rg)
   *R\AF\B\l = ZSTable(J\B\l) | J\B\h | ((*R\AF\B\h ! (Rg) ! J\B\l) & #H_FLAG)
   If (~(*R\AF\B\h ! (Rg)) & ((Rg) ! J\B\l) & $80)
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   *R\AF\B\h = J\B\l
 EndMacro
@@ -269,7 +269,7 @@ Macro M_SUB(Rg)
   J\W = *R\AF\B\h - (Rg)
   *R\AF\B\l = ZSTable(J\B\l) | #N_FLAG | (J\B\h & #C_FLAG) | ((*R\AF\B\h ! (Rg) ! J\B\l) & #H_FLAG)
   If (((*R\AF\B\h ! (Rg)) & (*R\AF\B\h ! J\B\l) & $80))
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   *R\AF\B\h = J\B\l
 EndMacro
@@ -278,7 +278,7 @@ Macro M_ADC(Rg)
   J\W = *R\AF\B\h + (Rg) + (*R\AF\B\l & #C_FLAG)
   *R\AF\B\l = ZSTable(J\B\l) | J\B\h | ((*R\AF\B\h ! (Rg) ! J\B\l) & #H_FLAG)
   If (~(*R\AF\B\h ! (Rg)) & ((Rg) ! J\B\l) & $80)
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   *R\AF\B\h = J\B\l
 EndMacro
@@ -287,7 +287,7 @@ Macro M_SBC(Rg)
   J\W = *R\AF\B\h - (Rg) - (*R\AF\B\l & #C_FLAG)
   *R\AF\B\l = ZSTable(J\B\l) | #N_FLAG | (J\B\h & #C_FLAG) | ((*R\AF\B\h ! (Rg) ! J\B\l) & #H_FLAG)
   If (((*R\AF\B\h ! (Rg)) & (*R\AF\B\h ! J\B\l) & $80))
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   *R\AF\B\h = J\B\l
 EndMacro
@@ -296,22 +296,22 @@ Macro M_CP(Rg)
   J\W = *R\AF\B\h - (Rg)
   *R\AF\B\l = ZSTable(J\B\l) | #N_FLAG | (J\B\h & #C_FLAG) | ((*R\AF\B\h ! (Rg) ! J\B\l) & #H_FLAG)
   If (((*R\AF\B\h ! (Rg)) & (*R\AF\B\h ! J\B\l) & $80))
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
 EndMacro
 
 Macro M_AND(Rg)
-  *R\AF\B\h & (Rg)
+  *R\AF\B\h = *R\AF\B\h & (Rg)
   *R\AF\B\l = #H_FLAG | PZSTable(*R\AF\B\h)
 EndMacro
 
 Macro M_OR(Rg)
-  *R\AF\B\h | (Rg)
+  *R\AF\B\h = *R\AF\B\h | (Rg)
   *R\AF\B\l = PZSTable(*R\AF\B\h)
 EndMacro
 
 Macro M_XOR(Rg)
-  *R\AF\B\h ! (Rg)
+  *R\AF\B\h = *R\AF\B\h ! (Rg)
   *R\AF\B\l = PZSTable(*R\AF\B\h)
 EndMacro
 
@@ -324,10 +324,10 @@ Macro M_INC(Rg)
   Rg + 1
   *R\AF\B\l = (*R\AF\B\l & #C_FLAG) | ZSTable(Rg)
   If Rg = $80
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   If (Rg & $0F) = 0
-    *R\AF\B\l | #H_FLAG
+    *R\AF\B\l = *R\AF\B\l | #H_FLAG
   EndIf
 EndMacro
 
@@ -335,21 +335,21 @@ Macro M_DEC(Rg)
   Rg - 1
   *R\AF\B\l = #N_FLAG | (*R\AF\B\l & #C_FLAG) | ZSTable(Rg)
   If Rg = $7F
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   If (Rg & $0F) = $0F
-    *R\AF\B\l | #H_FLAG
+    *R\AF\B\l = *R\AF\B\l | #H_FLAG
   EndIf
 EndMacro
 
 Macro M_ADDW(Rg1, Rg2)
   J\W = (*R\Rg1#\W + *R\Rg2#\W) & $FFFF
-  *R\AF\B\l & ~(#H_FLAG | #N_FLAG | #C_FLAG)
+  *R\AF\B\l = *R\AF\B\l & ~(#H_FLAG | #N_FLAG | #C_FLAG)
   If ((*R\Rg1#\W ! *R\Rg2#\W ! J\W) & $1000)
-    *R\AF\B\l | #H_FLAG
+    *R\AF\B\l = *R\AF\B\l | #H_FLAG
   EndIf
   If (*R\Rg1#\W + *R\Rg2#\W) > $FFFF
-    *R\AF\B\l | #C_FLAG
+    *R\AF\B\l = *R\AF\B\l | #C_FLAG
   EndIf
   *R\Rg1#\W = J\W
 EndMacro
@@ -359,18 +359,18 @@ Macro M_ADCW(Rg)
   J\W = (*R\HL\W + *R\Rg#\W + I) & $FFFF
   *R\AF\B\l = 0
   If (*R\HL\W + *R\Rg#\W + I) > $FFFF
-    *R\AF\B\l | #C_FLAG
+    *R\AF\B\l = *R\AF\B\l | #C_FLAG
   EndIf
   If (~(*R\HL\W ! *R\Rg#\W) & (*R\Rg#\W ! J\W) & $8000)
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   If ((*R\HL\W ! *R\Rg#\W ! J\W) & $1000)
-    *R\AF\B\l | #H_FLAG
+    *R\AF\B\l = *R\AF\B\l | #H_FLAG
   EndIf
   If J\W = 0
-    *R\AF\B\l | #Z_FLAG
+    *R\AF\B\l = *R\AF\B\l | #Z_FLAG
   EndIf
-  *R\AF\B\l | (J\B\h & #S_FLAG)
+  *R\AF\B\l = *R\AF\B\l | (J\B\h & #S_FLAG)
   *R\HL\W = J\W
 EndMacro
 
@@ -379,18 +379,18 @@ Macro M_SBCW(Rg)
   J\W = (*R\HL\W - *R\Rg#\W - I) & $FFFF
   *R\AF\B\l = #N_FLAG
   If (*R\HL\W - *R\Rg#\W - I) < 0
-    *R\AF\B\l | #C_FLAG
+    *R\AF\B\l = *R\AF\B\l | #C_FLAG
   EndIf
   If ((*R\HL\W ! *R\Rg#\W) & (*R\HL\W ! J\W) & $8000)
-    *R\AF\B\l | #V_FLAG
+    *R\AF\B\l = *R\AF\B\l | #V_FLAG
   EndIf
   If ((*R\HL\W ! *R\Rg#\W ! J\W) & $1000)
-    *R\AF\B\l | #H_FLAG
+    *R\AF\B\l = *R\AF\B\l | #H_FLAG
   EndIf
   If J\W = 0
-    *R\AF\B\l | #Z_FLAG
+    *R\AF\B\l = *R\AF\B\l | #Z_FLAG
   EndIf
-  *R\AF\B\l | (J\B\h & #S_FLAG)
+  *R\AF\B\l = *R\AF\B\l | (J\B\h & #S_FLAG)
   *R\HL\W = J\W
 EndMacro
 
@@ -524,7 +524,7 @@ EndProcedure
 Procedure IntZ80(*R.Z80, Vector.u)
   If *R\IFF & #IFF_HALT
     *R\PC\W + 1
-    *R\IFF & ~#IFF_HALT
+    *R\IFF = *R\IFF & ~#IFF_HALT
   EndIf
   
   If (*R\IFF & #IFF_1) Or (Vector = #INT_NMI)
@@ -538,13 +538,13 @@ Procedure IntZ80(*R.Z80, Vector.u)
     EndIf
     
     If Vector = #INT_NMI
-      *R\IFF & ~(#IFF_1 | #IFF_EI)
+      *R\IFF = *R\IFF & ~(#IFF_1 | #IFF_EI)
       *R\PC\W = $0066
       If JumpZ80 : JumpZ80($0066) : EndIf
       ProcedureReturn
     EndIf
     
-    *R\IFF & ~(#IFF_1 | #IFF_2 | #IFF_EI)
+    *R\IFF = *R\IFF & ~(#IFF_1 | #IFF_2 | #IFF_EI)
     
     If *R\IFF & #IFF_IM2
       Vector = (Vector & $FF) | (*R\I << 8)
