@@ -6,6 +6,58 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.0.1 — "OVO DE FOSSAURO" (2026-08-15)
+
+**Tema da versão**: navegação por cursor no debugger visual Z80, e o `bafmsx/` (port nativo em PureBasic
+do fMSX) deixa de ser um acidente de sessão pra virar projeto irmão oficial dentro do repositório — apelido
+**🦴 Fossauro**, primeiro salto de versão maior (`7.x` → `8.0`) desde o início do projeto.
+
+### Novidades
+
+- **Minimapa de memória no debugger** (`editor/MamuteDebuggerGui.pbi`): grade 16×16 de blocos de 256
+  bytes cobrindo os 64KB inteiros, cor de base por página (RAM/ROM/BASIC/vazio) com brilho escalando pela
+  fração de bytes não-zero no bloco, marcadores de `PC`/`SP`/breakpoints/bloco selecionado. Clique navega
+  o minimonitor direto pro bloco escolhido — os dois painéis viraram uma coisa só de navegação.
+- **Cursor de linha independente do PC**: setas Cima/Baixo movem um cursor próprio pelo disassembly
+  (contorno branco, distinto da barra verde do `PC`); ao chegar no topo ou rodapé da janela visível, ela
+  rola automaticamente pra acompanhar. Clique numa linha também move o cursor pra lá.
+- **"Ir p/ endereço (G)"**: botão + atalho, abre uma caixa pra digitar um endereço em hexa e pula o
+  disassembly (e o cursor) direto pra lá.
+- **"PC = cursor (H)"**: botão + atalho, grava o endereço do cursor de volta no `PC` simulado —
+  equivalente ao "Set Next Statement" de debuggers convencionais, só reposiciona de onde o próximo
+  `Step`/`Run` vai partir, não executa nada sozinho.
+- **`bafmsx/` ("🦴 Fossauro") vira projeto irmão oficial**: port nativo em PureBasic do fMSX (núcleo Z80
+  e memória/slots/PPI/teclado já prontos; VDP V9938 e PSG AY-3-8910 ainda só esqueleto). O **fonte** do
+  port (`.pbi`/`.pb`/`.md`/`LICENSE`/`build.ps1`/`translate.py`) passa a ser rastreado normalmente no
+  git, decisão explícita do usuário.
+
+### Bastidores
+
+- Navegação por cursor verificada ao vivo, não só por leitura de código: automação via UI Automation +
+  `SendKeys` + `PrintWindow` confirmou 20× `Down` rolando a janela mantendo o cursor colado no rodapé,
+  25× `Up` rolando de volta, `G` pulando de `4000` pra `5000` de verdade, e `H` gravando `PC = 4008`
+  depois de mover o cursor com as setas.
+- **Achado e corrigido nesta sessão**: `bafmsx/` tinha sido commitado por engano numa sessão anterior
+  (`7.33.44`) com a cópia vendorizada inteira do fMSX original em C (`bafmsx/fMSX/`) e ROMs de BIOS do
+  MSX com copyright próprio — nada disso deveria ter ido pro git. Corrigido sem apagar nada do disco:
+  `git rm --cached` nesses arquivos (mais artefatos de build/teste, `.exe`/`debug.log`) e três regras
+  novas no `.gitignore`, mesma política já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc. — material de
+  referência de terceiros nunca entra no repositório, só o trabalho original deste projeto.
+- **Pendência registrada no `docs/SPEC.md`** (módulo 32b, novo): integração futura entre o PaleoBasic e o
+  Fossauro — canal de comunicação (mesmo espírito do pipe já existente com o openMSX real via
+  `OpenMSXBridge.pbi`) e as funções que ainda faltam no Fossauro (V9938/PSG/carregamento de fita-disco)
+  antes de uma integração de verdade fazer sentido. Duas arquiteturas possíveis registradas como estudo,
+  nenhuma escolhida ainda (fora do processo via pipe, ou linkada direto no `PaleoBasic.exe` — esta
+  segunda esbarra na licença não-comercial herdada do fMSX original, incompatível com a GPLv3 deste
+  projeto do jeito que está hoje, decisão que precisa ser consciente do usuário antes de acontecer).
+
+### Empacotamento deste lançamento
+
+- Pacote de distribuição gerado via `build.ps1 -D` (pasta `distribute\`) e publicado como
+  `paleobasic-v080001.zip`, substituindo `paleobasic-v073344.zip`.
+
+---
+
 ## 7.33.44 — "KONPASSO" (2026-08-14)
 
 **Tema da versão**: o comando `G` do Mamute Assembler finalmente executa código de verdade — debugger

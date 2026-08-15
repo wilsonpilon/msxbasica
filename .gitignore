@@ -66,6 +66,24 @@
 /fMSX/
 /fmsx/
 
+# bafmsx/ ("Fossauro") - port nativo em PureBasic do fMSX (Z80/MSX/V9938),
+# decisao explicita do usuario (2026-08-15): o FONTE do port (bafmsx/*.pbi,
+# bafmsx/*.pb, bafmsx/*.md, bafmsx/LICENSE, bafmsx/build.ps1,
+# bafmsx/translate.py) e parte do projeto e fica versionado normalmente -
+# NAO adicionar "/bafmsx/" aqui. As tres linhas abaixo excluem so o que
+# nunca deveria ter sido commitado: a copia vendorizada do fMSX original em
+# C (bafmsx/fMSX/ - mesmo material/mesma licenca ja excluida em /fmsx/
+# acima, so que apareceu de novo dentro de bafmsx/ por engano), os binarios
+# de ROM do sistema MSX (copyright proprio, nao redistribuivel,
+# independente da licenca do fMSX) e artefatos de build/teste (.exe/log,
+# regenerados por bafmsx/build.ps1, nao sao fonte).
+/bafmsx/fMSX/
+/bafmsx/fMSX.exe
+/bafmsx/fMSX.html
+/bafmsx/*.ROM
+/bafmsx/*.exe
+/bafmsx/debug.log
+
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
 

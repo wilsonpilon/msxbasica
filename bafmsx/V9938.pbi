@@ -112,16 +112,16 @@ PalInit(0)  = RGB($00, $00, $00)
 PalInit(1)  = RGB($00, $00, $00)
 PalInit(2)  = RGB($20, $C0, $20)
 PalInit(3)  = RGB($60, $E0, $60)
-PalInit(4)  = RGB($20, $20, $E0)
-PalInit(5)  = RGB($40, $60, $E0)
-PalInit(6)  = RGB($A0, $20, $20)
-PalInit(7)  = RGB($40, $C0, $E0)
-PalInit(8)  = RGB($E0, $20, $20)
-PalInit(9)  = RGB($E0, $60, $60)
-PalInit(10) = RGB($C0, $C0, $20)
-PalInit(11) = RGB($C0, $C0, $80)
+PalInit(4)  = RGB($E0, $20, $20)
+PalInit(5)  = RGB($E0, $60, $40)
+PalInit(6)  = RGB($20, $20, $A0)
+PalInit(7)  = RGB($E0, $C0, $40)
+PalInit(8)  = RGB($20, $20, $E0)
+PalInit(9)  = RGB($60, $60, $E0)
+PalInit(10) = RGB($20, $C0, $C0)
+PalInit(11) = RGB($80, $C0, $C0)
 PalInit(12) = RGB($20, $80, $20)
-PalInit(13) = RGB($C0, $40, $A0)
+PalInit(13) = RGB($A0, $40, $C0)
 PalInit(14) = RGB($A0, $A0, $A0)
 PalInit(15) = RGB($E0, $E0, $E0)
 
@@ -213,13 +213,6 @@ EndProcedure
 
 Procedure VDPOut(R.a, V.a)
   VDP(R) = V
-  If R = 1
-    Protected logFile.i = OpenFile(#PB_Any, "debug.log", #PB_File_Append)
-    If logFile
-      WriteStringN(logFile, "VDPOUT R=1: V=" + Hex(V) + " PC=" + Hex(CPU\PC\W))
-      CloseFile(logFile)
-    EndIf
-  EndIf
   Select R
     Case 0
       If (VDPStatus(1) & $01) And (V & $10) = 0
@@ -610,7 +603,7 @@ Procedure MSXWriteVDP(Port.u, V.a)
         Protected R.a = ((PLatch & $70) * 255) / 112
         Protected G.a = ((V & $07) * 255) / 7
         Protected B.a = ((PLatch & $07) * 255) / 7
-        Palette(J) = RGB(R, G, B)
+        Palette(J) = RGB(B, G, R)
         VDP(16) = (J + 1) & $0F
       EndIf
       
@@ -774,7 +767,7 @@ Procedure RefreshLine(Y.l)
       Protected text_fg.l = Palette(VDP(7) >> 4)
       FillMemory(*LineDest, 512 * 4, text_bg)
       
-      ; Center 240px text area (136px borders)
+      ; Center 240px text area scaled 2x to 480px (16px borders)
       If row < 24
         For col = 0 To 39
           char_code = PeekA(ChrTab + row * 40 + col)
@@ -784,7 +777,8 @@ Procedure RefreshLine(Y.l)
             If font_byte & ($80 >> px)
               c_idx = text_fg
             EndIf
-            PokeL(*LineDest + (136 + col * 6 + px) * 4, c_idx)
+            PokeL(*LineDest + (16 + col * 12 + px * 2) * 4, c_idx)
+            PokeL(*LineDest + (16 + col * 12 + px * 2 + 1) * 4, c_idx)
           Next px
         Next col
       EndIf

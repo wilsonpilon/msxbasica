@@ -22,6 +22,7 @@
 
 Global CPU.Z80                    ; Global Z80 CPU state
 Global IRQPending.a = 0           ; Bitmask of currently pending interrupts
+Global FramePending.i = 0         ; Frame event synchronization flag
 
 ; Global memory mapping arrays
 Global Dim *RAM(7)              ; Active Z80 address space (8 x 8KB pages)
@@ -244,7 +245,7 @@ EndProcedure
 
 ; Switch secondary memory slots (Memory address $FFFF write)
 Procedure SSlot(V.a)
-  Protected J.a, I.a
+  Protected J.a, I.a, logFile.i
   
   ; Cartridge slots do not have subslots, fix them at 0:0:0:0
   If PSL(3) = 1 Or PSL(3) = 2
@@ -391,6 +392,13 @@ Procedure MSXKeyRelease(K.a)
   EndIf
 EndProcedure
 
+Procedure ResetKeyboard()
+  Protected I.l
+  For I = 0 To 15
+    KeyMatrix(I) = $FF
+  Next I
+EndProcedure
+
 DataSection
   KeyboardData:
   ; Row, Mask pairs for Keys[130][2]
@@ -462,17 +470,6 @@ Procedure.u MSXLoopZ80(*R.Z80)
   Static ACount.a = 0
   Static Drawing.a = 0
   Static FrameCounter.l = 0
-  
-  If ScanLine = 0 And Drawing = 0
-    FrameCounter = FrameCounter + 1
-    If FrameCounter % 60 = 0 Or FrameCounter < 5
-      Protected logFile.i = OpenFile(#PB_Any, "debug.log", #PB_File_Append)
-      If logFile
-        WriteStringN(logFile, "FRAME=" + Str(FrameCounter) + " PC=" + Hex(*R\PC\W) + " VDP(1)=" + Hex(VDP(1)) + " PSLReg=" + Hex(PSLReg) + " SSLReg(3)=" + Hex(SSLReg(3)))
-        CloseFile(logFile)
-      EndIf
-    EndIf
-  EndIf
   Protected J.l, displayEndLine.l
   
   ; Flip HRefresh status bit (VDPStatus[2] bit 5)
@@ -580,19 +577,20 @@ Procedure.u MSXLoopZ80(*R.Z80)
       SetIRQ(#INT_IE0)
     EndIf
     
-    ; Copy frame buffer to drawing image
-    If StartDrawing(ImageOutput(0))
-      Protected *Buf = DrawingBuffer()
-      Protected pitch.l = DrawingBufferPitch()
-      Protected y.l
-      For y = 0 To 211
-        CopyMemory(@FrameBuffer(y * 512), *Buf + y * pitch, 512 * 4)
-      Next y
-      StopDrawing()
+    FrameCounter = FrameCounter + 1
+    If FrameCounter % 60 = 0 Or FrameCounter < 5
+      Protected logFile.i = OpenFile(#PB_Any, "debug.log", #PB_File_Append)
+      If logFile
+        WriteStringN(logFile, "FRAME=" + Str(FrameCounter) + " PC=" + Hex(*R\PC\W) + " VDP(1)=" + Hex(VDP(1)) + " PSLReg=" + Hex(PSLReg) + " SSLReg(3)=" + Hex(SSLReg(3)))
+        CloseFile(logFile)
+      EndIf
     EndIf
     
-    ; Signal Main GUI Thread that frame is ready
-    PostEvent(#PB_Event_FirstCustomValue + 1)
+    ; Signal Main GUI Thread that frame is ready (if previous frame was processed)
+    If FramePending = 0
+      FramePending = 1
+      PostEvent(#PB_Event_FirstCustomValue + 1)
+    EndIf
     
     ; Throttle frame rate (60 fps)
     Delay(16)

@@ -645,7 +645,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "7.33.44"
+  #App_Version = "8.0.1"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"

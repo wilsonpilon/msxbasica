@@ -6,7 +6,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 7.33.43** ("`OFFSET DE ORG`") — versão e build (data/hora UTC de compilação, em
+**Versão atual: 8.0.1** — versão e build (data/hora UTC de compilação, em
 hexadecimal) são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -43,6 +43,7 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
 | 🦕 **Diplodoco** | `editor/MSXDisk.pbi` + `editor/DiskManagerGui.pbi` — imagens `.dsk` |
 | 🎨 **Pixelossauro** | `editor/Screen0EditorGui.pbi`, `Screen1EditorGui.pbi`, `Screen2EditorGui.pbi`, `Screen12EditorGui.pbi` — editores de tela pixel-a-pixel |
 | 🦅 **Pteranodonte** | `editor/OpenMSXBridge.pbi` — ponte/lançamento do openMSX |
+| 🦴 **Fossauro** | `bafmsx/` — port nativo em PureBasic do fMSX (emulador MSX completo: Z80, memória/slots, PPI, VDP V9938, PSG), projeto irmão dentro do repositório principal |
 
 ## O que já temos
 
@@ -2770,6 +2771,75 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   (disassembly/minimonitor/pilha) ganharam borda — mais próximo do visual "boxed panel" do Konpass.
   Pacote de distribuição gerado via `build.ps1 -D -V "7.33.44"` e publicado como
   `paleobasic-v073344.zip`. Ver `docs/RELEASE_NOTES.md` para as notas de lançamento formais.
+- **2026-08-15 — release `7.33.45`**: minimapa de memória no debugger visual (`editor/MamuteDebuggerGui.pbi`),
+  resolvendo a última das "decisões em aberto" do módulo 32 (`docs/SPEC.md`) que ainda não tinha sido
+  implementada nem decidida (as outras duas — layout da janela e granularidade do Step Into sobre
+  instruções de bloco — já tinham sido resolvidas na prática durante a Fase 1, `7.33.44`, mas o
+  `SPEC.md` ainda não registrava isso). Grade de 16×16 blocos (256 bytes cada, 64KB inteiros) abaixo do
+  painel `PAGE→SLOT→TIPO`: cor de base por página (RAM/ROM/BASIC/vazio, mesma fonte de dado que o
+  painel de texto já usa), brilho dentro do bloco escalando com a fração de bytes não-zero (heurística
+  de "uso" — não há alocador/heap real numa simulação Z80-only, então isso fica como aproximação visual
+  até haver necessidade concreta de um heap de verdade). Marcadores: `PC` (amarelo), `SP` (ciano), bloco
+  selecionado do minimonitor (branco, contorno mais grosso) e breakpoints ativos (ponto vermelho no
+  canto do bloco). **Clique no minimapa move o minimonitor pro bloco escolhido** — mesmo campo
+  `MiniBase` que já alimentava o minimonitor, então os dois painéis passaram a ser uma coisa só do
+  ponto de vista de navegação, não dois recursos separados. Verificado ao vivo, não só por leitura de
+  código: automação via UI Automation + `SendKeys` (PowerShell) abriu `Executar → Mamute Assembler...`,
+  digitou `G 100` pra abrir o debugger, e `PrintWindow` capturou 3 screenshots reais confirmando (1) as
+  4 bandas de página coloridas corretamente, (2) clique no minimapa atualizando o campo Endereço e o
+  conteúdo do minimonitor pro bloco `E900`, e (3) os marcadores de `PC`/`SP` se movendo em tempo real
+  depois de 6 `Step Into` consecutivos (`SP` foi de `0000` até `FFFC` — 3 `PUSH`, indo parar no último
+  bloco do minimapa, canto inferior direito, exatamente onde deveria). Visualização de heap dedicada
+  segue **não implementada** (proposta registrada no `SPEC.md`: intervalo configurável pelo usuário, já
+  que não há como detectar isso automaticamente sem SO/alocador) — fica pra quando fizer falta na
+  prática.
+- **2026-08-15 (mesma sessão) — release `7.33.46`**: navegação por cursor no painel de disassembly do
+  debugger, pedido explícito do usuário. Três peças novas, todas em `editor/MamuteDebuggerGui.pbi`:
+  - **Cursor de linha independente do PC** (`CursorAddr`, novo campo em `MamuteDebuggerState`) — setas
+    Cima/Baixo movem o cursor uma instrução por vez, desenhado como contorno branco na linha selecionada
+    (a barra verde solida continua marcando o `PC`, que pode ser uma linha diferente). Descer é exato
+    (`Mdbg_NextInstrAddr` soma o comprimento real da instrucao atual); subir usa heuristica de
+    resincronizacao (`Mdbg_FindPrevInstrAddr`, tenta os 4 comprimentos possiveis de instrucao Z80 do
+    maior pro menor) - mesma limitacao ja documentada pro botao `^` desde a Fase 1. **Quando o cursor
+    chega no topo ou rodape da janela visivel, a janela rola 1 linha pra acompanhar** — pedido explicito
+    do usuario. Clique numa linha do disassembly tambem move o cursor pra ali (`Mdbg_DisasmHitTest`).
+  - **"Ir p/ endereço (G)"** — botão novo acima do disassembly + atalho `G`: abre um `InputRequester`
+    pedindo um endereço em hexa e pula o disassembly (e o cursor) direto pra lá, desligando "Seguir PC"
+    automaticamente (mesmo idioma já usado pelos botões `^`/`v`).
+  - **"PC = cursor (H)"** — botão novo + atalho `H`: grava o endereço do cursor de volta no `PC`
+    simulado — equivalente ao "Set Next Statement" de debuggers convencionais, não executa nada sozinho,
+    só reposiciona de onde o próximo `Step`/`Run` vai partir.
+  Verificado ao vivo (não só leitura de código): mesma automação via UI Automation + `SendKeys` +
+  `PrintWindow` das sessões anteriores — confirmou 20× `Down` rolando a janela pra baixo mantendo o
+  cursor colado no rodapé, 25× `Up` rolando de volta pra cima da janela original, `G` pulando de `4000`
+  pra `5000` de verdade, e `H` gravando `PC = 4008` depois de mover o cursor com as setas (status
+  "PC = 4008 (cursor)" confirmado na tela, registrador `PC` do painel atualizado, linha realçada em
+  verde cheio).
+- **2026-08-15 (mesma sessão) — release `8.0.1` "FOSSAURO"**: decisão explícita do usuário — `bafmsx/`
+  (port nativo em PureBasic do fMSX, ver changelog `7.33.44` acima pra origem) deixa de ser um acidente
+  de sessão e vira oficialmente **projeto irmão dentro do repositório principal**, com nome próprio no
+  tema pré-histórico do projeto: **🦴 Fossauro** (fóssil + sufixo `-ossauro`, mesmo padrão de trocadilho
+  já usado em Pixelossauro — a ideia é "hardware fóssil trazido de volta à vida", que é literalmente o
+  que um emulador faz). Puramente cosmético, mesmo tratamento que "Paleobasic" e os outros apelidos —
+  nenhum arquivo/diretório foi renomeado, `bafmsx/` continua sendo o caminho real.
+  - **`.gitignore` corrigido**: o achado da sessão anterior (`7.33.44`, ver changelog) — ROMs de BIOS do
+    MSX com copyright próprio e uma cópia vendorizada inteira do fMSX original em C
+    (`bafmsx/fMSX/`, mesmo material já listado em `/fmsx/` na raiz) commitados por engano — foi
+    corrigido sem apagar nada do disco: `git rm --cached` nesses arquivos (ROMs, `bafmsx/fMSX/` inteiro,
+    `fMSX.exe`/`fMSX.html`, mais os artefatos de build/teste `bafmsx/*.exe`/`debug.log`, regenerados via
+    `bafmsx/build.ps1`) e três regras novas no `.gitignore` cobrindo esse escopo. **O fonte de verdade do
+    port continua rastreado normalmente** (`bafmsx/*.pbi`, `bafmsx/*.pb`, `bafmsx/*.md`, `bafmsx/LICENSE`,
+    `bafmsx/build.ps1`, `bafmsx/translate.py`) — pedido explícito do usuário ("quero que o fonte dele
+    seja sincronizado"), diferente do tratamento dado a `badig/`/`nestor80/`/`asmsx/`/etc. (que ficam
+    inteiramente de fora, só como referência local).
+  - **Pendência registrada no `docs/SPEC.md`** (módulo 32, nova seção): integração futura entre o
+    PaleoBasic e o Fossauro — canal de comunicação entre a IDE e o emulador (mesmo espírito do pipe já
+    existente com o openMSX real via `OpenMSXBridge.pbi`, módulo 12), e as funções que ainda faltam no
+    Fossauro em si (V9938/PSG/carregamento de fita-disco, hoje só esqueleto segundo o próprio
+    `bafmsx/README.md`) antes de uma integração de verdade fazer sentido. Ver módulo 32 pro detalhe
+    completo e como isso se encaixa no roteiro de 3 fases do debugger visual já existente.
+  - **Bump de versão para `8.0.1`** (de `7.33.46`) — marca este novo capítulo do projeto (primeiro salto
+    de versão maior desde o início do repositório).
 
 ## Ferramentas e ambiente
 

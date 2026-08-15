@@ -6218,17 +6218,81 @@ testado contra programas pequenos conhecidos, não como uma entrega única.
    duplicar, com muito mais esforço, o que a Fase 2 já dá de graça.
 
 **Decisões em aberto, a confirmar com o usuário antes de começar a Fase 1** (mesma cautela já registrada
-para a lacuna do `G` abaixo — não presumir sozinho):
-- O que exatamente a visualização de **"heap"** deveria mostrar num programa Z80 puro, sem sistema
-  operacional — provavelmente um intervalo de endereços configurável pelo usuário (a área que o
-  programa sendo depurado usa como heap próprio), não algo detectável automaticamente feito o "stack"
-  (que tem `SP` como âncora natural).
-- Layout exato da janela — esperar o mockup prometido antes de desenhar `MamuteDebuggerGui.pbi`.
-- Step Over: parar só em `CALL`/`RST` (breakpoint temporário no endereço seguinte) — e as instruções de
-  bloco repetidas (`LDIR` etc.) contam como "um passo" (rodam até completar) ou são passo a passo de
-  verdade (`BC` decrementando a cada Step Into)?
-- Granularidade/paleta de cor do minimapa de memória — por página de 16KB (igual ao `PAGE`), por região
-  menor, ou configurável?
+para a lacuna do `G` abaixo — não presumir sozinho) — **status ao fim da Fase 1 (`7.33.44`/`7.33.45`)**:
+- ~~O que exatamente a visualização de **"heap"** deveria mostrar~~ — **segue em aberto**: nenhum painel
+  de heap foi implementado na Fase 1 (só disassembly, registradores, minimonitor de memória, mapa
+  `PAGE→SLOT→TIPO` e pilha). A proposta original continua de pé — intervalo de endereços configurável
+  pelo usuário, já que não há SO/alocador nesta simulação Z80-only pra detectar isso automaticamente —,
+  mas só vira código quando fizer falta na prática.
+- ~~Layout exato da janela~~ — **resolvido**: `MamuteDebuggerGui.pbi` foi desenhado a partir do mockup
+  do Konpass fornecido pelo usuário (ver changelog `7.33.44` no `README.md`).
+- ~~Step Over: instruções de bloco contam como "um passo" ou passo a passo de verdade?~~ — **resolvido,
+  passo a passo de verdade**: `Mz80_ExecuteOne` (`editor/MamuteZ80Cpu.pbi`) executa uma iteração de
+  `LDIR`/`LDDR`/`CPIR`/`CPDR`/`INIR`/`INDR`/`OTIR`/`OTDR` por chamada (decrementa `BC`/`B`, só avança o
+  `PC` de verdade quando a condição de parada bate) — igual ao hardware real, não uma versão resumida.
+  Confirmado pelo harness de regressão (`MamuteZ80CpuTestCli.pb`, caso do `LDIR` reexecutando até
+  `BC=0`).
+- ~~Granularidade/paleta de cor do minimapa de memória~~ — **resolvido (`7.33.45`)**: minimapa
+  implementado como grade 16×16 de blocos de 256 bytes (64KB inteiros), cor de base por **página de
+  16KB** (reaproveitando a mesma fonte de dado do painel `PAGE→SLOT→TIPO` — RAM/ROM/BASIC/vazio) com
+  brilho modulado pela fração de bytes não-zero dentro do bloco (heurística de "uso"). Clique navega o
+  minimonitor pro bloco escolhido — ver changelog `7.33.45` no `README.md` pro detalhe completo e a
+  verificação ao vivo (UI Automation + `PrintWindow`, 3 screenshots).
+
+### 32b. Integração PaleoBasic ↔ Fossauro (bafmsx) — pendência registrada (2026-08-15, `8.0.1`)
+
+**Mudança de status, decisão explícita do usuário**: `bafmsx/` (o port nativo em PureBasic do fMSX que
+tinha entrado no repositório por engano na sessão da Fase 1 do debugger, ver changelog `7.33.44`/nota de
+licença acima) deixa de ser tratado como acidente a limpar e vira **projeto irmão oficial dentro do
+repositório principal**, apelido **🦴 Fossauro** (ver tabela de apelidos no `README.md`). O FONTE do port
+(`bafmsx/*.pbi`, `bafmsx/*.pb`, `bafmsx/*.md`, `bafmsx/LICENSE`, `bafmsx/build.ps1`,
+`bafmsx/translate.py`) fica rastreado normalmente no git — pedido explícito do usuário ("quero que o
+fonte dele seja sincronizado"). O que continua de fora, via `.gitignore` (três regras novas, ver
+changelog `8.0.1` no `README.md`): a cópia vendorizada do fMSX original em C (`bafmsx/fMSX/`), os ROMs de
+BIOS do MSX (copyright próprio, nunca redistribuível) e artefatos de build/teste (`.exe`/`debug.log`,
+regenerados por `bafmsx/build.ps1`) — mesma lógica já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc.,
+material de referência de terceiros nunca entra, só o trabalho original deste projeto.
+
+**Onde o Fossauro está hoje** (status do próprio `bafmsx/README.md`, não conferido linha a linha por
+este documento ainda): núcleo Z80 (`bafmsx/Z80.pbi` + `Z80_Codes*.pbi`/`Z80_Tables.pbi`) e slots/PPI/
+teclado/BIOS loader (`bafmsx/MSX.pbi`) marcados como completos; **V9938 (VDP, `bafmsx/V9938.pbi`) e
+AY-3-8910 (PSG) ainda só esqueleto, carregamento de fita/disco e UI ainda não existem**. Ou seja, hoje o
+Fossauro roda a CPU e o mapeamento de memória mas não tem vídeo/som/entrada de verdade funcionando ainda
+— um MSX "de papel", não um MSX jogável.
+
+**Pedido do usuário para as próximas sessões, duas frentes explícitas**:
+1. **Implementar as funções que faltam no Fossauro** — primeiro grande alvo é fechar o V9938 (vídeo) e o
+   AY-3-8910 (som) até ele virar um MSX minimamente funcional (roda um `.ROM`/`.dsk` real, mostra tela,
+   toca som), antes de cogitar qualquer coisa mais ambiciosa.
+2. **Comunicação entre o PaleoBasic e o Fossauro** — pedido explícito do usuário, ainda sem desenho
+   concreto, mas com um precedente direto no próprio projeto: `OpenMSXBridge.pbi` (módulo 12) já resolve
+   exatamente esse problema pro openMSX real (processo externo, pipe nomeado, protocolo de comandos de
+   texto). Duas arquiteturas possíveis pro Fossauro, a decidir com o usuário antes de codar (mesma
+   cautela já registrada nas outras decisões em aberto deste módulo):
+   - **Fora do processo** (como o openMSX): Fossauro compilado como `.exe` separado, IDE conversa por
+     pipe/socket — reaproveita quase tudo que `OpenMSXBridge.pbi` já ensinou (protocolo, thread de
+     leitura não-bloqueante, ver módulo 12), Fossauro pode evoluir/crashar sem derrubar a IDE, mas duplica
+     o modelo de "processo externo" que o próprio projeto já tem pra o openMSX real — vale perguntar ao
+     usuário se o objetivo é ter as DUAS opções (real via openMSX, nativo via Fossauro) atrás da mesma
+     interface, ou se o Fossauro é pensado como substituto.
+   - **Dentro do processo** (linkado direto no `PaleoBasic.exe`): sem pipe nenhum, chamada de
+     procedure direta — mas esbarra na MESMA questão de licença já registrada pro módulo 32 acima:
+     `bafmsx/LICENSE` herda a cláusula não-comercial do fMSX original, incompatível com a GPLv3 deste
+     projeto (`LICENSE` na raiz) do jeito que está hoje. Compilar os dois num único binário put a licença
+     não-comercial do Fossauro dentro de um executável GPLv3 de um jeito que precisa de decisão
+     consciente do usuário antes de acontecer (trocar a licença do Fossauro, manter os dois separados
+     via processo externo, ou alguma outra solução) — **não presumir, perguntar primeiro**, mesmo
+     cuidado já com o `G`/debugger (ver "Lacunas conhecidas" abaixo).
+   Nenhuma das duas foi escolhida ainda — fica como estudo/roteiro, não como trabalho iniciado.
+
+**Como isso se encaixa no roteiro de 3 fases do debugger visual (topo deste módulo)**: a Fase 3 já descrita
+lá ("simulador de MSX completo nativo, portado do fMSX", classificada como "grande, provavelmente baixa
+prioridade") deixou de ser puramente hipotética — o Fossauro já é esse trabalho, em andamento, como
+projeto irmão. Vale revisitar a recomendação da Fase 3 à luz disso numa sessão futura (ela dizia "não
+começar sem necessidade concreta que a Fase 2 não resolva primeiro" — mas agora existe trabalho real
+feito independente dessa recomendação, então a pergunta prática mudou de "vale a pena começar" pra "como
+as duas frentes — debugger Z80-only da Fase 1 e o Fossauro crescendo em paralelo — se encontram", que é
+exatamente a comunicação PaleoBasic↔Fossauro pedida acima.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
@@ -6246,11 +6310,17 @@ para a lacuna do `G` abaixo — não presumir sozinho):
   original também menciona uma convenção de retorno ao "EMA" (slots em ROM-EMA-RAM-RAM + `JP 4010`)
   que provavelmente não se aplica tal qual a esta simulação (não há endereço `4010` especial nem
   conceito de "EMA" residente aqui) - também precisa de decisão do usuário sobre o que substitui isso.
-  **Ampliada, não resolvida (2026-08-13)**: esta lacuna deixou de ser "só o comando `G`" e virou o
-  pedido maior de um **debugger visual** completo (disassembly, registradores, stack/heap, minimapa de
-  memória, step into/over/out) — ver módulo 32 acima para o estudo/roteiro completo. A execução real de
-  código continua não implementada; a ideia do usuário sobre como abordar isso continua não
-  compartilhada em detalhe além do escopo já registrado no módulo 32 (começar Z80-only).
+  **Ampliada, depois resolvida (Fase 1, 2026-08-14/15, `7.33.44`/`7.33.45`)**: esta lacuna deixou de ser
+  "só o comando `G`" e virou o pedido maior de um **debugger visual** completo — ver módulo 32 acima
+  para o estudo/roteiro original em 3 fases. A **Fase 1** (Z80-only, sem VDP/PSG/FDC/BIOS) está
+  implementada e verificada ao vivo: núcleo de execução completo (`editor/MamuteZ80Cpu.pbi`, tabela
+  cheia de opcodes), janela de debugger (`editor/MamuteDebuggerGui.pbi`) com disassembly, registradores/
+  flags editáveis, minimonitor de memória, pilha editável, mapa `PAGE→SLOT→TIPO`, minimapa de memória
+  (`7.33.45`) e `Step Into`/`Step Over`/`Step Out`/`Run` com breakpoints. `G <endinic>[,<brkpnt1>
+  [,<brkpnt2>]]` no `MON>` de texto agora abre essa janela de verdade em vez de só validar sintaxe.
+  Visualização de heap dedicada segue de fora (ver decisão em aberto no módulo 32). **Fases 2 e 3**
+  (debugger contra MSX real via openMSX, simulador de MSX completo portado do fMSX) continuam não
+  iniciadas — ver roteiro no módulo 32.
 - ~~Assemblador Z80 embutido do Mamute Assembler (comando `R`, seção "Programas em Assembly" do
   manual)~~ - **resolvida na parte que importa (2026-08-13)**: o lado EDITOR (`EDIT`,
   `MamuteEditGui.pbi`) e o lado MONTADOR (`A`/`A O`, mesmo arquivo, ver entrada própria na seção do

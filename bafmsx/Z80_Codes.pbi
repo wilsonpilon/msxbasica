@@ -277,9 +277,9 @@ Case $3A :  J\B\l=ReadOp(*R)
 Case $32 :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
    WrZ80(J\W,*R\AF\B\h) 
-Case $E3 :  J\B\l=RdZ80(*R\SP\W) : WrZ80(*R\SP\W + 1,*R\HL\B\l) 
-   J\B\h=RdZ80(*R\SP\W) : WrZ80(*R\SP\W - 1,*R\HL\B\h) 
-   *R\HL\W=J\W 
+Case $E3 :  J\B\l=RdZ80(*R\SP\W) : J\B\h=RdZ80(*R\SP\W + 1)
+    WrZ80(*R\SP\W,*R\HL\B\l) : WrZ80(*R\SP\W + 1,*R\HL\B\h)
+    *R\HL\W=J\W 	
 Case $27 :  J\W=*R\AF\B\h 
    If *R\AF\B\l&#C_FLAG : J\W | 256 : EndIf
    If *R\AF\B\l&#H_FLAG : J\W | 512 : EndIf

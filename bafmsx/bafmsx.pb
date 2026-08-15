@@ -7,6 +7,7 @@ EnableExplicit
 Global ThreadExit.l = 0
 Global ThreadPaused.l = 0
 Global EmulationThread.i = 0
+Global Dim PCKeyStates.b(512)
 
 ; Include Z80 Emulator, Motherboard, Video, and Audio files
 XIncludeFile "Z80_Tables.pbi"
@@ -32,10 +33,34 @@ Procedure.l MapCanvasKey(PBKey.l)
     Case #PB_Shortcut_Right : ProcedureReturn 3
     Case #PB_Shortcut_Space : ProcedureReturn 32
     Case #PB_Shortcut_Return : ProcedureReturn 13
-    Case #PB_Shortcut_Shift : ProcedureReturn 5
-    Case #PB_Shortcut_Control : ProcedureReturn 6
+    Case 16 : ProcedureReturn 5   ; Shift
+    Case 17 : ProcedureReturn 6   ; Control
+    Case 18 : ProcedureReturn 7   ; Graph (Alt)
     Case #PB_Shortcut_Escape : ProcedureReturn 27
     Case #PB_Shortcut_Back : ProcedureReturn 8
+    Case #PB_Shortcut_Tab : ProcedureReturn 9
+    Case 20 : ProcedureReturn 10  ; CapsLock
+    ; MSX specific special keys
+    Case #PB_Shortcut_End : ProcedureReturn 11      ; SELECT
+    Case #PB_Shortcut_Home : ProcedureReturn 12     ; HOME
+    Case #PB_Shortcut_Insert : ProcedureReturn 15   ; INSERT
+    Case #PB_Shortcut_Delete : ProcedureReturn 14   ; DELETE
+    Case #PB_Shortcut_PageUp : ProcedureReturn 17   ; STOP
+    Case #PB_Shortcut_PageDown : ProcedureReturn 16 ; COUNTRY
+    ; Function keys
+    Case #PB_Shortcut_F1 : ProcedureReturn 18
+    Case #PB_Shortcut_F2 : ProcedureReturn 19
+    Case #PB_Shortcut_F3 : ProcedureReturn 20
+    Case #PB_Shortcut_F4 : ProcedureReturn 21
+    Case #PB_Shortcut_F5 : ProcedureReturn 22
+    ; Punctuation mappings
+    Case 186 : ProcedureReturn 59 ; Semicolon
+    Case 187 : ProcedureReturn 43 ; Equal
+    Case 188 : ProcedureReturn 44 ; Comma
+    Case 189 : ProcedureReturn 45 ; Minus
+    Case 190 : ProcedureReturn 46 ; Period
+    Case 191 : ProcedureReturn 47 ; Slash
+    Case 222 : ProcedureReturn 39 ; Single Quote
     Default
       ; Map numbers
       If PBKey >= '0' And PBKey <= '9'
@@ -194,24 +219,47 @@ Procedure RunEmulator()
           If EventGadget() = 0
             Protected canvas_type.l = EventType()
             Select canvas_type
+              Case #PB_EventType_LeftButtonDown
+                SetActiveGadget(0)
+              Case #PB_EventType_LostFocus
+                ResetKeyboard()
+                Dim PCKeyStates.b(512)
               Case #PB_EventType_KeyDown
                 Protected key_down.l = GetGadgetAttribute(0, #PB_Canvas_Key)
-                Protected msx_key_down.l = MapCanvasKey(key_down)
-                If msx_key_down > 0
-                  MSXKeyPress(msx_key_down)
+                If key_down >= 0 And key_down < 512
+                  If PCKeyStates(key_down) = 0
+                    PCKeyStates(key_down) = 1
+                    Protected msx_key_down.l = MapCanvasKey(key_down)
+                    If msx_key_down > 0
+                      MSXKeyPress(msx_key_down)
+                    EndIf
+                  EndIf
                 EndIf
                 
               Case #PB_EventType_KeyUp
                 Protected key_up.l = GetGadgetAttribute(0, #PB_Canvas_Key)
-                Protected msx_key_up.l = MapCanvasKey(key_up)
-                If msx_key_up > 0
-                  MSXKeyRelease(msx_key_up)
+                If key_up >= 0 And key_up < 512
+                  PCKeyStates(key_up) = 0
+                  Protected msx_key_up.l = MapCanvasKey(key_up)
+                  If msx_key_up > 0
+                    MSXKeyRelease(msx_key_up)
+                  EndIf
                 EndIf
             EndSelect
           EndIf
           
         Case #PB_Event_FirstCustomValue + 1
           ; Frame Ready - Render to Canvas
+          FramePending = 0
+          If StartDrawing(ImageOutput(0))
+            Protected *Buf = DrawingBuffer()
+            Protected pitch.l = DrawingBufferPitch()
+            Protected y.l
+            For y = 0 To 211
+              CopyMemory(@FrameBuffer(y * 512), *Buf + (211 - y) * pitch, 512 * 4)
+            Next y
+            StopDrawing()
+          EndIf
           If StartDrawing(CanvasOutput(0))
             DrawImage(ImageID(0), 0, 0, win_w, win_h)
             StopDrawing()

@@ -24,26 +24,42 @@
 ;  16 bits, little-endian, igual PUSH/POP gravam).
 ;
 ;  Disassembly: por padrao acompanha o PC (checkbox "Seguir PC"); desmarcando
-;  (ou clicando ^/v) rola independente em blocos de ~1 pagina de instrucoes -
-;  ^ usa um deslocamento fixo de bytes (heuristica, pode desalinhar 1-2 linhas
-;  ate resincronizar, mesma limitacao de qualquer scroll reverso sem
-;  disassembly reverso de verdade), v usa o proximo endereco real calculado
-;  pelo disassembler (sempre alinhado).
+;  (ou clicando ^/v, navegando o cursor, ou usando Ir p/ endereco) rola
+;  independente. ^ usa um deslocamento fixo de bytes (heuristica, pode
+;  desalinhar 1-2 linhas ate resincronizar, mesma limitacao de qualquer scroll
+;  reverso sem disassembly reverso de verdade), v usa o proximo endereco real
+;  calculado pelo disassembler (sempre alinhado).
+;
+;  Cursor de linha (CursorAddr, independente do PC): setas Cima/Baixo movem o
+;  cursor uma instrucao por vez (Baixo e exato - Mdbg_NextInstrAddr soma o
+;  comprimento real da instrucao atual; Cima usa a mesma heuristica de
+;  resincronizacao do ^ - Mdbg_FindPrevInstrAddr, ver comentario la). Quando o
+;  cursor sai da janela visivel (topo ou rodape), a janela rola 1 linha pra
+;  acompanhar. "Ir p/ endereco" (G) abre um InputRequester e pula direto pro
+;  endereco digitado. "PC = cursor" (H) grava o endereco do cursor de volta no
+;  PC simulado (equivalente a "Set Next Statement" de debuggers convencionais -
+;  nao executa nada sozinho, so reposiciona de onde o proximo Step/Run parte).
+;  Quando "Seguir PC" esta ligado, CursorAddr acompanha o PC igual DisasmBase.
 ; ------------------------------------------------------------
 ;
 
-#MamuteDebugger_Shortcut_StepInto = 9301
-#MamuteDebugger_Shortcut_StepOver = 9302
-#MamuteDebugger_Shortcut_StepOut  = 9303
-#MamuteDebugger_Shortcut_Run      = 9304
-#MamuteDebugger_Shortcut_Reset    = 9305
-#MamuteDebugger_Shortcut_Escape   = 9306
+#MamuteDebugger_Shortcut_StepInto   = 9301
+#MamuteDebugger_Shortcut_StepOver   = 9302
+#MamuteDebugger_Shortcut_StepOut    = 9303
+#MamuteDebugger_Shortcut_Run        = 9304
+#MamuteDebugger_Shortcut_Reset      = 9305
+#MamuteDebugger_Shortcut_Escape     = 9306
+#MamuteDebugger_Shortcut_Goto       = 9307
+#MamuteDebugger_Shortcut_SetPC      = 9308
+#MamuteDebugger_Shortcut_CursorUp   = 9309
+#MamuteDebugger_Shortcut_CursorDown = 9310
 
 Structure MamuteDebuggerState
   *CpuState.MamuteGui_State ; ponteiro pro MamuteGui_State da janela MON> que abriu o debugger
   MiniBase.i                ; endereco (0-65535) do minimonitor - independente do PC
   DisasmBase.i               ; endereco (0-65535) do topo do painel de disassembly
-  FollowPC.b                 ; #True (padrao) = DisasmBase acompanha o PC a cada repaint
+  CursorAddr.i                ; endereco (0-65535) da linha selecionada no disassembly
+  FollowPC.b                 ; #True (padrao) = DisasmBase/CursorAddr acompanham o PC a cada repaint
   StatusText.s
 EndStructure
 
@@ -61,6 +77,98 @@ Procedure.s Mdbg_PageTypeName(Tipo.b)
     Case #MamuteMem_Basic : ProcedureReturn "BASIC"
     Default               : ProcedureReturn "VAZIO"
   EndSelect
+EndProcedure
+
+; Minimapa de memoria: 16x16 blocos de 256 bytes cobrindo os 64KB inteiros.
+; Cor de base por PAGINA (RAM/ROM/BASIC/vazio, mesma fonte que o painel
+; PAGE->SLOT ja mostra em texto); brilho dentro do bloco escala com a fracao
+; de bytes nao-zero (heuristica de "uso", nao um dado real de heap/SO - nao
+; ha alocador conhecido nesta simulacao Z80-only). Marcadores: PC (amarelo),
+; SP (ciano), bloco selecionado do minimonitor/MiniBase (branco, mais
+; grosso), BP1/BP2 ativos (ponto vermelho).
+Procedure Mdbg_RepaintMiniMap(Canvas, *State.MamuteDebuggerState, Font.i)
+  If Not StartDrawing(CanvasOutput(Canvas))
+    ProcedureReturn
+  EndIf
+  Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
+  Protected Cols = 16, Rows = 16
+  Protected BlockW.f = W * 1.0 / Cols, BlockH.f = H * 1.0 / Rows
+  Box(0, 0, W, H, RGB(0, 0, 0))
+
+  Protected *S.MamuteGui_State = *State\CpuState
+  Protected PcBlock.i = (*S\RegPC & $FFFF) / 256
+  Protected SpBlock.i = (*S\RegSP & $FFFF) / 256
+  Protected CurBlock.i = (*State\MiniBase & $FFFF) / 256
+
+  Protected r.i, c.i, Idx.i, BaseAddr.i, Page.i, SlotHere.i, Tipo.b
+  Protected a.i, NonZero.i, BaseCol, BrightCol, Col
+  Protected bx.i, by.i, bw.i, bh.i
+  For r = 0 To Rows - 1
+    For c = 0 To Cols - 1
+      Idx = r * Cols + c
+      BaseAddr = Idx * 256
+      Page = (BaseAddr >> 14) & 3
+      SlotHere = MamutePageMap(Page)
+      Tipo = MamuteCfgCell(SlotHere, Page)\Tipo
+      Select Tipo
+        Case #MamuteMem_RAM   : BaseCol = RGB(15, 55, 28)  : BrightCol = RGB(60, 220, 90)
+        Case #MamuteMem_ROM   : BaseCol = RGB(25, 25, 65)  : BrightCol = RGB(110, 110, 230)
+        Case #MamuteMem_Basic : BaseCol = RGB(70, 60, 20)  : BrightCol = RGB(230, 200, 60)
+        Default                : BaseCol = RGB(45, 12, 12)  : BrightCol = RGB(200, 60, 60)
+      EndSelect
+
+      NonZero = 0
+      For a = BaseAddr To BaseAddr + 255
+        If Mamute_ReadByte(a & $FFFF) <> 0 : NonZero + 1 : EndIf
+      Next
+      Protected Frac.f = NonZero / 256.0
+      Col = RGB(Int(Red(BaseCol) + (Red(BrightCol) - Red(BaseCol)) * Frac),
+                Int(Green(BaseCol) + (Green(BrightCol) - Green(BaseCol)) * Frac),
+                Int(Blue(BaseCol) + (Blue(BrightCol) - Blue(BaseCol)) * Frac))
+
+      bx = c * BlockW : by = r * BlockH
+      bw = ((c + 1) * BlockW) - bx : bh = ((r + 1) * BlockH) - by
+      Box(bx, by, bw, bh, Col)
+
+      If Idx = CurBlock
+        DrawingMode(#PB_2DDrawing_Outlined)
+        Box(bx, by, bw, bh, RGB(255, 255, 255))
+        DrawingMode(#PB_2DDrawing_Default)
+      EndIf
+      If Idx = PcBlock
+        DrawingMode(#PB_2DDrawing_Outlined)
+        Box(bx + 1, by + 1, bw - 2, bh - 2, RGB(255, 230, 0))
+        DrawingMode(#PB_2DDrawing_Default)
+      EndIf
+      If Idx = SpBlock
+        DrawingMode(#PB_2DDrawing_Outlined)
+        Box(bx + 1, by + 1, bw - 2, bh - 2, RGB(0, 220, 230))
+        DrawingMode(#PB_2DDrawing_Default)
+      EndIf
+      If (*S\HasBreak1 And (*S\Break1Addr & $FFFF) / 256 = Idx) Or
+         (*S\HasBreak2 And (*S\Break2Addr & $FFFF) / 256 = Idx)
+        Box(bx + bw - 4, by + bh - 4, 3, 3, RGB(255, 40, 40))
+      EndIf
+    Next
+  Next
+
+  DrawingMode(#PB_2DDrawing_Outlined)
+  Box(0, 0, W, H, RGB(60, 220, 90))
+  StopDrawing()
+EndProcedure
+
+Procedure.b Mdbg_MiniMapHitTest(MouseX.i, MouseY.i, W.i, H.i, *OutBlock.Integer)
+  If MouseX < 0 Or MouseY < 0 Or MouseX >= W Or MouseY >= H
+    ProcedureReturn #False
+  EndIf
+  Protected Cols = 16, Rows = 16
+  Protected Col.i = MouseX * Cols / W
+  Protected Row.i = MouseY * Rows / H
+  If Col < 0 Or Col >= Cols Or Row < 0 Or Row >= Rows
+    ProcedureReturn #False
+  EndIf
+  *OutBlock\i = Row * Cols + Col
+  ProcedureReturn #True
 EndProcedure
 
 Procedure Mdbg_DrawButton(Canvas, Label.s, Font)
@@ -100,6 +208,96 @@ Procedure Mdbg_BuildDisasmLines(List OutLines.s(), StartAddr.i, MinLines.i, *Out
   *OutNext\i = Cur
 EndProcedure
 
+; Endereco da PROXIMA instrucao apos Addr - exato (soma o comprimento real
+; devolvido pelo disassembler, sem heuristica).
+Procedure.i Mdbg_NextInstrAddr(Addr.i)
+  Protected Len.i
+  Mamute_DisasmOne(Addr & $FFFF, @Len)
+  If Len <= 0 : Len = 1 : EndIf
+  ProcedureReturn (Addr + Len) & $FFFF
+EndProcedure
+
+; Endereco da instrucao ANTERIOR a Addr - heuristico (nao ha disassembly
+; reverso de verdade pra Z80, comprimento de instrucao e variavel). Tenta os
+; 4 comprimentos possiveis (maior instrucao Z80 documentada, ex. LD (IX+d),n)
+; do maior pro menor e aceita o primeiro candidato cujo disassembly forward
+; termina exatamente em Addr - mesma limitacao ja registrada pro botao ^
+; acima: pode desalinhar 1-2 linhas em trechos com dados misturados no meio
+; do codigo, mesma coisa que qualquer disassembler faria sem contexto extra.
+Procedure.i Mdbg_FindPrevInstrAddr(Addr.i)
+  Protected L.i, Cand.i, Len.i
+  For L = 4 To 1 Step -1
+    Cand = (Addr - L) & $FFFF
+    Mamute_DisasmOne(Cand, @Len)
+    If Len = L
+      ProcedureReturn Cand
+    EndIf
+  Next
+  ProcedureReturn (Addr - 1) & $FFFF
+EndProcedure
+
+; Quantas linhas cabem no canvas de disassembly com a fonte atual - mesma
+; tecnica de imagem descartavel do Mdbg_MiniHitTest (nao da pra StartDrawing
+; direto no canvas fora do repaint sem apagar o conteudo ja desenhado).
+Procedure.i Mdbg_DisasmVisibleRows(Canvas, Font.i)
+  Protected Img = CreateImage(#PB_Any, 10, 10)
+  Protected RowH.i
+  If Img And StartDrawing(ImageOutput(Img))
+    DrawingFont(FontID(Font))
+    RowH = TextHeight("0") + 4
+    StopDrawing()
+  EndIf
+  If Img : FreeImage(Img) : EndIf
+  If RowH <= 0 : RowH = 20 : EndIf
+  ProcedureReturn GadgetHeight(Canvas) / RowH
+EndProcedure
+
+; Endereco logo APOS a ultima linha VISIVEL do disassembly comecando em
+; StartAddr (a VisRows-esima linha de verdade, nao so uma estimativa) - usado
+; pela navegacao por cursor pra saber quando rolar a janela pra baixo.
+Procedure.i Mdbg_DisasmWindowEnd(StartAddr.i, VisRows.i)
+  Protected NewList WeLines.s()
+  Protected WeNext.i
+  Mdbg_BuildDisasmLines(WeLines(), StartAddr, VisRows, @WeNext)
+  Protected Row.i = 0, LastAddr.i = StartAddr & $FFFF
+  ForEach WeLines()
+    If Row >= VisRows : Break : EndIf
+    LastAddr = Val("$" + Left(WeLines(), 4))
+    Row + 1
+  Next
+  ProcedureReturn Mdbg_NextInstrAddr(LastAddr)
+EndProcedure
+
+; Clique numa linha do disassembly - devolve o endereco daquela linha em
+; *OutAddr (mesma tecnica de imagem descartavel de Mdbg_DisasmVisibleRows).
+Procedure.b Mdbg_DisasmHitTest(MouseY.i, DisasmBase.i, Font.i, *OutAddr.Integer)
+  Protected Img = CreateImage(#PB_Any, 10, 10)
+  Protected RowH.i
+  If Img And StartDrawing(ImageOutput(Img))
+    DrawingFont(FontID(Font))
+    RowH = TextHeight("0") + 4
+    StopDrawing()
+  EndIf
+  If Img : FreeImage(Img) : EndIf
+  If RowH <= 0 : RowH = 20 : EndIf
+  Protected Row.i = MouseY / RowH
+  If Row < 0
+    ProcedureReturn #False
+  EndIf
+  Protected NewList HtLines.s()
+  Protected HtNext.i
+  Mdbg_BuildDisasmLines(HtLines(), DisasmBase, Row + 1, @HtNext)
+  Protected R.i = 0
+  ForEach HtLines()
+    If R = Row
+      *OutAddr\i = Val("$" + Left(HtLines(), 4))
+      ProcedureReturn #True
+    EndIf
+    R + 1
+  Next
+  ProcedureReturn #False
+EndProcedure
+
 Procedure Mdbg_RepaintDisasm(Canvas, *State.MamuteDebuggerState, Font.i)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
@@ -128,6 +326,11 @@ Procedure Mdbg_RepaintDisasm(Canvas, *State.MamuteDebuggerState, Font.i)
       DrawText(2, Row * RowH, Lines(), ColCur, ColCurBack)
     Else
       DrawText(2, Row * RowH, Lines(), ColFront, ColBack)
+    EndIf
+    If LineAddr = *State\CursorAddr
+      DrawingMode(#PB_2DDrawing_Outlined)
+      Box(0, Row * RowH, GadgetWidth(Canvas), RowH, RGB(255, 255, 255))
+      DrawingMode(#PB_2DDrawing_Default)
     EndIf
     Row + 1
   Next
@@ -423,7 +626,9 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
   SetGadgetState(G_FollowPC, #True)
   Protected G_DisasmUp = ButtonGadget(#PB_Any, 232, TopBlockY - 2, 30, 20, "^")
   Protected G_DisasmDown = ButtonGadget(#PB_Any, 264, TopBlockY - 2, 30, 20, "v")
-  Protected G_Disasm = CanvasGadget(#PB_Any, 8, TopBlockY + 20, 370, 420)
+  Protected G_Goto = ButtonGadget(#PB_Any, 8, TopBlockY + 20, 175, 22, "Ir p/ endereco (G)")
+  Protected G_SetPC = ButtonGadget(#PB_Any, 191, TopBlockY + 20, 175, 22, "PC = cursor (H)")
+  Protected G_Disasm = CanvasGadget(#PB_Any, 8, TopBlockY + 44, 370, 396)
 
   ; --- Coluna do meio: minimonitor + PAGE/SLOT/TIPO ---
   Protected MidX = 388
@@ -449,6 +654,15 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
     SetGadgetColor(G_PageSlot(pIdx), #PB_Gadget_FrontColor, ColFront) : SetGadgetColor(G_PageSlot(pIdx), #PB_Gadget_BackColor, ColBack)
     SetGadgetFont(G_PageSlot(pIdx), FontID(UiFont))
   Next
+
+  ; --- Minimapa de memoria (16x16 blocos de 256 bytes, clique move o
+  ; minimonitor acima pro bloco escolhido - MiniBase e o mesmo campo usado
+  ; pelos dois) ---
+  Protected MiniMapY = PsY + 100
+  Protected G_MiniMapLbl = TextGadget(#PB_Any, MidX, MiniMapY, 260, 18, "Minimapa (256b/bloco - clique pra navegar)")
+  SetGadgetColor(G_MiniMapLbl, #PB_Gadget_FrontColor, ColFront) : SetGadgetColor(G_MiniMapLbl, #PB_Gadget_BackColor, ColBack)
+  SetGadgetFont(G_MiniMapLbl, FontID(UiFont))
+  Protected G_MiniMap = CanvasGadget(#PB_Any, MidX, MiniMapY + 18, 256, 128)
 
   ; --- Coluna direita: pilha ---
   Protected RightX = 760
@@ -485,6 +699,10 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
   AddKeyboardShortcut(Win, #PB_Shortcut_F9, #MamuteDebugger_Shortcut_StepOut)
   AddKeyboardShortcut(Win, #PB_Shortcut_F5, #MamuteDebugger_Shortcut_Run)
   AddKeyboardShortcut(Win, #PB_Shortcut_Escape, #MamuteDebugger_Shortcut_Escape)
+  AddKeyboardShortcut(Win, #PB_Shortcut_G, #MamuteDebugger_Shortcut_Goto)
+  AddKeyboardShortcut(Win, #PB_Shortcut_H, #MamuteDebugger_Shortcut_SetPC)
+  AddKeyboardShortcut(Win, #PB_Shortcut_Up, #MamuteDebugger_Shortcut_CursorUp)
+  AddKeyboardShortcut(Win, #PB_Shortcut_Down, #MamuteDebugger_Shortcut_CursorDown)
 
   Protected FullRepaint
   FullRepaint = 1
@@ -497,9 +715,11 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
       DbgState\FollowPC = GetGadgetState(G_FollowPC)
       If DbgState\FollowPC
         DbgState\DisasmBase = *CpuState\RegPC
+        DbgState\CursorAddr = *CpuState\RegPC
       EndIf
       Mdbg_RepaintDisasm(G_Disasm, @DbgState, DbgFont)
       Mdbg_RepaintMiniGrid(G_MiniGrid, @DbgState, DbgFont)
+      Mdbg_RepaintMiniMap(G_MiniMap, @DbgState, DbgFont)
       Mdbg_RepaintStack(G_Stack, @DbgState, DbgFont)
       Protected pgIdx.i
       For pgIdx = 0 To 3
@@ -580,6 +800,31 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
             DbgState\DisasmBase = DisasmNextAddr
             FullRepaint = 1
 
+          Case G_Goto
+            Protected GotoStr.s = InputRequester("Ir para endereco", "Endereco (hexa, 4 digitos):", Mamute_Hex4(DbgState\CursorAddr))
+            If GotoStr <> "" And Mamute_IsHexString(GotoStr, 4)
+              SetGadgetState(G_FollowPC, #False)
+              DbgState\DisasmBase = Val("$" + GotoStr)
+              DbgState\CursorAddr = DbgState\DisasmBase
+              FullRepaint = 1
+            EndIf
+
+          Case G_SetPC
+            *CpuState\RegPC = DbgState\CursorAddr & $FFFF
+            DbgState\DisasmBase = DbgState\CursorAddr
+            DbgState\StatusText = "PC = " + Mamute_Hex4(DbgState\CursorAddr) + " (cursor)"
+            FullRepaint = 1
+
+          Case G_Disasm
+            If EventType() = #PB_EventType_LeftButtonDown
+              Protected DisHitAddr.i
+              If Mdbg_DisasmHitTest(GetGadgetAttribute(G_Disasm, #PB_Canvas_MouseY), DbgState\DisasmBase, DbgFont, @DisHitAddr)
+                SetGadgetState(G_FollowPC, #False)
+                DbgState\CursorAddr = DisHitAddr
+                FullRepaint = 1
+              EndIf
+            EndIf
+
           Case G_MiniGo
             Protected VMini.i
             If Mamute_ParseHexAddr(GetGadgetText(G_MiniAddr), @VMini)
@@ -609,6 +854,17 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
                   Mamute_WriteByte(HitAddr, Val("$" + NewVal))
                   FullRepaint = 1
                 EndIf
+              EndIf
+            EndIf
+
+          Case G_MiniMap
+            If EventType() = #PB_EventType_LeftButtonDown
+              Protected MapBlock.i
+              If Mdbg_MiniMapHitTest(GetGadgetAttribute(G_MiniMap, #PB_Canvas_MouseX), GetGadgetAttribute(G_MiniMap, #PB_Canvas_MouseY),
+                                      GadgetWidth(G_MiniMap), GadgetHeight(G_MiniMap), @MapBlock)
+                DbgState\MiniBase = (MapBlock * 256) & $FFFF
+                SetGadgetText(G_MiniAddr, Mamute_Hex4(DbgState\MiniBase))
+                FullRepaint = 1
               EndIf
             EndIf
 
@@ -712,6 +968,47 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
 
           Case #MamuteDebugger_Shortcut_Run
             DbgState\StatusText = Mz80_Run(*CpuState)
+            FullRepaint = 1
+
+          Case #MamuteDebugger_Shortcut_Goto
+            Protected GotoStr2.s = InputRequester("Ir para endereco", "Endereco (hexa, 4 digitos):", Mamute_Hex4(DbgState\CursorAddr))
+            If GotoStr2 <> "" And Mamute_IsHexString(GotoStr2, 4)
+              SetGadgetState(G_FollowPC, #False)
+              DbgState\DisasmBase = Val("$" + GotoStr2)
+              DbgState\CursorAddr = DbgState\DisasmBase
+              FullRepaint = 1
+            EndIf
+
+          Case #MamuteDebugger_Shortcut_SetPC
+            *CpuState\RegPC = DbgState\CursorAddr & $FFFF
+            DbgState\DisasmBase = DbgState\CursorAddr
+            DbgState\StatusText = "PC = " + Mamute_Hex4(DbgState\CursorAddr) + " (cursor)"
+            FullRepaint = 1
+
+          Case #MamuteDebugger_Shortcut_CursorUp
+            SetGadgetState(G_FollowPC, #False)
+            If DbgState\CursorAddr = DbgState\DisasmBase
+              Protected NewCursorUp.i = Mdbg_FindPrevInstrAddr(DbgState\CursorAddr)
+              DbgState\DisasmBase = NewCursorUp
+              DbgState\CursorAddr = NewCursorUp
+            Else
+              DbgState\CursorAddr = Mdbg_FindPrevInstrAddr(DbgState\CursorAddr)
+            EndIf
+            FullRepaint = 1
+
+          Case #MamuteDebugger_Shortcut_CursorDown
+            SetGadgetState(G_FollowPC, #False)
+            ; Comparacao ">=" nao trata wraparound de endereco ($FFFF -> $0000) -
+            ; mesma limitacao aceita em qualquer outra navegacao deste debugger
+            ; (SP/PC tambem nao tratam esse caso especial); so importa perto do
+            ; topo do espaco de enderecamento.
+            Protected VisRowsCd.i = Mdbg_DisasmVisibleRows(G_Disasm, DbgFont)
+            Protected WindowEndCd.i = Mdbg_DisasmWindowEnd(DbgState\DisasmBase, VisRowsCd)
+            Protected NewCursorDown.i = Mdbg_NextInstrAddr(DbgState\CursorAddr)
+            If NewCursorDown >= WindowEndCd
+              DbgState\DisasmBase = Mdbg_NextInstrAddr(DbgState\DisasmBase)
+            EndIf
+            DbgState\CursorAddr = NewCursorDown
             FullRepaint = 1
 
           Case #MamuteDebugger_Shortcut_Escape
