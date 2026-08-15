@@ -8,9 +8,10 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ## 8.0.1 — "OVO DE FOSSAURO" (2026-08-15)
 
-**Tema da versão**: navegação por cursor no debugger visual Z80, e o `bafmsx/` (port nativo em PureBasic
-do fMSX) deixa de ser um acidente de sessão pra virar projeto irmão oficial dentro do repositório — apelido
-**🦴 Fossauro**, primeiro salto de versão maior (`7.x` → `8.0`) desde o início do projeto.
+**Tema da versão**: navegação por cursor no debugger visual Z80, e o port nativo em PureBasic do fMSX
+deixa de ser um acidente de sessão pra virar projeto irmão oficial dentro do repositório — apelido
+**🦴 Fossauro**, renomeado de `bafmsx/` pra `fossauro/` (rename de verdade, não só cosmético), primeiro
+salto de versão maior (`7.x` → `8.0`) desde o início do projeto.
 
 ### Novidades
 
@@ -26,10 +27,10 @@ do fMSX) deixa de ser um acidente de sessão pra virar projeto irmão oficial de
 - **"PC = cursor (H)"**: botão + atalho, grava o endereço do cursor de volta no `PC` simulado —
   equivalente ao "Set Next Statement" de debuggers convencionais, só reposiciona de onde o próximo
   `Step`/`Run` vai partir, não executa nada sozinho.
-- **`bafmsx/` ("🦴 Fossauro") vira projeto irmão oficial**: port nativo em PureBasic do fMSX (núcleo Z80
-  e memória/slots/PPI/teclado já prontos; VDP V9938 e PSG AY-3-8910 ainda só esqueleto). O **fonte** do
-  port (`.pbi`/`.pb`/`.md`/`LICENSE`/`build.ps1`/`translate.py`) passa a ser rastreado normalmente no
-  git, decisão explícita do usuário.
+- **`fossauro/` ("🦴 Fossauro", ex-`bafmsx/`) vira projeto irmão oficial**: port nativo em PureBasic do
+  fMSX (núcleo Z80 e memória/slots/PPI/teclado já prontos; VDP V9938 e PSG AY-3-8910 ainda só esqueleto).
+  O **fonte** do port (`.pbi`/`.pb`/`.md`/`LICENSE`/`build.ps1`/`translate.py`) passa a ser rastreado
+  normalmente no git, decisão explícita do usuário.
 
 ### Bastidores
 
@@ -37,12 +38,13 @@ do fMSX) deixa de ser um acidente de sessão pra virar projeto irmão oficial de
   `SendKeys` + `PrintWindow` confirmou 20× `Down` rolando a janela mantendo o cursor colado no rodapé,
   25× `Up` rolando de volta, `G` pulando de `4000` pra `5000` de verdade, e `H` gravando `PC = 4008`
   depois de mover o cursor com as setas.
-- **Achado e corrigido nesta sessão**: `bafmsx/` tinha sido commitado por engano numa sessão anterior
-  (`7.33.44`) com a cópia vendorizada inteira do fMSX original em C (`bafmsx/fMSX/`) e ROMs de BIOS do
-  MSX com copyright próprio — nada disso deveria ter ido pro git. Corrigido sem apagar nada do disco:
-  `git rm --cached` nesses arquivos (mais artefatos de build/teste, `.exe`/`debug.log`) e três regras
-  novas no `.gitignore`, mesma política já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc. — material de
-  referência de terceiros nunca entra no repositório, só o trabalho original deste projeto.
+- **Achado e corrigido nesta sessão**: `bafmsx/` (nome do diretório antes do rename pra `fossauro/`, ver
+  acima) tinha sido commitado por engano numa sessão anterior (`7.33.44`) com a cópia vendorizada inteira
+  do fMSX original em C (`fMSX/`, dentro do diretório) e ROMs de BIOS do MSX com copyright próprio — nada
+  disso deveria ter ido pro git. Corrigido sem apagar nada do disco: `git rm --cached` nesses arquivos
+  (mais artefatos de build/teste, `.exe`/`debug.log`) e três regras novas no `.gitignore` (já apontando
+  pro caminho novo, `fossauro/...`), mesma política já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc. —
+  material de referência de terceiros nunca entra no repositório, só o trabalho original deste projeto.
 - **Pendência registrada no `docs/SPEC.md`** (módulo 32b, novo): integração futura entre o PaleoBasic e o
   Fossauro — canal de comunicação (mesmo espírito do pipe já existente com o openMSX real via
   `OpenMSXBridge.pbi`) e as funções que ainda faltam no Fossauro (V9938/PSG/carregamento de fita-disco)

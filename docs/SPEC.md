@@ -6239,23 +6239,27 @@ para a lacuna do `G` abaixo — não presumir sozinho) — **status ao fim da Fa
   minimonitor pro bloco escolhido — ver changelog `7.33.45` no `README.md` pro detalhe completo e a
   verificação ao vivo (UI Automation + `PrintWindow`, 3 screenshots).
 
-### 32b. Integração PaleoBasic ↔ Fossauro (bafmsx) — pendência registrada (2026-08-15, `8.0.1`)
+### 32b. Integração PaleoBasic ↔ Fossauro — pendência registrada (2026-08-15, `8.0.1`)
 
-**Mudança de status, decisão explícita do usuário**: `bafmsx/` (o port nativo em PureBasic do fMSX que
+**Mudança de status, decisão explícita do usuário**: `fossauro/` (o port nativo em PureBasic do fMSX que
 tinha entrado no repositório por engano na sessão da Fase 1 do debugger, ver changelog `7.33.44`/nota de
 licença acima) deixa de ser tratado como acidente a limpar e vira **projeto irmão oficial dentro do
-repositório principal**, apelido **🦴 Fossauro** (ver tabela de apelidos no `README.md`). O FONTE do port
-(`bafmsx/*.pbi`, `bafmsx/*.pb`, `bafmsx/*.md`, `bafmsx/LICENSE`, `bafmsx/build.ps1`,
-`bafmsx/translate.py`) fica rastreado normalmente no git — pedido explícito do usuário ("quero que o
+repositório principal**, apelido **🦴 Fossauro** (ver tabela de apelidos no `README.md`) — apelido que
+virou também o nome real do diretório: `fossauro/` foi renomeado pra `fossauro/` na mesma sessão (git
+detectou como rename puro, conteúdo idêntico). Diferente do resto dos apelidos do projeto (Mamute/Raptor/
+etc., que são só cosméticos — arquivo/procedimento continuam com o nome antigo), este é um rename de
+verdade. O FONTE do port
+(`fossauro/*.pbi`, `fossauro/*.pb`, `fossauro/*.md`, `fossauro/LICENSE`, `fossauro/build.ps1`,
+`fossauro/translate.py`) fica rastreado normalmente no git — pedido explícito do usuário ("quero que o
 fonte dele seja sincronizado"). O que continua de fora, via `.gitignore` (três regras novas, ver
-changelog `8.0.1` no `README.md`): a cópia vendorizada do fMSX original em C (`bafmsx/fMSX/`), os ROMs de
+changelog `8.0.1` no `README.md`): a cópia vendorizada do fMSX original em C (`fossauro/fMSX/`), os ROMs de
 BIOS do MSX (copyright próprio, nunca redistribuível) e artefatos de build/teste (`.exe`/`debug.log`,
-regenerados por `bafmsx/build.ps1`) — mesma lógica já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc.,
+regenerados por `fossauro/build.ps1`) — mesma lógica já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc.,
 material de referência de terceiros nunca entra, só o trabalho original deste projeto.
 
-**Onde o Fossauro está hoje** (status do próprio `bafmsx/README.md`, não conferido linha a linha por
-este documento ainda): núcleo Z80 (`bafmsx/Z80.pbi` + `Z80_Codes*.pbi`/`Z80_Tables.pbi`) e slots/PPI/
-teclado/BIOS loader (`bafmsx/MSX.pbi`) marcados como completos; **V9938 (VDP, `bafmsx/V9938.pbi`) e
+**Onde o Fossauro está hoje** (status do próprio `fossauro/README.md`, não conferido linha a linha por
+este documento ainda): núcleo Z80 (`fossauro/Z80.pbi` + `Z80_Codes*.pbi`/`Z80_Tables.pbi`) e slots/PPI/
+teclado/BIOS loader (`fossauro/MSX.pbi`) marcados como completos; **V9938 (VDP, `fossauro/V9938.pbi`) e
 AY-3-8910 (PSG) ainda só esqueleto, carregamento de fita/disco e UI ainda não existem**. Ou seja, hoje o
 Fossauro roda a CPU e o mapeamento de memória mas não tem vídeo/som/entrada de verdade funcionando ainda
 — um MSX "de papel", não um MSX jogável.
@@ -6277,7 +6281,7 @@ Fossauro roda a CPU e o mapeamento de memória mas não tem vídeo/som/entrada d
      interface, ou se o Fossauro é pensado como substituto.
    - **Dentro do processo** (linkado direto no `PaleoBasic.exe`): sem pipe nenhum, chamada de
      procedure direta — mas esbarra na MESMA questão de licença já registrada pro módulo 32 acima:
-     `bafmsx/LICENSE` herda a cláusula não-comercial do fMSX original, incompatível com a GPLv3 deste
+     `fossauro/LICENSE` herda a cláusula não-comercial do fMSX original, incompatível com a GPLv3 deste
      projeto (`LICENSE` na raiz) do jeito que está hoje. Compilar os dois num único binário put a licença
      não-comercial do Fossauro dentro de um executável GPLv3 de um jeito que precisa de decisão
      consciente do usuário antes de acontecer (trocar a licença do Fossauro, manter os dois separados

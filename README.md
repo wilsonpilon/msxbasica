@@ -43,7 +43,7 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
 | 🦕 **Diplodoco** | `editor/MSXDisk.pbi` + `editor/DiskManagerGui.pbi` — imagens `.dsk` |
 | 🎨 **Pixelossauro** | `editor/Screen0EditorGui.pbi`, `Screen1EditorGui.pbi`, `Screen2EditorGui.pbi`, `Screen12EditorGui.pbi` — editores de tela pixel-a-pixel |
 | 🦅 **Pteranodonte** | `editor/OpenMSXBridge.pbi` — ponte/lançamento do openMSX |
-| 🦴 **Fossauro** | `bafmsx/` — port nativo em PureBasic do fMSX (emulador MSX completo: Z80, memória/slots, PPI, VDP V9938, PSG), projeto irmão dentro do repositório principal |
+| 🦴 **Fossauro** | `fossauro/` — port nativo em PureBasic do fMSX (emulador MSX completo: Z80, memória/slots, PPI, VDP V9938, PSG), projeto irmão dentro do repositório principal |
 
 ## O que já temos
 
@@ -2820,23 +2820,25 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   de sessão e vira oficialmente **projeto irmão dentro do repositório principal**, com nome próprio no
   tema pré-histórico do projeto: **🦴 Fossauro** (fóssil + sufixo `-ossauro`, mesmo padrão de trocadilho
   já usado em Pixelossauro — a ideia é "hardware fóssil trazido de volta à vida", que é literalmente o
-  que um emulador faz). Puramente cosmético, mesmo tratamento que "Paleobasic" e os outros apelidos —
-  nenhum arquivo/diretório foi renomeado, `bafmsx/` continua sendo o caminho real.
+  que um emulador faz). **Atualização ainda no mesmo dia**: diferente do resto dos apelidos do projeto
+  (Mamute/Raptor/etc., cosméticos — nome de arquivo/procedimento não muda), este apelido virou renome de
+  verdade — `bafmsx/` → `fossauro/`, pedido explícito do usuário, git detectou como rename puro (conteúdo
+  idêntico). Todas as referências abaixo já usam o caminho novo.
   - **`.gitignore` corrigido**: o achado da sessão anterior (`7.33.44`, ver changelog) — ROMs de BIOS do
     MSX com copyright próprio e uma cópia vendorizada inteira do fMSX original em C
-    (`bafmsx/fMSX/`, mesmo material já listado em `/fmsx/` na raiz) commitados por engano — foi
-    corrigido sem apagar nada do disco: `git rm --cached` nesses arquivos (ROMs, `bafmsx/fMSX/` inteiro,
-    `fMSX.exe`/`fMSX.html`, mais os artefatos de build/teste `bafmsx/*.exe`/`debug.log`, regenerados via
-    `bafmsx/build.ps1`) e três regras novas no `.gitignore` cobrindo esse escopo. **O fonte de verdade do
-    port continua rastreado normalmente** (`bafmsx/*.pbi`, `bafmsx/*.pb`, `bafmsx/*.md`, `bafmsx/LICENSE`,
-    `bafmsx/build.ps1`, `bafmsx/translate.py`) — pedido explícito do usuário ("quero que o fonte dele
-    seja sincronizado"), diferente do tratamento dado a `badig/`/`nestor80/`/`asmsx/`/etc. (que ficam
-    inteiramente de fora, só como referência local).
-  - **Pendência registrada no `docs/SPEC.md`** (módulo 32, nova seção): integração futura entre o
+    (`fossauro/fMSX/`, mesmo material já listado em `/fmsx/` na raiz) commitados por engano — foi
+    corrigido sem apagar nada do disco: `git rm --cached` nesses arquivos (ROMs, `fossauro/fMSX/` inteiro,
+    `fMSX.exe`/`fMSX.html`, mais os artefatos de build/teste `fossauro/*.exe`/`debug.log`, regenerados via
+    `fossauro/build.ps1`) e três regras novas no `.gitignore` cobrindo esse escopo. **O fonte de verdade do
+    port continua rastreado normalmente** (`fossauro/*.pbi`, `fossauro/*.pb`, `fossauro/*.md`,
+    `fossauro/LICENSE`, `fossauro/build.ps1`, `fossauro/translate.py`) — pedido explícito do usuário
+    ("quero que o fonte dele seja sincronizado"), diferente do tratamento dado a
+    `badig/`/`nestor80/`/`asmsx/`/etc. (que ficam inteiramente de fora, só como referência local).
+  - **Pendência registrada no `docs/SPEC.md`** (módulo 32b, nova seção): integração futura entre o
     PaleoBasic e o Fossauro — canal de comunicação entre a IDE e o emulador (mesmo espírito do pipe já
     existente com o openMSX real via `OpenMSXBridge.pbi`, módulo 12), e as funções que ainda faltam no
     Fossauro em si (V9938/PSG/carregamento de fita-disco, hoje só esqueleto segundo o próprio
-    `bafmsx/README.md`) antes de uma integração de verdade fazer sentido. Ver módulo 32 pro detalhe
+    `fossauro/README.md`) antes de uma integração de verdade fazer sentido. Ver módulo 32b pro detalhe
     completo e como isso se encaixa no roteiro de 3 fases do debugger visual já existente.
   - **Bump de versão para `8.0.1`** (de `7.33.46`) — marca este novo capítulo do projeto (primeiro salto
     de versão maior desde o início do repositório).

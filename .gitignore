@@ -66,23 +66,24 @@
 /fMSX/
 /fmsx/
 
-# bafmsx/ ("Fossauro") - port nativo em PureBasic do fMSX (Z80/MSX/V9938),
-# decisao explicita do usuario (2026-08-15): o FONTE do port (bafmsx/*.pbi,
-# bafmsx/*.pb, bafmsx/*.md, bafmsx/LICENSE, bafmsx/build.ps1,
-# bafmsx/translate.py) e parte do projeto e fica versionado normalmente -
-# NAO adicionar "/bafmsx/" aqui. As tres linhas abaixo excluem so o que
-# nunca deveria ter sido commitado: a copia vendorizada do fMSX original em
-# C (bafmsx/fMSX/ - mesmo material/mesma licenca ja excluida em /fmsx/
-# acima, so que apareceu de novo dentro de bafmsx/ por engano), os binarios
-# de ROM do sistema MSX (copyright proprio, nao redistribuivel,
-# independente da licenca do fMSX) e artefatos de build/teste (.exe/log,
-# regenerados por bafmsx/build.ps1, nao sao fonte).
-/bafmsx/fMSX/
-/bafmsx/fMSX.exe
-/bafmsx/fMSX.html
-/bafmsx/*.ROM
-/bafmsx/*.exe
-/bafmsx/debug.log
+# fossauro/ (apelido oficial, ex-"bafmsx/" - renomeado 2026-08-15) - port
+# nativo em PureBasic do fMSX (Z80/MSX/V9938), decisao explicita do usuario:
+# o FONTE do port (fossauro/*.pbi, fossauro/*.pb, fossauro/*.md,
+# fossauro/LICENSE, fossauro/build.ps1, fossauro/translate.py) e parte do
+# projeto e fica versionado normalmente - NAO adicionar "/fossauro/" aqui.
+# As linhas abaixo excluem so o que nunca deveria ter sido commitado: a
+# copia vendorizada do fMSX original em C (fossauro/fMSX/ - mesmo material/
+# mesma licenca ja excluida em /fmsx/ acima, so que apareceu de novo dentro
+# de fossauro/ por engano), os binarios de ROM do sistema MSX (copyright
+# proprio, nao redistribuivel, independente da licenca do fMSX) e artefatos
+# de build/teste (.exe/log, regenerados por fossauro/build.ps1, nao sao
+# fonte).
+/fossauro/fMSX/
+/fossauro/fMSX.exe
+/fossauro/fMSX.html
+/fossauro/*.ROM
+/fossauro/*.exe
+/fossauro/debug.log
 
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
