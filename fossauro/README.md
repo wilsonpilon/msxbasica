@@ -1,6 +1,6 @@
-# bamsx - fMSX Ported to PureBasic
+# fossauro - fMSX Ported to PureBasic
 
-**bamsx** is a native port of Marat Fayzullin's famous **fMSX** emulator (specifically its Z80 CPU emulation core and peripheral structures) written in **PureBasic**. 
+**fossauro** is a native port of Marat Fayzullin's famous **fMSX** emulator (specifically its Z80 CPU emulation core and peripheral structures) written in **PureBasic**. 
 
 ---
 
@@ -16,7 +16,7 @@ This project is directly based on the C source code of **fMSX**, designed and wr
 - [x] **MSX Memory & Slot Management**: Completed. Handles primary/secondary slot paging via `PSlot` and `SSlot` structures.
 - [x] **Intel 8255 PPI & Keyboard Matrix**: Completed. Emulates parallel port interface and translates keyboard reads through active matrix scans.
 - [x] **MSX BIOS Loader**: Completed. Allocates ROM memory buffers and loads/maps `MSX.ROM` file from disk.
-- [x] **Verification Routine**: Completed. The double-verification routine in `bamsx.pb` successfully loads `MSX.ROM`, validates the header (`$F3`), configures the PPI ports, triggers matrix row selection, writes keyboard press states, and verifies matching output.
+- [x] **Verification Routine**: Completed. The double-verification routine in `fossauro_verify.pb` successfully loads `MSX.ROM`, validates the header (`$F3`), configures the PPI ports, triggers matrix row selection, writes keyboard press states, and verifies matching output.
 - [ ] **V9938 VDP Video Display Processor**: Planned (Basic skeleton port routing completed).
 - [ ] **AY-3-8910 PSG Audio Synthesizer**: Planned (Basic skeleton port routing completed).
 - [ ] **UI & Tape/Disk Loading**: Planned.
@@ -52,13 +52,13 @@ This will rebuild `Z80_Tables.pbi` and all the translated opcode files (`Z80_Cod
 ### 2. Compile the Project
 To compile the console-based validation program:
 ```bash
-pbcompiler bamsx.pb /CONSOLE /OUTPUT bamsx.exe
+pbcompiler fossauro_verify.pb /CONSOLE /OUTPUT fossauro_verify.exe
 ```
 
 ### 3. Run Verification
 Execute the generated binary to run the Z80 execution test:
 ```bash
-.\bamsx.exe
+.\fossauro_verify.exe
 ```
 Successful output looks like:
 ```

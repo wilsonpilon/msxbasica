@@ -1,9 +1,9 @@
 ; Translated from CodesXX.h - Generated automatically
 
-Case $20 :  If *R\AF\B\l&#Z_FLAG : *R\PC\W + 1 : Else : *R\ICount - 5 : M_JR : EndIf
-Case $30 :  If *R\AF\B\l&#C_FLAG : *R\PC\W + 1 : Else : *R\ICount - 5 : M_JR : EndIf
-Case $28 :  If *R\AF\B\l&#Z_FLAG : *R\ICount - 5 : M_JR : Else : *R\PC\W + 1 : EndIf
-Case $38 :  If *R\AF\B\l&#C_FLAG : *R\ICount - 5 : M_JR : Else : *R\PC\W + 1 : EndIf
+Case $20 :  If *R\AF\B\l&#Z_FLAG : *R\PC\W + 1 : Else : *R\ICount = *R\ICount - 5 : M_JR : EndIf
+Case $30 :  If *R\AF\B\l&#C_FLAG : *R\PC\W + 1 : Else : *R\ICount = *R\ICount - 5 : M_JR : EndIf
+Case $28 :  If *R\AF\B\l&#Z_FLAG : *R\ICount = *R\ICount - 5 : M_JR : Else : *R\PC\W + 1 : EndIf
+Case $38 :  If *R\AF\B\l&#C_FLAG : *R\ICount = *R\ICount - 5 : M_JR : Else : *R\PC\W + 1 : EndIf
 Case $C2 :  If *R\AF\B\l&#Z_FLAG : *R\PC\W + 2 : Else : M_JP : EndIf
 Case $D2 :  If *R\AF\B\l&#C_FLAG : *R\PC\W + 2 : Else : M_JP : EndIf
 Case $E2 :  If *R\AF\B\l&#P_FLAG : *R\PC\W + 2 : Else : M_JP : EndIf
@@ -12,22 +12,22 @@ Case $CA :  If *R\AF\B\l&#Z_FLAG : M_JP : Else : *R\PC\W + 2 : EndIf
 Case $DA :  If *R\AF\B\l&#C_FLAG : M_JP : Else : *R\PC\W + 2 : EndIf
 Case $EA :  If *R\AF\B\l&#P_FLAG : M_JP : Else : *R\PC\W + 2 : EndIf
 Case $FA :  If *R\AF\B\l&#S_FLAG : M_JP : Else : *R\PC\W + 2 : EndIf
-Case $C0 :  If  Not (*R\AF\B\l&#Z_FLAG) : *R\ICount - 6 : M_RET : EndIf
-Case $D0 :  If  Not (*R\AF\B\l&#C_FLAG) : *R\ICount - 6 : M_RET : EndIf
-Case $E0 :  If  Not (*R\AF\B\l&#P_FLAG) : *R\ICount - 6 : M_RET : EndIf
-Case $F0 :  If  Not (*R\AF\B\l&#S_FLAG) : *R\ICount - 6 : M_RET : EndIf
-Case $C8 :  If *R\AF\B\l&#Z_FLAG : *R\ICount - 6 : M_RET : EndIf
-Case $D8 :  If *R\AF\B\l&#C_FLAG : *R\ICount - 6 : M_RET : EndIf
-Case $E8 :  If *R\AF\B\l&#P_FLAG : *R\ICount - 6 : M_RET : EndIf
-Case $F8 :  If *R\AF\B\l&#S_FLAG : *R\ICount - 6 : M_RET : EndIf
-Case $C4 :  If *R\AF\B\l&#Z_FLAG : *R\PC\W + 2 : Else : *R\ICount - 7 : M_CALL : EndIf
-Case $D4 :  If *R\AF\B\l&#C_FLAG : *R\PC\W + 2 : Else : *R\ICount - 7 : M_CALL : EndIf
-Case $E4 :  If *R\AF\B\l&#P_FLAG : *R\PC\W + 2 : Else : *R\ICount - 7 : M_CALL : EndIf
-Case $F4 :  If *R\AF\B\l&#S_FLAG : *R\PC\W + 2 : Else : *R\ICount - 7 : M_CALL : EndIf
-Case $CC :  If *R\AF\B\l&#Z_FLAG : *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
-Case $DC :  If *R\AF\B\l&#C_FLAG : *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
-Case $EC :  If *R\AF\B\l&#P_FLAG : *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
-Case $FC :  If *R\AF\B\l&#S_FLAG : *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
+Case $C0 :  If  Not (*R\AF\B\l&#Z_FLAG) : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $D0 :  If  Not (*R\AF\B\l&#C_FLAG) : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $E0 :  If  Not (*R\AF\B\l&#P_FLAG) : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $F0 :  If  Not (*R\AF\B\l&#S_FLAG) : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $C8 :  If *R\AF\B\l&#Z_FLAG : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $D8 :  If *R\AF\B\l&#C_FLAG : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $E8 :  If *R\AF\B\l&#P_FLAG : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $F8 :  If *R\AF\B\l&#S_FLAG : *R\ICount = *R\ICount - 6 : M_RET : EndIf
+Case $C4 :  If *R\AF\B\l&#Z_FLAG : *R\PC\W + 2 : Else : *R\ICount = *R\ICount - 7 : M_CALL : EndIf
+Case $D4 :  If *R\AF\B\l&#C_FLAG : *R\PC\W + 2 : Else : *R\ICount = *R\ICount - 7 : M_CALL : EndIf
+Case $E4 :  If *R\AF\B\l&#P_FLAG : *R\PC\W + 2 : Else : *R\ICount = *R\ICount - 7 : M_CALL : EndIf
+Case $F4 :  If *R\AF\B\l&#S_FLAG : *R\PC\W + 2 : Else : *R\ICount = *R\ICount - 7 : M_CALL : EndIf
+Case $CC :  If *R\AF\B\l&#Z_FLAG : *R\ICount = *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
+Case $DC :  If *R\AF\B\l&#C_FLAG : *R\ICount = *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
+Case $EC :  If *R\AF\B\l&#P_FLAG : *R\ICount = *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
+Case $FC :  If *R\AF\B\l&#S_FLAG : *R\ICount = *R\ICount - 7 : M_CALL : Else : *R\PC\W + 2 : EndIf
 Case $80 :  M_ADD(*R\BC\B\h) 
 Case $81 :  M_ADD(*R\BC\B\l) 
 Case $82 :  M_ADD(*R\DE\B\h) 
@@ -35,7 +35,7 @@ Case $83 :  M_ADD(*R\DE\B\l)
 Case $84 :  M_ADD(*R\XX\B\h) 
 Case $85 :  M_ADD(*R\XX\B\l) 
 Case $87 :  M_ADD(*R\AF\B\h) 
-Case $86 :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $86 :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_ADD(I) 
 Case $C6 :  I=ReadOp(*R) : M_ADD(I) 
 Case $90 :  M_SUB(*R\BC\B\h) 
@@ -45,7 +45,7 @@ Case $93 :  M_SUB(*R\DE\B\l)
 Case $94 :  M_SUB(*R\XX\B\h) 
 Case $95 :  M_SUB(*R\XX\B\l) 
 Case $97 :  *R\AF\B\h=0 : *R\AF\B\l=#N_FLAG|#Z_FLAG 
-Case $96 :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $96 :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_SUB(I) 
 Case $D6 :  I=ReadOp(*R) : M_SUB(I) 
 Case $A0 :  M_AND(*R\BC\B\h) 
@@ -55,7 +55,7 @@ Case $A3 :  M_AND(*R\DE\B\l)
 Case $A4 :  M_AND(*R\XX\B\h) 
 Case $A5 :  M_AND(*R\XX\B\l) 
 Case $A7 :  M_AND(*R\AF\B\h) 
-Case $A6 :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $A6 :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_AND(I) 
 Case $E6 :  I=ReadOp(*R) : M_AND(I) 
 Case $B0 :  M_OR(*R\BC\B\h) 
@@ -65,7 +65,7 @@ Case $B3 :  M_OR(*R\DE\B\l)
 Case $B4 :  M_OR(*R\XX\B\h) 
 Case $B5 :  M_OR(*R\XX\B\l) 
 Case $B7 :  M_OR(*R\AF\B\h) 
-Case $B6 :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $B6 :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_OR(I) 
 Case $F6 :  I=ReadOp(*R) : M_OR(I) 
 Case $88 :  M_ADC(*R\BC\B\h) 
@@ -75,7 +75,7 @@ Case $8B :  M_ADC(*R\DE\B\l)
 Case $8C :  M_ADC(*R\XX\B\h) 
 Case $8D :  M_ADC(*R\XX\B\l) 
 Case $8F :  M_ADC(*R\AF\B\h) 
-Case $8E :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $8E :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_ADC(I) 
 Case $CE :  I=ReadOp(*R) : M_ADC(I) 
 Case $98 :  M_SBC(*R\BC\B\h) 
@@ -85,7 +85,7 @@ Case $9B :  M_SBC(*R\DE\B\l)
 Case $9C :  M_SBC(*R\XX\B\h) 
 Case $9D :  M_SBC(*R\XX\B\l) 
 Case $9F :  M_SBC(*R\AF\B\h) 
-Case $9E :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $9E :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_SBC(I) 
 Case $DE :  I=ReadOp(*R) : M_SBC(I) 
 Case $A8 :  M_XOR(*R\BC\B\h) 
@@ -95,7 +95,7 @@ Case $AB :  M_XOR(*R\DE\B\l)
 Case $AC :  M_XOR(*R\XX\B\h) 
 Case $AD :  M_XOR(*R\XX\B\l) 
 Case $AF :  *R\AF\B\h=0 : *R\AF\B\l=#P_FLAG|#Z_FLAG 
-Case $AE :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $AE :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_XOR(I) 
 Case $EE :  I=ReadOp(*R) : M_XOR(I) 
 Case $B8 :  M_CP(*R\BC\B\h) 
@@ -105,7 +105,7 @@ Case $BB :  M_CP(*R\DE\B\l)
 Case $BC :  M_CP(*R\XX\B\h) 
 Case $BD :  M_CP(*R\XX\B\l) 
 Case $BF :  *R\AF\B\l=#N_FLAG|#Z_FLAG 
-Case $BE :  I=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $BE :  I=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
                 M_CP(I) 
 Case $FE :  I=ReadOp(*R) : M_CP(I) 
 Case $01 :  M_LDWORD(BC) 
@@ -114,20 +114,20 @@ Case $21 :  M_LDWORD(XX)
 Case $31 :  M_LDWORD(SP) 
 Case $E9 :  *R\PC\W=*R\XX\W : JumpZ80(*R\PC\W) 
 Case $F9 :  *R\SP\W=*R\XX\W 
-Case $0A :  *R\AF\B\h=RdZ80(*R\BC\W) 
-Case $1A :  *R\AF\B\h=RdZ80(*R\DE\W) 
+Case $0A :  *R\AF\B\h=SafeRdZ80(*R\BC\W) 
+Case $1A :  *R\AF\B\h=SafeRdZ80(*R\DE\W) 
 Case $09 :  M_ADDW(XX,BC) 
 Case $19 :  M_ADDW(XX,DE) 
 Case $29 :  M_ADDW(XX,XX) 
 Case $39 :  M_ADDW(XX,SP) 
-Case $0B :  *R\BC\W - 1 
-Case $1B :  *R\DE\W - 1 
-Case $2B :  *R\XX\W - 1 
-Case $3B :  *R\SP\W - 1 
-Case $03 :  *R\BC\W + 1 
-Case $13 :  *R\DE\W + 1 
-Case $23 :  *R\XX\W + 1 
-Case $33 :  *R\SP\W + 1 
+Case $0B :  *R\BC\W = *R\BC\W - 1 
+Case $1B :  *R\DE\W = *R\DE\W - 1 
+Case $2B :  *R\XX\W = *R\XX\W - 1 
+Case $3B :  *R\SP\W = *R\SP\W - 1 
+Case $03 :  *R\BC\W = *R\BC\W + 1 
+Case $13 :  *R\DE\W = *R\DE\W + 1 
+Case $23 :  *R\XX\W = *R\XX\W + 1 
+Case $33 :  *R\SP\W = *R\SP\W + 1 
 Case $05 :  M_DEC(*R\BC\B\h) 
 Case $0D :  M_DEC(*R\BC\B\l) 
 Case $15 :  M_DEC(*R\DE\B\h) 
@@ -135,7 +135,7 @@ Case $1D :  M_DEC(*R\DE\B\l)
 Case $25 :  M_DEC(*R\XX\B\h) 
 Case $2D :  M_DEC(*R\XX\B\l) 
 Case $3D :  M_DEC(*R\AF\B\h) 
-Case $35 :  I=RdZ80(*R\XX\W+SignExtend8(RdZ80(*R\PC\W))) : M_DEC(I) 
+Case $35 :  I=SafeRdZ80(*R\XX\W+SignExtend8(SafeRdZ80(*R\PC\W))) : M_DEC(I) 
                 WrZ80(*R\XX\W+SignExtend8(ReadOp(*R)),I) 
 Case $04 :  M_INC(*R\BC\B\h) 
 Case $0C :  M_INC(*R\BC\B\l) 
@@ -144,7 +144,7 @@ Case $1C :  M_INC(*R\DE\B\l)
 Case $24 :  M_INC(*R\XX\B\h) 
 Case $2C :  M_INC(*R\XX\B\l) 
 Case $3C :  M_INC(*R\AF\B\h) 
-Case $34 :  I=RdZ80(*R\XX\W+SignExtend8(RdZ80(*R\PC\W))) : M_INC(I) 
+Case $34 :  I=SafeRdZ80(*R\XX\W+SignExtend8(SafeRdZ80(*R\PC\W))) : M_INC(I) 
                 WrZ80(*R\XX\W+SignExtend8(ReadOp(*R)),I) 
 Case $07 :  I=((Bool(*R\AF\B\h&$80) * (#C_FLAG))) 
    *R\AF\B\h=(*R\AF\B\h<<1)|I 
@@ -174,7 +174,7 @@ Case $C1 :  M_POP(BC)
 Case $D1 :  M_POP(DE) 
 Case $E1 :  M_POP(XX) 
 Case $F1 :  M_POP(AF) 
-Case $10 :  *R\BC\B\h - 1 : If *R\BC\B\h : *R\ICount - 5 : M_JR : Else : *R\PC\W + 1 : EndIf
+Case $10 :  *R\BC\B\h - 1 : If *R\BC\B\h : *R\ICount = *R\ICount - 5 : M_JR : Else : *R\PC\W + 1 : EndIf
 Case $C3 :  M_JP 
 Case $18 :  M_JR 
 Case $CD :  M_CALL 
@@ -184,11 +184,11 @@ Case $2F :  *R\AF\B\h=~*R\AF\B\h : S(#N_FLAG|#H_FLAG)
 Case $00 
 Case $D3 :  I=ReadOp(*R) : OutZ80(I|(*R\AF\W&$FF00),*R\AF\B\h) 
 Case $DB :  I=ReadOp(*R) : *R\AF\B\h=InZ80(I|(*R\AF\W&$FF00)) 
-Case $76 :  *R\PC\W - 1 
+Case $76 :  *R\PC\W = *R\PC\W - 1 
    *R\IFF = *R\IFF | #IFF_HALT 
    *R\IBackup=0 
    *R\ICount=0 
-Case $F3 :  If *R\IFF&#IFF_EI : *R\ICount + *R\IBackup-1 : EndIf
+Case $F3 :  If *R\IFF&#IFF_EI : *R\ICount = *R\ICount + *R\IBackup-1 : EndIf
    *R\IFF = *R\IFF & ~(#IFF_1|#IFF_2|#IFF_EI) 
 Case $FB :  If  Not (*R\IFF&(#IFF_1|#IFF_EI)) : *R\IFF = *R\IFF | #IFF_2|#IFF_EI 
      *R\IBackup=*R\ICount 
@@ -265,13 +265,13 @@ Case $77 :  J\W=*R\XX\W+SignExtend8(ReadOp(*R))
                 WrZ80(J\W,*R\AF\B\h) 
 Case $02 :  WrZ80(*R\BC\W,*R\AF\B\h) 
 Case $12 :  WrZ80(*R\DE\W,*R\AF\B\h) 
-Case $46 :  *R\BC\B\h=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
-Case $4E :  *R\BC\B\l=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
-Case $56 :  *R\DE\B\h=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
-Case $5E :  *R\DE\B\l=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
-Case $66 :  *R\HL\B\h=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
-Case $6E :  *R\HL\B\l=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
-Case $7E :  *R\AF\B\h=RdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $46 :  *R\BC\B\h=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $4E :  *R\BC\B\l=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $56 :  *R\DE\B\h=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $5E :  *R\DE\B\l=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $66 :  *R\HL\B\h=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $6E :  *R\HL\B\l=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
+Case $7E :  *R\AF\B\h=SafeRdZ80(*R\XX\W+SignExtend8(ReadOp(*R))) 
 Case $06 :  *R\BC\B\h=ReadOp(*R) 
 Case $0E :  *R\BC\B\l=ReadOp(*R) 
 Case $16 :  *R\DE\B\h=ReadOp(*R) 
@@ -287,19 +287,19 @@ Case $22 :  J\B\l=ReadOp(*R)
    WrZ80(J\W,*R\XX\B\h) 
 Case $2A :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
-   *R\XX\B\l=RdZ80(J\W)  : J\W + 1
-   *R\XX\B\h=RdZ80(J\W) 
+   *R\XX\B\l=SafeRdZ80(J\W)  : J\W + 1
+   *R\XX\B\h=SafeRdZ80(J\W) 
 Case $3A :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
-   *R\AF\B\h=RdZ80(J\W) 
+   *R\AF\B\h=SafeRdZ80(J\W) 
 Case $32 :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
    WrZ80(J\W,*R\AF\B\h) 
-Case $E3 :  J\B\l=RdZ80(*R\SP\W) : J\B\h=RdZ80(*R\SP\W + 1)
-    WrZ80(*R\SP\W,*R\XX\B\l) : WrZ80(*R\SP\W + 1,*R\XX\B\h)
-    *R\XX\W=J\W 	
+Case $E3 :  J\B\l=SafeRdZ80(*R\SP\W) : WrZ80(*R\SP\W + 1,*R\XX\B\l) 
+   J\B\h=SafeRdZ80(*R\SP\W) : WrZ80(*R\SP\W - 1,*R\XX\B\h) 
+   *R\XX\W=J\W 
 Case $27 :  J\W=*R\AF\B\h 
-   If *R\AF\B\l&#C_FLAG : J\W | 256 : EndIf
-   If *R\AF\B\l&#H_FLAG : J\W | 512 : EndIf
-   If *R\AF\B\l&#N_FLAG : J\W | 1024 : EndIf
+   If *R\AF\B\l&#C_FLAG : J\W = J\W | 256 : EndIf
+   If *R\AF\B\l&#H_FLAG : J\W = J\W | 512 : EndIf
+   If *R\AF\B\l&#N_FLAG : J\W = J\W | 1024 : EndIf
    *R\AF\W=DAATable(J\W) 

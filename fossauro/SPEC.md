@@ -1,17 +1,17 @@
-# SPEC.md - bamsx Emulator Specification & Roadmap
+# SPEC.md - fossauro Emulator Specification & Roadmap
 
-This document outlines the conversion of Marat Fayzullin's **fMSX** emulator from C to PureBasic (project name **bamsx**). It details what has been completed, what remains, estimated effort, and the technical roadmap to achieve a fully functional emulator.
+This document outlines the conversion of Marat Fayzullin's **fMSX** emulator from C to PureBasic (project name **fossauro**). It details what has been completed, what remains, estimated effort, and the technical roadmap to achieve a fully functional emulator.
 
 ---
 
 ## 1. Project Overview & Architecture
 
-**bamsx** is a port of the fMSX emulator to PureBasic. The objective is to compile a native, dependency-free MSX/MSX2/MSX2+ emulator leveraging PureBasic's clean syntax, cross-platform capabilities, and lightweight runtime.
+**fossauro** is a port of the fMSX emulator to PureBasic. The objective is to compile a native, dependency-free MSX/MSX2/MSX2+ emulator leveraging PureBasic's clean syntax, cross-platform capabilities, and lightweight runtime.
 
 ### Component Architecture:
 ```
 +--------------------------------------------------------------+
-|                         bamsx.pb                             |
+|                        fossauro.pb                           |
 |          (Window/Canvas UI, Audio, Keyboard/Mouse Input)     |
 +--------------------------------------------------------------+
                                |
@@ -80,7 +80,7 @@ V                              V                               V
 
 ```mermaid
 gantt
-    title bamsx Development Roadmap
+    title fossauro Development Roadmap
     dateFormat  YYYY-MM-DD
     section CPU Core
     Z80 CPU Translation (Done)  :done, 2026-08-01, 2026-08-14

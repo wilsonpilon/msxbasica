@@ -1,7 +1,11 @@
-; bafmsx - PureBasic MSX Emulator
+; fossauro - PureBasic MSX Emulator
 ; Main Entry Point & Graphical User Interface
 
 EnableExplicit
+
+CompilerIf Not Defined(App_Version, #PB_Constant)
+  #App_Version = "8.0.1"
+CompilerEndIf
 
 ; --- Emulation Control Globals ---
 Global ThreadExit.l = 0
@@ -20,6 +24,20 @@ EndProcedure
 
 ; Emulation Background Thread
 Procedure EmulationThreadProc(*Param)
+  ; Re-assert the Z80 core callback pointers HERE, on the thread that actually calls
+  ; RunZ80/uses them, instead of trusting the assignment done earlier on the main
+  ; thread in RunEmulator() to be visible. Confirmed via crash dump analysis
+  ; (0xC0000005, RIP=0x0) that RdZ80 was null at the exact moment the CPU reached the
+  ; cartridge's entry point ($406C) - the call-site target address matched RdZ80's
+  ; storage address exactly. Cheap and harmless if it was already set correctly.
+  RealRdZ80 = @MSXRdZ80()
+  WrZ80 = @MSXWrZ80()
+  InZ80 = @MSXInZ80()
+  OutZ80 = @MSXOutZ80()
+  LoopZ80 = @MSXLoopZ80()
+  PatchZ80 = @MyPatchZ80()
+  LogGeneral("EmulationThreadProc: callback pointers re-asserted on emu thread. RealRdZ80=$" + Hex(RealRdZ80))
+
   CPU\IPeriod = 228 ; Cycles per scanline phase
   RunZ80(@CPU)
 EndProcedure
@@ -78,14 +96,18 @@ EndProcedure
 
 ; Load 16K/32K standard ROM cartridge
 Procedure.l LoadCartridge(FileName.s)
+  LogGeneral("LoadCartridge called for: " + FileName)
   Protected FileNum.i = ReadFile(#PB_Any, FileName)
   If FileNum = 0
+    LogGeneral("LoadCartridge ERROR: Could not open file " + FileName)
     ProcedureReturn 0
   EndIf
   
   Protected Length.q = Lof(FileNum)
+  LogGeneral("LoadCartridge: File size = " + Str(Length) + " bytes")
   If Length > 32768
     Length = 32768
+    LogGeneral("LoadCartridge WARNING: Truncating ROM mapping to 32KB")
   EndIf
   
   If *ROMData(0)
@@ -94,6 +116,9 @@ Procedure.l LoadCartridge(FileName.s)
   *ROMData(0) = AllocateMemory(Length)
   ReadData(FileNum, *ROMData(0), Length)
   CloseFile(FileNum)
+  
+  Protected header.s = Chr(PeekA(*ROMData(0))) + Chr(PeekA(*ROMData(0)+1))
+  LogGeneral("LoadCartridge: ROM Header Bytes = $" + Hex(PeekA(*ROMData(0))) + " $" + Hex(PeekA(*ROMData(0)+1)) + " ('" + header + "')")
   
   ; Reset slot maps first to empty
   Protected J.l
@@ -108,11 +133,15 @@ Procedure.l LoadCartridge(FileName.s)
       *MemMap(1, 0, J) = *ROMData(0) + (J - 2) * $2000
       *MemMap(2, 0, J) = *ROMData(0) + (J - 2) * $2000
     Next J
+    LogGeneral("LoadCartridge: Mapped 32KB ROM to Slot 1-0 and Slot 2-0")
   ElseIf Length = 16384
     *MemMap(1, 0, 2) = *ROMData(0) : *MemMap(1, 0, 3) = *ROMData(0) + $2000
     *MemMap(1, 0, 4) = *ROMData(0) : *MemMap(1, 0, 5) = *ROMData(0) + $2000
     *MemMap(2, 0, 2) = *ROMData(0) : *MemMap(2, 0, 3) = *ROMData(0) + $2000
     *MemMap(2, 0, 4) = *ROMData(0) : *MemMap(2, 0, 5) = *ROMData(0) + $2000
+    LogGeneral("LoadCartridge: Mapped 16KB ROM (Mirrored) to Slot 1-0 and Slot 2-0")
+  Else
+    LogGeneral("LoadCartridge WARNING: Unsupported ROM size " + Str(Length))
   EndIf
   
   ; Reset hardware state
@@ -120,39 +149,68 @@ Procedure.l LoadCartridge(FileName.s)
   ResetVDP()
   ResetPSG()
   
+  LogGeneral("LoadCartridge: Cartridge loaded successfully and hardware reset.")
   ProcedureReturn 1
 EndProcedure
 
 ; Initialize & Run Emulation
 Procedure RunEmulator()
+  ; fossauro.log is the definitive, persistent log - NOT wiped on every launch anymore.
+  ; It accumulates across runs and rolls over on its own once it crosses #LogMaxBytes
+  ; (see RotateLog() in MSX.pbi), Linux logrotate style (fossauro.log.1, .2, ...).
+  LogGeneral("=== fossauro Start ===")
+  
+  Protected RomFileToLoad.s = ""
+  Protected ParameterCount.l = CountProgramParameters()
+  Protected ParamIdx.l = 0
+  
+  While ParamIdx < ParameterCount
+    Protected Param.s = ProgramParameter(ParamIdx)
+    If LCase(Param) = "-rom" And ParamIdx + 1 < ParameterCount
+      RomFileToLoad = ProgramParameter(ParamIdx + 1)
+      ParamIdx + 2
+    Else
+      ParamIdx + 1
+    EndIf
+  Wend
+  
+  LogGeneral("CLI Arguments: RomFileToLoad = '" + RomFileToLoad + "'")
+
   ; 1. Init tables and system state
   InitZ80Tables()
   InitializeMSXMemory()
   
   ; 2. Route CPU callback pointers
-  RdZ80 = @MSXRdZ80()
+  RealRdZ80 = @MSXRdZ80()
   WrZ80 = @MSXWrZ80()
   InZ80 = @MSXInZ80()
   OutZ80 = @MSXOutZ80()
   LoopZ80 = @MSXLoopZ80()
   PatchZ80 = @MyPatchZ80()
+
+  ; Temporary crash-diagnostic: dump the storage ADDRESS of every Z80 core callback
+  ; pointer variable (not its value) so a captured crash-dump's faulting CALL target
+  ; address can be matched back to a name.
+  LogGeneral("DIAG addr RealRdZ80=$" + Hex(@RealRdZ80) + " WrZ80=$" + Hex(@WrZ80) + " InZ80=$" + Hex(@InZ80) +
+         " OutZ80=$" + Hex(@OutZ80) + " LoopZ80=$" + Hex(@LoopZ80) + " PatchZ80=$" + Hex(@PatchZ80) +
+         " JumpZ80=$" + Hex(@JumpZ80))
   
   ; 3. Load BIOS
   If Not MSXLoadBIOS("fMSX/MSX.ROM")
-    MessageRequester("bafmsx Error", "Could not load MSX BIOS ROM 'fMSX/MSX.ROM'.")
+    MessageRequester("fossauro Error", "Could not load MSX BIOS ROM 'fMSX/MSX.ROM'.")
     End
   EndIf
   
   ; 4. Create Emulation Frame Buffer Image (512x212)
   If Not CreateImage(0, 512, 212, 32)
-    MessageRequester("bafmsx Error", "Failed to create back buffer image.")
+    MessageRequester("fossauro Error", "Failed to create back buffer image.")
     End
   EndIf
   
   ; 5. Open Graphical Window
   Protected win_w.l = 512
   Protected win_h.l = 384
-  If OpenWindow(0, 100, 100, win_w, win_h, "bafmsx - PureBasic MSX Emulator", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  If OpenWindow(0, 100, 100, win_w, win_h, "fossauro v" + #App_Version + " - PureBasic MSX Emulator", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
     ; Create Menus
     If CreateMenu(0, WindowID(0))
       MenuTitle("File")
@@ -170,6 +228,11 @@ Procedure RunEmulator()
     CanvasGadget(0, 0, 0, win_w, win_h, #PB_Canvas_Keyboard)
     SetActiveGadget(0)
     
+    ; Load startup cartridge if specified via command line
+    If RomFileToLoad <> ""
+      LoadCartridge(RomFileToLoad)
+    EndIf
+
     ; 6. Start audio and emulation threads
     StartAudio()
     ResetZ80(@CPU)
@@ -277,6 +340,7 @@ Procedure RunEmulator()
       EmulationThread = 0
     EndIf
     StopAudio()
+    CloseLogFile()
   EndIf
 EndProcedure
 

@@ -27,26 +27,26 @@ Case $73 :  J\B\l=ReadOp(*R)
    WrZ80(J\W,*R\SP\B\h) 
 Case $6B :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
-   *R\HL\B\l=RdZ80(J\W)  : J\W + 1
-   *R\HL\B\h=RdZ80(J\W) 
+   *R\HL\B\l=SafeRdZ80(J\W)  : J\W + 1
+   *R\HL\B\h=SafeRdZ80(J\W) 
 Case $5B :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
-   *R\DE\B\l=RdZ80(J\W)  : J\W + 1
-   *R\DE\B\h=RdZ80(J\W) 
+   *R\DE\B\l=SafeRdZ80(J\W)  : J\W + 1
+   *R\DE\B\h=SafeRdZ80(J\W) 
 Case $4B :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
-   *R\BC\B\l=RdZ80(J\W)  : J\W + 1
-   *R\BC\B\h=RdZ80(J\W) 
+   *R\BC\B\l=SafeRdZ80(J\W)  : J\W + 1
+   *R\BC\B\h=SafeRdZ80(J\W) 
 Case $7B :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
-   *R\SP\B\l=RdZ80(J\W)  : J\W + 1
-   *R\SP\B\h=RdZ80(J\W) 
-Case $67 :  I=RdZ80(*R\HL\W) 
+   *R\SP\B\l=SafeRdZ80(J\W)  : J\W + 1
+   *R\SP\B\h=SafeRdZ80(J\W) 
+Case $67 :  I=SafeRdZ80(*R\HL\W) 
    J\B\l=(I>>4)|(*R\AF\B\h<<4) 
    WrZ80(*R\HL\W,J\B\l) 
    *R\AF\B\h=(I&$0F)|(*R\AF\B\h&$F0) 
    *R\AF\B\l=PZSTable(*R\AF\B\h)|(*R\AF\B\l&#C_FLAG) 
-Case $6F :  I=RdZ80(*R\HL\W) 
+Case $6F :  I=SafeRdZ80(*R\HL\W) 
    J\B\l=(I<<4)|(*R\AF\B\h&$0F) 
    WrZ80(*R\HL\W,J\B\l) 
    *R\AF\B\h=(I>>4)|(*R\AF\B\h&$F0) 
@@ -83,64 +83,64 @@ Case $A2 :  WrZ80(*R\HL\W,InZ80(*R\BC\W))  : *R\HL\W + 1
    *R\BC\B\h - 1 
    *R\AF\B\l=#N_FLAG|((Bool(*R\BC\B\h = 0) * (#Z_FLAG))) 
 Case $B2 :  WrZ80(*R\HL\W,InZ80(*R\BC\W))  : *R\HL\W + 1
-   *R\BC\B\h - 1 : If *R\BC\B\h : *R\AF\B\l=#N_FLAG : *R\ICount - 21 : *R\PC\W - 2 : Else : *R\AF\B\l=#Z_FLAG|#N_FLAG : *R\ICount - 16 : EndIf
+   *R\BC\B\h - 1 : If *R\BC\B\h : *R\AF\B\l=#N_FLAG : *R\ICount = *R\ICount - 21 : *R\PC\W - 2 : Else : *R\AF\B\l=#Z_FLAG|#N_FLAG : *R\ICount = *R\ICount - 16 : EndIf
 Case $AA :  WrZ80(*R\HL\W,InZ80(*R\BC\W))  : *R\HL\W - 1
    *R\BC\B\h - 1 
    *R\AF\B\l=#N_FLAG|((Bool(*R\BC\B\h = 0) * (#Z_FLAG))) 
 Case $BA :  WrZ80(*R\HL\W,InZ80(*R\BC\W))  : *R\HL\W - 1
-   *R\BC\B\h - 1 : If Not *R\BC\B\h : *R\AF\B\l=#N_FLAG : *R\ICount - 21 : *R\PC\W - 2 : Else : *R\AF\B\l=#Z_FLAG|#N_FLAG : *R\ICount - 16 : EndIf
+   *R\BC\B\h - 1 : If Not *R\BC\B\h : *R\AF\B\l=#N_FLAG : *R\ICount = *R\ICount - 21 : *R\PC\W - 2 : Else : *R\AF\B\l=#Z_FLAG|#N_FLAG : *R\ICount = *R\ICount - 16 : EndIf
 Case $A3 :  *R\BC\B\h - 1 
-   I=RdZ80(*R\HL\W)  : *R\HL\W + 1
+   I=SafeRdZ80(*R\HL\W)  : *R\HL\W + 1
    OutZ80(*R\BC\W,I) 
    *R\AF\B\l=#N_FLAG|((Bool(*R\BC\B\h = 0) * (#Z_FLAG)|((Bool(*R\HL\B\l+I>255) * ((#C_FLAG|#H_FLAG)))))) 
 Case $B3 :  *R\BC\B\h - 1 
-   I=RdZ80(*R\HL\W)  : *R\HL\W + 1
+   I=SafeRdZ80(*R\HL\W)  : *R\HL\W + 1
    OutZ80(*R\BC\W,I) 
    If *R\BC\B\h : *R\AF\B\l=#N_FLAG|((Bool(*R\HL\B\l+I>255) * ((#C_FLAG|#H_FLAG)))) 
-     *R\ICount - 21 
+     *R\ICount = *R\ICount - 21 
      *R\PC\W - 2 : Else : *R\AF\B\l=#Z_FLAG|#N_FLAG|((Bool(*R\HL\B\l+I>255) * ((#C_FLAG|#H_FLAG)))) 
-     *R\ICount - 16 : EndIf
+     *R\ICount = *R\ICount - 16 : EndIf
 Case $AB :  *R\BC\B\h - 1 
-   I=RdZ80(*R\HL\W)  : *R\HL\W - 1
+   I=SafeRdZ80(*R\HL\W)  : *R\HL\W - 1
    OutZ80(*R\BC\W,I) 
    *R\AF\B\l=#N_FLAG|((Bool(*R\BC\B\h = 0) * (#Z_FLAG)|((Bool(*R\HL\B\l+I>255) * ((#C_FLAG|#H_FLAG)))))) 
 Case $BB :  *R\BC\B\h - 1 
-   I=RdZ80(*R\HL\W)  : *R\HL\W - 1
+   I=SafeRdZ80(*R\HL\W)  : *R\HL\W - 1
    OutZ80(*R\BC\W,I) 
    If *R\BC\B\h : *R\AF\B\l=#N_FLAG|((Bool(*R\HL\B\l+I>255) * ((#C_FLAG|#H_FLAG)))) 
-     *R\ICount - 21 
+     *R\ICount = *R\ICount - 21 
      *R\PC\W - 2 : Else : *R\AF\B\l=#Z_FLAG|#N_FLAG|((Bool(*R\HL\B\l+I>255) * ((#C_FLAG|#H_FLAG)))) 
-     *R\ICount - 16 : EndIf
-Case $A0 :  WrZ80(*R\DE\W,RdZ80(*R\HL\W))  : *R\DE\W + 1 : *R\HL\W + 1
+     *R\ICount = *R\ICount - 16 : EndIf
+Case $A0 :  WrZ80(*R\DE\W,SafeRdZ80(*R\HL\W))  : *R\DE\W + 1 : *R\HL\W + 1
    *R\BC\W - 1 
    *R\AF\B\l=(*R\AF\B\l&~(#N_FLAG|#H_FLAG|#P_FLAG))|((Bool(*R\BC\W) * (#P_FLAG))) 
-Case $B0 :  WrZ80(*R\DE\W,RdZ80(*R\HL\W))  : *R\DE\W + 1 : *R\HL\W + 1
+Case $B0 :  WrZ80(*R\DE\W,SafeRdZ80(*R\HL\W))  : *R\DE\W + 1 : *R\HL\W + 1
    *R\BC\W - 1 : If *R\BC\W : *R\AF\B\l=(*R\AF\B\l&~(#H_FLAG|#P_FLAG))|#N_FLAG 
-     *R\ICount - 21 
-     *R\PC\W - 2 : Else : *R\AF\B\l & ~(#N_FLAG|#H_FLAG|#P_FLAG) 
-     *R\ICount - 16 : EndIf
-Case $A8 :  WrZ80(*R\DE\W,RdZ80(*R\HL\W))  : *R\DE\W - 1 : *R\HL\W - 1
+     *R\ICount = *R\ICount - 21 
+     *R\PC\W - 2 : Else : *R\AF\B\l = *R\AF\B\l & ~(#N_FLAG|#H_FLAG|#P_FLAG) 
+     *R\ICount = *R\ICount - 16 : EndIf
+Case $A8 :  WrZ80(*R\DE\W,SafeRdZ80(*R\HL\W))  : *R\DE\W - 1 : *R\HL\W - 1
    *R\BC\W - 1 
    *R\AF\B\l=(*R\AF\B\l&~(#N_FLAG|#H_FLAG|#P_FLAG))|((Bool(*R\BC\W) * (#P_FLAG))) 
-Case $B8 :  WrZ80(*R\DE\W,RdZ80(*R\HL\W))  : *R\DE\W - 1 : *R\HL\W - 1
-   *R\AF\B\l & ~(#N_FLAG|#H_FLAG|#P_FLAG) 
+Case $B8 :  WrZ80(*R\DE\W,SafeRdZ80(*R\HL\W))  : *R\DE\W - 1 : *R\HL\W - 1
+   *R\AF\B\l = *R\AF\B\l & ~(#N_FLAG|#H_FLAG|#P_FLAG) 
    *R\BC\W - 1 : If *R\BC\W : *R\AF\B\l=(*R\AF\B\l&~(#H_FLAG|#P_FLAG))|#N_FLAG 
-     *R\ICount - 21 
-     *R\PC\W - 2 : Else : *R\AF\B\l & ~(#N_FLAG|#H_FLAG|#P_FLAG) 
-     *R\ICount - 16 : EndIf
-Case $A1 :  I=RdZ80(*R\HL\W)  : *R\HL\W + 1
+     *R\ICount = *R\ICount - 21 
+     *R\PC\W - 2 : Else : *R\AF\B\l = *R\AF\B\l & ~(#N_FLAG|#H_FLAG|#P_FLAG) 
+     *R\ICount = *R\ICount - 16 : EndIf
+Case $A1 :  I=SafeRdZ80(*R\HL\W)  : *R\HL\W + 1
    J\B\l=*R\AF\B\h-I 
    *R\BC\W - 1 
    *R\AF\B\l =     #N_FLAG|(*R\AF\B\l&#C_FLAG)|ZSTable(J\B\l)|     ((*R\AF\B\h!I!J\B\l)&#H_FLAG)|((Bool(*R\BC\W) * (#P_FLAG))) 
-Case $B1 :  I=RdZ80(*R\HL\W)  : *R\HL\W + 1
+Case $B1 :  I=SafeRdZ80(*R\HL\W)  : *R\HL\W + 1
    J\B\l=*R\AF\B\h-I 
-   *R\BC\W - 1 : If *R\BC\W And J\B\l : *R\ICount - 21 : *R\PC\W - 2 : Else : *R\ICount - 16 : EndIf
+   *R\BC\W - 1 : If *R\BC\W And J\B\l : *R\ICount = *R\ICount - 21 : *R\PC\W - 2 : Else : *R\ICount = *R\ICount - 16 : EndIf
    *R\AF\B\l =     #N_FLAG|(*R\AF\B\l&#C_FLAG)|ZSTable(J\B\l)|     ((*R\AF\B\h!I!J\B\l)&#H_FLAG)|((Bool(*R\BC\W) * (#P_FLAG))) 
-Case $A9 :  I=RdZ80(*R\HL\W)  : *R\HL\W - 1
+Case $A9 :  I=SafeRdZ80(*R\HL\W)  : *R\HL\W - 1
    J\B\l=*R\AF\B\h-I 
    *R\BC\W - 1 
    *R\AF\B\l =     #N_FLAG|(*R\AF\B\l&#C_FLAG)|ZSTable(J\B\l)|     ((*R\AF\B\h!I!J\B\l)&#H_FLAG)|((Bool(*R\BC\W) * (#P_FLAG))) 
-Case $B9 :  I=RdZ80(*R\HL\W)  : *R\HL\W - 1
+Case $B9 :  I=SafeRdZ80(*R\HL\W)  : *R\HL\W - 1
    J\B\l=*R\AF\B\h-I 
-   *R\BC\W - 1 : If *R\BC\W And J\B\l : *R\ICount - 21 : *R\PC\W - 2 : Else : *R\ICount - 16 : EndIf
+   *R\BC\W - 1 : If *R\BC\W And J\B\l : *R\ICount = *R\ICount - 21 : *R\PC\W - 2 : Else : *R\ICount = *R\ICount - 16 : EndIf
    *R\AF\B\l =     #N_FLAG|(*R\AF\B\l&#C_FLAG)|ZSTable(J\B\l)|     ((*R\AF\B\h!I!J\B\l)&#H_FLAG)|((Bool(*R\BC\W) * (#P_FLAG))) 

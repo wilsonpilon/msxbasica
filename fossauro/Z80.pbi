@@ -79,6 +79,37 @@ Structure Z80
   User.i      ; Arbitrary user pointer/integer (RAM index, ID, etc)
 EndStructure
 
+; Forward-declared here, real body lives in MSX.pbi (XIncludeFile'd after this file) -
+; temporary crash-diagnostic checkpoints around RunZ80's LoopZ80() call, and the
+; per-category log wrappers (LogCPU is what RunZ80 actually uses).
+Declare LogMsg(Msg.s)
+Declare LogCPU(Msg.s)
+
+; Instruction trace state (used by RunZ80's main loop below) - declared here rather
+; than in MSX.pbi because Z80.pbi is XIncludeFile'd first and RunZ80 needs these before
+; MSX.pbi's own Globals section would otherwise define them. Off by default, auto-armed
+; the moment PC enters the cartridge window ($4000-$7FFF) - see comment at the trace
+; site in RunZ80() for the full rationale.
+Global TraceActive.b = 0
+Global TraceWasInCart.b = 0
+Global TraceInstrInVisit.l = 0
+#TraceMaxInstrPerVisit = 5000      ; cap per continuous stay inside cartridge range, so a
+                                   ; game that legitimately runs there for a while doesn't
+                                   ; flood the log - the ENTER/LEAVE markers still fire.
+
+; Cheap (no I/O) rolling ring of the last #PCRingSize PCs, dumped via LogCPU the moment
+; PC hits $0000 - that's the reset vector, so seeing it means something (RST 0, a wild
+; jump, or a real machine reset) sent execution back to square one. This is what the
+; per-instruction cartridge-range trace above can't see on its own, since the reset
+; trigger typically fires from RAM/BIOS code outside that window. Capped so a game that
+; legitimately resets itself repeatedly (or never does) doesn't flood the log either way.
+#PCRingSize = 64
+#PCRingMaxDumps = 5
+Global Dim PCRing.u(#PCRingSize - 1)
+Global PCRingPos.b = 0
+Global PCRingDumps.b = 0
+Global PCRingWasZero.b = 0
+
 ; --- Memory & I/O Callback Prototypes ---
 Prototype.a RdZ80_Callback(Addr.u)
 Prototype WrZ80_Callback(Addr.u, Value.a)
@@ -89,13 +120,25 @@ Prototype.u LoopZ80_Callback(*R.Z80)
 Prototype JumpZ80_Callback(PC.u)
 
 ; Global Callback pointers (to be set by the main emulator code)
-Global RdZ80.RdZ80_Callback
+; RdZ80 renamed to RealRdZ80 + SafeRdZ80() wrapper below - temporary crash diagnostic
+; (confirmed via crash-dump analysis that the RdZ80 pointer goes NULL mid-run; every
+; call site was bulk-renamed from "RdZ80(" to "SafeRdZ80(" across Z80.pbi and all
+; Z80_Codes*.pbi to find exactly which call sees it null first).
+Global RealRdZ80.RdZ80_Callback
 Global WrZ80.WrZ80_Callback
 Global InZ80.InZ80_Callback
 Global OutZ80.OutZ80_Callback
 Global PatchZ80.PatchZ80_Callback
 Global LoopZ80.LoopZ80_Callback
 Global JumpZ80.JumpZ80_Callback
+
+Procedure.a SafeRdZ80(Addr.u)
+  If Not RealRdZ80
+    LogCPU("CRITICAL: RealRdZ80 NULL at call site, Addr=$" + Hex(Addr))
+    End
+  EndIf
+  ProcedureReturn RealRdZ80(Addr)
+EndProcedure
 
 ; --- Internal Emulation Procedures/Macros ---
 
@@ -122,17 +165,17 @@ Macro INCR(N)
 EndMacro
 
 Macro OpZ80(Addr)
-  RdZ80(Addr)
+  SafeRdZ80(Addr)
 EndMacro
 
 Procedure.a ReadOp(*R.Z80)
-  Protected val.a = RdZ80(*R\PC\W)
+  Protected val.a = SafeRdZ80(*R\PC\W)
   *R\PC\W + 1
   ProcedureReturn val
 EndProcedure
 
 Procedure.a ReadPop(*R.Z80)
-  Protected val.a = RdZ80(*R\SP\W)
+  Protected val.a = SafeRdZ80(*R\SP\W)
   *R\SP\W + 1
   ProcedureReturn val
 EndProcedure
@@ -228,13 +271,13 @@ EndMacro
 
 Macro M_JP
   J\B\l = ReadOp(*R)
-  J\B\h = RdZ80(*R\PC\W)
+  J\B\h = SafeRdZ80(*R\PC\W)
   *R\PC\W = J\W
   If JumpZ80 : JumpZ80(J\W) : EndIf
 EndMacro
 
 Macro M_JR
-  *R\PC\W + SignExtend8(RdZ80(*R\PC\W)) + 1
+  *R\PC\W + SignExtend8(SafeRdZ80(*R\PC\W)) + 1
   If JumpZ80 : JumpZ80(*R\PC\W) : EndIf
 EndMacro
 
@@ -548,8 +591,8 @@ Procedure IntZ80(*R.Z80, Vector.u)
     
     If *R\IFF & #IFF_IM2
       Vector = (Vector & $FF) | (*R\I << 8)
-      *R\PC\B\l = RdZ80(Vector) : Vector + 1
-      *R\PC\B\h = RdZ80(Vector)
+      *R\PC\B\l = SafeRdZ80(Vector) : Vector + 1
+      *R\PC\B\h = SafeRdZ80(Vector)
       If JumpZ80 : JumpZ80(*R\PC\W) : EndIf
       ProcedureReturn
     EndIf
@@ -579,6 +622,63 @@ Procedure.u RunZ80(*R.Z80)
   Protected J.RegisterPair
   
   Repeat
+    If Not RealRdZ80 : LogCPU("CRITICAL: RdZ80 NULL at top of RunZ80 loop, PC=$" + Hex(*R\PC\W)) : End : EndIf
+
+    ; Reset watch: keep a rolling ring of the last #PCRingSize PCs (cheap, no I/O), and
+    ; dump it the moment PC hits $0000 (the reset vector) - see the ring's declaration
+    ; above for why. Edge-triggered (PCRingWasZero) so a genuine multi-instruction stay
+    ; at PC=0 doesn't spam one dump per instruction.
+    PCRing(PCRingPos) = *R\PC\W
+    PCRingPos = (PCRingPos + 1) % #PCRingSize
+    If *R\PC\W = 0
+      If Not PCRingWasZero And PCRingDumps < #PCRingMaxDumps
+        PCRingDumps + 1
+        Protected RingMsg.s = "TRACE: PC=0000 (RESET) #" + Str(PCRingDumps) + " - last " + Str(#PCRingSize) +
+                               " PCs before it (oldest first):"
+        Protected k.i
+        For k = 0 To #PCRingSize - 1
+          RingMsg + " " + Hex(PCRing((PCRingPos + k) % #PCRingSize))
+        Next k
+        LogCPU(RingMsg)
+      EndIf
+      PCRingWasZero = 1
+    Else
+      PCRingWasZero = 0
+    EndIf
+
+    ; Instruction trace: ENTER/LEAVE markers whenever PC crosses into/out of the
+    ; cartridge window ($4000-$7FFF), plus a full per-instruction PC trace while inside
+    ; (capped per continuous visit so a game that legitimately runs there doesn't flood
+    ; fossauro.log - the ENTER/LEAVE markers themselves are never suppressed). This is
+    ; what answers "does the cartridge ever run, and where does control go if it gives
+    ; it back to the BIOS" - see docs/SPEC.md module 32b / README changelog.
+    Protected NowInCart.b = Bool(*R\PC\W >= $4000 And *R\PC\W < $8000)
+    If NowInCart <> TraceWasInCart
+      If NowInCart
+        LogCPU("TRACE ENTER cartridge PC=$" + Hex(*R\PC\W) + " SP=$" + Hex(*R\SP\W))
+        TraceActive = 1
+        TraceInstrInVisit = 0
+      Else
+        LogCPU("TRACE LEAVE cartridge PC=$" + Hex(*R\PC\W) + " SP=$" + Hex(*R\SP\W))
+        TraceActive = 0
+      EndIf
+      TraceWasInCart = NowInCart
+    EndIf
+    If TraceActive
+      If TraceInstrInVisit < #TraceMaxInstrPerVisit
+        LogCPU("TRACE PC=$" + Hex(*R\PC\W))
+      ElseIf TraceInstrInVisit = #TraceMaxInstrPerVisit
+        LogCPU("TRACE ... suppressing per-instruction trace past " + Str(#TraceMaxInstrPerVisit) +
+               " instructions this visit, still in cartridge, PC=$" + Hex(*R\PC\W) +
+               " (LEAVE marker above still fires when it exits)")
+      EndIf
+      TraceInstrInVisit + 1
+    EndIf
+
+    If *R\PC\W = $7D0D
+      LogCPU("DIAG: PC=$7D0D HL=$" + Hex(*R\HL\W) + " A=$" + Hex(*R\AF\B\h) + " F=$" + Hex(*R\AF\B\l))
+    EndIf
+
     I = ReadOp(*R)
     *R\ICount - Cycles(I)
     INCR(1)
@@ -599,14 +699,18 @@ Procedure.u RunZ80(*R.Z80)
         If *R\ICount > 0
           J\W = *R\IRequest
         Else
+          If Not RealRdZ80 : LogCPU("CRITICAL: RdZ80 NULL before LoopZ80 call site 1, PC=$" + Hex(*R\PC\W)) : End : EndIf
           J\W = LoopZ80(*R)
+          If Not RealRdZ80 : LogCPU("CRITICAL: RdZ80 NULL after LoopZ80 call site 1, PC=$" + Hex(*R\PC\W)) : End : EndIf
           *R\ICount + *R\IPeriod
           If J\W = #INT_NONE
             J\W = *R\IRequest
           EndIf
         EndIf
       Else
+        If Not RealRdZ80 : LogCPU("CRITICAL: RdZ80 NULL before LoopZ80 call site 2, PC=$" + Hex(*R\PC\W)) : End : EndIf
         J\W = LoopZ80(*R)
+        If Not RealRdZ80 : LogCPU("CRITICAL: RdZ80 NULL after LoopZ80 call site 2, PC=$" + Hex(*R\PC\W)) : End : EndIf
         *R\ICount + *R\IPeriod
         If J\W = #INT_NONE
           J\W = *R\IRequest

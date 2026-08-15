@@ -1,6 +1,6 @@
-# bamsx - User Operations Manual
+# fossauro - User Operations Manual
 
-This manual describes how to run, configure, and operate the **bamsx** emulator.
+This manual describes how to run, configure, and operate the **fossauro** emulator.
 
 ---
 
@@ -39,10 +39,10 @@ Once the emulator is loaded, the window menu provides the following options for 
 
 ## 2. Command-Line Options
 
-**bamsx** can be launched from the terminal or command prompt with the following arguments:
+**fossauro** can be launched from the terminal or command prompt with the following arguments:
 
 ```bash
-bamsx.exe [options] [rom_or_disk_file]
+fossauro.exe [options] [rom_or_disk_file]
 ```
 
 ### Options List:
@@ -66,10 +66,10 @@ bamsx.exe [options] [rom_or_disk_file]
 
 1.  **Launch a game ROM in MSX1 PAL mode:**
     ```bash
-    bamsx.exe -msx1 -pal -rom games/nemesis.rom
+    fossauro.exe -msx1 -pal -rom games/nemesis.rom
     ```
 
 2.  **Mount disk image A: and load in MSX2 NTSC mode:**
     ```bash
-    bamsx.exe -msx2 -ntsc -diska disks/aleste.dsk
+    fossauro.exe -msx2 -ntsc -diska disks/aleste.dsk
     ```

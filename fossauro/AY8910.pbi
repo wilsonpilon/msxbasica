@@ -1,4 +1,4 @@
-; AY-3-8910 PSG Emulation and Win32 Audio Streaming for bamsx
+; AY-3-8910 PSG Emulation and Win32 Audio Streaming for fossauro
 ; Derived from fMSX EMULib AY8910 by Marat Fayzullin
 
 EnableExplicit

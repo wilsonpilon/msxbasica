@@ -1,7 +1,10 @@
-; bamsx - PureBasic MSX Emulator Project
+; fossauro_verify - PureBasic MSX Emulator Project
 ; Main Entry Point & CPU Core Verification
 
 EnableExplicit
+
+Global ThreadExit.l = 0
+Global ThreadPaused.l = 0
 
 ; Include Z80 Emulator and Motherboard files
 XIncludeFile "Z80_Tables.pbi"
@@ -29,7 +32,7 @@ EndProcedure
 ; --- Verification Program ---
 
 Procedure VerifyZ80()
-  OpenConsole("bamsx Z80 Verification")
+  OpenConsole("fossauro Z80 Verification")
   PrintN("Initializing Z80 Lookup Tables...")
   InitZ80Tables()
   
@@ -37,7 +40,7 @@ Procedure VerifyZ80()
   InitializeMSXMemory()
   
   ; Set global callback pointers
-  RdZ80 = @MSXRdZ80()
+  RealRdZ80 = @MSXRdZ80()
   WrZ80 = @MSXWrZ80()
   InZ80 = @MSXInZ80()
   OutZ80 = @MSXOutZ80()

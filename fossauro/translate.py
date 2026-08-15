@@ -281,8 +281,8 @@ def translate_c_code(code_str, enum_map):
         if not cleaned:
             continue
             
-        # Replace standalone C increments/decrements (e.g. R->DE.W--;) with in-place statements
-        cleaned = re.sub(r'\b(R->[A-Za-z0-9_]+\.(?:W|B\.[hl]))(\+\+|--);', lambda m: f"{m.group(1)} {'+' if m.group(2)=='++' else '-'} 1;", cleaned)
+        # Replace standalone C increments/decrements (e.g. R->DE.W--;) with proper assignments
+        cleaned = re.sub(r'\b(R->[A-Za-z0-9_]+\.(?:W|B\.[hl]))(\+\+|--);', lambda m: f"{m.group(1)} = {m.group(1)} {'+' if m.group(2)=='++' else '-'} 1;", cleaned)
 
         # Check for J.W++ or HL/DE post-increments/decrements in this line before pointer replacement
         had_j_inc = "J.W++" in cleaned or "J.W++" in line
@@ -342,16 +342,18 @@ def translate_c_code(code_str, enum_map):
             cleaned
         )
 
+        cleaned = cleaned.replace("RdZ80(", "SafeRdZ80(")
+
         # Convert (offset)OpZ80(...) to SignExtend8(ReadOp(*R)) or similar
         cleaned = cleaned.replace("(offset)OpZ80(R->PC.W++)", "SignExtend8(ReadOp(*R))")
-        cleaned = cleaned.replace("(offset)OpZ80(R->PC.W)", "SignExtend8(RdZ80(*R\\PC\\W))")
-        cleaned = cleaned.replace("(offset)RdZ80(R->PC.W)", "SignExtend8(RdZ80(*R\\PC\\W))")
+        cleaned = cleaned.replace("(offset)OpZ80(R->PC.W)", "SignExtend8(SafeRdZ80(*R\\PC\\W))")
+        cleaned = cleaned.replace("(offset)SafeRdZ80(R->PC.W)", "SignExtend8(SafeRdZ80(*R\\PC\\W))")
 
         # 1. Functions & Opcode reads
         cleaned = cleaned.replace("OpZ80(R->PC.W++)", "ReadOp(*R)")
         cleaned = cleaned.replace("OpZ80(R->SP.W++)", "ReadPop(*R)")
-        cleaned = cleaned.replace("OpZ80(R->PC.W)", "RdZ80(*R\\PC\\W)")
-        cleaned = cleaned.replace("RdZ80(R->HL.W)", "RdZ80(*R\\HL\\W)")
+        cleaned = cleaned.replace("OpZ80(R->PC.W)", "SafeRdZ80(*R\\PC\\W)")
+        cleaned = cleaned.replace("SafeRdZ80(R->HL.W)", "SafeRdZ80(*R\\HL\\W)")
         
         # Increments / Decrements
         cleaned = cleaned.replace("R->PC.W++", "*R\\PC\\W + 1")
@@ -421,12 +423,8 @@ def translate_c_code(code_str, enum_map):
         cleaned = re.sub(r'([^()?=;,\n]+)\s*\?\s*([^:;,\n]+)\s*:\s*0', r'(Bool(\1) * (\2))', cleaned)
         cleaned = re.sub(r'([^()?=;,\n]+)\s*\?\s*0\s*:\s*([^:;,\n]+)', r'(Bool(\1 = 0) * (\2))', cleaned)
 
-        # In-place assignment operators translation (+=, -=, &=, |=, ^=)
-        cleaned = cleaned.replace("+=", " + ")
-        cleaned = cleaned.replace("-=", " - ")
-        cleaned = cleaned.replace("&=", " & ")
-        cleaned = cleaned.replace("|=", " | ")
-        cleaned = cleaned.replace("^=", " ! ")
+        # In-place assignment operators translation (+=, -=, &=, |=, ^=) with proper assignments
+        cleaned = re.sub(r'(\*?[A-Za-z0-9_\\\\]+)\s*([\+\-\&\|\^])=\s*([^;:\n]+)', lambda m: m.group(1) + " = " + m.group(1) + " " + (m.group(2) if m.group(2) != '^' else '!') + " " + m.group(3), cleaned)
         
         # Remaining bitwise XOR
         cleaned = cleaned.replace("^", "!")

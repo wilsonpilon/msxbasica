@@ -1,4 +1,4 @@
-; V9938 VDP Graphics Processor Emulation for bamsx
+; V9938 VDP Graphics Processor Emulation for fossauro
 ; Derived from fMSX V9938.c by Marat Fayzullin
 
 EnableExplicit
@@ -34,6 +34,33 @@ Global ChrTabM.l = 0
 Global ChrGenM.l = 0
 Global ColTabM.l = 0
 Global SprTabM.l = 0
+
+; Crash diagnostic: ChrTab/ColTab/ChrGen (+ masks) are computed from VDP registers in
+; SetScreen() and combined with per-mode masks (ChrTabM/ColTabM/ChrGenM) in RefreshLine() -
+; if a mode/mask combination is wrong, the resulting pointer can land outside the 128KB
+; *VRAM buffer, and a raw PeekA on it is a real access violation (observed: fossauro.exe
+; crashes with 0xC0000005 shortly after a cartridge ROM is detected and the BIOS/game
+; switches screen mode). This wrapper turns that into one logged line + a safe return
+; instead of a silent crash, so the offending mode/registers can be read straight from
+; fossauro.log instead of guessed at.
+Global VRAMBoundsLogged.b = 0
+Procedure.a SafePeekVRAM(*Addr, Context.s)
+  If *Addr < *VRAM Or *Addr >= *VRAM + $20000
+    If Not VRAMBoundsLogged
+      VRAMBoundsLogged = 1
+      LogVDP("CRITICAL: VRAM pointer out of bounds in " + Context + " *Addr=$" + Hex(*Addr) +
+             " *VRAM=$" + Hex(*VRAM) + " offset=" + Str(*Addr - *VRAM) +
+             " ScrMode=" + Str(ScrMode) + " VDP(0..7)=" +
+             Str(VDP(0)) + "," + Str(VDP(1)) + "," + Str(VDP(2)) + "," + Str(VDP(3)) + "," +
+             Str(VDP(4)) + "," + Str(VDP(5)) + "," + Str(VDP(6)) + "," + Str(VDP(7)) +
+             " VDP(10,11)=" + Str(VDP(10)) + "," + Str(VDP(11)) +
+             " ChrTab=$" + Hex(ChrTab) + " ColTab=$" + Hex(ColTab) + " ChrGen=$" + Hex(ChrGen) +
+             " ChrTabM=$" + Hex(ChrTabM) + " ColTabM=$" + Hex(ColTabM) + " ChrGenM=$" + Hex(ChrGenM))
+    EndIf
+    ProcedureReturn 0
+  EndIf
+  ProcedureReturn PeekA(*Addr)
+EndProcedure
 
 ; V9938 MMC structure for CPU-VRAM transfer commands
 Structure VDPCommandState
@@ -141,6 +168,7 @@ Declare VDPWrite(V.a)
 
 ; Set active VRAM address pointers
 Procedure SetScreen()
+  Protected OldScrMode.a = ScrMode
   Protected modeBits.a = ((VDP(0) & $0E) >> 1) | (VDP(1) & $18)
   Select modeBits
     Case $10 : ScrMode = 0
@@ -176,6 +204,12 @@ Procedure SetScreen()
   ChrGenM = ((VDP(4) | ~MSK(J)\M4) << 11) | $7FF
   ColTabM = ((VDP(3) | ~MSK(J)\M3) << 6) | $1C03F
   SprTabM = ((VDP(5) | ~MSK(J)\M5) << 7) | $1807F
+
+  If ScrMode <> OldScrMode
+    LogVDP("SetScreen: ScrMode " + Str(OldScrMode) + " -> " + Str(ScrMode) + " VDP(0)=$" + Hex(VDP(0)) +
+           " VDP(1)=$" + Hex(VDP(1)) + " VDP(2)=$" + Hex(VDP(2)) + " ChrTab=$" + Hex(ChrTab) +
+           " ColTab=$" + Hex(ColTab) + " ChrGen=$" + Hex(ChrGen))
+  EndIf
 EndProcedure
 
 Procedure InitializeVDP()
@@ -213,6 +247,9 @@ EndProcedure
 
 Procedure VDPOut(R.a, V.a)
   VDP(R) = V
+  If R <= 2
+    LogVDP("VDPOut R=" + Str(R) + " V=$" + Hex(V) + " (mode-relevant register write)")
+  EndIf
   Select R
     Case 0
       If (VDPStatus(1) & $01) And (V & $10) = 0
@@ -242,7 +279,7 @@ Procedure VDPOut(R.a, V.a)
       VDP(16) = V & $0F
       PKey = 1 ; Reset palette sequencer
       
-    Case 25
+    Case 2, 3, 4, 5, 6, 10, 11, 25
       SetScreen()
       
     Case 44
@@ -559,7 +596,7 @@ EndProcedure
 
 ; Handle port writes ($98-$99) from MSXOutZ80
 Procedure MSXWriteVDP(Port.u, V.a)
-  Port & $FF
+  Port = Port & $FF
   Select Port
     Case $98
       VDPKey = 1
@@ -620,7 +657,7 @@ EndProcedure
 
 ; Handle port reads ($98-$99) from MSXInZ80
 Procedure.a MSXReadVDP(Port.u)
-  Port & $FF
+  Port = Port & $FF
   Select Port
     Case $98
       Protected res.a = VDPData
@@ -671,7 +708,7 @@ Procedure RenderSprites(Y.l, *LineBuf)
   Protected s.l
   For s = 31 To 0 Step -1
     Protected attr_addr.i = SprTab + s * 4
-    Protected spr_y.l = PeekA(attr_addr)
+    Protected spr_y.l = SafePeekVRAM(attr_addr, "RenderSprites SprTab Y")
     
     If spr_y = 208 And ScrMode < 5 : Continue : EndIf
     If spr_y = 216 And ScrMode >= 5 : Continue : EndIf
@@ -682,9 +719,9 @@ Procedure RenderSprites(Y.l, *LineBuf)
     
     Protected line_offset.l = Y - spr_y
     If line_offset >= 0 And line_offset < actual_size
-      Protected spr_x.l = PeekA(attr_addr + 1)
-      Protected pattern.l = PeekA(attr_addr + 2)
-      Protected color_byte.a = PeekA(attr_addr + 3)
+      Protected spr_x.l = SafePeekVRAM(attr_addr + 1, "RenderSprites SprTab X")
+      Protected pattern.l = SafePeekVRAM(attr_addr + 2, "RenderSprites SprTab pattern")
+      Protected color_byte.a = SafePeekVRAM(attr_addr + 3, "RenderSprites SprTab color")
       Protected color_idx.a = color_byte & $0F
       
       If color_byte & $80
@@ -698,10 +735,10 @@ Procedure RenderSprites(Y.l, *LineBuf)
       Protected pattern_line.l = line_offset / (mag + 1)
       Protected pattern_addr.i = SprGen + pattern * 8 + pattern_line
       
-      Protected pat_byte1.a = PeekA(pattern_addr)
+      Protected pat_byte1.a = SafePeekVRAM(pattern_addr, "RenderSprites SprGen pat1")
       Protected pat_byte2.a = 0
       If sprite_size = 16
-        pat_byte2 = PeekA(pattern_addr + 16)
+        pat_byte2 = SafePeekVRAM(pattern_addr + 16, "RenderSprites SprGen pat2")
       EndIf
       
       Protected px.l
@@ -770,8 +807,8 @@ Procedure RefreshLine(Y.l)
       ; Center 240px text area scaled 2x to 480px (16px borders)
       If row < 24
         For col = 0 To 39
-          char_code = PeekA(ChrTab + row * 40 + col)
-          font_byte = PeekA(ChrGen + char_code * 8 + char_y)
+          char_code = SafePeekVRAM(ChrTab + row * 40 + col, "RefreshLine mode0 ChrTab")
+          font_byte = SafePeekVRAM(ChrGen + char_code * 8 + char_y, "RefreshLine mode0 ChrGen")
           For px = 0 To 5
             Protected c_idx.l = text_bg
             If font_byte & ($80 >> px)
@@ -790,9 +827,9 @@ Procedure RefreshLine(Y.l)
       char_y = Y & 7
       If row < 24
         For col = 0 To 31
-          char_code = PeekA(ChrTab + row * 32 + col)
-          font_byte = PeekA(ChrGen + char_code * 8 + char_y)
-          color_byte = PeekA(ColTab + char_code / 8)
+          char_code = SafePeekVRAM(ChrTab + row * 32 + col, "RefreshLine mode1 ChrTab")
+          font_byte = SafePeekVRAM(ChrGen + char_code * 8 + char_y, "RefreshLine mode1 ChrGen")
+          color_byte = SafePeekVRAM(ColTab + char_code / 8, "RefreshLine mode1 ColTab")
           fg = Palette((color_byte >> 4) & $0F)
           bg = Palette(color_byte & $0F)
           For px = 0 To 7
@@ -809,10 +846,10 @@ Procedure RefreshLine(Y.l)
       Protected I.l = ((Y & $C0) << 5) + (Y & $07)
       Protected T.i = ChrTab + ((Y & $F8) << 2)
       For col = 0 To 31
-        char_code = PeekA(T + col)
+        char_code = SafePeekVRAM(T + col, "RefreshLine mode2/4 ChrTab")
         Protected J.l = char_code << 3
-        color_byte = PeekA(ColTab + ((I + J) & ColTabM))
-        font_byte = PeekA(ChrGen + ((I + J) & ChrGenM))
+        color_byte = SafePeekVRAM(ColTab + ((I + J) & ColTabM), "RefreshLine mode2/4 ColTab")
+        font_byte = SafePeekVRAM(ChrGen + ((I + J) & ChrGenM), "RefreshLine mode2/4 ChrGen")
         fg = Palette((color_byte >> 4) & $0F)
         bg = Palette(color_byte & $0F)
         For px = 0 To 7

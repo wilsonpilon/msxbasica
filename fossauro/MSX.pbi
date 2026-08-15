@@ -1,4 +1,4 @@
-; MSX Board Emulation & Slot Memory Mapper for bamsx
+; MSX Board Emulation & Slot Memory Mapper for fossauro
 ; Derived from fMSX source by Marat Fayzullin
 
 ; System hardware constants
@@ -44,6 +44,58 @@ Global PPI.I8255                  ; Main Intel 8255 PPI instance
 Global PSLReg.a                   ; Primary slot register state (PPI port $A8)
 Global Dim SSLReg.a(3)            ; Secondary slot registers state (each slot has one at $FFFF)
 
+; fossauro.log is the ONE definitive log for this emulator - every subsystem (General/
+; Memory/VDP/PSG/CPU) writes here through LogMsg(), gated only by Verbose. Each category
+; also has its own on/off switch (LogCategories bitmask below) so a future settings
+; screen/CLI flag can show just "VDP only" or "Memory only" without touching the file
+; format or the rotation logic - it's all still the same fossauro.log/.1/.2/... stream,
+; just tagged per line ("[VDP] ...", "[MEM] ...", etc.) and filterable at the source.
+Global LogFileHandle.i = 0        ; Kept open across calls, never Close'd per line (that
+                                   ; was a real perf bug - PSlot/SSlot fire dozens-hundreds
+                                   ; of times during a real MSX BIOS cartridge slot scan;
+                                   ; Open+Write+Close per call made that look like a hang).
+
+; Log rotation (Linux logrotate style): once fossauro.log reaches #LogMaxBytes, it's
+; renamed fossauro.log.1 (bumping any existing .1..#LogMaxBackups-1 up by one, oldest
+; dropped) and a fresh empty fossauro.log is started. Checked cheaply via Lof() after
+; each write - no manual byte counting to keep in sync.
+#LogMaxBytes = 5 * 1024 * 1024     ; ~5MB per generation
+#LogMaxBackups = 5                 ; fossauro.log.1 .. fossauro.log.5
+
+; Granular log categories - bitmask, so any combination can be on at once. Defaults to
+; #LogCat_All (current behavior: everything logs). A future UI/CLI flag just needs to
+; set LogCategories to whichever bits it wants; LogGeneral()/LogMemory()/LogVDP()/
+; LogPSG()/LogCPU() below are the only call sites that need to change - nothing about
+; LogMsg(), rotation, or Verbose changes.
+#LogCat_General = 1  ; startup/shutdown, ROM/BIOS loading, CLI args
+#LogCat_Memory  = 2  ; PSlot/SSlot, MSXRdZ80/MSXWrZ80 (slots, RAM/ROM dispatch)
+#LogCat_VDP     = 4  ; V9938 (SetScreen, VRAM bounds, ports $98-$9B)
+#LogCat_PSG     = 8  ; AY8910 (not wired into any LogMsg call yet - ready for when it is)
+#LogCat_CPU     = 16 ; Z80 core: FRAME snapshots, instruction TRACE, null-callback guards
+#LogCat_All     = 31 ; General|Memory|VDP|PSG|CPU
+
+Global LogCategories.l = #LogCat_All
+
+; Temporary crash-diagnostic aid: cheap (no I/O) rolling trackers of the last address
+; touched by MSXRdZ80/MSXWrZ80, surfaced in the already-frequent PSlot/SSlot log lines
+; instead of logging every single memory access (which would be too much volume).
+Global LastRdAddr.u = 0
+Global LastWrAddr.u = 0
+
+; Instruction trace globals (TraceActive/TraceWasInCart/TraceInstrInVisit/
+; #TraceMaxInstrPerVisit) live in Z80.pbi instead, near the top - Z80.pbi is
+; XIncludeFile'd BEFORE this file, and RunZ80's loop (Z80.pbi) is what reads/writes
+; them, so they need to be declared before that point in compile order.
+
+Declare LogMsg(Msg.s)
+Declare CloseLogFile()
+Declare RotateLog()
+Declare LogGeneral(Msg.s)
+Declare LogMemory(Msg.s)
+Declare LogVDP(Msg.s)
+Declare LogPSG(Msg.s)
+Declare LogCPU(Msg.s)
+
 ; Key Matrix state (16 rows)
 Global Dim KeyMatrix.a(15)        ; MSX keyboard row state matrix
 Global Dim KeysRow.a(129)         ; Keyboard matrix row for each code
@@ -84,9 +136,9 @@ Procedure.a Write8255(*D.I8255, A.a, V.a)
       Else
         Protected bit.a = 1 << ((V & $0E) >> 1)
         If V & $01
-          *D\R[2] | bit
+          *D\R[2] = *D\R[2] | bit
         Else
-          *D\R[2] & ~bit
+          *D\R[2] = *D\R[2] & ~bit
         EndIf
       EndIf
     Default
@@ -149,7 +201,7 @@ Procedure InitializeMSXMemory()
   
   ; Map main RAM to Slot 3-2 (Primary 3, Secondary 2)
   For J = 0 To 3
-    *MemMap(3, 2, J * 2)     = *RAMData + (3 - J) * $4000
+    *MemMap(3, 2, J * 2)     = *RAMData + J * $4000
     *MemMap(3, 2, J * 2 + 1) = *MemMap(3, 2, J * 2) + $2000
   Next J
   
@@ -189,12 +241,15 @@ EndProcedure
 
 ; Load BIOS file from disk and map it to Slot 0-0
 Procedure.l MSXLoadBIOS(FileName.s)
+  LogGeneral("MSXLoadBIOS called for: " + FileName)
   Protected FileNum.i = ReadFile(#PB_Any, FileName)
   If FileNum = 0
+    LogGeneral("MSXLoadBIOS ERROR: Could not open " + FileName)
     ProcedureReturn 0 ; failed to open
   EndIf
-  
+
   Protected Length.q = Lof(FileNum)
+  LogGeneral("MSXLoadBIOS: File size = " + Str(Length) + " bytes")
   If Length > $8000
     Length = $8000
   EndIf
@@ -219,15 +274,95 @@ Procedure.l MSXLoadBIOS(FileName.s)
   ProcedureReturn 1 ; success
 EndProcedure
 
+; Gated by Verbose and keeps the file open across calls (see LogFileHandle above) -
+; PSlot/SSlot/MSXRdZ80 call this dozens-hundreds of times during a real BIOS cartridge
+; scan; Open+Write+Close per call was the actual bottleneck, not emulation logic.
+Procedure LogMsg(Msg.s)
+  If Not Verbose
+    ProcedureReturn
+  EndIf
+  If Not LogFileHandle
+    LogFileHandle = OpenFile(#PB_Any, "fossauro.log", #PB_File_Append)
+    If Not LogFileHandle
+      ProcedureReturn
+    EndIf
+  EndIf
+  WriteStringN(LogFileHandle, FormatDate("[%YYYY-%MM-%DD %HH:%II:%SS] ", Date()) + Msg)
+  If Lof(LogFileHandle) >= #LogMaxBytes
+    RotateLog()
+  EndIf
+EndProcedure
+
+; Linux logrotate-style roll: fossauro.log -> fossauro.log.1 -> fossauro.log.2 -> ...,
+; oldest generation (#LogMaxBackups) dropped. Called from LogMsg() once the current file
+; crosses #LogMaxBytes. The next LogMsg() call transparently reopens a fresh empty
+; fossauro.log (LogFileHandle is left at 0 here on purpose).
+Procedure RotateLog()
+  If LogFileHandle
+    CloseFile(LogFileHandle)
+    LogFileHandle = 0
+  EndIf
+
+  Protected OldestPath.s = "fossauro.log." + Str(#LogMaxBackups)
+  If FileSize(OldestPath) >= 0
+    DeleteFile(OldestPath)
+  EndIf
+
+  Protected i.i
+  For i = #LogMaxBackups - 1 To 1 Step -1
+    Protected Src.s = "fossauro.log." + Str(i)
+    Protected Dst.s = "fossauro.log." + Str(i + 1)
+    If FileSize(Src) >= 0
+      RenameFile(Src, Dst)
+    EndIf
+  Next i
+
+  If FileSize("fossauro.log") >= 0
+    RenameFile("fossauro.log", "fossauro.log.1")
+  EndIf
+EndProcedure
+
+; Per-category log wrappers - thin gate + tag around LogMsg(). Flip bits in
+; LogCategories (see #LogCat_* above) to silence/enable a category without touching
+; call sites or the underlying file/rotation plumbing.
+Procedure LogGeneral(Msg.s)
+  If LogCategories & #LogCat_General : LogMsg("[GEN] " + Msg) : EndIf
+EndProcedure
+
+Procedure LogMemory(Msg.s)
+  If LogCategories & #LogCat_Memory : LogMsg("[MEM] " + Msg) : EndIf
+EndProcedure
+
+Procedure LogVDP(Msg.s)
+  If LogCategories & #LogCat_VDP : LogMsg("[VDP] " + Msg) : EndIf
+EndProcedure
+
+Procedure LogPSG(Msg.s)
+  If LogCategories & #LogCat_PSG : LogMsg("[PSG] " + Msg) : EndIf
+EndProcedure
+
+Procedure LogCPU(Msg.s)
+  If LogCategories & #LogCat_CPU : LogMsg("[CPU] " + Msg) : EndIf
+EndProcedure
+
+; Flush and release the persistent log handle - call once at shutdown.
+Procedure CloseLogFile()
+  If LogFileHandle
+    CloseFile(LogFileHandle)
+    LogFileHandle = 0
+  EndIf
+EndProcedure
+
 ; Switch primary memory slots (Port $A8 write)
 Procedure PSlot(V.a)
   Protected J.a, I.a
   
   If PSLReg <> V
+    LogMemory("PSlot change: $" + Hex(PSLReg) + " -> $" + Hex(V) + " [lastRd=$" + Hex(LastRdAddr) + " lastWr=$" + Hex(LastWrAddr) + "]")
     PSLReg = V
     For J = 0 To 3
       I = J << 1
-      PSL(J) = V & 3
+      PSL(J) = (V >> I) & 3
       SSL(J) = (SSLReg(PSL(J)) >> I) & 3
       *RAM(I)   = *MemMap(PSL(J), SSL(J), I)
       *RAM(I+1) = *MemMap(PSL(J), SSL(J), I+1)
@@ -237,8 +372,6 @@ Procedure PSlot(V.a)
       Else
         EnWrite(J) = 0
       EndIf
-      
-      V >> 2
     Next J
   EndIf
 EndProcedure
@@ -258,11 +391,12 @@ Procedure SSlot(V.a)
   EndIf
   
   If SSLReg(PSL(3)) <> V
+    LogMemory("SSlot change on Primary Slot " + Str(PSL(3)) + ": $" + Hex(SSLReg(PSL(3))) + " -> $" + Hex(V) + " [lastRd=$" + Hex(LastRdAddr) + " lastWr=$" + Hex(LastWrAddr) + "]")
     SSLReg(PSL(3)) = V
     For J = 0 To 3
       If PSL(J) = PSL(3)
         I = J << 1
-        SSL(J) = V & 3
+        SSL(J) = (V >> I) & 3
         *RAM(I)   = *MemMap(PSL(J), SSL(J), I)
         *RAM(I+1) = *MemMap(PSL(J), SSL(J), I+1)
         
@@ -272,16 +406,26 @@ Procedure SSlot(V.a)
           EnWrite(J) = 0
         EndIf
       EndIf
-      V >> 2
     Next J
   EndIf
 EndProcedure
 
 ; Memory reading callback
 Procedure.a MSXRdZ80(A.u)
+  Protected V.a
+  Protected *PagePtr
   ; Filter out everything but [xx11 1111 1xxx 1xxx] for FDC/special registers
   If (A & $3F88) <> $3F88
-    ProcedureReturn PeekA(*RAM(A >> 13) + (A & $1FFF))
+    *PagePtr = *RAM(A >> 13)
+    If *PagePtr = 0
+      LogMemory("CRITICAL: MSXRdZ80 null page pointer! A=$" + Hex(A) + " Page8K=" + Str(A >> 13) +
+             " PSLReg=$" + Hex(PSLReg) + " PSL(0..3)=" + Str(PSL(0)) + "," + Str(PSL(1)) + "," + Str(PSL(2)) + "," + Str(PSL(3)) +
+             " SSL(0..3)=" + Str(SSL(0)) + "," + Str(SSL(1)) + "," + Str(SSL(2)) + "," + Str(SSL(3)))
+      ProcedureReturn $FF
+    EndIf
+    V = PeekA(*PagePtr + (A & $1FFF))
+    LastRdAddr = A
+    ProcedureReturn V
   EndIf
 
   ; Secondary slot selector at $FFFF
@@ -291,11 +435,24 @@ Procedure.a MSXRdZ80(A.u)
 
   ; TODO: Floppy disk controller check (PSL=3, SSL=1)
 
-  ProcedureReturn PeekA(*RAM(A >> 13) + (A & $1FFF))
+  *PagePtr = *RAM(A >> 13)
+  If *PagePtr = 0
+    LogMemory("CRITICAL: MSXRdZ80(FDC path) null page pointer! A=$" + Hex(A) + " Page8K=" + Str(A >> 13))
+    ProcedureReturn $FF
+  EndIf
+  V = PeekA(*PagePtr + (A & $1FFF))
+  LastRdAddr = A
+  ProcedureReturn V
 EndProcedure
 
 ; Memory writing callback
 Procedure MSXWrZ80(A.u, V.a)
+  If Not RealRdZ80
+    LogMemory("CRITICAL: RdZ80 pointer went NULL! Caught in MSXWrZ80 A=$" + Hex(A) + " V=$" + Hex(V) +
+           " lastRd=$" + Hex(LastRdAddr) + " lastWr=$" + Hex(LastWrAddr) + " RealRdZ80=$" + Hex(RealRdZ80))
+    End
+  EndIf
+  LastWrAddr = A
   ; Secondary slot selector at $FFFF
   If A = $FFFF
     SSlot(V)
@@ -306,7 +463,12 @@ Procedure MSXWrZ80(A.u, V.a)
 
   ; Write to RAM if enabled
   If EnWrite(A >> 14)
-    PokeA(*RAM(A >> 13) + (A & $1FFF), V)
+    Protected *WPagePtr = *RAM(A >> 13)
+    If *WPagePtr = 0
+      LogMemory("CRITICAL: MSXWrZ80 null page pointer! A=$" + Hex(A) + " V=$" + Hex(V) + " Page8K=" + Str(A >> 13))
+      ProcedureReturn
+    EndIf
+    PokeA(*WPagePtr + (A & $1FFF), V)
     ProcedureReturn
   EndIf
 
@@ -315,7 +477,7 @@ EndProcedure
 
 ; Input port reading callback
 Procedure.a MSXInZ80(Port.u)
-  Port & $FF
+  Port = Port & $FF
   Select Port
     Case $98, $99, $9A, $9B
       ProcedureReturn MSXReadVDP(Port)
@@ -346,7 +508,7 @@ EndProcedure
 
 ; Output port writing callback
 Procedure MSXOutZ80(Port.u, V.a)
-  Port & $FF
+  Port = Port & $FF
   Select Port
     Case $98, $99, $9A, $9B
       MSXWriteVDP(Port, V)
@@ -579,11 +741,8 @@ Procedure.u MSXLoopZ80(*R.Z80)
     
     FrameCounter = FrameCounter + 1
     If FrameCounter % 60 = 0 Or FrameCounter < 5
-      Protected logFile.i = OpenFile(#PB_Any, "debug.log", #PB_File_Append)
-      If logFile
-        WriteStringN(logFile, "FRAME=" + Str(FrameCounter) + " PC=" + Hex(*R\PC\W) + " VDP(1)=" + Hex(VDP(1)) + " PSLReg=" + Hex(PSLReg) + " SSLReg(3)=" + Hex(SSLReg(3)))
-        CloseFile(logFile)
-      EndIf
+      LogCPU("FRAME=" + Str(FrameCounter) + " PC=" + Hex(*R\PC\W) + " SP=" + Hex(*R\SP\W) + " VDP(0)=" + Hex(VDP(0)) +
+             " VDP(1)=" + Hex(VDP(1)) + " ScrMode=" + Str(ScrMode) + " PSLReg=" + Hex(PSLReg) + " SSLReg(3)=" + Hex(SSLReg(3)))
     EndIf
     
     ; Signal Main GUI Thread that frame is ready (if previous frame was processed)
