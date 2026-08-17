@@ -569,7 +569,7 @@ Procedure IntZ80(*R.Z80, Vector.u)
     *R\PC\W + 1
     *R\IFF = *R\IFF & ~#IFF_HALT
   EndIf
-  
+
   If (*R\IFF & #IFF_1) Or (Vector = #INT_NMI)
     Protected J.RegisterPair
     J\W = *R\PC\W
@@ -620,7 +620,7 @@ EndProcedure
 Procedure.u RunZ80(*R.Z80)
   Protected I.a
   Protected J.RegisterPair
-  
+
   Repeat
     If Not RealRdZ80 : LogCPU("CRITICAL: RdZ80 NULL at top of RunZ80 loop, PC=$" + Hex(*R\PC\W)) : End : EndIf
 

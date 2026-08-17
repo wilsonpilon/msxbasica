@@ -290,6 +290,25 @@ Procedure VDPOut(R.a, V.a)
   EndSelect
 EndProcedure
 
+; Screen width in pixels, and pixels packed per VRAM byte, for VDP command-engine modes 5-8.
+; Matches real fMSX's PPL[]/PPB[] tables (V9938.c) - used by SRCH's wrap boundary and by the
+; "high-speed" byte-oriented commands (HMMV/HMMM/YMMM/HMMC), which operate on whole VRAM bytes
+; rather than individual pixels.
+Procedure.l VDPModeWidth(mode.a)
+  Select mode
+    Case 6, 7 : ProcedureReturn 512
+    Default   : ProcedureReturn 256
+  EndSelect
+EndProcedure
+
+Procedure.l VDPPixelsPerByte(mode.a)
+  Select mode
+    Case 6 : ProcedureReturn 4
+    Case 8 : ProcedureReturn 1
+    Default : ProcedureReturn 2 ; modes 5 and 7
+  EndSelect
+EndProcedure
+
 Procedure.i GetVRAMAddr(mode.a, X.l, Y.l)
   Protected offset.l = 0
   Select mode
@@ -397,8 +416,9 @@ Procedure VDPDraw(Op.a)
       Protected found.l = 0
       Protected border.l = 0
       If VDP(45) & $02 : border = 1 : EndIf
+      Protected srchWidth.l = VDPModeWidth(ScrMode)
       Protected x.l = SX
-      While x >= 0 And x < 512
+      While x >= 0 And x < srchWidth
         Protected val.a = ReadVRAMPixel(x, SY)
         If (val = CL) = border
           found = 1
@@ -459,27 +479,52 @@ Procedure VDPDraw(Op.a)
         Next ix
       Next iy
       
-    Case $0C ; HMMV
+    Case $0C ; HMMV - "high-speed" commands are byte-oriented on real V9938 hardware: CL is
+      ; stored as a raw whole byte (no per-pixel mask/logical-op, no nibble splitting), stepped
+      ; by PixelsPerByte(mode) pixels per iteration, not 1 - see VDPPixelsPerByte()/real fMSX's
+      ; PPB[]/(MMC.CM & 0x0C)==0x0C in V9938.c. Confirmed 2026-08-17 as a real fidelity gap
+      ; against real fMSX (see docs/SPEC.md module 32e): the old per-pixel-masked WriteVRAMPixel
+      ; path only produced correct results when CL's sub-pixel fields all matched already.
+      Protected ppbH.l = VDPPixelsPerByte(ScrMode)
+      Protected txbH.l = ppbH : If VDP(45) & $04 : txbH = -ppbH : EndIf
+      Protected nxbH.l = NX / ppbH
       For iy = 0 To NY - 1
-        For ix = 0 To NX - 1
-          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, CL, 0)
+        For ix = 0 To nxbH - 1
+          Protected *pvH.Ascii = GetVRAMAddr(ScrMode, DX + ix * txbH, DY + iy * TY)
+          *pvH\a = CL
         Next ix
       Next iy
-      
-    Case $0D ; HMMM
+
+    Case $0D ; HMMM - raw whole-byte VRAM->VRAM copy, see Case $0C comment above.
+      Protected ppbM.l = VDPPixelsPerByte(ScrMode)
+      Protected txbM.l = ppbM : If VDP(45) & $04 : txbM = -ppbM : EndIf
+      Protected nxbM.l = NX / ppbM
       For iy = 0 To NY - 1
-        For ix = 0 To NX - 1
-          Protected val_hmmm.a = ReadVRAMPixel(SX + ix * TX, SY + iy * TY)
-          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, val_hmmm, 0)
+        For ix = 0 To nxbM - 1
+          Protected *spM.Ascii = GetVRAMAddr(ScrMode, SX + ix * txbM, SY + iy * TY)
+          Protected *dpM.Ascii = GetVRAMAddr(ScrMode, DX + ix * txbM, DY + iy * TY)
+          *dpM\a = *spM\a
         Next ix
       Next iy
-      
-    Case $0E ; YMMM
+
+    Case $0E ; YMMM - Y-only move: real V9938 hardware copies within the SAME X column (source
+      ; and dest X are both DX - the SX/SY registers only supply the source ROW) across the
+      ; FULL screen width, ignoring the NX register entirely (see real fMSX's post__xyy macro
+      ; in V9938.c, which advances ADX until it wraps the mode's pixel width, never testing
+      ; NX). Confirmed 2026-08-17 (docs/SPEC.md module 32e) that the previous port used SX as
+      ; an independent source X and bounded the scan by NX - both wrong.
+      Protected ppbY.l = VDPPixelsPerByte(ScrMode)
+      Protected widthY.l = VDPModeWidth(ScrMode)
+      Protected txbY.l = ppbY : If VDP(45) & $04 : txbY = -ppbY : EndIf
+      Protected xCurY.l
       For iy = 0 To NY - 1
-        For ix = 0 To NX - 1
-          Protected val_ymmm.a = ReadVRAMPixel(SX + ix * TX, SY + iy * TY)
-          WriteVRAMPixel(DX + ix * TX, DY + iy * TY, val_ymmm, 0)
-        Next ix
+        xCurY = DX
+        While (txbY > 0 And xCurY < widthY) Or (txbY < 0 And xCurY >= 0)
+          Protected *spY.Ascii = GetVRAMAddr(ScrMode, xCurY, SY + iy * TY)
+          Protected *dpY.Ascii = GetVRAMAddr(ScrMode, xCurY, DY + iy * TY)
+          *dpY\a = *spY\a
+          xCurY + txbY
+        Wend
       Next iy
       
     Case $0B, $0F ; LMMC, HMMC (CPU to VRAM)
@@ -673,7 +718,7 @@ Procedure.a MSXReadVDP(Port.u)
     Case $99
       Protected reg.a = VDP(15)
       Protected res_st.a = VDPStatus(reg)
-      
+
       If reg = 0
         VDPStatus(0) = VDPStatus(0) & $5F
         SetIRQ(~#INT_IE0)

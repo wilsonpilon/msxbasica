@@ -44,6 +44,17 @@ Global PPI.I8255                  ; Main Intel 8255 PPI instance
 Global PSLReg.a                   ; Primary slot register state (PPI port $A8)
 Global Dim SSLReg.a(3)            ; Secondary slot registers state (each slot has one at $FFFF)
 
+; MSX2/2+ Real-Time Clock (RP-5C01-style, ports $B4=register select / $B5=data), matches real
+; fMSX's RTCIn()/RTCReg/RTCMode/RTC[4][13] (MSX.c). Found missing entirely 2026-08-17 while
+; chasing the MSX2/2+ boot freeze (docs/SPEC.md module 32d/32g): the extended BIOS's clock-init
+; routine polls port $B5 in a loop with NO timeout, waiting for a BCD digit pair in a plausible
+; range - fossauro had no handler for $B4/$B5 at all, so reads fell through to the default $FF,
+; which never satisfied the check, hanging forever. MSX1 never hits this code path (no extended
+; BIOS), which is why the freeze only showed up once MSX2/2+ BIOS loading was implemented.
+Global RTCReg.a = 0                ; Selected RTC sub-register (0-15, only 0-13 meaningful)
+Global RTCMode.a = 0                ; RTC[13] doubles as the register-bank select (bits 0-1)
+Global Dim RTC.a(3, 12)            ; 4 banks x 13 registers (banks 1-3 are battery-backed free RAM)
+
 ; fossauro.log is the ONE definitive log for this emulator - every subsystem (General/
 ; Memory/VDP/PSG/CPU) writes here through LogMsg(), gated only by Verbose. Each category
 ; also has its own on/off switch (LogCategories bitmask below) so a future settings
@@ -102,7 +113,19 @@ Global Dim KeysRow.a(129)         ; Keyboard matrix row for each code
 Global Dim KeysMask.a(129)        ; Keyboard matrix mask for each code
 
 ; Emulator control variables
-Global Verbose.a = 1
+; Off by default: LogMsg() (and every LogGeneral/LogMemory/LogCPU/... call built on it)
+; is a synchronous disk write gated by this flag. The per-instruction CPU trace/DIAG
+; checkpoints in Z80.pbi's RunZ80() fire for every instruction executed anywhere in
+; $4000-$7FFF - which is not just "the cartridge", it's also the MSX1 BASIC ROM's own
+; address range, hit on every single cold boot with or without a cartridge inserted.
+; With Verbose defaulting to 1, that turned a boot-time delay loop that should finish in
+; milliseconds into one that takes ~30-60+ real seconds of synchronous log writes,
+; which is what looked like "não boota mais" (frozen blue screen) - confirmed by timing
+; a rebuilt run: stuck at PC=$7D0D for 45s of wall-clock time while Verbose=1, but the
+; CPU/memory logic itself was fine (HL was decrementing correctly the whole time; letting
+; it run long enough, it did get past $7D0D and into the normal per-frame loop). Pass
+; -verbose on the command line to turn this back on for diagnostics.
+Global Verbose.a = 0
 Global Mode.l = #MSX_MSX2 | #MSX_NTSC  ; Default MSX2 NTSC
 Global RAMPages.l = 4             ; 4 x 16KB = 64KB RAM
 Global VRAMPages.l = 8            ; 8 x 16KB = 128KB VRAM
@@ -115,7 +138,11 @@ XIncludeFile "AY8910.pbi"
 ; Memory blocks
 Global *EmptyRAM                  ; Pointer to dummy 8KB block initialized to $FF
 Global *RAMData                   ; Main RAM buffer
-Global *BIOSData                  ; Main MSX BIOS ROM buffer (32KB)
+Global *BIOSData                  ; Main MSX BIOS+BASIC ROM buffer (32KB) - slot 0-0
+Global *BIOSExtData                ; MSX2/MSX2+ extended BIOS ROM buffer (16KB) - slot 3-1.
+                                    ; MSX1 has no extended BIOS; that subslot stays *EmptyRAM,
+                                    ; matching real fMSX's MemMap[3][1][0/1]=EmptyRAM for MSX1
+                                    ; (MSX.c, StartMSX(), MSX_MSX1 case).
 Global Dim *ROMData(5)            ; Cartridge/System ROM data pointers
 
 ; Intel 8255 PPI Helper Procedures
@@ -172,6 +199,46 @@ Procedure.a Read8255(*D.I8255, A.a)
       ProcedureReturn *D\R[3]
   EndSelect
   ProcedureReturn $00
+EndProcedure
+
+; Read a Real-Time Clock sub-register (port $B5 IN). Matches real fMSX's RTCIn() (MSX.c) - bank
+; 0 always reflects the live system clock (BCD digits split across registers 0-12: sec/min/hour/
+; weekday/day/month/year-since-1980), banks 1-3 are battery-backed free RAM (just RTC() storage,
+; no live meaning). The four upper bits are always set on real hardware, so every read is OR'd
+; with $F0 regardless of which branch produced the value.
+Procedure.a RTCIn(R.a)
+  Protected J.a
+  R = R & $0F
+  Protected bank.a = RTCMode & $03
+
+  If R > 12
+    If R = 13
+      J = RTCMode
+    Else
+      J = $0F
+    EndIf
+  ElseIf bank
+    J = RTC(bank, R)
+  Else
+    Protected d.i = Date()
+    Select R
+      Case 0  : J = Second(d) % 10
+      Case 1  : J = Second(d) / 10
+      Case 2  : J = Minute(d) % 10
+      Case 3  : J = Minute(d) / 10
+      Case 4  : J = Hour(d) % 10
+      Case 5  : J = Hour(d) / 10
+      Case 6  : J = DayOfWeek(d)
+      Case 7  : J = Day(d) % 10
+      Case 8  : J = Day(d) / 10
+      Case 9  : J = Month(d) % 10
+      Case 10 : J = Month(d) / 10
+      Case 11 : J = (Year(d) - 1980) % 10
+      Case 12 : J = ((Year(d) - 1980) / 10) % 10
+    EndSelect
+  EndIf
+
+  ProcedureReturn J | $F0
 EndProcedure
 
 ; Initialize Z80-mapped slot memories and hardware registers
@@ -270,8 +337,129 @@ Procedure.l MSXLoadBIOS(FileName.s)
       *RAM(I * 2 + 1) = *MemMap(0, 0, I * 2 + 1)
     EndIf
   Next I
-  
+
   ProcedureReturn 1 ; success
+EndProcedure
+
+; Load the MSX2/MSX2+ extended BIOS ROM (16KB) and map it to Slot 3-1 - real MSX2/MSX2+
+; hardware convention (fMSX/fMSX/MSX.c, StartMSX(): MemMap[3][1][0/1]=P2 for MSX_MSX2/MSX_MSX2P).
+; MSX1 has no extended BIOS; that subslot is left as *EmptyRAM (set once in
+; InitializeMSXMemory()'s blanket fill, never overwritten for MSX1 - matches fMSX exactly).
+Procedure.l MSXLoadExtBIOS(FileName.s)
+  LogGeneral("MSXLoadExtBIOS called for: " + FileName)
+  Protected FileNum.i = ReadFile(#PB_Any, FileName)
+  If FileNum = 0
+    LogGeneral("MSXLoadExtBIOS ERROR: Could not open " + FileName)
+    ProcedureReturn 0
+  EndIf
+
+  Protected Length.q = Lof(FileNum)
+  LogGeneral("MSXLoadExtBIOS: File size = " + Str(Length) + " bytes")
+  If Length > $4000
+    Length = $4000
+  EndIf
+
+  If Not *BIOSExtData
+    *BIOSExtData = AllocateMemory($4000)
+  EndIf
+  FillMemory(*BIOSExtData, $4000, $00)
+  ReadData(FileNum, *BIOSExtData, Length)
+  CloseFile(FileNum)
+
+  ; Map ExtBIOS to Slot 3-1 pages 0, 1 (each 8KB, total 16KB)
+  *MemMap(3, 1, 0) = *BIOSExtData
+  *MemMap(3, 1, 1) = *BIOSExtData + $2000
+
+  ; Update active memory pages if Slot 3-1 is currently mapped anywhere
+  Protected I.l
+  For I = 0 To 3
+    If PSL(I) = 3 And SSL(I) = 1
+      *RAM(I * 2)     = *MemMap(3, 1, I * 2)
+      *RAM(I * 2 + 1) = *MemMap(3, 1, I * 2 + 1)
+    EndIf
+  Next I
+
+  ProcedureReturn 1
+EndProcedure
+
+; Patch the cassette I/O BIOS entry points with "ED FE C9" (undefined opcode $ED $FE, which
+; Z80_CodesED.pbi routes to PatchZ80(), followed by RET) - exact same addresses and mechanism
+; as real fMSX (fMSX/fMSX/MSX.c: BIOSPatches[], ResetMSX()). Without this, calling these BIOS
+; routines runs the REAL Z80 cassette-port bit-banging code, which fossauro has no cassette
+; hardware to answer - the call would hang/misbehave instead of cleanly failing "no tape".
+; DiskPatches (fMSX/fMSX/MSX.c) is NOT replicated here: it only matters if DISK.ROM is loaded,
+; which fossauro doesn't do yet (no disk drive UI/CLI support - see docs/SPEC.md module 32c).
+Procedure ApplyBIOSPatches()
+  Protected Dim patchAddr.u(6)
+  patchAddr(0) = $00E1 : patchAddr(1) = $00E4 : patchAddr(2) = $00E7 : patchAddr(3) = $00EA
+  patchAddr(4) = $00ED : patchAddr(5) = $00F0 : patchAddr(6) = $00F3
+  Protected I.l
+  For I = 0 To 6
+    PokeA(*BIOSData + patchAddr(I), $ED)
+    PokeA(*BIOSData + patchAddr(I) + 1, $FE)
+    PokeA(*BIOSData + patchAddr(I) + 2, $C9)
+  Next I
+  LogGeneral("ApplyBIOSPatches: patched 7 cassette BIOS entry points with ED FE C9")
+EndProcedure
+
+; Load the model-appropriate BIOS (MSX1/MSX2/MSX2+, per the Mode global's #MSX_MODEL bits)
+; and apply the cassette BIOS patches - the actual boot entry point RunEmulator() should call,
+; replacing the old hardcoded MSXLoadBIOS("fMSX/MSX.ROM") call. Also safe to call again on an
+; already-running machine (Hardware->Model menu, live switching) - MSX1 has no extended BIOS,
+; so switching TO it explicitly clears Slot 3-1 back to *EmptyRAM instead of leaving a stale
+; MSX2/MSX2+ extended BIOS mapped there from a previous model selection.
+Procedure.l MSXLoadBIOSForModel()
+  Protected ok.l = 0
+  Select Mode & #MSX_MODEL
+    Case #MSX_MSX2
+      ok = MSXLoadBIOS("fMSX/MSX2.ROM")
+      If ok : MSXLoadExtBIOS("fMSX/MSX2EXT.ROM") : EndIf
+    Case #MSX_MSX2P
+      ok = MSXLoadBIOS("fMSX/MSX2P.ROM")
+      If ok : MSXLoadExtBIOS("fMSX/MSX2PEXT.ROM") : EndIf
+    Default ; #MSX_MSX1
+      ok = MSXLoadBIOS("fMSX/MSX.ROM")
+      If ok
+        *MemMap(3, 1, 0) = *EmptyRAM
+        *MemMap(3, 1, 1) = *EmptyRAM
+        Protected I.l
+        For I = 0 To 3
+          If PSL(I) = 3 And SSL(I) = 1
+            *RAM(I * 2)     = *MemMap(3, 1, I * 2)
+            *RAM(I * 2 + 1) = *MemMap(3, 1, I * 2 + 1)
+          EndIf
+        Next I
+      EndIf
+  EndSelect
+  If ok : ApplyBIOSPatches() : EndIf
+  ProcedureReturn ok
+EndProcedure
+
+; Native handler for the "ED FE C9" cassette BIOS traps (see ApplyBIOSPatches()) - called via
+; Z80_CodesED.pbi's Case $FE. Mirrors real fMSX's Patch.c PatchZ80() behavior for the
+; "no cassette mounted" case (fossauro has no .cas tape file support yet - see docs/SPEC.md
+; module 32c); TAPION/TAPIN/TAPOON/TAPOUT fail (CARRY set), TAPIOF/TAPOOF/STMOTR succeed as
+; no-ops (CARRY clear) - exactly what real fMSX does when its CasStream is NULL.
+Procedure MSXPatchZ80(*R.Z80)
+  Protected patchPC.u = (*R\PC\W - 2) & $FFFF
+  Select patchPC
+    Case $00E1 ; TAPION
+      *R\AF\B\l = *R\AF\B\l | #C_FLAG
+    Case $00E4 ; TAPIN
+      *R\AF\B\l = *R\AF\B\l | #C_FLAG
+    Case $00E7 ; TAPIOF
+      *R\AF\B\l = *R\AF\B\l & ~#C_FLAG
+    Case $00EA ; TAPOON
+      *R\AF\B\l = *R\AF\B\l | #C_FLAG
+    Case $00ED ; TAPOUT
+      *R\AF\B\l = *R\AF\B\l | #C_FLAG
+    Case $00F0 ; TAPOOF
+      *R\AF\B\l = *R\AF\B\l & ~#C_FLAG
+    Case $00F3 ; STMOTR
+      *R\AF\B\l = *R\AF\B\l & ~#C_FLAG
+    Default
+      LogGeneral("MSXPatchZ80: unknown BIOS trap called at PC=$" + Hex(patchPC))
+  EndSelect
 EndProcedure
 
 ; Gated by Verbose and keeps the file open across calls (see LogFileHandle above) -
@@ -391,7 +579,7 @@ Procedure SSlot(V.a)
   EndIf
   
   If SSLReg(PSL(3)) <> V
-    LogMemory("SSlot change on Primary Slot " + Str(PSL(3)) + ": $" + Hex(SSLReg(PSL(3))) + " -> $" + Hex(V) + " [lastRd=$" + Hex(LastRdAddr) + " lastWr=$" + Hex(LastWrAddr) + "]")
+    LogMemory("SSlot change on Primary Slot " + Str(PSL(3)) + ": $" + Hex(SSLReg(PSL(3))) + " -> $" + Hex(V) + " [lastRd=$" + Hex(LastRdAddr) + " lastWr=$" + Hex(LastWrAddr) + " PC=$" + Hex(CPU\PC\W) + " A=$" + Hex(CPU\AF\B\h) + " HL=$" + Hex(CPU\HL\W) + " BC=$" + Hex(CPU\BC\W) + " PSLReg=$" + Hex(PSLReg) + "]")
     SSLReg(PSL(3)) = V
     For J = 0 To 3
       If PSL(J) = PSL(3)
@@ -453,6 +641,7 @@ Procedure MSXWrZ80(A.u, V.a)
     End
   EndIf
   LastWrAddr = A
+
   ; Secondary slot selector at $FFFF
   If A = $FFFF
     SSlot(V)
@@ -501,6 +690,10 @@ Procedure.a MSXInZ80(Port.u)
       Protected row.a = PPI\Rout[2] & $0F
       PPI\Rin[1] = KeyMatrix(row)
       ProcedureReturn Read8255(@PPI, Port - $A8)
+
+    Case $B5 ; RTC data (MSX2/2+ only, but harmless to expose on any model)
+      ProcedureReturn RTCIn(RTCReg)
+
     Default:
       ProcedureReturn $FF
   EndSelect
@@ -516,7 +709,17 @@ Procedure MSXOutZ80(Port.u, V.a)
     Case $A0
       PSG\Latch = V & $0F
     Case $A1
+      ; Real AY-3-8910 masks unused bits at write time (Write8910() in AY8910.c), so a
+      ; register readback (port $A2) reflects the masked value, not whatever garbage the
+      ; program wrote to the unused high bits. PSG_Render()/MSXInZ80() already mask these
+      ; registers again at use time, so this had no audible effect - only readback fidelity.
       Protected out_reg.a = PSG\Latch
+      Select out_reg
+        Case 1, 3, 5, 13
+          V = V & $0F
+        Case 6, 8, 9, 10
+          V = V & $1F
+      EndSelect
       PSG\R[out_reg] = V
       If out_reg = 13
         ResetPSGEnvelope()
@@ -536,6 +739,15 @@ Procedure MSXOutZ80(Port.u, V.a)
       ; If I/O control register has changed...
       If PPI\Rout[2] <> oldRout2
         ; Drum/sound click placeholder
+      EndIf
+
+    Case $B4 ; RTC register select
+      RTCReg = V & $0F
+    Case $B5 ; RTC data write
+      If RTCReg < 13
+        RTC(RTCMode & $03, RTCReg) = V
+      ElseIf RTCReg = 13
+        RTCMode = V
       EndIf
   EndSelect
 EndProcedure
@@ -606,12 +818,13 @@ Procedure.u SetIRQ(IRQ.a)
   Else
     IRQPending = IRQPending | IRQ
   EndIf
-  
+
   If IRQPending
     CPU\IRequest = #INT_IRQ
   Else
     CPU\IRequest = #INT_NONE
   EndIf
+
   ProcedureReturn CPU\IRequest
 EndProcedure
 
@@ -633,7 +846,7 @@ Procedure.u MSXLoopZ80(*R.Z80)
   Static Drawing.a = 0
   Static FrameCounter.l = 0
   Protected J.l, displayEndLine.l
-  
+
   ; Flip HRefresh status bit (VDPStatus[2] bit 5)
   VDPStatus(2) = VDPStatus(2) ! $20
   
@@ -744,7 +957,7 @@ Procedure.u MSXLoopZ80(*R.Z80)
       LogCPU("FRAME=" + Str(FrameCounter) + " PC=" + Hex(*R\PC\W) + " SP=" + Hex(*R\SP\W) + " VDP(0)=" + Hex(VDP(0)) +
              " VDP(1)=" + Hex(VDP(1)) + " ScrMode=" + Str(ScrMode) + " PSLReg=" + Hex(PSLReg) + " SSLReg(3)=" + Hex(SSLReg(3)))
     EndIf
-    
+
     ; Signal Main GUI Thread that frame is ready (if previous frame was processed)
     If FramePending = 0
       FramePending = 1

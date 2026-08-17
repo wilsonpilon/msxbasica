@@ -2842,6 +2842,213 @@ Detalhes em `docs/SPEC.md`, módulo 31.
     completo e como isso se encaixa no roteiro de 3 fases do debugger visual já existente.
   - **Bump de versão para `8.0.1`** (de `7.33.46`) — marca este novo capítulo do projeto (primeiro salto
     de versão maior desde o início do repositório).
+- **2026-08-17** — Documentação do Fossauro incorporada à documentação principal: `docs/SPEC.md`
+  ganhou o módulo 32c (arquitetura, status por componente e roteiro, adaptados de `fossauro/SPEC.md` +
+  `fossauro/OUTLINE.md`) e `docs/MANUAL.md` ganhou uma seção "Fossauro" (operação da janela, opções de
+  linha de comando — deixando claro quais das opções documentadas em `fossauro/manual.md` já existem de
+  verdade no código e quais são só aspiracionais). README passou a ter uma tabela explícita das **duas
+  licenças** do repositório (`LICENSE` GPLv3 do Paleobasic vs. `LICENSE-fossauro`, não-comercial,
+  herdada do fMSX original) em vez de uma única seção "Licença" genérica.
+  - **Bug real corrigido: "tela azul congelada" no boot do Fossauro** — a causa não era a CPU nem o
+    mapeamento de memória (ambos verificados corretos rodando o binário recompilado com trace ao vivo),
+    e sim `Global Verbose.a = 1` (`fossauro/MSX.pbi`) como padrão: toda chamada de log (`LogGeneral`/
+    `LogMemory`/`LogCPU`/...) grava no disco de forma síncrona quando `Verbose` está ligado, e a
+    instrumentação de trace por instrução adicionada em `a0721b9`/`Refine MSX Boot` (2026-08-15) dispara
+    para qualquer PC dentro de `$4000-$7FFF` — faixa que não é só "onde o cartucho mapeia", é também
+    onde a própria ROM BASIC do MSX1 roda durante todo boot normal, com ou sem cartucho. Resultado: um
+    laço de delay do BIOS que deveria levar milissegundos (contado e confirmado via log, decrementando
+    `HL` corretamente o tempo todo) passava a levar 45+ segundos reais de escrita em disco síncrona por
+    instrução — de longe o suficiente pra parecer travado pra quem testa e fecha a janela antes disso.
+    Corrigido trocando o padrão pra `Verbose = 0` e cabeando a flag `-verbose` (já documentada em
+    `fossauro/manual.md`, mas nunca implementada em `fossauro/fossauro.pb`) pra religar o log sob
+    demanda. Com o padrão corrigido, o boot chega ao laço principal de frames em menos de 1 segundo (
+    confirmado via contador `FRAME=` do log, ~60fps), tanto sem ROM quanto carregando
+    `Kingsvalley.rom`/`Athletic.rom` via `-rom`.
+  - **Achado separado, não corrigido nesta sessão**: `fossauro/fossauro.log` até `.log.5` (até
+    ~105 mil linhas cada) estão **rastreados no git**, contradizendo a própria convenção documentada do
+    projeto (memória/`docs/SPEC.md` módulo 32b listam `fossauro/*.exe`/`debug.log` como devendo ser
+    ignorados). Provavelmente entraram sem querer no commit `a0721b9` junto com o resto da refatoração.
+    Vale adicionar `fossauro/fossauro.log*` ao `.gitignore` e rodar `git rm --cached` neles numa sessão
+    futura — não mexido agora pra não misturar limpeza de repositório com a investigação do boot.
+- **2026-08-17, mesmo dia** — usuário reportou que o Fossauro *ainda* não bootava visualmente mesmo com
+  o fix acima, e pediu boot completo até o prompt do MSX-BASIC "igual ao fMSX" (deixando jogos pra
+  depois). Segundo achado, esse sim a causa raiz de verdade: **o V9938 nunca foi esqueleto** — a hipótese
+  registrada horas antes (neste mesmo changelog) estava errada. `RefreshLine()` (`fossauro/V9938.pbi`) já
+  tinha renderização completa de texto/gráficos (modos 0/1/2/3/5/8), sprites e o motor de comandos VDP;
+  só nunca tinha sido exercitada até o fim porque um bug real no **núcleo Z80** impedia o boot de chegar
+  lá. Rastreado com instrumentação temporária (contador de escritas na VRAM por região, reconstrução do
+  endereço de retorno via pilha, dump da name table linha a linha) até `EX (SP),HL` (opcode `$E3`,
+  `fossauro/Z80_Codes.pbi`): a tradução automática (`translate.py`) do C original do fMSX (`RdZ80(SP.W);
+  WrZ80(SP.W++,HL.B.l); RdZ80(SP.W); WrZ80(SP.W--,HL.B.h)`) não tratou o pós-incremento/decremento do C
+  usado como argumento de função — o PureBasic gerado lia `mem[SP]` duas vezes (nunca `mem[SP+1]`) e
+  escrevia em `mem[SP+1]` e **`mem[SP-1]`** (um endereço fora do par correto, corrompendo memória
+  adjacente à pilha), fazendo `HL` virar lixo toda vez que a instrução executava — e ela aparece bem no
+  meio da rotina de desenho do logo/banner de boot do BIOS. Mesmo bug, mesmo fix, na variante `IX`/`IY`
+  (`fossauro/Z80_CodesXX.pbi`). Corrigido reescrevendo pra ler os dois bytes da pilha primeiro, só depois
+  escrever `HL`/`IX`/`IY` nesses mesmos endereços. Confirmado por screenshot: boot mostra `MSX BASIC
+  version 1.0` / `Copyright 1983 by Microsoft` / `28815 Bytes free` / `Ok`, cursor piscando e a barra de
+  teclas de função (`color auto goto list run`) no rodapé — igual ao fMSX real, sem ROM de jogo nenhuma.
+  Ver `docs/SPEC.md` módulo 32b (achado #2) pro passo a passo completo da investigação e `docs/SPEC.md`
+  módulo 32c / `fossauro/README.md` / `fossauro/SPEC.md` pro status do V9938 corrigido (de "Planejado"
+  pra "renderiza texto/gráficos/sprites/comandos VDP").
+- **2026-08-17, mesmo dia** — usuário reportou teclas `/ ? [ { ] } \ | ' " ~ ^ ´` não funcionando no
+  Fossauro em teclado americano. `MapCanvasKey()` (`fossauro/fossauro.pb`) só tinha 7 dos códigos de
+  tecla OEM do Windows mapeados; `` ` `` (VK 192), `[` (VK 219), `\` (VK 220) e `]` (VK 221) estavam
+  simplesmente ausentes do `Select`, então essas teclas não faziam nada. Adicionados, mais VK 226 (tecla
+  extra ISO de alguns layouts). Testado simulando pressionamentos de tecla de verdade na janela (não só
+  lendo código): `` [ ] \ ` `` passaram a funcionar; `/` e `'` já funcionavam (o teste inicial que
+  sugeriu o contrário tinha falha de timing, não do fossauro); combinações com Shift (`? " { } | ~`)
+  funcionam via o próprio mecanismo de matriz de teclado do MSX, sem precisar de mapeamento extra — a
+  MSX combina a tecla física com o SHIFT do jeito que teclado real faz, não fossauro's código.
+- **2026-08-17, mesmo dia** — `fossauro.exe` passou a aceitar a **linha de comando do fMSX original**
+  (pedido explícito do usuário: "mesmo ainda não tendo todas as funcionalidades, aceite os parâmetros de
+  linha de comando do fmsx, aceite o -help"). Argumentos posicionais carregam cartucho A/B (padrão fMSX
+  real); `-help` imprime a lista completa e sai sem abrir janela; `-msx1`/`-msx2`/`-msx2+`/`-pal`/`-ntsc`
+  têm efeito real (bits do `Mode`); `-verbose` ganhou uma máscara numérica opcional; todo o resto
+  (disco/fita/som/joystick/filtros de vídeo/etc.) é reconhecido e aceito sem crashar, mesmo sem efeito
+  ainda. Ver `docs/SPEC.md` módulo 32b pro detalhe completo de cada flag. **Achado separado, não causado
+  por essa mudança**: rodando um cartucho por tempo suficiente (~20-25s padrão, poucos segundos com
+  `-msx1`), o Fossauro trava com uma access violation genuína — confirmado que já acontecia antes de
+  qualquer mudança desta sessão (reproduzido com o `fossauro.pb` original via `git stash`); não
+  investigado a fundo ainda, mas `-msx1` deixa bem mais fácil de reproduzir numa sessão futura.
+- **2026-08-17, mesmo dia** — usuário reportou que `-help` não mostrava nada na tela. A primeira versão
+  usava só `OpenConsole()` puro do PureBasic, que não se anexa de forma confiável ao console de quem
+  chamou um app GUI-subsystem no Windows rodando direto de um terminal interativo (só funcionava com a
+  saída redirecionada pra arquivo). Corrigido chamando `AttachConsole(#ATTACH_PARENT_PROCESS)`
+  explicitamente antes (precisou de `Import "Kernel32.lib"` próprio — não coberto pelo passthrough `_`
+  automático do PureBasic); se não houver console pai pra anexar (ex.: clique duplo no `.exe`), cai pra
+  um `MessageRequester` com o mesmo texto, garantindo que a ajuda aparece de um jeito ou de outro.
+  Confirmado rodando `fossauro.exe -help` direto, sem redirecionamento nenhum.
+- **2026-08-17, mesmo dia** — pedido explícito do usuário ("vá atrás desse crash") pro access violation
+  (`0xC0000005`) que travava o Fossauro rodando um cartucho por tempo suficiente (~20-25s padrão, poucos
+  segundos com `-msx1`). Achado sem precisar instrumentar código manualmente: o Windows já gravava
+  minidumps automaticamente em `%LOCALAPPDATA%\CrashDumps\` a cada crash reproduzido nesta máquina
+  (WER local dump collection, já configurado, não algo ligado nesta sessão). Um parser de minidump de
+  ~30 linhas em PowerShell (formato `MDMP` documentado publicamente, só precisa do header + stream de
+  exceção) extraiu `ExceptionCode`/`ExceptionAddress` de **7 crashes diferentes**, todos **idênticos**:
+  `0xC0000005` com `ExceptionAddress=0x0` — assinatura clássica de chamada através de ponteiro de função
+  nulo. Causa: `JumpZ80` (um dos callbacks do núcleo Z80) nunca é atribuído em `fossauro.pb`/
+  `EmulationThreadProc()` (só no harness de teste separado, `fossauro_verify.pb`) — a maioria dos pontos
+  de chamada já sabia disso (`If JumpZ80 : JumpZ80(...) : EndIf`, `Z80.pbi`), mas dois, traduzidos
+  direto do C original do fMSX sem essa guarda (`JP (HL)` em `Z80_Codes.pbi` e `JP (IX)`/`JP (IY)` em
+  `Z80_CodesXX.pbi`, ambos opcode `$E9`), chamavam `JumpZ80(...)` sem checar primeiro. `JP (HL)` é
+  instrução comum em jogos de verdade (jump computado/máquina de estado) — qualquer cartucho que a
+  executasse crashava. Corrigido com a mesma guarda já usada em `Z80.pbi`. Confirmado: `-msx1
+  Kingsvalley.rom` (crashava em ~8s) sobreviveu 90s sem nenhum novo dump; `-msx1 Athletic.rom` sobreviveu
+  30s. Ver `docs/SPEC.md` módulo 32b pro passo a passo completo, incluindo a técnica de ler minidumps do
+  Windows sem precisar instalar WinDbg/cdb — útil pra qualquer crash futuro deste projeto que não deixe
+  rastro em log.
+- **2026-08-17, mesmo dia** — usuário reportou que mesmo com o crash corrigido, o Fossauro "carrega a
+  tela de abertura mas interrompe, congela logo depois" rodando um cartucho. Investigado a fundo:
+  **não é hang de CPU**. Uma sequência de instrumentação temporária levou por um caminho enganoso
+  (parecia um "interrupt storm" de ~20.000 interrupções/segundo em vez das ~60/s esperadas) antes de um
+  teste mais direto (trace de entrada em `MSXLoopZ80`, path absoluto — dois testes anteriores tinham
+  falhado silenciosamente por usar path relativo) mostrar a verdade: `FrameCounter` chegando a 282 em 6
+  segundos (~47fps), `ScanLine` avançando normalmente — CPU e timing saudáveis. Dois screenshots com 4s
+  de diferença, tirados durante essa mesma execução "saudável", saíram pixel-idênticos: **é o conteúdo
+  da tela que nunca muda, não a CPU que trava**. A splash mostrada ainda é a do BIOS, não a tela de
+  título do jogo — o jogo nunca assume o controle visual. Hipótese mais provável (não confirmada): o
+  hook H.TIMI que jogos MSX normalmente instalam pra rodar sua lógica a cada frame pode não estar sendo
+  preservado/instalado corretamente no Fossauro, deixando o BIOS fazer sua manutenção normal (por isso
+  parece "vivo") sem o estado do jogo em si nunca avançar. Ver `docs/SPEC.md` módulo 32b pro passo a
+  passo completo da investigação e a lição de metodologia sobre paths relativos em diagnósticos rodando
+  na thread de emulação.
+- **2026-08-17, mesmo dia** — pedido explícito do usuário ("vá atrás dessa hipótese do hook H.TIMI"),
+  investigado a fundo. Resultado: **o hook É instalado com sucesso** (não era a hipótese certa) — a
+  tabela em `$FD9A` recebe `JP $401A` (dentro do cartucho) por volta do frame 100 e o valor persiste
+  corretamente em RAM depois disso. O que quebra é o que a CPU *vê* ao tentar ler dali: o registrador
+  de sub-slot secundário de `SSLReg(3)` muda de `$A0` (RAM de verdade) pra `$0` (sub-slot nunca
+  populado, cai no dummy `$FF`-preenchido) por volta do frame 120, escondendo o hook mesmo intacto.
+  Rastreado até uma escrita em `$FFFF` (endereço especial de troca de sub-slot no MSX) acontecendo
+  exatamente quando o próprio endereço `$0038` (vetor de interrupção) já lia `$FF` em vez do `JP` real
+  da ROM — ou seja, a página 0 (BIOS) já tinha sido corrompida primeiro. Cadeia causal reconstruída: o
+  hook desvia execução pra dentro do próprio cartucho a cada VBlank (como esperado); em algum ponto do
+  código do jogo (não identificado — precisaria desmontar `Kingsvalley.rom`, não feito nesta sessão), a
+  pilha cresce sem parar até dar a volta em 64KB e colidir com `$FFFF` — que no MSX real é *sempre* o
+  registrador de troca de slot, push de pilha ou não (fidelidade real ao hardware, não bug de emulação
+  em si). Isso corrompe o mapa de memória, incluindo a página 0, criando o laço auto-sustentado
+  "`PC` preso em `$38`, `SP` decrescendo sem parar" já visto na investigação anterior. **Não corrigido**
+  — a causa raiz agora é "o código do cartucho estoura a pilha rodando a partir do hook", não mais uma
+  falha do Fossauro em instalar/preservar o hook. Ver `docs/SPEC.md` módulo 32b pro passo a passo
+  completo e as ideias de próximo passo (desmontar o jogo a partir de `$401A`, ou um mitigador
+  defensivo pra escritas suspeitas em `$FFFF`/`$FFFE`).
+- **2026-08-17, mesmo dia** — pedido explícito do usuário: "implemente o MSX 1/2/2+ para o depurador e o
+  MSX BASIC funcionarem primeiro, depois que tudo estiver 100% voltamos aos jogos" — priorizar
+  fidelidade de emulação (debugger/BASIC) sobre jogos, com paridade 1:1 contra o fMSX real sempre que
+  possível. Implementado `MSXLoadBIOSForModel()`/`MSXLoadExtBIOS()`/`ApplyBIOSPatches()`/`MSXPatchZ80()`
+  em `MSX.pbi`, replicando `StartMSX()`/`Patch.c` do fMSX real (BIOS principal + extended BIOS por
+  modelo, patches de cassete). **MSX1 confirmado sem regressão** via screenshot. **MSX2/MSX2+ ainda não
+  bootam** — travam com tela preta antes do prompt do BASIC, `VDP(1)` (screen-enable) nunca é setado.
+  Confirmado que o `fMSX.exe` real (já presente em `fossauro/fMSX/`) boota MSX2 sem problema com os
+  mesmos arquivos de ROM, então o bug é do núcleo do fossauro, não do ambiente. Uma hipótese inicial (a
+  restrição "slot 0 sem subslot só em MSX1" em `SSlot()`) foi **descartada** por comparação direta com
+  `MSX.c` linha 1773 — fossauro já reproduz o real fielmente ali. Um experimento isolante (desativar a
+  extended BIOS) mostrou que o freeze **não** é específico dela — acontece de qualquer forma, só que via
+  um caminho de código diferente, apontando pra algo mais fundamental que só o boot MSX2 (mais complexo
+  que MSX1) exercita. Causa raiz exata ainda não isolada apesar de rastreamento detalhado de registrador
+  por instrução em três sub-rotinas de auto-detecção de slot da própria `MSX2.ROM`. Ver `docs/SPEC.md`
+  módulo 32d pro passo a passo completo, o que já foi descartado, e o próximo passo recomendado.
+- **2026-08-17, mesmo dia** — com o freeze do MSX2/2+ ainda em aberto, seguiu pro próximo item do plano:
+  auditoria do motor de comandos VDP (`VDPDraw()`, `V9938.pbi`) contra `V9938.c` real. Três bugs reais
+  encontrados e corrigidos: **`SRCH`** usava `512` fixo como limite de X pra qualquer modo (errado pros
+  modos 5/8, que são 256px de largura); **`HMMV`/`HMMM`** (comandos "de alta velocidade") passavam pelo
+  caminho de pixel único com máscara/operação lógica em vez do armazenamento de byte cru que o hardware
+  real faz nesses comandos, e não avançavam pelos pixels-por-byte corretos (2/4/2/1 pros modos 5/6/7/8);
+  **`YMMM`** usava uma coordenada X de origem independente (`SX`) e limitava a varredura por `NX`, quando
+  o hardware real sempre copia dentro da mesma coluna X (só a linha muda) e varre a tela inteira,
+  ignorando `NX`. `HMMC`/`LMMC`/`LMMV`/`LMMM`/`LINE`/`PSET` conferidos e já corretos. MSX1 testado sem
+  regressão (screenshot). Na sequência, auditoria do PSG (`AY8910.pbi`) contra `AY8910.c` real: as
+  arquiteturas são fundamentalmente diferentes (o fMSX real delega síntese de áudio pra uma camada
+  genérica externa ao arquivo, sem emular o LFSR de 17 bits ciclo a ciclo; o fossauro já faz síntese PCM
+  de verdade por amostra, mais preciso, não uma tradução direta) — a máquina de estados do gerador de
+  envelope foi conferida contra a tabela `Envelopes[16][32]` real e bate em todos os 16 casos, inclusive
+  um artefato conhecido do hardware (valor repetido no ponto de virada dos shapes alternantes). Um bug
+  real e pequeno corrigido: escrita de registrador do PSG (porta `$A1`) não mascarava bits não usados
+  como o hardware real faz, afetando só a fidelidade de releitura via porta `$A2`, não o áudio. Ver
+  `docs/SPEC.md` módulos 32e/32f pro detalhamento completo.
+- **2026-08-17, mesmo dia** — pedido explícito do usuário pra continuar tentando fazer MSX2/2+ bootarem.
+  **Causa raiz do freeze encontrada e corrigida: o chip de Relógio de Tempo Real (RTC) do MSX2 nunca
+  tinha sido implementado.** A extended BIOS grava na porta `$B4`/lê da porta `$B5` esperando uma
+  resposta do RTC durante a inicialização, sem nenhum timeout - como o fossauro não tratava essas portas,
+  a leitura sempre voltava `$FF` (valor padrão pra porta desconhecida), que nunca satisfazia a condição
+  de saída, travando pra sempre. Confirmado contra o `MSX.c` real do fMSX (`RTCIn()`/`case 0xB5`) que
+  são exatamente os registradores do RTC (13 registradores × 4 bancos, banco 0 = relógio real do
+  sistema). Implementado `RTCIn()` em `MSX.pbi` usando `Date()`/`Second()`/`Minute()`/etc. do PureBasic
+  pra montar os dígitos BCD do relógio, ligado nas portas `$B4`/`$B5`. **Resultado: MSX2+ agora boota
+  completamente até o prompt do BASIC** ("MSX BASIC version 3.0 / Copyright 1988 by Microsoft",
+  confirmado por screenshot) - MSX1 sem regressão. **MSX2 puro avança muito mais longe** (tela liga de
+  verdade, `SCREEN 6` é alcançado) **mas ainda trava num segundo loop de polling de hardware diferente**
+  (um despacho por ponteiro `JP (IX)` que parece não ter handler instalado pra esse dispositivo
+  específico) - como MSX2+ já funciona 100%, essa segunda causa ficou registrada mas não é mais
+  prioridade imediata. Ver `docs/SPEC.md` módulo 32g pro relato completo, incluindo a armadilha real que
+  atrasou boa parte da sessão anterior (mesmo PC endereço pode ser ROMs diferentes dependendo do slot
+  selecionado - boa parte do disassembly do módulo 32d tinha lido a ROM errada).
+- **2026-08-17, mesmo dia** — usuário reportou que o MSX2+ não mostra "a animação do logo antes do boot"
+  e que o MSX2 puro continua com tela cinza. Investigado: o `fMSX.exe` real **também não mostra logo
+  nenhum** (só um flash de cor de borda com menos de 1 segundo) - a diferença de velocidade (fossauro
+  ~2.5s vs. fMSX real ~9s) é explicada principalmente por disk ROM (o fossauro não implementa nenhum,
+  então pula o tempo de detecção de drive que o fMSX real gasta - visível na tela dele como "Disk BASIC
+  version 1.0"). Pra MSX2 puro, mais uma rodada de tracing cirúrgico descartou a hipótese anterior (o
+  trampolim `JP (IX)`, que na verdade resolve normalmente) e isolou a localização exata onde a CPU fica
+  presa (`$2980`-`$299F` em `MSX2EXT.ROM`, uma leitura do registrador de status S#2 do VDP) mas **não**
+  a causa raiz - o bit que essa rotina testa já lê como esperado nas amostras capturadas, então o loop
+  real deve estar numa camada externa ainda não identificada. MSX2+ continua 100% funcional. Ver
+  `docs/SPEC.md` módulo 32h pro relato completo e o próximo passo recomendado.
+- **2026-08-17, mesmo dia** — pausando a investigação do freeze do MSX2 puro, usuário pediu pra começar
+  a estrutura de menu de verdade do `fossauro.pb`. **`File`** reorganizado: `Open Cartridge...`/
+  `Open Disk...`/`Save Snapshot...`/`Open Snapshot...`/`Load .CAS...`/`Load .CHT...`/`Quit` -
+  disco/fita/cheat abrem o seletor de arquivo certo mas ainda não fazem nada com o arquivo (controlador
+  de disquete, cassete e cheats openMSX/BlueMSX-compatíveis são trabalho futuro, adiado explicitamente
+  pelo usuário). **`Hardware → Model`** novo (MSX1/MSX2/MSX2+, com marca de seleção): troca o modelo ao
+  vivo (recarrega a BIOS certa, recarrega o cartucho já carregado se houver, reset completo) - achou e
+  corrigiu um bug real no processo (`MSXLoadBIOSForModel()` não limpava a extended BIOS ao trocar PARA
+  MSX1, deixando `MSX2EXT.ROM` ainda mapeada de uma troca anterior). Testado nas duas direções via
+  `WM_COMMAND` direto pro `HWND` (MSX1↔MSX2+, ambos confirmados por screenshot chegando no BASIC certo).
+  **Save/Open Snapshot implementado de verdade** (não só o item de menu): formato binário próprio
+  salvando RAM/VRAM/CPU/VDP/PSG/PPI/RTC/estado de slot completos (caminho do cartucho é salvo, não os
+  dados da ROM - relido do disco no load). Verificado com um teste headless temporário (removido depois):
+  save → corrompe estado → load → todos os valores batem exato. Ver `docs/SPEC.md` módulo 32i pro
+  detalhamento completo.
 
 ## Ferramentas e ambiente
 
@@ -2889,4 +3096,15 @@ Este projeto não existiria sem o trabalho de:
 
 ## Licença
 
-[GNU GPL v3](LICENSE).
+Este repositório tem **duas licenças separadas**, uma por sub-projeto — não misture os dois ao
+redistribuir:
+
+| Sub-projeto | Licença | Arquivo | Por quê |
+|---|---|---|---|
+| **Paleobasic** (`editor/`, o IDE em si) | [GNU GPL v3](LICENSE) | [`LICENSE`](LICENSE) | Licença própria do projeto, copyleft. |
+| **🦴 Fossauro** (`fossauro/`, port do fMSX) | Não-comercial (derivada da licença original do fMSX) | [`LICENSE-fossauro`](LICENSE-fossauro) (cópia também em [`fossauro/LICENSE`](fossauro/LICENSE)) | `fossauro/` é um port do código de Marat Fayzullin — herda a cláusula não-comercial do fMSX original, incompatível com GPL v3. Uso, cópia e modificação são livres para fins não-comerciais/educacionais; uso comercial exige permissão do autor original. |
+
+As duas licenças convivem porque, hoje, os dois sub-projetos rodam como **processos separados** (o
+IDE não faz link direto com o código do Fossauro) — ver `docs/SPEC.md`, módulo 32b, para a pendência
+em aberto sobre o que acontece se uma integração mais profunda (in-process) vier a ser decidida no
+futuro.

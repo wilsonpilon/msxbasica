@@ -169,6 +169,10 @@
     - [R, L e LP - referência de fita e disassembler](#r-l-e-lp---referência-de-fita-e-disassembler)
     - [EDIT - editor do programa-fonte Z80](#edit---editor-do-programa-fonte-z80)
     - [A - montar o programa](#a---montar-o-programa)
+32. [Fossauro (emulador MSX nativo)](#fossauro-emulador-msx-nativo)
+    - [O que já funciona hoje](#o-que-já-funciona-hoje)
+    - [Linha de comando](#linha-de-comando)
+    - [O que o manual original do Fossauro descreve mas ainda não existe](#o-que-o-manual-original-do-fossauro-descreve-mas-ainda-não-existe)
 
 ---
 
@@ -3045,3 +3049,110 @@ A opção `U` do manual original (não lista o programa) ainda não foi implemen
 **`MAP`** (fora do `A`, comando próprio) — mostra o endereço inicial e final do código-objeto da última
 montagem bem-sucedida (`A` sozinho já basta, não precisa de `A O`). Se nada foi montado com sucesso
 ainda, pede pra rodar `A` primeiro; `NEW` invalida esse resultado guardado.
+
+## Fossauro (emulador MSX nativo)
+
+**🦴 Fossauro** (`fossauro/`) é um port nativo em PureBasic do emulador **fMSX** de Marat Fayzullin —
+projeto irmão dentro deste repositório, com licença própria (não-comercial, ver
+[`LICENSE-fossauro`](../LICENSE-fossauro) na raiz e a seção Licença do `README.md`). Roda como
+executável **separado** (`fossauro/fossauro.exe`), sem integração com o IDE principal ainda — ver
+`docs/SPEC.md`, módulos 32b/32c, para arquitetura, status por componente e o roteiro de integração
+futura. Esta seção documenta só a operação da janela e da linha de comando; para arquitetura interna,
+veja `docs/SPEC.md`.
+
+> `fossauro/manual.md` (mantido pelo próprio sub-projeto) descreve um conjunto bem mais amplo de menus
+> e opções de linha de comando do que o que existe implementado hoje — a tabela abaixo separa
+> explicitamente o que já funciona do que ainda é só documentação aspiracional, pra evitar confundir os
+> dois.
+
+### O que já funciona hoje
+
+- Compilar: `.\fossauro\build.ps1` (precisa de `pbcompiler` no `PATH`, mesma exigência do `build.ps1`
+  principal da IDE — não usa o `build.config.json` do Paleobasic, são scripts independentes).
+- Rodar: `fossauro\fossauro.exe [-msx1|-msx2|-msx2+] [-rom <arquivo>] [-verbose]`. Sem argumentos, sobe
+  direto pro boot do MSX1 (BIOS `fMSX/MSX.ROM`) sem cartucho — confirmado 2026-08-17 (screenshot) que
+  isso já mostra o boot completo de verdade: "`MSX BASIC version 1.0` / `Copyright 1983 by Microsoft` /
+  `28815 Bytes free` / `Ok`" com o cursor piscando e a barra de teclas de função (`color auto goto list
+  run`) no rodapé, igual ao fMSX real. `-msx2+` também chega no prompt do BASIC completo ("MSX BASIC
+  version 3.0"), carregando a BIOS certa por modelo — ver a tabela de linha de comando abaixo pro estado
+  de `-msx2` (carrega a BIOS certa mas ainda trava antes do prompt). A janela abre com menus **File**,
+  **Emulation** e **Hardware**.
+- **Menu File**: `Open Cartridge...` (carrega um `.rom`/`.mx1`/`.mx2`), `Open Disk...` (seleciona um
+  `.dsk` mas ainda não faz nada com ele - sem controlador de disquete implementado), `Save Snapshot...`/
+  `Open Snapshot...` (salva/carrega o estado completo da máquina - RAM, VRAM, CPU, VDP, PSG, PPI, RTC,
+  slots - num arquivo `.fss` próprio; o cartucho é relido do caminho original no load, não é embutido no
+  snapshot), `Load .CAS...`/`Load .CHT...` (seletores de arquivo prontos, mas fita cassete e cheats -
+  formato pretendido compatível com openMSX/BlueMSX - ainda não têm nenhuma lógica por trás), `Quit`.
+- **Menu Hardware → Model**: troca entre MSX1/MSX2/MSX2+ com a máquina já rodando (recarrega a BIOS certa,
+  recarrega o cartucho atual se houver, reset completo - equivalente a reiniciar com um modelo diferente,
+  não preserva RAM/VRAM). O item do modelo atual aparece marcado.
+- **Menu Emulation**: `Reset`, `Pause`, `Resume`.
+- Se a tela ficar azul sólida sem nada desenhado por mais que alguns segundos, isso **não** é o
+  comportamento esperado — é sintoma do bug de `EX (SP),HL` corrigido em 2026-08-17 (`docs/SPEC.md`
+  módulo 32b, achado #2) ou de alguma regressão parecida; rode com `-verbose` e acompanhe
+  `fossauro/fossauro.log`: a cada frame ele grava uma linha `[CPU] FRAME=<n> PC=... SP=... VDP(0)=...`
+  (deve subir a ~50-60/s), e comparar o conteúdo da VRAM/name table contra o esperado é o caminho que
+  achou o bug da última vez (ver o achado no `docs/SPEC.md` para o passo a passo).
+
+### Linha de comando
+
+Desde 2026-08-17, `fossauro.exe` **aceita a linha de comando do fMSX original** (não mais um punhado
+de flags próprias) — `fossauro -help` imprime a lista completa e é a referência viva (evita esta tabela
+ficar desatualizada); a versão completa e comentada do fMSX original está em `fossauro/fossauro.md`.
+`-help` funciona como um utilitário de console normal (imprime no terminal que chamou e sai, sem abrir
+janela — inclusive quando a saída é redirecionada com `>`).
+
+Resumo do que já tem efeito real vs. só é aceito (não trava, não gera erro, mas ainda não faz nada):
+
+| Categoria | Exemplos | Estado |
+|---|---|---|
+| Cartucho | `[arquivo1] [arquivo2]` posicionais (padrão fMSX real — 1º = slot A, 2º = slot B), `-rom <arquivo>` (atalho antigo do fossauro, ainda aceito) | **Funciona** — carrega e mapeia nos slots 1 e 2 respectivamente. |
+| Modelo/vídeo | `-msx1`/`-msx2`/`-msx2+`, `-pal`/`-ntsc` | **`-msx1` e `-msx2+` funcionam de ponta a ponta** — carregam a BIOS certa por modelo (`MSX.ROM` / `MSX2P.ROM`+`MSX2PEXT.ROM`) e chegam no prompt do BASIC (confirmado por screenshot 2026-08-17, `docs/SPEC.md` módulo 32g: MSX1 mostra "MSX BASIC version 1.0", MSX2+ mostra "MSX BASIC version 3.0"). **`-msx2` carrega a BIOS certa mas ainda não chega no prompt** — trava num loop de polling de hardware na extended BIOS depois de ligar a tela (ver módulo 32g para o estado exato); além disso SCREEN 6/7 (usado durante esse trecho do boot do MSX2) ainda não é desenhado por `RefreshLine()` (só modos 0-5/8), então mesmo quando esse loop for resolvido a tela ficará em branco até esse suporte existir. |
+| Log | `-verbose [<máscara>]` | **Funciona**, mas com bitmask própria do fossauro (1=geral, 2=memória, 4=VDP, 8=PSG, 16=CPU) — não é a mesma numeração do `-verbose <level>` do fMSX real. |
+| `-rom <tipo>` (mapeador MegaROM, 0-7) | — | Aceito e guardado, sem efeito — troca de mapeador MegaROM ainda não implementada. |
+| Resto (disco, fita, som, joystick, escala de tela, filtros de vídeo, trap do debugger, etc.) | `-diska`, `-diskb`, `-tape`, `-sound`, `-joy`, `-scale`, `-trap`, `-tv`/`-lcd`/`-raster`, `-mono`/`-sepia`, etc. | **Só aceito** — reconhecido, consome o argumento certo, registrado em `fossauro.log` com `-verbose` ligado, mas não muda comportamento nenhum ainda (disco/fita/som/joystick/filtros de vídeo não existem no fossauro hoje). |
+
+> **Corrigido 2026-08-17**: rodando um cartucho por tempo suficiente (~20-25s em modo padrão MSX2, ou
+> poucos segundos com `-msx1`), `fossauro.exe` travava com uma access violation genuína (`0xC0000005`).
+> Achado via os minidumps que o Windows já gravava automaticamente em `%LOCALAPPDATA%\CrashDumps\`
+> (7 crashes reproduzidos, todos com `ExceptionAddress=0x0` — chamada através de ponteiro de função
+> nulo): `JumpZ80` nunca é atribuído em `fossauro.pb`/`EmulationThreadProc()` (só no harness de teste
+> separado), e dois pontos de código (`JP (HL)`/`JP (IX)`/`JP (IY)`, opcode `$E9`, traduzidos direto do
+> C original sem a guarda que o resto do núcleo já usava) chamavam `JumpZ80(...)` sem checar se estava
+> setado primeiro. `JP (HL)` é comum em jogos de verdade (jump computado), então qualquer cartucho que a
+> executasse crashava. Corrigido com a mesma guarda `If JumpZ80 : JumpZ80(...) : EndIf` já usada em
+> outro lugar do núcleo Z80 (`Z80.pbi`). Ver `docs/SPEC.md` módulo 32b pro passo a passo completo,
+> incluindo como os minidumps foram lidos sem precisar instalar WinDbg/cdb.
+>
+> **Achado separado, ainda em aberto (mesmo dia)**: mesmo com o crash corrigido, um cartucho carregado
+> pode "congelar" depois da tela de abertura — investigado a fundo e **confirmado que não é hang de
+> CPU**: `FrameCounter` avança normalmente (~47fps), `ScanLine` progride certinho, mas o conteúdo da
+> tela fica pixel-idêntico entre screenshots tirados segundos de diferença. A splash mostrada ainda é a
+> do BIOS, não a tela de título do jogo — o jogo nunca assume o controle visual. A hipótese do hook
+> H.TIMI foi investigada a fundo: **o hook É instalado com sucesso** (`JP $401A`, dentro do cartucho,
+> persiste corretamente em RAM) — não era isso. O que quebra: o registrador de sub-slot secundário da
+> RAM muda sozinho pouco depois, escondendo o hook (ainda intacto) atrás de memória vazia — rastreado
+> até a pilha do jogo crescendo sem limite a partir do código que o hook chama, até dar a volta em 64KB
+> e colidir com `$FFFF` (que no MSX real é sempre o registrador de troca de slot). **Ainda não
+> corrigido** — precisaria desmontar o próprio `Kingsvalley.rom` a partir de `$401A` pra achar o que
+> estoura a pilha. Ver `docs/SPEC.md` módulo 32b pro passo a passo completo.
+
+### O que o manual original do Fossauro descreve mas ainda não existe
+
+`fossauro/manual.md` documenta os itens abaixo como se já existissem — nenhum está implementado em
+`fossauro/fossauro.pb` no momento (não são bugs, é documentação escrita à frente do código, comum em
+projeto que ainda está construindo a base):
+
+- Menus **File** (Load ROM.../Load Disk A:/B:/Load Tape.../Save State/Load State) além do que a janela
+  já abre vazio - carregar ROM só funciona via `-rom` na linha de comando, não pela GUI ainda.
+- Menu **Emulation** (Reset, Pause/Resume, velocidade Fast Forward/Slow Motion, troca de sistema
+  MSX1/MSX2/MSX2+ em runtime).
+- Menu **Video** (escala de janela, NTSC/PAL, scanlines) e **Audio** (mute, volume) — sem PSG
+  implementado (módulo 32c), não haveria o que controlar ainda de qualquer forma.
+
+**Atualização 2026-08-17**: as opções de CLI que essa lista mencionava (`-msx1`/`-msx2`/`-msx2+`,
+`-diska`/`-diskb`, `-tape`, `-pal`/`-ntsc`, `-trap`, `-help`) **agora existem** — `fossauro.exe` passou a
+aceitar toda a linha de comando do fMSX original (ver seção "Linha de comando" acima). A maioria ainda
+não tem efeito de verdade (disco/fita/trap continuam não implementados), mas não é mais "documentação
+que não corresponde a nada no código" — o parser reconhece e aceita cada uma delas explicitamente, e
+`-help` já funciona de verdade.

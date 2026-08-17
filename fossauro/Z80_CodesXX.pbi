@@ -112,7 +112,7 @@ Case $01 :  M_LDWORD(BC)
 Case $11 :  M_LDWORD(DE) 
 Case $21 :  M_LDWORD(XX) 
 Case $31 :  M_LDWORD(SP) 
-Case $E9 :  *R\PC\W=*R\XX\W : JumpZ80(*R\PC\W) 
+Case $E9 :  *R\PC\W=*R\XX\W : If JumpZ80 : JumpZ80(*R\PC\W) : EndIf
 Case $F9 :  *R\SP\W=*R\XX\W 
 Case $0A :  *R\AF\B\h=SafeRdZ80(*R\BC\W) 
 Case $1A :  *R\AF\B\h=SafeRdZ80(*R\DE\W) 
@@ -295,9 +295,9 @@ Case $3A :  J\B\l=ReadOp(*R)
 Case $32 :  J\B\l=ReadOp(*R) 
    J\B\h=ReadOp(*R) 
    WrZ80(J\W,*R\AF\B\h) 
-Case $E3 :  J\B\l=SafeRdZ80(*R\SP\W) : WrZ80(*R\SP\W + 1,*R\XX\B\l) 
-   J\B\h=SafeRdZ80(*R\SP\W) : WrZ80(*R\SP\W - 1,*R\XX\B\h) 
-   *R\XX\W=J\W 
+Case $E3 :  J\B\l=SafeRdZ80(*R\SP\W) : J\B\h=SafeRdZ80(*R\SP\W + 1)
+   WrZ80(*R\SP\W,*R\XX\B\l) : WrZ80(*R\SP\W + 1,*R\XX\B\h)
+   *R\XX\W=J\W
 Case $27 :  J\W=*R\AF\B\h 
    If *R\AF\B\l&#C_FLAG : J\W = J\W | 256 : EndIf
    If *R\AF\B\l&#H_FLAG : J\W = J\W | 512 : EndIf

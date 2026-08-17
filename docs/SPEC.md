@@ -6257,12 +6257,17 @@ BIOS do MSX (copyright próprio, nunca redistribuível) e artefatos de build/tes
 regenerados por `fossauro/build.ps1`) — mesma lógica já aplicada a `badig/`/`nestor80/`/`asmsx/`/etc.,
 material de referência de terceiros nunca entra, só o trabalho original deste projeto.
 
-**Onde o Fossauro está hoje** (status do próprio `fossauro/README.md`, não conferido linha a linha por
-este documento ainda): núcleo Z80 (`fossauro/Z80.pbi` + `Z80_Codes*.pbi`/`Z80_Tables.pbi`) e slots/PPI/
-teclado/BIOS loader (`fossauro/MSX.pbi`) marcados como completos; **V9938 (VDP, `fossauro/V9938.pbi`) e
-AY-3-8910 (PSG) ainda só esqueleto, carregamento de fita/disco e UI ainda não existem**. Ou seja, hoje o
-Fossauro roda a CPU e o mapeamento de memória mas não tem vídeo/som/entrada de verdade funcionando ainda
-— um MSX "de papel", não um MSX jogável.
+**Onde o Fossauro está hoje** (atualizado 2026-08-17, desta vez conferido ao vivo, não só copiado do
+`fossauro/README.md`): núcleo Z80 (`fossauro/Z80.pbi` + `Z80_Codes*.pbi`/`Z80_Tables.pbi`), slots/PPI/
+teclado/BIOS loader (`fossauro/MSX.pbi`) **e o V9938 (VDP, `fossauro/V9938.pbi`)** estão completos o
+bastante pra bootar um MSX1 de verdade — confirmado por screenshot mostrando "MSX BASIC version 1.0 /
+Copyright 1983 by Microsoft" + prompt `Ok` na tela (ver achado 2026-08-17 no final deste módulo). O
+`README.md`/`SPEC.md` do próprio Fossauro diziam "V9938 esqueleto" até esta sessão — estavam
+desatualizados, não o código; o módulo de renderização (`RefreshLine`, sprites, motor de comandos VDP)
+já existia e funcionava, só nunca tinha sido exercitado até o fim porque um bug separado no núcleo Z80
+(ver achado abaixo) impedia o boot de chegar lá. Ainda faltando: AY-3-8910 (PSG, só esqueleto de
+I/O ainda) e carregamento de fita/disco/UI. Ou seja, hoje o Fossauro tem CPU, memória e vídeo
+funcionando — falta som e entrada de disco/fita pra virar um MSX jogável de verdade.
 
 **Pedido do usuário para as próximas sessões, duas frentes explícitas**:
 1. **Implementar as funções que faltam no Fossauro** — primeiro grande alvo é fechar o V9938 (vídeo) e o
@@ -6297,6 +6302,672 @@ começar sem necessidade concreta que a Fase 2 não resolva primeiro" — mas ag
 feito independente dessa recomendação, então a pergunta prática mudou de "vale a pena começar" pra "como
 as duas frentes — debugger Z80-only da Fase 1 e o Fossauro crescendo em paralelo — se encontram", que é
 exatamente a comunicação PaleoBasic↔Fossauro pedida acima.
+
+**Bug real encontrado e corrigido (2026-08-17)** — "tela azul congelada" no boot do Fossauro,
+reportado pelo usuário como algo que chegou a funcionar, quebrou depois de testar com ROMs de jogo, e
+passou a não bootar mais nem sem ROM nenhuma. Depurado ao vivo: o processo `fossauro.exe` do usuário
+estava de fato preso (achado com `Get-Process`/`Stop-Process`, `fossauro.log` bloqueado por lock de
+arquivo do processo rodando), travado num laço de delay do BIOS em `PC=$7D0D`
+(`DEC HL` / `LD A,L` / `OR H` / `JR NZ,$7D0D`, um contador regressivo comum do BIOS MSX, confirmado
+desmontando os bytes reais de `fossauro/MSX.ROM` nesse endereço). Recompilando o binário a partir do
+código-fonte atual (o `.exe` que o usuário rodava estava desatualizado em relação a `Z80.pbi` — outra
+pista que levou um tempo a descartar, já que o mtime do `.exe` era anterior ao último save do `.pbi`) e
+rodando com trace ao vivo (`Get-Content -Tail`, `Stop-Process` pra liberar o lock do log), ficou claro
+que `HL` estava decrementando **corretamente** a cada iteração — não era bug de CPU nem de memória — só
+estava levando **~45 segundos reais** pra terminar um laço que no MSX real leva milissegundos. Causa:
+`Global Verbose.a = 1` (padrão) em `fossauro/MSX.pbi` liga `LogMsg()` (escrita síncrona em disco) pra
+toda chamada `LogGeneral`/`LogMemory`/`LogCPU`/etc., e a instrumentação de trace por instrução
+adicionada em `a0721b9` (módulo 32b acima, "Refine MSX Boot") dispara pra **qualquer** PC dentro de
+`$4000-$7FFF` — que não é só onde um cartucho mapeia, é também onde a ROM BASIC do MSX1 roda durante
+todo boot normal, com ou sem cartucho inserido. Cada uma das ~32 mil iterações desse laço de delay
+(contador inicial `HL=$7EFD`) gravava uma linha de log síncrona — daí os 45s. **Fix**: `Verbose` passou
+a default `0`, e a flag `-verbose` (já documentada em `fossauro/manual.md` mas nunca implementada em
+`fossauro/fossauro.pb`) foi cabeada de verdade pra religar o log sob demanda. Confirmado após o fix:
+boot chega ao laço principal de frames em menos de 1 segundo (contador `FRAME=` do log avançando a
+~60fps), tanto sem ROM quanto com `Kingsvalley.rom`/`Athletic.rom` via `-rom`. Na hora, a tela continuou
+azul sólida e a hipótese registrada aqui foi "V9938 ainda é esqueleto, isso é esperado" — **hipótese
+errada, corrigida pelo achado seguinte no mesmo dia**. Achado à parte, não mexido nesta sessão:
+`fossauro/fossauro.log` até `.log.5` (dezenas de milhares de linhas cada) estão rastreados no git,
+contradizendo a convenção já documentada aqui de que `fossauro/*.exe`/`debug.log` deveriam ser ignorados
+— provavelmente entraram sem querer junto com `a0721b9`.
+
+**Bug real #2, a causa de verdade do boot sem tela (2026-08-17, mesmo dia)** — o usuário reportou que o
+Fossauro *ainda* não bootava visualmente mesmo depois do fix acima, e pediu boot completo até o prompt
+do MSX-BASIC "igual ao fMSX". Investigação ao vivo mostrou que o V9938 **não é esqueleto** — `RefreshLine()`
+já tinha renderização completa de texto/gráficos, sprites e o motor de comandos VDP (ver módulo 32c) —
+a hipótese anterior estava simplesmente errada. Instrumentação temporária (contador de escritas na
+VRAM por região, reconstrução do endereço de retorno via pilha, dump do nome-tabela linha a linha)
+isolou o problema: o boot chega a configurar VDP+fonte e limpar a tela (`CLS`, confirmado — a
+name table vai a `$20` em todo canto), mas a rotina de desenho do logo/banner (endereços `$6BB-$6E3` da
+`MSX.ROM`) nunca avança além das 2 primeiras posições da tela, sempre escrevendo `$00`. Rastreado até
+`EX (SP),HL` (opcode `$E3`, `Z80_Codes.pbi`) — a tradução automática (`translate.py`) do C original
+(`fMSX/Z80/Codes.h` linhas 365-366: `J.B.l=RdZ80(SP.W);WrZ80(SP.W++,HL.B.l); J.B.h=RdZ80(SP.W);WrZ80(SP.W--,HL.B.h)`)
+não tratou corretamente o pós-incremento/decremento do C usado como argumento de função — o código
+PureBasic gerado lia `mem[SP]` duas vezes (nunca `mem[SP+1]`) e escrevia em `mem[SP+1]` e **`mem[SP-1]`**
+(um endereço fora do par de bytes correto, corrompendo memória adjacente à pilha). Efeito prático: toda
+vez que `EX (SP),HL` executava, `HL` virava lixo derivado de `mem[SP]` em vez do valor real do topo da
+pilha — e essa instrução aparece exatamente na rotina de desenho do boot (`$07CD`, chamada 3x por
+iteração do laço de 32 posições), então o ponteiro de destino na VRAM nunca avançava de verdade.
+**Fix**: reescrito pra ler `mem[SP]` e `mem[SP+1]` primeiro (guardando os dois em `J`), só depois
+escrever `HL.B.l`/`HL.B.h` nesses mesmos dois endereços — sem tocar em `SP` em momento algum, o que
+elimina a necessidade de replicar o truque de pós-incremento/decremento do C. **Mesmo bug, mesmo fix, no
+equivalente para `IX`/`IY`** (`EX (SP),IX`/`EX (SP),IY`, opcode `$E3` com prefixo `DD`/`FD`, em
+`Z80_CodesXX.pbi` — usa a união `XX` no lugar de `HL`, ver módulo 32c sobre esse mecanismo). Recompilado
+e confirmado por screenshot: boot mostra `MSX BASIC version 1.0` / `Copyright 1983 by Microsoft` /
+`28815 Bytes free` / `Ok` com o cursor piscando e a barra de teclas de função (`color auto goto list run`)
+no rodapé — boot completo, igual ao fMSX real, sem nenhuma ROM de jogo carregada. **Risco a vigiar**: o
+`translate.py` claramente erra a tradução de padrões C `X++`/`X--` usados como *argumento* de uma chamada
+de função (em vez de como statement isolado) — se outro opcode no core Z80 usar o mesmo padrão C, é
+candidato a ter o mesmo tipo de bug; não foi feita uma auditoria completa de todos os opcodes procurando
+esse padrão especificamente, só o que bloqueava o boot foi corrigido.
+
+**CLI compatível com o fMSX original (2026-08-17, pedido explícito do usuário)** — `fossauro.pb` passou
+a aceitar a linha de comando do fMSX real (ver `fossauro/fossauro.md` pra referência completa), não só
+o punhado de flags próprias que tinha antes (`-rom <arquivo>`, `-verbose`). Mudanças:
+- **Argumentos posicionais** (`[filename1] [filename2]`) carregam cartucho A/B, igual ao fMSX real —
+  `LoadCartridge()` ganhou um parâmetro `Slot` (1=default, mapeia nos slots 1 e 2 como sempre fez;
+  2=mapeia só no slot 2, usando um segundo buffer `*ROMData(1)`, sem mexer no slot 1).
+- **`-help`** imprime a lista completa de opções e sai, sem abrir a janela do emulador. Primeira versão
+  usava só `OpenConsole()`/`PrintN()`/`CloseConsole()` puro do PureBasic — funcionava com
+  `fossauro.exe -help > arquivo.txt` (saída redirecionada) mas **não** rodando direto num terminal
+  interativo de verdade (usuário reportou "não aparece nada na tela"), porque `OpenConsole()` sozinho
+  não se anexa de forma confiável ao console de quem chamou um app GUI-subsystem no Windows. Corrigido
+  chamando `AttachConsole(#ATTACH_PARENT_PROCESS)` explicitamente antes de `OpenConsole()` — API do
+  Windows não coberta pelo passthrough automático `_`-suffixed do PureBasic, precisou de um `Import
+  "Kernel32.lib"` próprio. Se `AttachConsole` tiver sucesso (rodando de um terminal real), imprime lá; se
+  falhar (sem console pai, ex.: clique duplo), mostra um `MessageRequester` com o mesmo texto, garantindo
+  que fica visível de um jeito ou de outro. Confirmado funcionando rodando `fossauro.exe -help` direto
+  (sem redirecionamento nenhum) depois do fix. **Nota pra quem mexer em código parecido**: o módulo 12
+  acima (ponte openMSX) documenta o mesmo `AttachConsole(ATTACH_PARENT_PROCESS)` do lado do processo
+  *openMSX* (chamado pelo próprio `main()` dele) — mecanismo relacionado, mas usado ali pro problema
+  inverso (openMSX "rouba" o console do processo pai e quebra a captura de stdout via pipe do
+  `BadigEditor.exe`, que por isso já dá `FreeConsole_()` antes de abrir qualquer janela). Não confundir
+  os dois: aqui é o Fossauro *pedindo* pra herdar o console; lá é o `BadigEditor` evitando que o openMSX
+  *roube* um console que não deveria existir.
+- **`-msx1`/`-msx2`/`-msx2+`, `-pal`/`-ntsc`** têm efeito real (bits do `Mode` global, já lidos por
+  `PSlot()`/`MSXLoopZ80()` pra timing/sub-slot) — mas a BIOS carregada continua sempre `fMSX/MSX.ROM`
+  (MSX1) independente do modelo escolhido, já que `MSX2.ROM`/`MSX2EXT.ROM` não são carregados ainda.
+- **`-verbose [<máscara>]`** passou a aceitar um argumento numérico opcional, mapeado pro bitmask de
+  categorias já existente (`LogCategories`/`#LogCat_*`, `MSX.pbi`) — bits diferentes dos do `-verbose
+  <level>` do fMSX real, documentado como tal no próprio `-help`.
+- **`-rom`** virou híbrido: argumento numérico 0-7 = tipo de mapeador MegaROM do fMSX real (aceito,
+  guardado, sem efeito — troca de mapeador não implementada); qualquer outra coisa = atalho antigo do
+  fossauro pra arquivo de cartucho (mantém compatibilidade com o uso feito ao longo desta mesma sessão).
+- **Todo o resto** (`-diska`/`-diskb`/`-tape`/`-state`/`-font`/`-printer`/`-serial`/`-home`/`-logsnd`/
+  `-ram`/`-vram`/`-joy`/`-skip`/`-sync`/`-scale`/`-trap`/`-sound`/`-nosound`/etc.) é reconhecido, consome
+  a quantidade certa de argumentos, e fica só registrado em log — sem crashar nem confundir o parser com
+  o próximo argumento, mas também sem efeito real (nenhum desses subsistemas existe no fossauro ainda).
+
+**Crash do cartucho (`0xC0000005`) encontrado e corrigido (2026-08-17, mais tarde no mesmo dia)** —
+achado testando as combinações de flag novas (não causado por elas: confirmado reproduzindo o MESMO
+crash no `fossauro.pb` de antes de qualquer edição da sessão de CLI, via `git stash` temporário pra
+isolar). Sem `-msx1` levava ~20-25s pra acontecer; **com `-msx1`, em poucos segundos** — o que acabou
+sendo o atalho que permitiu depurar isso de verdade na mesma sessão.
+
+**Causa raiz, achada via minidump, não via tentativa-e-erro**: o Windows já estava gerando dumps de
+crash automaticamente em `%LOCALAPPDATA%\CrashDumps\` (WER local dump collection, já configurado nesta
+máquina) pra cada crash reproduzido ao longo da sessão. Um parser de minidump de ~30 linhas em
+PowerShell (formato `MDMP` é documentado publicamente — header de 32 bytes, diretório de streams,
+stream tipo 6 = `MINIDUMP_EXCEPTION_STREAM`) extraiu `ExceptionCode`/`ExceptionAddress`/parâmetros de
+**7 dumps diferentes** sem precisar de WinDbg/cdb (não instalados nesta máquina): todos os 7,
+**idênticos** — `ExceptionCode=0xC0000005`, `ExceptionAddress=0x0000000000000000`. RIP igual a zero é a
+assinatura clássica de "chamada através de um ponteiro de função nulo" (não um dado corrompido comum,
+que teria endereço aleatório) — reduziu a busca de "onde no VDP/memória" (a suspeita antiga do
+`SafePeekVRAM()`, que acabou não sendo a causa) pra "qual callback de função nunca foi atribuído".
+
+Resposta: **`JumpZ80`**. `RunEmulator()`/`EmulationThreadProc()` (`fossauro.pb`) atribuem
+`RealRdZ80`/`WrZ80`/`InZ80`/`OutZ80`/`LoopZ80`/`PatchZ80` nas duas rotinas de inicialização, mas **nunca
+`JumpZ80`** — esse callback só é atribuído em `fossauro_verify.pb` (o harness de teste separado), nunca
+no app real. A maioria dos pontos de chamada já sabia disso e usava o padrão `If JumpZ80 :
+JumpZ80(...) : EndIf` (visível em `Z80.pbi`, escrito à mão, não gerado por `translate.py`) — mas dois
+pontos, ambos traduzidos automaticamente do C original (`case LD_PC_HL: R->PC.W=R->HL.W;JumpZ80(R->PC.W);break;`
+em `fMSX/Z80/Codes.h`, onde `JumpZ80` no C real é uma macro que expande pra nada sem debugger compilado
+— inofensivo lá, mas virou uma chamada de função de verdade na tradução pra PureBasic), ficaram sem essa
+guarda: **`JP (HL)`** (`Z80_Codes.pbi`, opcode `$E9`) e **`JP (IX)`/`JP (IY)`** (`Z80_CodesXX.pbi`, mesmo
+opcode `$E9` com prefixo `DD`/`FD`). `JP (HL)` é uma instrução Z80 comum de verdade (jump computado via
+tabela de saltos, usado em máquinas de estado de jogo) — qualquer cartucho que a executasse batia direto
+em `JumpZ80(*R\PC\W)` com o ponteiro em `0`, PC saltava pra `$0000`, próxima busca de instrução caía
+numa página não mapeada → exatamente o `0xC0000005`/`RIP=0` visto nos 7 dumps. **Fix**: mesma guarda
+`If JumpZ80 : JumpZ80(*R\PC\W) : EndIf` nos dois pontos, igualando o padrão já usado em `Z80.pbi`.
+Confirmado: `-msx1 Kingsvalley.rom` e `-msx1 Athletic.rom`, que antes crashavam em poucos segundos,
+sobreviveram 90s e 30s respectivamente sem nenhum novo dump aparecer em `CrashDumps`.
+
+**Lição pra qualquer opcode futuro traduzido de `fMSX/Z80/Codes.h` que chame `JumpZ80`/`PatchZ80`**: o C
+original usa macros que podem expandir pra nada; a tradução pra PureBasic vira uma chamada de função de
+verdade, que crasha com RIP=0 se o callback correspondente não estiver setado no caminho de execução em
+questão. Sempre usar `If JumpZ80 : JumpZ80(...) : EndIf` (nunca chamar direto), e conferir se `PatchZ80`
+continua sendo de fato atribuído nas duas rotinas de init toda vez que esse ponto for tocado.
+
+**Técnica registrada pra debugging futuro deste projeto**: quando um crash não solta pista nenhuma via
+log (`0xC0000005` mata o processo antes de qualquer `LogMsg` conseguir gravar), verificar
+`%LOCALAPPDATA%\CrashDumps\<exe>.<pid>.dmp` antes de instrumentar o código manualmente — se o WER local
+dump collection já estiver ligado nesta máquina (estava, não foi configurado por esta sessão), os dumps
+já existem de crashes anteriores. Um parser de minidump mínimo em PowerShell (só o header + stream de
+exceção, sem precisar decodificar o resto do formato) já entrega `ExceptionCode`/`ExceptionAddress` e
+resolve a pergunta "é null pointer, memória corrompida, ou outra coisa" sem precisar instalar WinDbg/cdb.
+
+**"Congela depois da tela de abertura" — investigado, não é hang de CPU (2026-08-17, mesmo dia)**:
+usuário reportou que, mesmo depois do fix do crash acima, o Fossauro "carrega a tela de abertura mas
+interrompe, congela logo depois" rodando `Kingsvalley.rom`. Investigação com instrumentação temporária
+(contador de chamadas a `IntZ80`, trace de `SetIRQ`, trace de entrada em `MSXLoopZ80`, todos removidos
+depois de extrair o achado) mostrou uma sequência enganosa antes de chegar à resposta certa:
+
+1. Uma sondagem inicial (amostragem grossa, a cada 20.000 instruções) encontrou `PC` sempre em `$0038`
+   por milhões de instruções seguidas, com `SP` mudando sem parar — parecia um "interrupt storm".
+2. Amostragem fina (a cada 10 instruções) confirmou: não é aliasing, `PC` genuinamente fica em `$0038`
+   quase o tempo todo, e um trace denso a partir da primeira chegada em `$38` mostrou exatamente o
+   prólogo real do manipulador de interrupção do BIOS (`PUSH` de todos os registros + registros
+   alternativos, `CALL $FD9A` = hook H.TIMI, `IN A,($99)` lendo o registro de status do VDP, `CALL
+   $FD9F` = hook H.KEYI, `EI`, manutenção de contador de jiffy) — código 100% legítimo, não lixo.
+3. Um contador de chamadas a `IntZ80` mostrou **~20.000 interrupções/segundo** (deveria ser ~60/s, uma
+   por VBlank) — perseguido até `SetIRQ()`/`#INT_IE0`/`#INT_RST38` (que vale `$00FF`, o byte de opcode
+   real da instrução `RST 38H` — usado de propósito, não é bug, é assim que IM0 funciona em Z80 real;
+   como o MSX roda em IM1, isso não importa pro fluxo de qualquer forma). O rastro de `SetIRQ` mostrou
+   o bit de VBlank sendo setado e limpo de forma limpa (~110 vezes em 6s, plausível pra ~msx1/PAL-ish).
+4. **A resposta real veio de um teste diferente, mais direto**: um trace de entrada em `MSXLoopZ80`
+   (bypassando `Verbose`, path absoluto — dois testes anteriores falharam silenciosamente por usar path
+   relativo, que não resolve do jeito esperado a partir da thread de emulação) mostrou `FrameCounter`
+   chegando a **282 em 6 segundos (~47 fps)**, com `ScanLine` avançando corretamente pela faixa
+   esperada. **A CPU e o timing estão saudáveis** — os achados 1-3 acima eram genuinamente o que
+   acontece numa execução normal (BIOS gasta uma fração real do tempo de CPU no seu próprio prólogo de
+   interrupção a cada frame; isso só parecia alarmante fora de contexto).
+5. Dois screenshots tirados com 4 segundos de diferença, durante essa mesma execução saudável a ~47fps,
+   saíram **pixel-idênticos**. **Conclusão**: não é hang de CPU — é o conteúdo da tela que nunca muda,
+   apesar de frames genuínos sendo desenhados o tempo todo. A splash screen mostrada ("`MSX system
+   version 1.0 / Copyright 1983 by Microsoft`") ainda é a do BIOS, não a tela de título do próprio
+   `Kingsvalley.rom` — o jogo nunca chega a assumir o controle visual.
+
+**Hipótese mais provável, não confirmada**: jogos MSX comumente instalam seu próprio hook H.TIMI (um
+vetor em RAM que o `CALL $FD9A` acima invoca a cada VBlank) pra rodar a lógica principal do jogo a cada
+frame. Se esse mecanismo de instalação de hook não funcionar no Fossauro (por causa de alguma diferença
+de slot/mapper, ou do próprio hook ficando sempre no stub padrão "`RET`" em vez do endereço que o jogo
+tentou instalar), o BIOS continuaria fazendo sua manutenção de sistema normalmente (por isso CPU/timing
+saudáveis) mas o ESTADO DO JOGO em si nunca avançaria — exatamente o sintoma observado.
+
+**Lição de metodologia registrada**: `OpenFile()` com path RELATIVO a partir da thread de emulação
+(`EmulationThreadProc`/`RunZ80`/qualquer callback do núcleo Z80) não resolve de forma confiável pro
+diretório esperado — **sempre usar path absoluto** em diagnósticos temporários nesse contexto, senão o
+arquivo simplesmente não aparece onde se espera e parece "o mecanismo não funciona" quando na verdade é
+só o path errado (isso já tinha custado tempo numa investigação anterior nesta mesma sessão, e custou de
+novo aqui até ser lembrado).
+
+**Hipótese H.TIMI investigada a fundo (2026-08-17, mesmo dia)** — pedido explícito do usuário. Resultado
+em duas partes: uma coisa que funciona corretamente (não é bug) e uma cadeia de causas real que **ainda
+não foi corrigida**, só totalmente mapeada.
+
+1. **O hook É instalado com sucesso** — não é o que se imaginava. Comparando o mesmo endereço lido de
+   duas formas (`*RAM(...)`, a página *atualmente mapeada* na CPU, vs. `*MemMap(3, 2, ...)`, o slot de
+   RAM *fisicamente fixo* onde o boot sempre mapeia RAM de verdade) revelou que a tabela de hooks em
+   `$FD9A` genuinamente recebe `C3 1A 40` = **`JP $401A`** (dentro do cartucho) por volta do frame ~100
+   — a escrita do jogo funciona, e o valor **persiste corretamente** em RAM depois disso. O problema
+   nunca foi "o Fossauro perde a escrita do hook".
+2. **O que quebra é o que a CPU *vê* quando tenta ler dali.** Lendo via `*RAM(...)` (a página realmente
+   ativa) a mesma região mostra `$FF FF FF ...` a partir do frame ~120 — ou seja, o registrador de
+   sub-slot secundário pra primary-slot-3 (`SSLReg(3)`) mudou de `$A0` (sub-slot 2, RAM de verdade) pra
+   `$0` (sub-slot 0, nunca populado — cai no dummy `*EmptyRAM`, preenchido com `$FF` desde a
+   inicialização). O hook instalado continua lá, intacto, só inacessível.
+3. **Rastreado até uma escrita em `$FFFF`** (o endereço especial de troca de sub-slot secundário no
+   MSX) **com `PC=$38` e o opcode ali já lendo `$FF`** — ou seja, no momento exato dessa escrita
+   corruptora, o próprio endereço `$0038` (vetor de interrupção IM1, sempre `C3 3C 0C` = `JP $0C3C` na
+   ROM real) **já estava sendo lido como `$FF`** — a página 0 (onde o BIOS mora) já tinha, ela também,
+   deixado de apontar pra ROM de verdade.
+4. **Reconstrução da cadeia causal completa**: o hook instalado (passo 1) faz `CALL $FD9A` desviar
+   execução pra dentro do código do próprio cartucho (`$401A`) a cada VBlank, como esperado — é aí que
+   o jogo roda sua lógica principal. Em algum ponto dessa lógica (não identificado ainda — precisaria
+   desmontar o próprio `Kingsvalley.rom`, não só a BIOS, o que não foi feito), a pilha (`SP`) cresce sem
+   parar (push sem pop correspondente, ou recursão descontrolada) até **dar a volta em 64KB e colidir
+   com o endereço `$FFFF`** — que no hardware MSX real é *sempre* o registrador de troca de sub-slot,
+   não importa se a intenção era um push de pilha normal ou não (isso é fidelidade real ao hardware,
+   não um bug de emulação em si). Esse push acidental grava um valor de sub-slot errado, corrompendo o
+   mapa de memória; como isso inclui a página 0 (onde o vetor `$0038` mora), a próxima interrupção lê
+   `$FF` em vez do `JP` de verdade — `$FF` é o opcode de `RST 38H`, que empilha PC e salta pra `$0038`
+   de novo, criando um laço auto-sustentado (cada iteração empurra mais 2 bytes, sempre perto de
+   `$FFFF`, continuando a "vazar" gravações de sub-slot) — exatamente o padrão "PC preso em `$38`, `SP`
+   decrescendo sem parar" observado bem no início desta investigação (achado 32b anterior).
+
+**Onde isso deixa o próximo passo**: a causa raiz agora não é mais "o hook não funciona" — é **"o código
+do próprio cartucho, rodando a partir do hook instalado, estoura a pilha"**. Investigar isso a fundo
+exigiria desmontar `Kingsvalley.rom` a partir de `$401A` (não feito nesta sessão) pra achar o push
+desbalanceado/recursão, ou considerar se algum subsistema que o Fossauro ainda não implementa
+completamente (PSG, timing de comandos VDP, disco) faz o jogo entrar num caminho de código que não
+terminaria (esperando por algo que nunca acontece) e por isso empilha indefinidamente. Um mitigador mais
+simples e mais barato de implementar, mesmo sem achar a causa exata no código do jogo, seria fazer
+`WrZ80`/o handler de `$FFFF` **desconfiar de escritas em `$FFFF`/`$FFFE` que não vieram de uma
+instrução de troca de slot deliberada** (ex.: alguma heurística ou um aviso em log quando `SP` está
+perto do wraparound) — não implementado, só registrado como ideia.
+
+### 32c. Fossauro — arquitetura, status por componente e roteiro (2026-08-17, `8.0.1`)
+
+Módulo adicionado a pedido explícito do usuário, incorporando o conteúdo de `fossauro/SPEC.md` e
+`fossauro/OUTLINE.md` (próprios documentos do sub-projeto, mantidos por ele — este módulo é um resumo
+adaptado ao formato do `docs/SPEC.md` principal, não uma cópia; ambos os arquivos originais continuam
+existindo em `fossauro/` como fonte mais detalhada). Ver módulo 32b acima para a história de como o
+Fossauro virou sub-projeto oficial e para a pendência de licença/arquitetura de integração — este módulo
+é só sobre o estado interno do Fossauro em si.
+
+**Arquitetura de componentes** (todo o código é PureBasic puro, sem dependência de runtime externo):
+
+```
+fossauro.pb (janela/canvas, áudio, teclado/mouse, CLI: -rom <arquivo>, -verbose)
+      |
+      +-- MSX.pbi (lógica da placa: slots primários/secundários, RAM, PPI 8255,
+      |            matriz de teclado, loader de BIOS, callbacks RdZ80/WrZ80/InZ80/OutZ80)
+      |     |
+      |     +-- V9938.pbi (VDP: registradores, VRAM, sprites, comandos de bloco)
+      |     +-- AY8910.pbi (PSG: 3 canais de onda quadrada + ruído + envelope)
+      |
+      +-- Z80.pbi + Z80_Tables.pbi + Z80_Codes{,CB,ED,XX,XCB}.pbi (núcleo Z80,
+            gerado por tradução automática de fMSX/Z80/*.c via translate.py)
+```
+
+**Status por componente** (do próprio `fossauro/README.md`, não conferido linha a linha por este
+documento):
+
+| Componente | Status | Observação |
+|---|---|---|
+| Núcleo Z80 (`Z80.pbi` + `Z80_Codes*.pbi`) | Completo, um bug real corrigido | Compila limpo, verificado por `fossauro_verify.pb`/`basic_verify.pb`. `EX (SP),HL`/`EX (SP),IX`/`EX (SP),IY` (opcode `$E3`) tinham endereços de leitura/escrita errados — erro de tradução automática do C original (`translate.py` não tratou `SP.W++`/`SP.W--` como argumento de função corretamente), corrompia `HL`/`IX`/`IY` e um byte adjacente à pilha toda vez que executava. Corrigido 2026-08-17 (ver achado #2 no módulo 32b) — era a causa raiz de o boot nunca desenhar o banner/logo na tela. |
+| Slots/memória/PPI/teclado/loader de BIOS (`MSX.pbi`) | Completo | 4 slots primários × 4 sub-slots, paginação de 8KB, matriz de teclado via 130 pares `{row,bit}`, `EnWrite()` por página de 16KB pra proteção de escrita ROM vs. RAM. |
+| VDP V9938 (`V9938.pbi`) | Renderiza modos 0/1/2/3/5/8, sprites e o motor de comandos VDP | Não é esqueleto — confirmado 2026-08-17 (achado #2, módulo 32b) que já renderiza texto/gráficos de verdade: um boot MSX1 real mostra "MSX BASIC version 1.0 / Copyright 1983 by Microsoft" + prompt `Ok` na tela. O que falta: modos MSX2-only (6/7/10-12) e timing do motor de comandos VDP (hoje completa instantaneamente). |
+| PSG AY-3-8910 (`AY8910.pbi`) | Esqueleto | I/O nas portas `$A0-$A2` roteado; síntese de som ainda não implementada. |
+| GUI/tape/disk/UI | Planejado | `fossauro/manual.md` já documenta um conjunto bem mais amplo de menus e flags de CLI (`-msx1`/`-msx2`/`-diska`/`-tape`/`-trap`/etc.) do que o `fossauro.pb` atual realmente implementa — hoje só `-rom <arquivo>` e `-verbose` (adicionada 2026-08-17, ver módulo 32b) existem de verdade. Ver `docs/MANUAL.md`, seção Fossauro, para o que é real vs. aspiracional. |
+
+**Decisões de design que valem registrar** (de `fossauro/OUTLINE.md`, pra quem for mexer no núcleo):
+
+- **Union `XX` no `Z80` structure**: pra suportar os prefixos `IX`/`IY` sem problema de expansão de
+  macro, `*R\XX\W = *R\IX\W` no início de `CodesDD`, restaurado (`*R\IX\W = *R\XX\W`) no final.
+- **Macros sem parênteses** (`M_CALL`, `M_JP`, `M_JR`, `M_RET` em `Z80.pbi`) — de propósito, pra bater
+  com o estilo de chamada sem `()` do C original que o `translate.py` está portando.
+- **`translate.py`** (pipeline de tradução automática dos opcodes de `fMSX/Z80/Codes*.h` pra
+  `Z80_Codes*.pbi`): `!=` precisa virar `<>` e `!` (NOT lógico) precisa virar ` Not ` **antes** de tratar
+  o XOR bitwise (`^` → `!` em C), senão o XOR bitwise `!` gerado é corrompido pelo passo de NOT lógico. O
+  parser de `if` C (`replace_c_ifs`) é baseado em pilha, não regex, porque parênteses aninhados (ex.:
+  `if(!(AF & Z_FLAG))`) truncam grupos de regex cedo demais.
+- **Callbacks prefixados `MSX`** (`MSXRdZ80`, `MSXWrZ80`, etc. em `MSX.pbi`) pra não colidir com as
+  variáveis globais de mesmo nome (`RdZ80`, `WrZ80`) que armazenam os ponteiros de callback do núcleo
+  Z80 — ver também módulo 32b sobre o rename pra `RealRdZ80`/`SafeRdZ80()` feito em `a0721b9` como
+  diagnóstico temporário de um crash de ponteiro NULL.
+- **Handle de arquivo de 64 bits**: ao carregar ROM/BIOS com `#PB_Any`, o handle retornado precisa ir
+  em variável `.i` (Integer), não `.l` (Long) — truncamento de handle 64-bit em `.l` derruba o debugger.
+
+**Roteiro** (de `fossauro/SPEC.md`; as estimativas de VDP abaixo eram do próprio sub-projeto antes de
+2026-08-17 e presumiam VDP como item pendente do zero — na prática o módulo já estava bem mais completo,
+ver tabela de status acima): PSG é o maior item claramente pendente agora, ~15-25h estimadas;
+GUI/tape-disk/loading ~20-30h. Ordem recomendada pelo próprio `fossauro/OUTLINE.md` (PSG depois de VDP)
+ainda faz sentido, só que o "depois de VDP" já está feito.
+
+### 32d. Fossauro — carga de BIOS MSX2/MSX2+ 1:1 com fMSX real e freeze de boot ainda aberto (2026-08-17, `8.0.1`)
+
+Pedido explícito do usuário: "implemente o MSX 1/2/2+ para o depurador e o MSX BASIC funcionarem
+primeiro, depois que tudo estiver 100% voltamos aos jogos" — priorizar fidelidade de emulação
+(debugger/BASIC) sobre compatibilidade de jogos, com paridade 1:1 contra o C real do fMSX sempre que
+possível.
+
+**Implementado e funcionando**: `MSX.pbi` ganhou `MSXLoadBIOSForModel()` (seleciona `MSX.ROM` /
+`MSX2.ROM`+`MSX2EXT.ROM` / `MSX2P.ROM`+`MSX2PEXT.ROM` conforme `Mode & #MSX_MODEL`, replicando
+`StartMSX()` de `fMSX/fMSX/MSX.c` linhas ~705-775 - inclusive o detalhe de que a BIOS principal (32KB)
+sempre vai pra `MemMap[0][0][0..3]`, primary slot 0, e a extended BIOS (16KB, só quando MSX2/2+) vai pra
+`MemMap[3][1][0..1]`, primary slot 3 sub 1, páginas 0-1 apenas - páginas 2-3 dessa subslot ficam
+`*EmptyRAM` por padrão, igual ao real, já que o Disk ROM real fMSX carregaria ali (`MemMap[3][1][2..3]`,
+linhas 824-826 de `MSX.c`) e fossauro ainda não implementa disk BIOS), `MSXLoadExtBIOS()`,
+`ApplyBIOSPatches()` (pokes `$ED,$FE,$C9` nos 7 offsets de cassete, replicando `BIOSPatches[]` de
+`Patch.c`) e `MSXPatchZ80()` (replica o `case`-por-offset de `PatchZ80()` real pros traps de
+TAPION/TAPIN/TAPIOF/TAPOON/TAPOUT/TAPOOF/STMOTR - fossauro não tem fita, então falha graciosamente igual
+ao fMSX real quando `CasStream` é NULL). **MSX1 confirmado sem regressão** (banner "MSX BASIC version
+1.0..." + prompt `Ok` via screenshot).
+
+**MSX2/MSX2+ têm um freeze de boot real e ainda não resolvido**: tela preta (não azul - `VDP(1)`, o bit
+de screen-enable, nunca chega a ser setado, então nem a cor de borda é desenhada), confirmado via captura
+de tela após 90s reais sem `-verbose` (não é lentidão por I/O de log - eliminado explicitamente testando
+sem verbose por tempo bem maior que os ~15-20s que o `fMSX.exe` real precisa pros mesmos arquivos de ROM,
+ver abaixo). `FRAME` avança normalmente (contador de VBlank não trava), mas o PC de primeiro plano fica
+preso girando por dentro de rotinas de auto-detecção de slot/subslot da própria `MSX2.ROM` (não é código
+do fossauro) usadas no boot do MSX2 pra descobrir onde está a extended BIOS/RAM - MSX1 nunca executa esse
+trecho porque sua BIOS é simples o bastante pra não precisar.
+
+**Metodologia** (documentando pra a próxima sessão não repetir passos já eliminados):
+- **Baseline confirmado**: `fossauro/fMSX/fMSX.exe` (binário real do fMSX 6.0, já presente no repo pra
+  consulta) **boota MSX2 com sucesso** usando os mesmos arquivos `MSX2.ROM`/`MSX2EXT.ROM` do fossauro -
+  screenshot via `PrintWindow` (mesma técnica de `App_ApplyWindowIcon`, ver módulo sobre dark mode)
+  confirmando "MSX BASIC version 2.1 / Disk BASIC version 1.0 / Ok" após ~20s reais. Isso descarta
+  problema de ROM/ambiente - o bug é genuinamente do núcleo do fossauro.
+- **Hipótese eliminada por comparação direta com o C real**: `SSlot()` (`MSX.pbi`) restringe "slot 0 não
+  tem subslot" só a MSX1 (`If PSL(3) = 0 And (Mode & #MSX_MODEL) = #MSX_MSX1`) - parecia suspeito, mas
+  `MSX.c` linhas 1773-1794 tem a **mesma** restrição (`if(!PSL[3]&&((Mode&MSX_MODEL)==MSX_MSX1)) V=0x00;`)
+  - fossauro já é um port fiel aqui, não é a causa.
+  - `PSlot()`/`SSlot()` (linhas ~480-534 de `MSX.pbi`) conferidos de novo linha a linha contra `MSX.c` -
+    inclusive o cálculo de `EnWrite` (`PSL(J)=3 And SSL(J)=2 And *MemMap(3,2,I)<>*EmptyRAM`) bate exato
+    com `MSX.c` linhas 1765/1791.
+  - Leitura de `$FFFF` (`MSXRdZ80`) retorna `~SSLReg(PSL(3))` incondicionalmente - convenção de hardware
+    real correta (não depende de conteúdo real mapeado ali).
+  - `IN A,($A8)` (leitura do PPI Port A, "primary slot register") - `Read8255`/`Write8255` conferidos:
+    `Write8255` mantém `R[0]`/`Rout[0]` sincronizados em modo saída, então o readback funciona
+    corretamente (**não** é bug, ao contrário do que pareceu numa hipótese inicial).
+- **Experimento isolante que descartou a extended BIOS como causa direta**: rodar MSX2 com a chamada de
+  `MSXLoadExtBIOS()` temporariamente desativada (deixando `MemMap[3][1][0..1]` como `*EmptyRAM`, igual ao
+  caso MSX1) **ainda trava** - só que via um caminho de código diferente (antes girava em torno de
+  `$3A2`/`$280` numa rotina estilo ENASLT testando slot 3 sub 0 vs sub 1; sem a extended BIOS carregada,
+  passa a girar em torno de `$FD9A` (hook H.TIMI)/`$38` (vetor RST 38h)/`$C45`, com `PSLReg` oscilando
+  `$F0`↔`$FD`↔`$0` em vez de travar no primeiro padrão). Isso mostra que o freeze **não é específico** do
+  conteúdo novo da extended BIOS - é algo mais fundamental no núcleo Z80/PPI que só o boot MSX2 (mais
+  complexo que o MSX1) chega a exercitar.
+- **Trace de registradores instrumentado temporariamente** (`Z80.pbi`, bloco `EnaSltTraceCount`/
+  `#EnaSltTraceMax = 400`, marcado `TEMP DIAG` - ainda no código, câmara-lenta e limitado, sem custo em
+  builds normais): decodificados à mão ~80 instruções de três sub-rotinas encadeadas da `MSX2.ROM` real
+  (`$1F5`-ish chamando uma rotina em `$353` que calcula bit-shift de página via `DI`+rotação+`ADD A,$55`
+  repetido, que por sua vez alimenta uma rotina estilo ENASLT em `$270`/`$3A2` que grava em `$FFFF` e usa
+  `OUT ($A8)`) - toda a semântica Z80 rastreada (RRCA, AND, OR, DEC+JP P como laço "executa uma vez, testa
+  depois", PUSH/POP AF pareados) bateu com o esperado em cada instrução conferida, sem divergência óbvia
+  encontrada até agora. `IFF` ficou em `$2` (`#IFF_IM1`, sem `#IFF_1`) constante durante toda a janela
+  rastreada - **interrupts desligados é esperado** nessa fase de boot (a rotina em `$353` começa com um
+  `DI` deliberado), não é evidência de bug por si só.
+- **HL alterna entre valores pequenos (`$0`→`$1`→`$0`...) entre chamadas**, e `BC`/`DE` mudam de forma
+  não-trivial entre passagens - **não** é um laço trivial "mesmo estado pra sempre"; é uma varredura
+  combinatória (candidatos de slot/subslot/página) que aparentemente nunca converge, mas cujo ciclo
+  exato ainda não foi fechado por causa da profundidade do código (múltiplas sub-rotinas encadeadas,
+  cada uma com ~10-40 instruções).
+
+**Não resolvido - próximo passo recomendado**: a causa raiz exata ainda não foi isolada. O trace
+instrumentado (`EnaSltTraceCount`) já está no lugar e pode ser redirecionado (só trocar a janela de PC
+verificada em `Z80.pbi`, ~linha 682) pra continuar o rastreamento a partir de onde esta sessão parou -
+especificamente, falta decodificar o que acontece **depois** de `$377` (fim da janela rastreada da rotina
+`$353`) e **depois** de `$28B`/`$3AB` (fim das rotinas ENASLT), pra achar o ponto exato onde o valor
+computado deveria fazer o laço convergir e não faz. Alternativa mais robusta que continuar decodificação
+manual: instrumentar `fMSX/fMSX` (fonte C real, já no repo) com um trace por instrução equivalente e
+comparar lado a lado com o log do fossauro pra achar a primeira divergência - não tentado ainda porque
+buildar o fMSX real (via `fMSX/Unix/Makefile`, provavelmente precisa de WSL) é um esforço à parte.
+
+### 32e. Fossauro — auditoria do motor de comandos VDP (V9938) contra o C real (2026-08-17, `8.0.1`)
+
+Continuação do plano aprovado pelo usuário (módulo 32d): "implemente o MSX 1/2/2+ para o depurador e o
+MSX BASIC funcionarem primeiro" - com o freeze de boot do MSX2/2+ ainda em aberto, o usuário pediu pra
+seguir pro próximo item do plano (auditoria do motor de comandos VDP/`VDPDraw` contra `V9938.c` real,
+depois PSG). Comparação feita lendo `fMSX/fMSX/V9938.c` linhas 240-830 (`VDPpsetlowlevel`/`VDPpset5-8`,
+`SrchEngine`, `LineEngine`, `LmmvEngine`, `LmmmEngine`, `HmmvEngine`, `HmmmEngine`, `YmmmEngine`,
+`HmmcEngine`, tabelas `PPL[]`/`PPB[]`/`Mask[]`) contra `V9938.pbi`'s `VDPDraw()`/`WriteVRAMPixel()`/
+`ReadVRAMPixel()`/`GetVRAMAddr()`. Três bugs reais confirmados e corrigidos:
+
+- **`SRCH` (busca de ponto, `Case $06`) usava `512` fixo como limite de wraparound do eixo X pra
+  qualquer modo de tela** - errado pros modos 5 e 8 (256px de largura real, `PPL[]` de `V9938.c`: `{256,
+  512, 512, 256}` pros modos 5/6/7/8). Um `SRCH` em SCREEN 5/8 que devia parar em X=256 continuava
+  procurando até X=511, potencialmente encontrando/reportando uma borda na posição errada. Corrigido com
+  a nova `VDPModeWidth(mode.a)` (retorna 256 ou 512 pelo modo), usada tanto aqui quanto nos comandos de
+  alta velocidade abaixo.
+- **`HMMV`/`HMMM` (`Case $0C`/`$0D`) passavam pelo caminho de pixel único (`WriteVRAMPixel`/
+  `ReadVRAMPixel`, com máscara de nibble/2-bit e operação lógica) em vez do armazenamento de byte cru que
+  o hardware V9938 real faz nesses comandos "de alta velocidade"** - `HmmvEngine`/`HmmmEngine` em
+  `V9938.c` fazem `*VDP_VRMP5(ADX,DY) = CL` / `*VDP_VRMP5(ADX,DY) = *VDP_VRMP5(ASX,SY)`, um `store`/`copy`
+  de byte inteiro, sem separar em pixels e sem aplicar `LO` (operação lógica) - além disso avançam por
+  `PPB[modo]` pixels por byte (2/4/2/1 pros modos 5/6/7/8, `MMC.TX=VDP[45]&4?-PPB[SM]:PPB[SM]` e
+  `MMC.NX=(registrador NX)/PPB[SM]` quando `(CM & 0x0C) == 0x0C`), não 1 pixel por vez. A versão antiga
+  do fossauro só produzia o resultado certo quando o byte de cor/origem já tinha todos os
+  sub-pixels/campos idênticos (caso comum em preenchimentos sólidos, por isso não tinha sido notado antes
+  - mas incorreto pra conteúdo arbitrário, e a matemática de endereço/passo também estava errada
+  independente disso). Corrigido com a nova `VDPPixelsPerByte(mode.a)` e acesso direto ao ponteiro de
+  VRAM via `GetVRAMAddr()` (que já resolve o endereço de byte correto pra qualquer X dentro daquele byte,
+  então só precisa do valor de PPB pra saber o passo) - **não** mexe em `LMMV`/`LMMM`/`PSET`/`LINE`, que
+  já usavam `WriteVRAMPixel`/`ReadVRAMPixel` corretamente (esses SIM são comandos por pixel de verdade no
+  hardware real, com máscara/OP lógico - conferido linha a linha contra `VDPpset5-8`/
+  `VDPpsetlowlevel`, batendo exato). **`HMMC`/`LMMC` (`Case $0B`/`$0F`, dirigidos por CPU via
+  `VDPWrite()`) não precisaram de correção** - já decompõem o byte da CPU em 1/2/4 sub-escritas de pixel
+  via `WriteVRAMPixel` com `OP=0` (IMP), o que reconstrói o byte final corretamente porque todas as
+  sub-escritas daquele byte acontecem em sequência antes do próximo byte começar - uma tradução válida,
+  só que em passos, do `store` de byte cru real.
+- **`YMMM` (`Case $0E`, "Y-only move") usava `SX` como coordenada X de origem independente e limitava a
+  varredura pelo registrador `NX`** - **ambos errados**. Hardware V9938 real: `YmmmEngine` sempre copia
+  dentro da **mesma coluna X** (fonte e destino compartilham `ADX`/`DX` - só `SY`/`DY` diferem) e varre a
+  **largura inteira da tela**, ignorando `NX` por completo (a macro `post__xyy` só testa se `ADX`
+  ultrapassou o limite de largura do modo, nunca decrementa um contador de `NX`). Isso é usado por jogos
+  pra rolagem vertical de tela inteira - a versão antiga teria copiado da coluna errada (SX em vez de DX)
+  e parado cedo demais (em `NX` pixels em vez da largura inteira), corrompendo qualquer rolagem que a
+  dependesse. Corrigido pra usar `DX` tanto na origem quanto no destino e varrer até `VDPModeWidth()`.
+
+**Não auditado ainda nesta sessão** (ficou pra continuar depois): `LMCM`/`LMMC` timing (funcionam por
+byte-via-CPU já, mas o "instant complete" do fossauro - motor síncrono, sem `VdpOpsCnt`/scanline
+slicing como o `LoopVDP()` real - ainda não foi comparado quanto à visibilidade do bit `TR`/`CE` pra
+jogos que fazem polling apertado; baixa prioridade pro momento já que o foco é BASIC/depurador, não
+jogos), o quirk "registrador `NX`/`NY` = 0 significa 1024" (`LmmvEngine` etc. usam decremento com
+underflow de inteiro com sinal pra obter esse efeito "de graça" em C; `VDPDraw()` do fossauro usa
+`For ix = 0 To NX-1` que simplesmente não executa nenhuma iteração quando `NX=0`, em vez de ~1024 - caso
+de borda raro, jogos raramente setam NX/NY=0 de propósito, não corrigido ainda). Testado apenas que MSX1
+continua bootando sem regressão (screenshot) - **não testado visualmente** um programa BASIC real usando
+SCREEN 5-8 com `COPY`/`PSET`/`LINE`/preenchimento, porque não há harness de teste pra isso ainda (só
+`editor/tools/*Cli.pb`-style harnesses existem pro pipeline Dignified, nada equivalente pro fossauro
+ainda) - próximo passo natural seria escrever um programinha MSX BASIC de teste (`SCREEN 5: LINE...: COPY...`)
+e comparar visualmente com o `fMSX.exe` real via screenshot, do jeito que already foi feito pro boot.
+
+### 32f. Fossauro — auditoria do PSG (AY-3-8910) contra o C real (2026-08-17, `8.0.1`)
+
+Terceiro item do plano aprovado pelo usuário (módulos 32d/32e), seguindo direto pro PSG depois do VDP.
+Comparação feita lendo `fMSX/EMULib/AY8910.c` inteiro contra `AY8910.pbi`.
+
+**Achado principal - arquiteturas fundamentalmente diferentes, não é um "port 1:1" comparável linha a
+linha**: o `AY8910.c` real do fMSX **não sintetiza forma de onda PCM por si só** - ele computa
+frequência/volume por canal (usando os registradores) e delega pra uma função `Sound()` genérica de
+mais alto nível (parte da abstração `EMULib/Sound.h`, um mixer tipo MIDI/tom simples que fica fora deste
+arquivo), sem emular o LFSR de 17 bits do chip real ciclo a ciclo. O `AY8910.pbi` do fossauro, ao
+contrário, **já faz síntese PCM de verdade por amostra** (`PSG_Render()`) - contadores de período por
+canal, LFSR de ruído de 17 bits genuíno, gerador de envelope como máquina de estados - uma abordagem
+mais precisa/de baixo nível que a do fMSX real, não uma tradução direta dela. Por isso a auditoria virou
+"a lógica do `AY8910.pbi` bate com o comportamento documentado/conhecido do chip AY-3-8910 real?" em vez
+de "bate linha a linha com `AY8910.c`?".
+
+**Verificado correto** (conferido à mão contra a tabela `Envelopes[16][32]` de `AY8910.c` - essa tabela
+*é* uma referência válida pro comportamento real do chip mesmo não sendo usada da mesma forma pelo
+fossauro): o gerador de ruído (`feedback = (LFSR&1) XOR ((LFSR>>3)&1)`, LFSR de 17 bits) é o algoritmo
+padrão documentado do AY-3-8910. A máquina de estados do envelope em `PSG_Render()` (bits
+`cont`/`attack`/`alternate`/`hold` do registrador 13) foi conferida contra as 16 linhas da tabela
+`Envelopes[]` uma por uma - **bate exato em todos os 16 casos**, inclusive o artefato conhecido do
+hardware real de repetir o valor `0` duas vezes seguidas no ponto de virada dos shapes com `ALT=1`
+(`Envelopes[10]`/`[14]`: `...,1,0,0,1,2,...`) - o fossauro reproduz esse artefato "de graça" através da
+mesma lógica de overflow/flip-de-direção, sem ter copiado a tabela.
+
+**Bug real encontrado e corrigido**: `MSXOutZ80` (`MSX.pbi`, porta `$A1`, escrita de dado do PSG) gravava
+o valor da CPU direto em `PSG\R[reg]` **sem máscara**, enquanto o `Write8910()` real do AY8910.c mascara
+bits não usados na escrita (`&0x0F` pros registradores 1/3/5/13, `&0x1F` pros registradores 6/8/9/10).
+Como `PSG_Render()`/`MSXInZ80()` já mascaravam de novo na hora de *usar* os registradores, isso não tinha
+efeito audível - mas quebrava a fidelidade de **releitura** via porta `$A2` (`RdData8910()` real também é
+sem máscara, mas como a escrita real já mascarou, o efeito líquido é que os bits altos "sujos" nunca
+existiam pra começar): um programa que escreve, por exemplo, `$FF` no registrador 8 (volume do canal A) e
+lê de volta veria `$FF` no fossauro contra `$1F` no hardware/fMSX real. Corrigido aplicando a mesma
+máscara por registrador na escrita (`MSXOutZ80`, `Case $A1`).
+
+**Não é prioridade continuar auditando** dado o foco atual em depurador/BASIC (não jogos): a saída de
+áudio do PSG não afeta o estado da CPU, memória ou lógica de programa - um programa BASIC com
+`SOUND`/`PLAY` só depende das ESCRITAS de registrador serem aceitas corretamente (que já eram, e agora
+com a máscara certa), não de como o som é sintetizado internamente. Ver `docs/SPEC.md` módulos 32d/32e
+pros itens do plano ainda em aberto (freeze de boot MSX2/2+, quirk NX/NY=0=1024 do VDP, teste visual de
+comandos VDP em SCREEN 5-8).
+
+### 32g. Fossauro — causa raiz do freeze de boot MSX2/2+ encontrada: RTC ausente (2026-08-17, `8.0.1`)
+
+Continuação direta do módulo 32d, a pedido explícito do usuário ("Continue tentando fazer o MSX 2 e 2+
+darem boot"). Resultado: **causa raiz encontrada e corrigida** - MSX2+ agora **boota completamente até o
+prompt do BASIC**; MSX2 puro avança MUITO mais longe mas ainda trava numa causa **diferente e ainda não
+resolvida** (ver final desta seção).
+
+**Metodologia que finalmente funcionou**: em vez de continuar adivinhando a partir de disassembly
+estático da ROM, o próximo passo foi instrumentar `Z80.pbi`/`RunZ80()` com traces temporários e
+CIRÚRGICOS, cada um MUITO mais restrito que as tentativas anteriores - travado por PC exato (não uma
+faixa larga) e, quando necessário, também por `SP` dentro de uma janela estreita conhecida (`$F080-
+$F090`) pra filtrar visitas incidentais/antigas à mesma faixa de endereço vindas de fases completamente
+diferentes do boot (esse foi um erro real cometido no meio do caminho desta sessão - um primeiro trace
+sem filtro de `SP` capturou execução de ~4 quadros atrás, antes até do stack pointer ser inicializado,
+gerando dados sem relação nenhuma com o travamento real). A técnica decisiva foi **ler o endereço de
+retorno direto da pilha** (`SafeRdZ80(*R\SP\W)`/`SafeRdZ80(*R\SP\W+1)`) no primeiro hit de um PC alvo,
+pra descobrir QUEM chamou aquele trecho sem precisar adivinhar - isso permitiu subir a cadeia de
+chamadas (`$1F5` → `$353` → `$3A2`/`$270` → ... → `$430` → `$3DF` → `$3E2` → `$F392`) um nível de cada
+vez até achar o ponto real de bifurcação, em vez de ficar preso relendo os mesmos bytes de ROM repetidas
+vezes.
+
+**Armadilha real que atrasou a investigação**: o mesmo PC (ex.: `$440`) pode corresponder a **ROMs
+completamente diferentes** dependendo do primary/secondary slot selecionado no momento - boa parte do
+trabalho anterior (módulo 32d) desmontou `MSX2.ROM` pra endereços que, na hora real do travamento,
+tinham `PSLReg=$F3` (`página 0 = primary slot 3`, não slot 0) - ou seja, os bytes que a CPU realmente
+executava vinham de `MSX2EXT.ROM` (mapeado em slot 3/sub 1), não do BIOS principal. Todo o disassembly
+"sem sentido" do módulo 32d era, na verdade, `MSX2.ROM` sendo lido nos endereços errados. Reconferir qual
+ROM está de fato mapeado (via `PSLReg`/`SSLReg(3)` capturados no mesmo instante) antes de desmontar
+qualquer trecho novo evita repetir esse erro.
+
+**Causa raiz confirmada**: o loop travado (`$430`-`$454` em `MSX2EXT.ROM`, chamado repetidamente a partir
+de `$3DF`/`$3E2`/.../`$F392`, código residente em RAM copiado durante o boot) é uma rotina de
+**inicialização do relógio de tempo real (RTC)** - ela grava em `$FFFF`/porta `$A8` pra selecionar slots
+candidatos, mas o núcleo do teste é: escrever um índice de sub-registrador na porta **`$B4`**, ler de
+volta na porta **`$B5`** (duas leituras de 4 bits combinadas num byte via `$1CDB`), e comparar o
+resultado contra uma faixa plausível (`CP $21`/`CP $51`) - **sem nenhum timeout**, resultando em espera
+infinita se a leitura nunca cair nessa faixa. Confirmado contra `fMSX/fMSX/MSX.c` real: portas `$B4`/
+`$B5` são **exatamente o chip RTC do MSX2** (`InZ80()` linha 1090: `case 0xB5: return(RTCIn(RTCReg))`;
+`OutZ80()` linhas 1244/1374-1386) - um RP-5C01-style, 13 registradores × 4 bancos, banco 0 sempre
+refletindo o relógio real do sistema (dígitos BCD de segundo/minuto/hora/dia-da-semana/dia/mês/ano-desde-
+1980), bancos 1-3 sendo RAM livre com bateria. **`fossauro` nunca implementou esse chip** - `MSXInZ80`/
+`MSXOutZ80` (`MSX.pbi`) não tinham nenhum `Case` pras portas `$B4`/`$B5`, então a leitura caía no
+`Default: ProcedureReturn $FF`, e `$FF` nunca cai na faixa esperada - loop infinito garantido. MSX1 nunca
+executa esse código (não tem BIOS estendida), por isso o bug só apareceu agora que o carregamento de
+BIOS por modelo (módulo 32d) passou a carregar `MSX2EXT.ROM`/`MSX2PEXT.ROM` de verdade.
+
+**Correção aplicada** (`MSX.pbi`): `RTCIn(R.a)` nova, portando fielmente a lógica de `RTCIn()` real -
+banco 0 usa `Date()`/`Second()`/`Minute()`/`Hour()`/`DayOfWeek()`/`Day()`/`Month()`/`Year()` do PureBasic
+pra montar os 13 dígitos BCD (equivalente a `tm_sec`/`tm_min`/etc. do C), bancos 1-3 leem de
+`RTC(banco, reg)`, `R=13` retorna `RTCMode`, os 4 bits superiores sempre em 1 (`| $F0`) igual ao real.
+`MSXInZ80` ganhou `Case $B5: ProcedureReturn RTCIn(RTCReg)`. `MSXOutZ80` ganhou `Case $B4:
+RTCReg=V&$0F` e `Case $B5:` (grava em `RTC(banco,reg)` ou `RTCMode` conforme `RTCReg`). Globals novos:
+`RTCReg.a`, `RTCMode.a`, `Dim RTC.a(3,12)`.
+
+**Resultado confirmado por screenshot**:
+- **MSX2+**: **boota completamente** - "MSX BASIC version 3.0 / Copyright 1988 by Microsoft / 28815
+  Bytes free / Ok", em ~8s reais. Sem regressão.
+- **MSX1**: sem regressão (banner "MSX BASIC version 1.0..." continua idêntico).
+- **MSX2 puro**: avança MUITO mais longe que antes (antes: tela preta permanente, `VDP(1)` nunca setado;
+  agora: `VDP(1)=$60` - tela LIGADA de verdade -, `ScrMode=6` alcançado, `FRAME` passa de 4800+ sem
+  travar de fato) **mas ainda não chega no prompt do BASIC** - fica preso num SEGUNDO loop de polling de
+  hardware diferente (endereços `$2980`-`$299F` em `MSX2EXT.ROM`, um trampolim `JP (IX)` em `$F398` que
+  despacha pra um handler de dispositivo via ponteiro - `IX` observado como `$0038` (o vetor de
+  interrupção IM1) na maioria das chamadas, o que cheira a um hook não inicializado/candidato sem
+  handler instalado, mas a causa exata **não foi isolada** - ver "Não resolvido" abaixo). A tela fica
+  cinza clara e estática (não preta, não azul) porque **`RefreshLine()` (`V9938.pbi`) só sabe desenhar os
+  modos 0/1/2/3/4/5/8 - SCREEN 6/7 caem no `Default` (preenche só com a cor de fundo)** - uma lacuna
+  conhecida e JÁ documentada (módulo 32c, tabela de status do VDP), não uma regressão desta sessão; então
+  mesmo que o loop de hardware travado fosse resolvido, SCREEN 6 ainda apareceria em branco/cinza até
+  `RefreshLine` ganhar suporte a bitmap de 4bpp/512px.
+
+**Por que MSX2+ escapa e MSX2 puro não**: as extended BIOS `MSX2EXT.ROM` e `MSX2PEXT.ROM` são arquivos
+DIFERENTES com sequências de auto-detecção de hardware diferentes - aparentemente a de MSX2+ não chega a
+executar (ou trata de forma diferente) o trecho `$430`-`$454`/`$3DF`-`$3E2` específico que trava o MSX2
+puro. Não investigado o porquê exato (fora do escopo depois de confirmar que MSX2+ já funciona 100%).
+
+**Não resolvido - próximo passo recomendado pra MSX2 puro**: o trampolim `$F398` (`DD E9` = `JP (IX)`,
+em `MSX2EXT.ROM`) é chamado repetidamente com `IX=$0038` na grande maioria das vezes (só a primeira
+chamada observada teve um valor plausível, `IX=$336`) - isso sugere um mecanismo de despacho por
+ponteiro/hook (parecido com H.TIMI/H.KEYI, mas para dispositivos opcionais como impressora/serial/kanji)
+onde os slots de dispositivo não reconhecidos apontam pra `$0038` (o vetor RST 38h) em vez de um "no-op"
+dedicado - precisa achar ONDE esse ponteiro é carregado (antes do `CALL $F398` em `$F38F`) e comparar
+contra o que o `fMSX.exe` real faz nessa mesma situação (o real definitivamente não trava aqui, já que
+MSX2 real fMSX bootou com sucesso, confirmado por screenshot no módulo 32d). Como não é mais um freeze
+total (a CPU continua "viva", processando quadros normalmente, só sem progresso útil), a prioridade caiu
+- MSX2+ já está 100% funcional, que era o requisito mínimo pra ter pelo menos um modelo MSX2-família
+funcionando de ponta a ponta pro depurador/BASIC. Retomar aqui só se o usuário especificamente precisar
+do MSX2 puro (não MSX2+) funcionando também.
+
+### 32h. Fossauro — sessão de continuação do freeze MSX2: animação de boot ausente, e nova causa isolada mas não resolvida (2026-08-17, `8.0.1`)
+
+Usuário reportou duas coisas depois do módulo 32g: (1) MSX2+ não mostra "a animação do logo antes do
+boot"; (2) MSX2 puro continua com tela cinza, não entra no BASIC.
+
+**Animação de boot ausente - investigado, maior parte é esperado**: comparando `fMSX.exe` real (msx2+)
+contra o fossauro em capturas de tela finas (a cada 0.3-0.5s): o `fMSX.exe` real **também não mostra um
+logo elaborado** - só um flash rápido (<1s) de cor de borda (preto→ciano→azul) durante o RAM-check, então
+fica azul sólido até o prompt aparecer em ~9s reais. O fossauro faz uma transição parecida (preto→branco→
+azul) só que MUITO mais rápida (~2.5s total). A hipótese de que isso fosse por causa do tamanho de RAM
+(fossauro sempre aloca 64KB flat; `fMSX/fMSX/MSX.c` usa 128KB via RAM mapper bank-switched por padrão em
+MSX2/2+) foi **descartada** - a rotina de RAM-detect do BIOS varre o espaço de ENDEREÇOS de 64KB
+diretamente visível, não a RAM física total, então não deveria depender de quanto está por trás do
+mapper. Explicação mais provável (não 100% confirmada): o boot real do `fMSX.exe` carrega e inicializa
+`DISK.ROM` (confirmado pela linha "Disk BASIC version 1.0" na tela do fMSX real) - a detecção/timeout de
+drive de disquete tipicamente consome vários segundos reais em hardware/emulação; o fossauro **não
+implementa disk ROM nenhum** (`MSX.pbi` tem `; TODO: Floppy disk controller` em `MSXRdZ80`/`MSXWrZ80`),
+então pula direto esse tempo de espera. Não é uma regressão desta sessão, é uma lacuna já conhecida
+(implementar disk ROM é um item de escopo maior, não abordado agora).
+
+**MSX2 puro - nova causa isolada, ainda não resolvida**: nova rodada de tracing cirúrgico (mesma técnica
+do módulo 32g - PC exato + leitura de endereço de retorno da pilha) encontrou que a hipótese anterior do
+módulo 32g (trampolim `JP (IX)` em `$F398` com `IX=$0038`) **na verdade resolve normalmente** - `IX`
+avança de `$38` pra `$C` conforme candidatos são testados, e a execução sai desse trecho de código depois
+de pouco mais de 100 iterações (bem rápido). A localização real e persistente onde a CPU fica presa (via
+amostras de `PC` em `FRAME=` ao longo de 35s reais) é `$2980`-`$299F` em `MSX2EXT.ROM` - uma rotina que
+lê o registrador de status S#2 do VDP (via o protocolo padrão de 2 bytes na porta `$99`: seleciona o
+registrador de status com R#15, lê, restaura R#15=0) e testa o bit 0 (`RRCA` + `JR C`) - **hipótese de
+que fosse o flag CE (Command Executing) travado foi testada e descartada**: instrumentado
+`MSXReadVDP()` (`V9938.pbi`) diretamente no ponto de leitura da porta `$99` com `reg=2`, e `S2` sempre
+leu `$00` ou `$20` (bit 0 sempre limpo) nas poucas amostras capturadas - ou seja, a condição que essa
+rotina especificamente testa **já está satisfeita**, então o `JR C` não deveria estar disparando o loop
+observado nas amostras que capturei. Isso significa que o PC continua "visitando" esse endereço
+repetidamente (uma vez por quadro, aproximadamente, a julgar pelas amostras de `FRAME`) mas por uma razão
+ainda não identificada - provavelmente uma camada AINDA MAIS externa que rechama esse bloco inteiro
+periodicamente esperando por alguma OUTRA condição (não capturada pelas poucas amostras que a
+instrumentação pegou antes de atingir o limite). Não foi possível isolar essa condição externa dentro do
+tempo desta sessão.
+
+**Estado da investigação pra retomar depois**: a técnica de "ler endereço de retorno da pilha no primeiro
+PC exato" continua sendo o método mais produtivo encontrado até agora - o próximo passo natural é
+reaplicá-la num nível ACIMA de `$2980` (achar quem chama esse bloco repetidamente, do jeito que achou
+`$F392`→`$3D0`→`$3DF` no módulo 32g) e/ou expandir a instrumentação de `MSXReadVDP()` pra capturar TODAS
+as leituras de porta `$99` (não só as com `reg=2`) durante uma janela de alguns segundos, já que a rotina
+em `$2980` pode não ser o único ponto de leitura de status envolvido. Como MSX2+ já funciona 100% (o
+requisito mínimo pro depurador/BASIC MSX2-família), isso continua sendo baixa prioridade a menos que o
+usuário precise especificamente do MSX2 puro (não MSX2+) funcionando também.
+
+### 32i. Fossauro — menu de verdade: File/Hardware→Model, save-state (2026-08-17, `8.0.1`)
+
+Pedido explícito do usuário, pausando a investigação do freeze do MSX2 puro (módulo 32h, ainda em
+aberto): construir a estrutura de menu da GUI (`fossauro.pb`), substituindo o menu mínimo anterior
+(`File`: só "Load ROM.../Exit"; `Emulation`: Reset/Pause/Resume).
+
+**Menu `File` reorganizado** (`Open Cartridge...`/`Open Disk...`/`Save Snapshot...`/`Open Snapshot...`/
+`Load .CAS...`/`Load .CHT...`/`Quit`, com separadores agrupando por função): `Open Cartridge...` é o
+antigo "Load ROM..." renomeado (mesmo `LoadCartridge()`); `Open Disk...`/`Load .CAS...`/`Load .CHT...`
+abrem o seletor de arquivo certo mas **deliberadamente não fazem nada com o arquivo ainda** - controlador
+de disquete (FDC), fita cassete e cheats (formato pretendido: compatível com openMSX/BlueMSX) são
+trabalho futuro explicitamente adiado pelo próprio usuário ("ainda não precisamos implementar isso" pro
+`.CAS`; `.CHT` "vamos fazer" no futuro) - cada um mostra um `MessageRequester` avisando que não está
+implementado em vez de falhar silenciosamente.
+
+**Menu `Hardware` novo, com submenu `Model`** (`MSX1`/`MSX2`/`MSX2+`, com marca de seleção refletindo o
+`Mode` atual via `UpdateModelMenuCheck()`): escolher um modelo chama `SwitchModel()`, que troca `Mode`,
+recarrega a BIOS certa (`MSXLoadBIOSForModel()`), recarrega qualquer cartucho já carregado
+(`CurCartAPath`/`CurCartBPath`, novos globals atualizados por `LoadCartridge()`) e faz um reset completo -
+equivalente a reiniciar com uma `-msx1`/`-msx2`/`-msx2+` diferente na linha de comando, **não** um
+hot-swap que preserva RAM/VRAM (bate com o comportamento de hardware real - trocar de modelo é
+efetivamente trocar de máquina). **Bug real encontrado e corrigido nesse processo**:
+`MSXLoadBIOSForModel()` nunca limpava o mapeamento da extended BIOS ao trocar PARA MSX1 - um usuário que
+trocasse MSX2→MSX1 pelo menu ficaria com `MSX2EXT.ROM` ainda mapeado em Slot 3-1 (só não aparecia antes
+porque cada processo só carregava um modelo uma vez, na inicialização, nunca trocando ao vivo). Corrigido
+limpando `*MemMap(3,1,0..1)` de volta pra `*EmptyRAM` (e re-derivando `*RAM()` se essa subslot estiver
+selecionada no momento) no branch `Default` (`#MSX_MSX1`) de `MSXLoadBIOSForModel()`. Testado via
+`WM_COMMAND` mandado direto pro `HWND` da janela (mesma técnica de automação por mensagem já usada nesta
+sessão, evita simulação de clique real) nas duas direções (MSX1→MSX2+ e MSX2+→MSX1) - ambas confirmadas
+por screenshot chegando no prompt do BASIC certo pro modelo escolhido.
+
+**Save/Open Snapshot implementado de verdade** (`SaveSnapshot()`/`LoadSnapshot()`, `fossauro.pb`) - não é
+só um item de menu vazio. Formato binário próprio (`FSNP`, versionado, não é estável entre builds
+diferentes - assume que só o mesmo `fossauro.exe` que gravou vai carregar de volta, mesmo espírito da
+maioria dos save-states simples de emulador): grava `Mode`, os CAMINHOS dos cartuchos carregados (não os
+dados da ROM em si - no load, os arquivos são relidos do disco via `LoadCartridge()`, então o snapshot
+não é portável se o arquivo original for movido/apagado; a BIOS/extended BIOS também não é salva, já que
+`MSXLoadBIOSForModel()` reconstrói ela de forma determinística a partir só do `Mode`), RAM (64KB), VRAM
+(128KB), a struct `Z80` inteira (`CPU`), registradores/status do VDP + os campos avulsos de estado de
+acesso à VRAM (`VDPKey`/`VDPALatch`/`VDPAddr`/`VDPData`), a struct do motor de comandos VDP (`MMC`), a
+struct do PSG inteira, a struct do PPI inteira, o estado do RTC (`RTCReg`/`RTCMode`/`RTC()`) e o registro
+de slot primário/secundário (`PSLReg`/`SSLReg()`). Os ponteiros de `*MemMap()` (endereços de memória
+válidos só nesta execução do processo) **não** são salvos - no load, depois de restaurar `SSLReg()`,
+`PSLReg` é forçado a mudar (`PSLReg = valorSalvo ! $FF` antes de chamar `PSlot(valorSalvo)`) pra
+disparar a mesma lógica de re-derivação de `PSL()`/`SSL()`/`*RAM()`/`EnWrite()` que o emulador já usa em
+toda troca de slot real, e `SetScreen()` é chamado no final pra recalcular `ScrMode`/`ChrTab`/`ColTab`/etc.
+a partir dos registradores do VDP já restaurados, em vez de salvar esses caches derivados também.
+Verificado com um teste headless temporário (gatilho por argumento posicional especial, removido depois
+de confirmar): salvou um estado com PC/HL/um byte de RAM/um registrador de VDP marcados com valores
+sentinela, corrompeu esses mesmos valores, recarregou o snapshot, e confirmou que TODOS voltaram exatos
+(`PASS=1` no log) - não testado ainda via a UI real (o diálogo nativo de arquivo do Windows é baseado em
+COM, automatizar via mensagem é frágil o bastante que não valeu a pena tentar nesta sessão; o teste
+headless cobre a lógica de serialização, que é a parte que importa).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
