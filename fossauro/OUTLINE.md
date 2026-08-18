@@ -7,9 +7,23 @@ what's done.
 
 **Update 2026-08-18**: the plain-MSX2 boot freeze (this file's top priority as of 2026-08-17) is
 **fixed** — see `SPEC.md` §2 "Fixed 2026-08-18" and `docs/SPEC.md` module 32j for the full investigation.
-MSX1/MSX2/MSX2+ all boot to their BASIC prompts now. The single most useful next action, picking this up
-fresh, is: read `SPEC.md` section 3 ("What's left to do") and pick between SCREEN 6/7 rendering or MegaROM
-mapper support — both independent, neither blocks the other.
+MSX1/MSX2/MSX2+ all boot to their BASIC prompts now. RAM/VRAM sizing and MegaROM mappers also landed the
+same day (`SPEC.md` §2). Audio (`AY8910.pbi`/`StartAudio`/`StopAudio`) was already wired in but unverified
+as of the `116752e` commit ("ainda falta audio") — now verified end-to-end via the new `audio_verify.pb`
+harness (`SPEC.md`'s PSG entry, `docs/SPEC.md` module 32n). **SCREEN 6/7 rendering** landed the same day
+(`SPEC.md`'s V9938 entry, `docs/SPEC.md` module 32o) — found and fixed a real pre-existing bug in the
+process (`FillMemory()` calls missing PureBasic's `#PB_Long` size argument, silently corrupting any
+non-grayscale border/background fill). **FDC/disk** (`FDC.pbi`, new) got as far as a fully implemented
+and verified-in-isolation WD1793 (`fdc_verify.pb`: 4/4 tests pass, byte-exact against a real disk image)
+before hitting a real, NOT-yet-fixed regression: mapping `DISK.ROM` into memory breaks MSX2/2+ boot
+("Out of memory"/hang depending on whether a disk is mounted) — root cause not isolated, since this
+machine has no `fMSX/fMSX/MSX.c` source to check the real memory layout against (only the binary ROMs).
+`MSXLoadDiskROM()`'s call site is commented out until this is fixed; boot is confirmed back to normal
+without it. See `docs/SPEC.md` module 32p for the full writeup and suggested next step. The single most
+useful next action, picking this up fresh: either get real fMSX C source onto this machine and check
+`StartMSX()`'s exact disk-ROM `MemMap[3][1][]` placement, or fall back to a PC-exact trace of the
+boot-time slot-scan routine that diverges (same methodology as modules 32g/32j) if the C source isn't
+available - the FDC layer itself needs no further work either way, only the memory placement does.
 
 ---
 

@@ -148,6 +148,27 @@ changes behavior for the previously-broken colon+constant-opcode combination, no
 If you ever see `"Simbolo ja definido"` on what looks like a single valid `EQU`, check whether the label
 has a colon before assuming it's a real duplicate.
 
+**Real toolchain bug found generating the 8.1.5 distribution package (2026-08-18)** — a from-scratch
+compile of `editor/BadigEditor.pb` on this machine always failed at the **linker** stage with
+`error: undefined symbol: GetProcAddress`, even though the only change that session was a one-line
+version-string bump; a minimal repro of the suspect code compiled fine standalone, which for a while
+made it look like a scale-dependent linker bug in the full ~30,000-line file. Root cause, confirmed by
+inspecting the `/COMMENTED` assembly output: `App_GetProcAddressOrdinal()`'s manual
+`Import "Kernel32.lib" : ... As "GetProcAddress"` (near line 2818, used for dark-mode ordinal lookups —
+see the `7.33.1` dark-mode entry above) emits an **undecorated** external symbol, but this machine's
+`pbcompiler.exe` targets **x86 (32-bit)** (`pbcompiler /VERSION`), where the Windows stdcall ABI requires
+**decorated** import names (`_Name@ArgBytes`) for anything not one of PureBasic's own built-in WinAPI
+declares (those get decorated automatically; a manual `Import ... As "literal string"` does not). On x64
+there's no decoration at all, so a plain `"GetProcAddress"` is correct there instead — likely why this was
+never caught before, if the already-committed `editor/PaleoBasic.exe` was originally built with an x64
+`pbcompiler.exe` on a different machine. **Fix**: wrapped the import name in
+`CompilerSelect #PB_Compiler_Processor` (an `Import` block accepts `CompilerIf`/`CompilerSelect` inside
+it) — `"_GetProcAddress@8"` (2 pointer-sized stdcall args = 8 bytes) under `#PB_Processor_x86`, the plain
+name otherwise. Verified: compiles clean and the resulting `.exe` launches and responds normally
+(screenshot-checked). **If any other manual `Import "x.lib" : Name(...) As "RealName"` ever fails to
+link with "undefined symbol" specifically on an x86 build, this exact decoration gap is the first thing
+to check** — see `docs/SPEC.md` module 32q for the full investigation.
+
 ```powershell
 # Compile editor\BadigEditor.pb -> editor\PaleoBasic.exe (finds pbcompiler.exe automatically,
 # or pass -C once and it's remembered in build.config.json, gitignored/machine-local)

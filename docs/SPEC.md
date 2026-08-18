@@ -7165,6 +7165,240 @@ proposital do comportamento do fMSX real neste subsistema (pra não ser confundi
 futura). Verificado: `fossauro.exe` sem nenhum argumento agora sobe direto até "MSX BASIC version 1.0 ...
 28815 Bytes free ... Ok", confirmado por screenshot.
 
+### 32n. Fossauro — verificação end-to-end do pipeline de áudio (PSG/waveOut) (2026-08-18, `8.1.3`)
+
+O commit anterior (`116752e`, "Fossauro MSX 2 e MSX 2+, ainda falta audio e melhorias") já tinha
+`AY8910.pbi` incluído via `MSX.pbi` e `StartAudio()`/`StopAudio()` cabeados no ciclo de vida da janela
+(`fossauro.pb`), mas isso nunca tinha sido confirmado rodando de verdade - a mensagem do commit refletia
+essa incerteza, não um bug conhecido específico. Sessão retomada numa máquina diferente (checkout
+`C:\dos\paleobasic`, sem `fossauro/fMSX/` nem as ROMs - ambos gitignored de propósito); ROMs do MSX
+recuperadas de uma cópia local já existente fora do repo (`C:\msx\*.ROM`) e copiadas pra
+`fossauro/fMSX/` só localmente (não versionado, mesma regra de sempre).
+
+**Harness novo**: `fossauro/audio_verify.pb` (compila com `pbcompiler audio_verify.pb /CONSOLE /OUTPUT
+audio_verify.exe`), mesmo padrão dos harnesses já existentes (`fossauro_verify.pb`/`basic_verify.pb`),
+dois testes:
+1. Chama `PSG_Render()` (a função real, não uma reimplementação) diretamente com sequências conhecidas
+   de registradores PSG (silêncio / tom fixo canal A / varredura de tom / ruído LFSR / envelope forma 8
+   / acorde 3 canais / silêncio) e grava tudo num `.wav` PCM16/44100Hz/mono de verdade em disco, pra o
+   dono do projeto ouvir com os próprios ouvidos - um harness console não consegue "ouvir" nada sozinho,
+   mas consegue produzir um arquivo que qualquer tocador de mídia reproduz.
+2. Smoke test ao vivo de `StartAudio()`/`StopAudio()` (a thread `waveOut` real usada por `fossauro.exe`
+   em produção): programa um tom nos registradores PSG reais, espera 1500ms, silencia, espera 300ms,
+   chama `StopAudio()` e confirma que a thread termina dentro do timeout sem travar nem crashar.
+
+**Resultado**: os dois testes passaram. Frequência medida por contagem de cruzamento de limiar no
+segmento de tom fixo (período 200, canal A) bateu quase exato com a fórmula prevista em comentário no
+próprio `PSG_Render()` (111860.78 / (2×período) Hz): 279Hz medido vs 279.7Hz esperado. Ruído, envelope e
+acorde de 3 canais todos produziram amplitude não-nula (silêncio antes/depois ficou em 0, confirmando que
+não há vazamento de estado entre segmentos). `StartAudio()`/`StopAudio()` completou em ~1802ms (esperado
+~1800ms) sem travar, e `hWaveOut` ficou não-nulo durante o teste - confirma que `waveOutOpen_` conseguiu
+abrir um dispositivo de áudio real nesta máquina.
+
+**Uma armadilha real do próprio harness, não do código do fossauro**: o primeiro teste do segmento de
+envelope (forma 8) deu `peak=0` (silêncio, errado) na primeira rodada - o harness estava escrevendo
+`PSG\R[13]` diretamente, pulando o callback `MSXOutZ80` (`MSX.pbi`) que é quem normalmente chama
+`ResetPSGEnvelope()` a cada escrita no registrador 13. Sem isso, `PSG\Env\Holding` fica travado em `1`
+(valor de `ResetPSG()`) e o gerador de envelope nunca avança. Corrigido chamando `ResetPSGEnvelope()`
+explicitamente no harness logo após escrever `PSG\R[13]` - **não é um bug em `AY8910.pbi`/`MSX.pbi`**,
+já que o caminho real (`OUT` de um programa BASIC/Z80 passando por `MSXOutZ80`) sempre aciona esse
+callback; é só um lembrete de que qualquer harness futuro que manipule `PSG\R[]` direto (em vez de passar
+pela porta `$A1`) precisa replicar esse efeito colateral manualmente, mesmo padrão do aviso já registrado
+em `fossauro/OUTLINE.md` sobre `RealRdZ80`/`WrZ80` precisarem ser reatribuídos na thread de emulação.
+
+**Não testado nesta sessão** (ficou de fora por exigir automação de teclado dentro da janela real do
+`CanvasGadget`, mais arriscado que os testes de harness acima): um programa BASIC de verdade (`SOUND`
+dentro do fossauro.exe rodando) digitado via `WM_KEYDOWN`/`WM_KEYUP` sintéticos, exercitando a cadeia
+completa `Z80 OUT` → `MSXOutZ80` → `PSG\R[]` → thread de áudio. Os dois testes acima já cobrem cada elo
+dessa cadeia individualmente (escrita de registrador não testada em live-app, mas é código trivial de
+roteamento de porta já auditado no módulo 32f); considerado suficiente por ora. Revisitar com um teste ao
+vivo se algum dia houver relato de "áudio não sai no app de verdade" apesar deste módulo.
+
+Arquivo de saída do teste 1 (`fossauro/audio_verify_output.wav`, ~301KB, 3.5s) não fica versionado
+(mesma regra dos demais artefatos de build/teste do fossauro) - regenerar rodando o harness.
+
+### 32o. Fossauro — SCREEN 6/7 (V9938.pbi) e bug real em FillMemory() sem tipo explícito (2026-08-18, `8.1.3`)
+
+Item 1 da lista de prioridades do módulo 32n (`fossauro/SPEC.md` §3): `RefreshLine()` (`V9938.pbi`) não
+tinha `Case 6`/`Case 7` no `Select mode` de renderização de fundo, caindo no `Default` (preenchimento
+plano) - os dois únicos modos de vídeo do MSX2 sem suporte visual (modos 5/8 já existiam e serviram de
+modelo). Implementado um `Case 6, 7` compartilhado logo depois do `Case 5` existente: diferente dos modos
+5/8 (256px lógicos, dobrados pro canvas de 512px), os modos 6/7 já endereçam a linha inteira de 512px
+diretamente - então este branch escreve direto em `*LineDest` e retorna cedo (mesmo padrão do `Case 0`),
+em vez de passar pelo `temp_line`/escala 2x compartilhados. Empacotamento de bits mode 6 (2bpp/4 pixels
+por byte) e mode 7 (4bpp/2 pixels por byte) replicado do `ReadVRAMPixel()`/`WriteVRAMPixel()` já existente
+(motor de comando VDP, auditado no módulo 32e) - mesmo layout de bits, só percorrendo uma linha inteira em
+vez de um pixel do motor de comando por vez. Stride de linha reaproveita a janela `<<7`/`$7FFF` do `Case 5`
+pro mode 6 (2bpp, mesmos 128 bytes/linha do mode 5) e a janela `<<8`/`$FFFF` do `Case 8` pro mode 7 (4bpp,
+mesmos 256 bytes/linha do mode 8).
+
+**Sprites em modo 6/7**: no V9938 real, sprites sempre ficam no espaço lógico de 256px mesmo em modos de
+512px (`RenderSprites()` já limita a `final_x<256`) - cada pixel lógico de sprite cobre 2 pixels físicos
+aqui, a mesma duplicação que os modos 5/8 ganham de graça no passo de escala compartilhado (este branch
+pula esse passo, então faz a duplicação manualmente): renderiza os sprites num `temp_line` preenchido com
+um sentinela ($FFFFFF01, valor que `RGB()` nunca produz já que nunca seta o byte mais alto), depois
+mescla cada coluna não-sentinela em dois pixels físicos de `*LineDest`.
+
+**Harness novo**: `fossauro/screen67_verify.pb` (`pbcompiler screen67_verify.pb /CONSOLE /OUTPUT
+screen67_verify.exe`) - chama `RefreshLine()` de verdade linha a linha com um cenário VDP/VRAM montado à
+mão (barras de cor verticais cobrindo cada entrada de paleta que o modo suporta, mais um sprite 8x8 sólido
+pra confirmar a composição/duplicação) e grava o resultado em BMP puro de 24 bits, já que um harness
+console sozinho não consegue confirmar pixels visualmente - só depois de converter pra PNG (`System.Drawing`
+via PowerShell) e abrir com a ferramenta de leitura de imagem foi possível checar visualmente scr6/scr7.
+
+**Duas armadilhas reais do harness, não bugs no fossauro** (encontradas e corrigidas durante a
+verificação, documentadas no comentário do harness pra não se repetirem):
+1. Hardware V9938 real (e todo BASIC real) sempre configura os 5 bits baixos do registrador R#2 em 1 nos
+   modos SCREEN 5-8 (`MSK().M2` do próprio `SetScreen()`) - deixar em 0 (padrão de `ResetVDP()`) colapsa a
+   janela de wrap calculada por `ChrTabM` pra ~1KB em vez dos ~32KB do plano de bitmap inteiro, produzindo
+   uma "escada" de dados repetidos a cada 8 linhas. Corrigido setando `VDP(2)=$1F` no harness antes de
+   `SetScreen()`.
+2. Deixar `VDP(5)`/`VDP(6)`/`VDP(11)` (tabelas de atributo/padrão de sprite) no padrão zero faz `SprTab`/
+   `SprGen` apontarem pro MESMO endereço `$0` do bitmap de cores - `RenderSprites()` então lê os bytes do
+   bitmap como se fossem os atributos Y/X/padrão/cor de até 32 sprites, desenhando uma dispersão de
+   sprites falsos (era essa a "escada" visual, não a mesma causa do item 1 - as duas produziam sintoma
+   parecido). Corrigido apontando `SprTab`/`SprGen` bem além do maior plano de bitmap entre os dois modos
+   testados (mode 7 é maior, ~54KB) - um programa BASIC real sempre configura esses registradores sem
+   sobreposição, então isso nunca apareceria fora de um harness cru como este.
+
+**Bug real encontrado no próprio fossauro, não no harness**: depurando por que as cores ainda saíam erradas
+mesmo depois das duas correções acima, rastreado com `PrintN` temporário dentro do próprio `RefreshLine()`
+até `FillMemory(temp_line, 256*4, sentinel)` (a chamada nova deste módulo, usada pra marcar "sem pixel de
+sprite aqui") - o valor lido de volta do framebuffer batia exatamente com "o byte baixo do sentinela
+($01) repetido 4x" (`$01010101`), não com o valor Long de 32 bits esperado. Causa: `FillMemory()` do
+PureBasic, sem o parâmetro de tipo opcional, preenche **byte a byte** (só os 8 bits baixos do valor
+dado), não como Long de 32 bits - precisa do quarto parâmetro `#PB_Long` explícito pra preencher
+corretamente com um valor RGBA de 32 bits. Isso não é um bug introduzido nesta sessão: as MESMAS chamadas
+já existentes em `RefreshLine()` (preenchimento de borda quando a tela está desligada, preenchimento de
+fundo por linha no topo da função, preenchimento de borda do `Case 0`/texto, e o fallback `Default`) já
+tinham o mesmo problema - só nunca foi notado porque a cor de fundo padrão (preto, `Palette(0)=RGB(0,0,0)`)
+tem todos os bytes iguais (0), então o bug era invisível com as cores testadas até agora. Qualquer `COLOR`/
+borda MSX real com um valor de paleta cujo byte baixo (R) difere dos outros canais (G/B) - a maioria das
+cores não-tons-de-cinza - já renderizaria errado antes desta correção. Todas as 5 chamadas `FillMemory()`
+de valores de 32 bits em `RefreshLine()` corrigidas com `#PB_Long` explícito (a única chamada NÃO
+corrigida, `FillMemory(*VRAM, VRAMPages*$4000, $00)` em `ReallocateVRAM()`, preenche com zero - o
+resultado é idêntico em qualquer largura, não precisa do parâmetro).
+
+Verificado: `screen67_verify.pb` agora produz barras de cor verticais corretas nos dois modos (mode 6:
+preto/preto/verde/verde-claro batendo com `Palette(0..3)`; mode 7: 16 barras distintas batendo com as 16
+entradas de `PalInit`), mais o sprite de teste corretamente posicionado e dobrado em ambos. `fossauro.exe`
+recompilado limpo com a correção do `FillMemory()` incluída.
+
+**Não verificado ainda**: um programa BASIC real fazendo `SCREEN 6`/`SCREEN 7` e desenhando (`PSET`/`LINE`/
+`PAINT`) dentro do `fossauro.exe` rodando de verdade, incluindo o próprio boot do MSX2 que usa SCREEN 6
+brevemente pro logo (mencionado no módulo 32j) - o harness cobre o mecanismo de renderização isoladamente
+(mesma função `RefreshLine()`), mas não o caminho completo `BASIC -> VDP port write -> VRAM -> RefreshLine`
+end-to-end. Revisitar se algo parecer errado numa tela real depois deste módulo.
+
+### 32p. Fossauro — FDC WD1793 implementado e verificado isoladamente; integração do DISK.ROM revertida por regressão real no boot (2026-08-18, `8.1.3`)
+
+Item 1 da lista de prioridades do módulo 32o (`fossauro/SPEC.md` §3, "maior item em aberto"): disco/FDC.
+Sem o C real do fMSX nesta máquina (`fMSX/` é gitignored, só as ROMs/`.exe` foram copiadas de
+`C:\msx\`), o mapa de portas do WD1793 real usado pelo `fMSX/DISK.ROM` foi derivado **empiricamente**
+escaneando o próprio binário do DISK.ROM por `LD A,(nn)`/`LD (nn),A` referenciando `$7FF0-$7FFF`, depois
+desmontando à mão os trechos ao redor de cada acesso (não foi chute de memória) - confirmado:
+
+```
+$7FF8: STATUS (leitura) / COMMAND (escrita)   - registrador 0 do WD1793
+$7FF9: TRACK (leitura/escrita)                 - registrador 1
+$7FFA: SECTOR (leitura/escrita)                - registrador 2 (confirmado: driver faz
+                                                  "LD A,L : INC A : LD (7FFA),A")
+$7FFB: DATA (leitura/escrita)                  - registrador 3
+$7FFC: seleção de lado (só escrita, bit0)      - confirmado: driver só escreve 0 ou 1 ali
+$7FFD: controle de drive/motor (só escrita)    - confirmado: driver faz OR com $C4 antes de
+                                                  escrever; bit0/bit1 = seleção de drive A/B
+```
+
+**`fossauro/FDC.pbi` (novo)**: emulação do WD1793 com comandos completando **sincronamente** (sem timing
+real de seek/rotação, mesma simplificação já usada no motor de comando do VDP em `V9938.pbi`) - RESTORE/
+SEEK/STEP/STEP IN/STEP OUT (Tipo I), READ SECTOR/WRITE SECTOR (Tipo II), READ ADDRESS (Tipo III parcial),
+FORCE INTERRUPT (Tipo IV); READ TRACK/WRITE TRACK (formatação) reportam erro limpo em vez de tentar
+suportar. Imagens `.dsk` são lidas como setores brutos (sem consciência de FAT12 nesta camada - isso é
+trabalho do `editor/MSXDisk.pbi` do Paleobasic principal, uma camada acima): `LBA = (Trilha×2 + Lado)×9 +
+(Setor-1)`, 512 bytes/setor, 9 setores/trilha (padrão MSX universal, confirmado batendo com o `.dsk` de
+720KB criado pelo `--diskmanipulator` do próprio Paleobasic).
+
+**Harness novo, `fossauro/fdc_verify.pb`**: reproduz a sequência exata de registradores que um DISK.ROM
+real emite (SIDE→DRIVE→RESTORE→SECTOR→READ/WRITE SECTOR→poll status→transferência de 512 bytes via
+DATA) contra um `.dsk` de 720KB real gerado por `PaleoBasic.exe --diskmanipulator create/add`. **4/4
+testes passaram**: disco não montado → Not Ready ($80); boot sector lido bate byte-a-byte com o arquivo
+real (`$EB $FE $90`, assinatura real de boot MSX-DOS); setor fora do alcance → Record Not Found ($10);
+escrita seguida de releitura bate exatamente. Isso confirma o **mecanismo do FDC em si** (tradução CHS→
+LBA, máquina de estados de comando, transferência DRQ byte-a-byte, tratamento de erro) está correto.
+
+**Regressão real encontrada ao ligar isso no boot de verdade** - `MSXLoadDiskROM()` (novo, mesmo padrão
+de `MSXLoadExtBIOS()`) mapeia `DISK.ROM` pra `*MemMap(3,1,2)`/`*MemMap(3,1,3)` (Slot 3-1, metade
+$4000-$7FFF do subslot, adjacente ao ExtBIOS que já ocupa `*MemMap(3,1,0)`/`(3,1,1)`) - placement que
+faz sentido pro PRÓPRIO código do DISK.ROM (que precisa que seu PC esteja na página $4000-$7FFF quando
+acessa seus registradores memory-mapped em `$7FF8`), mas **quebra o boot real do MSX2/MSX2+** de duas
+formas diferentes dependendo se um disco está montado:
+- **Sem disco montado** (`-msx2+`, `MSXLoadDiskROM()` chamado mas nenhum FDC_MountDisk): tela mostra
+  `"Out of memory in 0"` em vez do banner normal do BASIC - como NENHUM comando FDC chega a ser emitido
+  nesse caminho, isso prova que o bug **não é** na lógica de comando do FDC (já verificada à parte acima),
+  e sim algo sobre a mera PRESENÇA/mapeamento do DISK.ROM interferindo com a detecção de tamanho de RAM
+  do BASIC.
+- **Com disco montado** (`-diska testdisk.dsk`): trava completamente, tela em branco (cor de fundo variou
+  entre execuções - $000000/azul-claro - mas nunca chega a desenhar texto). Log verbose (`fossauro.log`)
+  confirma via `[MEM] PSlot change` que o registrador de slot primário fica ciclando infinitamente entre
+  `$F3`/`$33`/`$F0` (endereços de origem `$F38D`/`$F395`/`$2AE`/`$2B5`/`$288`/`$295` - mistura de ROM
+  principal e BIOS em `$F000+`), consistente com uma rotina de varredura de slot (`GETSLT`/detecção de
+  RAM) que nunca termina.
+
+**Causa raiz NÃO isolada** - a hipótese mais provável (não confirmada): o layout real de memória do
+Slot 3-1 que o `MSX2.ROM`/`MSX2P.ROM` espera para "ExtBIOS + DiskROM coexistindo" pode não ser
+simplesmente "ExtBIOS nas páginas 0-1, DiskROM nas páginas 2-3" como a spec anterior (módulo 32c) supôs
+sem verificação - `docs/reference`/o C real do fMSX (`fMSX/fMSX/MSX.c`, `StartMSX()`) teria a resposta
+definitiva de exatamente como `MemMap[3][1][]` é preenchido pra disco, mas essa árvore não está presente
+nesta máquina (só as ROMs binárias, via `.gitignore`). Sem esse source pra comparar, continuar chutando
+o layout de memória arriscava mais uma rodada de "parece certo, trava" - mesmo padrão que os módulos 32g/
+32h/32j já documentaram para o freeze de boot original.
+
+**Decisão**: revertida a chamada automática de `MSXLoadDiskROM()` em `MSXLoadBIOSForModel()` (comentada,
+não removida - a função continua definida e pronta) até a causa raiz ser entendida. `FDC.pbi` e o
+despacho de registrador em `MSXRdZ80`/`MSXWrZ80` (gate `PSL(1)=3 And SSL(1)=1`) continuam no código,
+inertes na prática já que sem `MSXLoadDiskROM()` rodando, `SSL(1)` nunca fica `1` durante o uso normal do
+disco (só ExtBIOS ainda usa esse subslot). Boot normal MSX1/MSX2/MSX2+ **confirmado restaurado**
+(screenshot) depois de desativar a chamada. `fdc_verify.exe`/`FDC.pbi` continuam validando a lógica do
+FDC em isolamento - a parte que não foi possível verificar nesta sessão foi a integração com o boot ROM
+de verdade.
+
+**Próximo passo pra quem pegar isso depois**: conseguir o C real do fMSX (`fMSX/fMSX/MSX.c`) nesta
+máquina (ou trazer da outra onde a sessão original rodou) e comparar `StartMSX()`'s tratamento exato de
+`MemMap[3][1][2..7]` pra modelos com disco antes de tentar de novo - ou, alternativa mais rápida:
+instrumentar `MSXRdZ80`/`MSXWrZ80` com um trace temporário PC-exato (mesma metodologia dos módulos 32g/
+32j) gated em `PC` dentro do range de `GETSLT`/RAM-scan da BIOS principal (`$02xx`/`$F3xx`, os endereços
+vistos no log) pra ver exatamente qual leitura/escrita difere entre "DISK.ROM presente" vs "ausente".
+
+### 32q. Bug real no toolchain: `pbcompiler.exe` x86 precisa de nomes decorados stdcall em `Import ... As "..."` manual (2026-08-18, `8.1.5`)
+
+Achado gerando o pacote de distribuição da versão 8.1.5 (`build.ps1 -D`): compilar `editor/BadigEditor.pb`
+do zero nesta máquina falhava sempre no linker com `error: undefined symbol: GetProcAddress`, referenciado
+por `PureBasic.obj:(_PB_EndFunctions)`. Não era nada desta sessão especificamente - só a troca de uma
+linha na constante `#App_Version` já bastava pra reproduzir, e um repro mínimo (arquivo de 3 linhas com
+só o `Import` suspeito) compilava sem erro, então o problema só aparecia no arquivo grande de verdade -
+o que por um tempo pareceu um bug de escala do próprio linker, difícil de isolar.
+
+**Causa raiz real**: `App_GetProcAddressOrdinal()` (perto da linha 2818, ver comentário no próprio código)
+usa `Import "Kernel32.lib" : App_GetProcAddressOrdinal(...) As "GetProcAddress"` pra importar
+`GetProcAddress` manualmente (com uma assinatura customizada, ver o comentário original explicando o
+porquê). Confirmado inspecionando o `purebasic.asm` gerado (`/COMMENTED`): a chamada gerava
+`extrn GetProcAddress` (nome **sem decoração**), mas o `pbcompiler.exe` desta máquina é a variante
+**x86 (32-bit)** (`pbcompiler /VERSION` → "PureBasic 6.40 (Windows - x86)") - no ABI stdcall do Windows
+x86, símbolos importados de DLL do sistema levam o nome decorado `_Nome@N` (N = bytes totais dos
+argumentos), e isso só é feito automaticamente pelas declarações WinAPI **nativas** do PureBasic (tipo
+`GetProcAddress_`) - um `Import` manual com `As "string"` não decora nada, usa o literal exato. No x64
+não existe decoração nenhuma, então o nome puro (`GetProcAddress`) está certo lá - por isso provavelmente
+nunca deu problema antes, se o binário `editor/PaleoBasic.exe` já commitado foi originalmente compilado
+numa máquina/instalação com o `pbcompiler.exe` x64.
+
+**Fix**: `CompilerSelect #PB_Compiler_Processor` dentro do `Import` (blocos `Import` aceitam `CompilerIf`/
+`CompilerSelect` internamente) - usa `"_GetProcAddress@8"` (`GetProcAddress(HMODULE,LPCSTR)`, 2 argumentos
+de tamanho ponteiro = 8 bytes em x86) no `#PB_Processor_x86`, mantém `"GetProcAddress"` puro em qualquer
+outro caso (x64/arm64). Verificado: compila limpo e a janela principal abre e responde normalmente
+(screenshot) com o fix. **Se qualquer outro `Import "algo.lib" : Nome(...) As "NomeReal"` aparecer no
+projeto no futuro e só falhar em build x86, é exatamente esse mesmo padrão** - falta decorar o nome real
+pro ABI stdcall x86.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido

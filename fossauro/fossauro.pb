@@ -30,6 +30,13 @@ Global Dim PCKeyStates.b(512)
 Global CurCartAPath.s = ""
 Global CurCartBPath.s = ""
 
+; Same idea for mounted disk images - unlike cartridges, mounted disks do NOT need re-mounting
+; after a model switch/RAM/VRAM change (FDCDrive() in FDC.pbi is a standalone buffer, untouched by
+; ReallocateRAM()/ReallocateVRAM()/ResetSlotsToStartup()), so these are only tracked for the
+; snapshot/menu-checkmark bookkeeping, not for any re-load-on-reset logic.
+Global CurDiskAPath.s = ""
+Global CurDiskBPath.s = ""
+
 ; Include Z80 Emulator, Motherboard, Video, and Audio files
 XIncludeFile "Z80_Tables.pbi"
 XIncludeFile "Z80.pbi"
@@ -227,6 +234,7 @@ Procedure.l LoadCartridge(FileName.s, Slot.l = 1, MapperType.a = #MAP_GUESS)
   ResetZ80(@CPU)
   ResetVDP()
   ResetPSG()
+  FDC_Reset()
 
   LogGeneral("LoadCartridge: Cartridge loaded successfully and hardware reset.")
   ProcedureReturn 1
@@ -255,6 +263,7 @@ Procedure EjectCartridge(Slot.l)
   ResetZ80(@CPU)
   ResetVDP()
   ResetPSG()
+  FDC_Reset()
   LogGeneral("EjectCartridge: Slot " + Str(Slot) + " ejected, hardware reset.")
 EndProcedure
 
@@ -580,6 +589,7 @@ Procedure SwitchModel(NewModel.l)
   ResetZ80(@CPU)
   ResetVDP()
   ResetPSG()
+  FDC_Reset()
   UpdateModelMenuCheck()
   UpdateRAMSizeMenuCheck()
   UpdateVRAMSizeMenuCheck()
@@ -607,6 +617,7 @@ Procedure ApplyRAMSize(RequestedPages.l)
   ResetZ80(@CPU)
   ResetVDP()
   ResetPSG()
+  FDC_Reset()
   UpdateRAMSizeMenuCheck()
   ThreadPaused = 0
   SetActiveGadget(0)
@@ -623,6 +634,7 @@ Procedure ApplyVRAMSize(RequestedPages.l)
   ResetZ80(@CPU)
   ResetVDP()
   ResetPSG()
+  FDC_Reset()
   UpdateVRAMSizeMenuCheck()
   ThreadPaused = 0
   SetActiveGadget(0)
@@ -640,6 +652,7 @@ Procedure RunEmulator()
   ; matching real fMSX - "-rom <file>" (fossauro's own earlier shorthand) still works too,
   ; distinguished from real fMSX's "-rom <type>" by whether the argument is numeric.
   Protected CartA.s = "", CartB.s = ""
+  Protected DiskA.s = "", DiskB.s = ""
   Protected ParameterCount.l = CountProgramParameters()
   Protected ParamIdx.l = 0
 
@@ -734,9 +747,26 @@ Procedure RunEmulator()
           ParamIdx + 1
         EndIf
 
+      ; -diska/-diskb <filename> - mounted after the FDC is reset, near the end of startup (same
+      ; timing as CartA/CartB below), so this doesn't depend on init order within this loop.
+      Case "-diska"
+        If HasNextArg
+          DiskA = NextArg
+          ParamIdx + 2
+        Else
+          ParamIdx + 1
+        EndIf
+      Case "-diskb"
+        If HasNextArg
+          DiskB = NextArg
+          ParamIdx + 2
+        Else
+          ParamIdx + 1
+        EndIf
+
       ; Flags that take a filename/value argument - accepted and logged, not yet wired to
       ; actual behavior (see GetFmsxHelpText() for what each one is supposed to do).
-      Case "-home", "-printer", "-serial", "-diska", "-diskb", "-tape", "-font", "-logsnd",
+      Case "-home", "-printer", "-serial", "-tape", "-font", "-logsnd",
            "-state", "-joy", "-skip", "-sync", "-scale", "-trap"
         If HasNextArg
           LogGeneral("CLI: " + LParam + " " + NextArg + " (accepted, not yet implemented)")
@@ -778,7 +808,7 @@ Procedure RunEmulator()
     EndSelect
   Wend
 
-  LogGeneral("CLI Arguments: CartA = '" + CartA + "' CartB = '" + CartB + "'")
+  LogGeneral("CLI Arguments: CartA = '" + CartA + "' CartB = '" + CartB + "' DiskA = '" + DiskA + "' DiskB = '" + DiskB + "'")
 
   ; 1. Init tables and system state
   InitZ80Tables()
@@ -906,11 +936,20 @@ Procedure RunEmulator()
       LoadCartridge(CartB, 2)
     EndIf
 
+    ; Mount startup disk image(s) if specified via command line
+    FDC_Reset()
+    If DiskA <> ""
+      If FDC_MountDisk(0, DiskA) : CurDiskAPath = DiskA : EndIf
+    EndIf
+    If DiskB <> ""
+      If FDC_MountDisk(1, DiskB) : CurDiskBPath = DiskB : EndIf
+    EndIf
+
     ; 6. Start audio and emulation threads
     StartAudio()
     ResetZ80(@CPU)
     ResetVDP()
-    
+
     ThreadExit = 0
     ThreadPaused = 0
     EmulationThread = CreateThread(@EmulationThreadProc(), 0)
@@ -936,11 +975,12 @@ Procedure RunEmulator()
               ThreadPaused = 1
               Protected disk_file.s = OpenFileRequester("Select MSX Disk Image", "", "MSX Disk (*.dsk)|*.dsk|All files (*.*)|*.*", 0)
               If disk_file <> ""
-                ; No floppy disk controller emulation yet (see docs/SPEC.md module 32c) - the
-                ; path is accepted and logged so the picker isn't a dead end, but nothing reads
-                ; from it until FDC support exists.
-                LogGeneral("Open Disk: " + disk_file + " (accepted, floppy disk controller not yet implemented)")
-                MessageRequester("fossauro", "Disk image selected, but floppy disk controller emulation isn't implemented yet." + #CRLF$ + "The file was not loaded.")
+                If FDC_MountDisk(0, disk_file) ; drive A
+                  CurDiskAPath = disk_file
+                  LogGeneral("Open Disk: " + disk_file + " mounted on drive A")
+                Else
+                  MessageRequester("fossauro Error", "Could not open disk image: " + disk_file)
+                EndIf
               EndIf
               ThreadPaused = 0
               SetActiveGadget(0)
@@ -1001,6 +1041,7 @@ Procedure RunEmulator()
               ResetZ80(@CPU)
               ResetVDP()
               ResetPSG()
+              FDC_Reset()
               ThreadPaused = 0
               SetActiveGadget(0)
 

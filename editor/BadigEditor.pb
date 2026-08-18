@@ -645,7 +645,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "8.1.3"
+  #App_Version = "8.1.5"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -2815,8 +2815,23 @@ CompilerIf #PB_Compiler_OS = #PB_OS_Windows
   ; macro C MAKEINTRESOURCE), nao um ponteiro pra string - declarar como
   ; Long deixa isso explicito e evita qualquer ambiguidade de tipo na
   ; chamada (GetProcAddress_ nativo do PB espera uma string no 2o parametro).
+  ;
+  ; Real bug found 2026-08-18 (docs/SPEC.md module 32q): a bare "As GetProcAddress" here
+  ; linked fine on x64 pbcompiler builds (no name decoration on that ABI) but failed with
+  ; "undefined symbol: GetProcAddress" on this machine's x86 pbcompiler.exe - x86 Windows
+  ; stdcall imports need the decorated form (_Name@ArgBytes) in the import library, and
+  ; PureBasic only auto-decorates names for its OWN built-in WinAPI declares, not for a
+  ; manual Import block's "As" alias. GetProcAddress(HMODULE, LPCSTR) takes 2 pointer-sized
+  ; stdcall args = 8 bytes on x86, hence "_GetProcAddress@8"; on x64 there's no decoration
+  ; at all, so the plain name is required there instead - CompilerSelect picks the form
+  ; matching whichever pbcompiler variant is doing the actual build.
   Import "Kernel32.lib"
-    App_GetProcAddressOrdinal(hModule.i, Ordinal.l) As "GetProcAddress"
+    CompilerSelect #PB_Compiler_Processor
+      CompilerCase #PB_Processor_x86
+        App_GetProcAddressOrdinal(hModule.i, Ordinal.l) As "_GetProcAddress@8"
+      CompilerDefault
+        App_GetProcAddressOrdinal(hModule.i, Ordinal.l) As "GetProcAddress"
+    CompilerEndSelect
   EndImport
 
   Global App_pSetPreferredAppMode.Proto_SetPreferredAppMode

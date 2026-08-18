@@ -156,6 +156,7 @@ Global UPeriod.a = 75             ; % of frames to draw (defaults to 75)
 ; Include V9938 VDP Graphics Processor Emulation
 XIncludeFile "V9938.pbi"
 XIncludeFile "AY8910.pbi"
+XIncludeFile "FDC.pbi"
 
 ; Memory blocks
 Global *EmptyRAM                  ; Pointer to dummy 8KB block initialized to $FF
@@ -165,6 +166,10 @@ Global *BIOSExtData                ; MSX2/MSX2+ extended BIOS ROM buffer (16KB) 
                                     ; MSX1 has no extended BIOS; that subslot stays *EmptyRAM,
                                     ; matching real fMSX's MemMap[3][1][0/1]=EmptyRAM for MSX1
                                     ; (MSX.c, StartMSX(), MSX_MSX1 case).
+Global *BIOSDiskData               ; DiskROM buffer (16KB) - slot 3-1 pages 2-3 ($4000-$7FFF when
+                                    ; that subslot is paged in), same slot as the ExtBIOS above but
+                                    ; the other half - loaded for every model alike (real MSX1
+                                    ; machines with a disk drive carry DISK.ROM too, not just MSX2+).
 Global Dim *ROMData(5)            ; Cartridge/System ROM data pointers
 ; MegaROM mapper state, one entry per cartridge slot - fossauro only ever uses indices 0 (Cart
 ; A / Primary Slot 1) and 1 (Cart B / Primary Slot 2), unlike real fMSX's MAXSLOTS=6 (which also
@@ -452,13 +457,58 @@ Procedure.l MSXLoadExtBIOS(FileName.s)
   ProcedureReturn 1
 EndProcedure
 
+; Load DISK.ROM (16KB) and map it to Slot 3-1 pages 2-3 ($4000-$7FFF within that subslot) - same
+; slot as MSXLoadExtBIOS() above, adjacent pages, so MSX2/MSX2+'s ExtBIOS (pages 0-1) and DiskROM
+; (pages 2-3) coexist in the same 32KB subslot exactly like real hardware. Loaded for every model
+; alike, including MSX1 (a real MSX1 machine with a disk drive has DISK.ROM too - this project's own
+; MSX1 default just happens to not ship a MegaROM/expansion by default, disk support is independent
+; of that). Optional: a machine with no disk drive at all is a legitimate real configuration, so a
+; missing/unreadable fMSX/DISK.ROM is logged and left as *EmptyRAM rather than treated as fatal
+; (unlike MSXLoadBIOS()'s main BIOS, which the machine cannot function without at all).
+Procedure.l MSXLoadDiskROM()
+  Protected FileNum.i = ReadFile(#PB_Any, "fMSX/DISK.ROM")
+  If FileNum = 0
+    LogGeneral("MSXLoadDiskROM: fMSX/DISK.ROM not found - disk drive not available this session")
+    ProcedureReturn 0
+  EndIf
+
+  Protected Length.q = Lof(FileNum)
+  If Length > $4000
+    Length = $4000
+  EndIf
+
+  If Not *BIOSDiskData
+    *BIOSDiskData = AllocateMemory($4000)
+  EndIf
+  FillMemory(*BIOSDiskData, $4000, $00)
+  ReadData(FileNum, *BIOSDiskData, Length)
+  CloseFile(FileNum)
+
+  ; Map DiskROM to Slot 3-1 pages 2, 3 (each 8KB, total 16KB) - the SECOND half of the same subslot
+  ; ExtBIOS occupies pages 0-1 of (see MSXLoadExtBIOS() above).
+  *MemMap(3, 1, 2) = *BIOSDiskData
+  *MemMap(3, 1, 3) = *BIOSDiskData + $2000
+
+  Protected I.l
+  For I = 0 To 3
+    If PSL(I) = 3 And SSL(I) = 1
+      *RAM(I * 2)     = *MemMap(3, 1, I * 2)
+      *RAM(I * 2 + 1) = *MemMap(3, 1, I * 2 + 1)
+    EndIf
+  Next I
+
+  LogGeneral("MSXLoadDiskROM: DISK.ROM loaded (" + Str(Length) + " bytes) into Slot 3-1 pages 2-3")
+  ProcedureReturn 1
+EndProcedure
+
 ; Patch the cassette I/O BIOS entry points with "ED FE C9" (undefined opcode $ED $FE, which
 ; Z80_CodesED.pbi routes to PatchZ80(), followed by RET) - exact same addresses and mechanism
 ; as real fMSX (fMSX/fMSX/MSX.c: BIOSPatches[], ResetMSX()). Without this, calling these BIOS
 ; routines runs the REAL Z80 cassette-port bit-banging code, which fossauro has no cassette
 ; hardware to answer - the call would hang/misbehave instead of cleanly failing "no tape".
-; DiskPatches (fMSX/fMSX/MSX.c) is NOT replicated here: it only matters if DISK.ROM is loaded,
-; which fossauro doesn't do yet (no disk drive UI/CLI support - see docs/SPEC.md module 32c).
+; DiskPatches (fMSX/fMSX/MSX.c) is NOT replicated here: real fMSX only needs them for its
+; "-simbdos" simplified BDOS-trap disk mode, which this project deliberately does not use (see
+; FDC.pbi) - fossauro's DISK.ROM talks to a real emulated WD1793 instead, no BIOS patch needed.
 Procedure ApplyBIOSPatches()
   Protected Dim patchAddr.u(6)
   patchAddr(0) = $00E1 : patchAddr(1) = $00E4 : patchAddr(2) = $00E7 : patchAddr(3) = $00EA
@@ -501,7 +551,17 @@ Procedure.l MSXLoadBIOSForModel()
         Next I
       EndIf
   EndSelect
-  If ok : ApplyBIOSPatches() : EndIf
+  If ok
+    ApplyBIOSPatches()
+    ; MSXLoadDiskROM() is NOT called here yet - real regression found 2026-08-18 (docs/SPEC.md
+    ; module 32p): mapping DISK.ROM to Slot 3-1 pages 2-3 causes MSX2/2+ boot to hang (disk
+    ; mounted) or corrupt BASIC's memory-size detection ("Out of memory in 0", no disk mounted -
+    ; so this isn't specific to FDC command handling, since that case never issues a single FDC
+    ; command). FDC.pbi's WD1793 register emulation itself is implemented and verified correct in
+    ; isolation (fdc_verify.pb: 4/4 tests pass, byte-exact against a real disk image) - the bug is
+    ; in the MEMORY PLACEMENT of DISK.ROM, not the FDC logic. Root cause not yet isolated - do NOT
+    ; re-enable this call until it's understood, since it currently breaks the default boot path.
+  EndIf
   ProcedureReturn ok
 EndProcedure
 
@@ -691,7 +751,13 @@ Procedure.a MSXRdZ80(A.u)
     ProcedureReturn ~SSLReg(PSL(3))
   EndIf
 
-  ; TODO: Floppy disk controller check (PSL=3, SSL=1)
+  ; Floppy disk controller registers - CPU page 1 ($4000-$7FFF) is where Slot 3-1 lands when
+  ; selected (see MSXLoadDiskROM()), so PSL(1)/SSL(1) (not PSL(3)) is the right gate here even
+  ; though the slot itself is numbered 3 - confirmed against DISK.ROM's own access pattern (FDC.pbi
+  ; header comment has the full port map derivation).
+  If PSL(1) = 3 And SSL(1) = 1
+    ProcedureReturn FDC_ReadReg(A)
+  EndIf
 
   *PagePtr = *RAM(A >> 13)
   If *PagePtr = 0
@@ -948,7 +1014,13 @@ Procedure MSXWrZ80(A.u, V.a)
     ProcedureReturn
   EndIf
 
-  ; TODO: Floppy disk controller write check (PSL=3, SSL=1)
+  ; Floppy disk controller registers - see the matching check in MSXRdZ80 above for why PSL(1)/
+  ; SSL(1) is correct here (CPU page 1, not "slot 3" itself). Needs the address mask too (unlike
+  ; the read side, nothing upstream has already filtered this down to the $7FF8-$7FFF range).
+  If (A & $3F88) = $3F88 And PSL(1) = 3 And SSL(1) = 1
+    FDC_WriteReg(A, V)
+    ProcedureReturn
+  EndIf
 
   ; Write to RAM if enabled
   If EnWrite(A >> 14)

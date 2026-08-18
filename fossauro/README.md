@@ -29,11 +29,19 @@ to his exceptional work in MSX emulation — this project would not exist withou
 - [x] **MSX2 boot** — boots completely to the BASIC prompt ("MSX BASIC version 2.1"). Root cause of the
   long-standing freeze found and fixed 2026-08-18 — see `SPEC.md` §2.
 - [x] **MSX2+ boot** — boots completely to the BASIC prompt ("MSX BASIC version 3.0").
-- [x] **V9938 VDP** — text/bitmap rendering for modes 0/1/2/3/4/5/8, sprites, and the full VDP command
-  engine (SRCH/LINE/LMMV/LMMM/LMCM/LMMC/HMMV/HMMM/YMMM/HMMC), all audited against real `V9938.c`. Missing:
-  SCREEN 6/7 bitmap rendering, VDP command timing (commands complete instantly).
+- [x] **V9938 VDP** — text/bitmap rendering for ALL modes 0/1/2/3/4/5/6/7/8, sprites, and the full VDP
+  command engine (SRCH/LINE/LMMV/LMMM/LMCM/LMMC/HMMV/HMMM/YMMM/HMMC), all audited against real `V9938.c`.
+  SCREEN 6/7 added 2026-08-18 (`screen67_verify.pb` harness confirms correct color bars + sprite
+  compositing in both modes) - found and fixed a real pre-existing bug along the way: `FillMemory()`
+  calls in `RefreshLine()` were missing PureBasic's `#PB_Long` size argument, silently filling
+  border/background colors byte-by-byte instead of as full RGBA values (invisible only because black,
+  the default, has all-equal bytes). Missing: VDP command timing (commands complete instantly), MSX2+
+  SCREEN 10-12 (YJK modes, real fMSX doesn't support these either).
 - [x] **AY-3-8910 PSG** — real per-sample audio synthesis (17-bit LFSR noise, verified envelope state
-  machine), Win32 `waveOut` streaming.
+  machine), Win32 `waveOut` streaming. Verified end-to-end 2026-08-18 (`audio_verify.pb` harness):
+  measured tone frequency matches the theoretical formula, noise/envelope/3-channel mixing all produce
+  correct non-silent output, and the live `StartAudio()`/`StopAudio()` thread opens the real audio device
+  and streams/stops cleanly with no hang or crash. See `SPEC.md` for detail.
 - [x] **File menu** — Open Cartridge (works), Save/Open Snapshot (real save-state, not a stub), Quit.
 - [x] **Hardware → Model menu** — live MSX1/MSX2/MSX2+ switching.
 - [x] **Hardware → RAM Size menu** — 64/128/256/512/1024KB, live (full reset). Real fMSX's bank-switched
@@ -56,8 +64,11 @@ to his exceptional work in MSX emulation — this project would not exist withou
   GameMaster2/FMPAC (session-only, not persisted to a `.sav` file yet); SCC/OPLL sound chip registers are
   trapped but not emulated (ROM/SRAM banking works without them). Auto-detection (`GuessROMType()`) ports
   fMSX's content-scanning heuristic (no CRC/SHA1 known-ROM database, fossauro ships none).
-- [ ] **Disk (FDC) emulation** — not implemented. File→Open Disk... accepts a `.dsk` path but does nothing
-  with it yet.
+- [ ] **Disk (FDC) emulation** — WD1793 register/command mechanism implemented and verified in isolation
+  (`FDC.pbi`, `fdc_verify.pb`: 4/4 tests pass against a real 720KB image, byte-exact). NOT yet usable
+  end-to-end: mapping `DISK.ROM` into memory breaks MSX2/2+ boot (real regression, root cause not
+  isolated - no real fMSX C source available on this machine to check the expected memory layout
+  against), so `DISK.ROM` loading stays disabled for now. See `SPEC.md`/`docs/SPEC.md` module 32p.
 - [ ] **Cassette (.CAS) emulation** — not implemented, explicitly deferred.
 - [ ] **Cheat (.CHT) support** — not implemented, explicitly deferred (planned: openMSX/BlueMSX-compatible
   format).

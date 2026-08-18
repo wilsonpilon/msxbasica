@@ -6,6 +6,42 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.1.5 — "SOM E TELA DE VERDADE, DISCO QUE NÃO GIRA" (2026-08-18)
+
+**Tema da versão**: o Fossauro ganha áudio e vídeo completos (PSG verificado tocando de ponta a ponta,
+SCREEN 6/7 renderizando) na mesma sessão em que a tentativa de disco (FDC) esbarra numa regressão real de
+boot ainda não resolvida — nome escolhido pra refletir os dois lados exatamente como aconteceram, não só
+as vitórias.
+
+### Novidades
+
+- **Áudio do PSG (AY-3-8910) verificado de ponta a ponta**: `StartAudio()`/`StopAudio()` já estavam
+  cabeados, mas nunca confirmados rodando de verdade. Novo harness `audio_verify.pb` renderiza um `.wav`
+  real através do `PSG_Render()` de produção (tom/varredura/ruído/envelope/acorde) e testa a thread
+  `waveOut` ao vivo — frequência medida bateu quase exata com a fórmula teórica.
+- **SCREEN 6/7 (Graphic 5/6) implementadas** em `RefreshLine()` (`V9938.pbi`) — os dois únicos modos de
+  vídeo do MSX2 que ainda caíam num fundo em branco. Verificado com um novo harness que renderiza barras
+  de cor + um sprite direto pra `.bmp`. De quebra, achado e corrigido um bug real pré-existente:
+  `FillMemory()` sem o parâmetro de tipo `#PB_Long` só preenchia o byte baixo da cor (invisível até agora
+  porque preto tem todos os bytes iguais) — afetava toda borda/fundo não-cinza em 5 pontos do código.
+- **FDC (WD1793) implementado e verificado isoladamente, mas NÃO conectado ao boot ainda**: mecanismo
+  completo (RESTORE/SEEK/READ/WRITE SECTOR/etc.), porta mapeada por engenharia reversa do `DISK.ROM` real
+  (sem o C fonte do fMSX nesta máquina), 4/4 testes passando byte-a-byte contra um `.dsk` real. Ligar o
+  `DISK.ROM` de verdade no mapa de memória trava o boot do MSX2/2+ — causa raiz ainda não isolada, a
+  chamada fica desativada por enquanto. Ver `docs/SPEC.md` módulos 32n-32p.
+
+### Bastidores
+
+- Achado e corrigido, gerando este mesmo pacote de distribuição: bug real no toolchain do
+  `pbcompiler.exe` x86 desta máquina — `Import ... As "GetProcAddress"` sem decoração stdcall
+  (`_GetProcAddress@8`) quebrava o link só em builds x86, nunca em x64. Ver `docs/SPEC.md` módulo 32q e
+  `CLAUDE.md`.
+- Metodologia decisiva de novo: harnesses de console que exercitam a função real de produção (não uma
+  reimplementação) e, quando pixels/áudio importam, gravar um artefato inspecionável (`.bmp`/`.wav`) em
+  vez de confiar só em texto de log.
+
+---
+
 ## 8.1.3 — "MSX2 DE VERDADE" (2026-08-18)
 
 **Tema da versão**: o Fossauro sai do "esqueleto que só boota MSX1/MSX2+" pra emulador MSX de verdade —

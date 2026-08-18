@@ -878,23 +878,29 @@ Procedure RefreshLine(Y.l)
   
   ; 1. Check if Screen is on
   If (VDP(1) & $40) = 0
-    FillMemory(*LineDest, 512 * 4, bg_color)
+    ; FillMemory's Value defaults to a BYTE fill (repeats only the low 8 bits of bg_color across
+    ; every byte) unless the Long type is given explicitly - without it, any border color whose
+    ; low byte differs from its other channels renders wrong (found 2026-08-18 while adding
+    ; SCREEN 6/7 support and tracing a "background renders as a near-black smear instead of the
+    ; real palette color" bug back to this exact call). Same fix applied to every other
+    ; FillMemory() in this procedure that fills 32-bit Palette()/RGB() values below.
+    FillMemory(*LineDest, 512 * 4, bg_color, #PB_Long)
     ProcedureReturn
   EndIf
-  
+
   ; 2. Render background line according to ScrMode
   Protected mode.a = ScrMode
   Protected col.l, row.l, char_y.l, char_code.l, font_byte.a, color_byte.a, fg.l, bg.l, px.l
   Protected temp_line.i = AllocateMemory(256 * 4)
-  FillMemory(temp_line, 256 * 4, bg_color)
-  
+  FillMemory(temp_line, 256 * 4, bg_color, #PB_Long)
+
   Select mode
     Case 0 ; Text 40x24 (centered on 512 canvas, no sprite support)
       row = Y / 8
       char_y = Y & 7
       Protected text_bg.l = Palette(VDP(7) & $0F)
       Protected text_fg.l = Palette(VDP(7) >> 4)
-      FillMemory(*LineDest, 512 * 4, text_bg)
+      FillMemory(*LineDest, 512 * 4, text_bg, #PB_Long)
       
       ; Center 240px text area scaled 2x to 480px (16px borders)
       If row < 24
@@ -975,7 +981,52 @@ Procedure RefreshLine(Y.l)
         PokeL(temp_line + (col * 2) * 4, Palette((b >> 4) & $0F))
         PokeL(temp_line + (col * 2 + 1) * 4, Palette(b & $0F))
       Next col
-      
+
+    Case 6, 7 ; Graphic 5/6 (Bitmap 4/16 colors, natively 512px wide - no 2x scale needed)
+      ; Unlike modes 5/8 (256px logical, doubled to fill the 512px canvas), modes 6/7 already
+      ; address the full 512px line directly, so this branch writes *LineDest itself and returns
+      ; early, same pattern as Case 0 above. Byte packing/addressing mirrors ReadVRAMPixel()'s
+      ; Case 6/7 (VDP command engine, already audited against real V9938.c - see module 32e) - same
+      ; bit layout, just walking a whole scanline instead of one command-engine pixel at a time.
+      ; Row stride reuses Case 5's `<<7`/`$7FFF` window for mode 6 (2bpp, same 128 bytes/line as
+      ; mode 5) and Case 8's `<<8`/`$FFFF` window for mode 7 (4bpp, same 256 bytes/line as mode 8).
+      Protected VScroll67.l = VDP(23)
+      If mode = 6
+        T = ChrTab + (((Y + VScroll67) << 7) & ChrTabM & $7FFF)
+        For col = 0 To 127
+          Protected b6.a = PeekA(T + col)
+          PokeL(*LineDest + (col * 4 + 0) * 4, Palette((b6 >> 6) & $03))
+          PokeL(*LineDest + (col * 4 + 1) * 4, Palette((b6 >> 4) & $03))
+          PokeL(*LineDest + (col * 4 + 2) * 4, Palette((b6 >> 2) & $03))
+          PokeL(*LineDest + (col * 4 + 3) * 4, Palette(b6 & $03))
+        Next col
+      Else ; mode = 7
+        T = ChrTab + (((Y + VScroll67) << 8) & ChrTabM & $FFFF)
+        For col = 0 To 255
+          Protected b7.a = PeekA(T + col)
+          PokeL(*LineDest + (col * 2) * 4, Palette((b7 >> 4) & $0F))
+          PokeL(*LineDest + (col * 2 + 1) * 4, Palette(b7 & $0F))
+        Next col
+      EndIf
+
+      ; Sprites are always positioned in the 256px logical coordinate space on real V9938
+      ; hardware, even in 512px-wide modes (RenderSprites() already clips to final_x<256) - so
+      ; each logical sprite pixel covers 2 physical pixels here, same doubling Case 5/8 get for
+      ; free from the shared scale step below, just done manually since this branch skips it.
+      Protected sentinel.l = $FFFFFF01 ; RGB() never sets the top byte, safe "no sprite pixel" marker
+      FillMemory(temp_line, 256 * 4, sentinel, #PB_Long)
+      RenderSprites(Y, temp_line)
+      For col = 0 To 255
+        Protected sprPix.l = PeekL(temp_line + col * 4)
+        If sprPix <> sentinel
+          PokeL(*LineDest + (col * 2) * 4, sprPix)
+          PokeL(*LineDest + (col * 2 + 1) * 4, sprPix)
+        EndIf
+      Next col
+
+      FreeMemory(temp_line)
+      ProcedureReturn
+
     Case 8 ; Graphic 7 (Bitmap 256 colors)
       Protected VScroll8.l = VDP(23)
       T = ChrTab + (((Y + VScroll8) << 8) & ChrTabM & $FFFF)
@@ -985,7 +1036,7 @@ Procedure RefreshLine(Y.l)
       Next col
       
     Default
-      FillMemory(temp_line, 256 * 4, bg_color)
+      FillMemory(temp_line, 256 * 4, bg_color, #PB_Long)
   EndSelect
   
   ; 3. Render Sprites

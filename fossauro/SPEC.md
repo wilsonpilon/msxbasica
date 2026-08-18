@@ -180,10 +180,31 @@ is unrelated to MegaROM support, not a regression from this session's changes, b
 symptom (`PC=$0038` stuck, SP climbing every frame) with the non-Mega cartridge that has no code path
 through any of today's new logic.
 
-**Not implemented at all**:
-- Floppy disk controller (FDC/WD2793-style) — `MSXRdZ80`/`MSXWrZ80` have `; TODO: Floppy disk controller`
-  markers and nothing else. `-diska`/`-diskb`/File→Open Disk... all accept a file path but do nothing
-  with it.
+**Floppy disk controller (WD1793) — mechanism implemented and verified in isolation, NOT yet wired into
+a working boot (2026-08-18)**: `FDC.pbi` (new) emulates the WD1793's registers at $7FF8-$7FFD (port map
+derived empirically by scanning the real `fMSX/DISK.ROM` binary for its own `LD A,(nn)`/`LD (nn),A`
+accesses — this project has no `fMSX/*.c` source on this machine to check against, see below).
+RESTORE/SEEK/STEP*/READ SECTOR/WRITE SECTOR/READ ADDRESS/FORCE INTERRUPT implemented, commands complete
+synchronously (same simplification as the VDP command engine). Raw `.dsk` sector I/O: `LBA = (Track*2 +
+Side)*9 + (Sector-1)`, verified against a real 720KB image (`fdc_verify.pb` harness, 4/4 tests pass:
+not-ready/boot-sector-byte-exact/record-not-found/write-then-readback).
+
+**Known regression, NOT fixed yet**: mapping `DISK.ROM` into Slot 3-1 pages 2-3 (`MSXLoadDiskROM()`,
+matches the ExtBIOS pattern) breaks MSX2/MSX2+ boot — "Out of memory in 0" with no disk mounted (proves
+the bug is about DISK.ROM's memory placement, not FDC command handling, since no FDC command is ever
+issued on that path), or a hang (infinite `PSlot change` cycling, confirmed via verbose log) with a disk
+mounted. Root cause not isolated — this project has no `fMSX/fMSX/MSX.c` source available on this
+machine to check real `StartMSX()`'s exact `MemMap[3][1][]` disk-ROM placement against, and guessing
+further risked another "looks right, hangs" round (see docs/SPEC.md modules 32g/32h/32j for how long
+that pattern already cost this project once). `MSXLoadDiskROM()`'s call site in `MSXLoadBIOSForModel()`
+is commented out (function still defined) until this is understood — boot is confirmed restored to
+normal without it. See `docs/SPEC.md` module 32p for the full investigation and the suggested next step
+(get real fMSX C source on this machine, or a PC-exact trace of the `GETSLT`/RAM-scan routine that
+diverges).
+
+`-diska`/`-diskb` CLI flags and File→Open Disk... are wired to `FDC_MountDisk()` (mounting itself works
+fine, verified via the harness) but have no effect on real BASIC/MSX-DOS until the above is fixed, since
+DISK.ROM never gets mapped in.
 - Cassette (.CAS) tape I/O — explicitly deferred by the project owner; File→Load .CAS... opens a file
   picker but does not load anything.
 - Joystick/mouse input, printer port, serial port, Kanji ROM.
@@ -197,11 +218,32 @@ skeleton), and MSX2+ boot rendering "MSX BASIC version 3.0".
 (Graphic 3, 16-color bitmap), 8 (Graphic 7, 256-color bitmap): **done**. Sprites (8×8/16×16, magnified,
 `RenderSprites()`): **done**.
 
-**Missing**: **SCREEN 6/7 (and MSX2+'s 10-12) bitmap rendering is not implemented** — `RefreshLine()`'s
-mode `Select` has no `Case 6`/`Case 7`, so those modes fall through to `Default` (flat background-color
-fill only, no pixel content drawn at all). This is directly relevant to the plain-MSX2 boot bug above:
-even if that freeze gets fixed, the screen would still render blank during the part of boot that briefly
-uses SCREEN 6, until this gap is closed.
+**SCREEN 6/7 implemented (2026-08-18)** — `RefreshLine()`'s mode `Select` now has a `Case 6, 7` (right
+after `Case 5`): unlike modes 5/8 (256px logical, doubled to fill the 512px canvas), modes 6/7 already
+address the full 512px line natively, so this branch writes `*LineDest` directly and returns early (same
+pattern as `Case 0`), skipping the shared `temp_line`/2x-scale path. Bit packing (2bpp/4px-per-byte for
+mode 6, 4bpp/2px-per-byte for mode 7) mirrors `ReadVRAMPixel()`/`WriteVRAMPixel()`'s existing Case 6/7
+(command engine, already audited in `docs/SPEC.md` module 32e). Sprites stay in the 256px logical space
+real V9938 hardware uses even in 512px modes (`RenderSprites()` already clips to `final_x<256`) — each
+logical sprite pixel is manually doubled onto `*LineDest` via a sentinel-filled scratch buffer, since this
+branch skips the scale step that gives modes 5/8 that doubling for free. Verified with a new console
+harness, `screen67_verify.pb` (see §4) — renders known VRAM patterns through the real `RefreshLine()` into
+a `.bmp`, confirming correct color bars (all 4 palette entries for mode 6, all 16 for mode 7) and correct
+sprite positioning/doubling in both modes.
+
+**Real bug found and fixed in the process**: `FillMemory()` calls in `RefreshLine()` were missing the
+`#PB_Long` size argument, so PureBasic filled byte-by-byte (repeating only the low 8 bits of the given
+32-bit color) instead of tiling the full RGBA value — invisible until now only because the default
+background color (black, `RGB(0,0,0)`) has all-equal bytes. Affected every fill in the procedure: the
+screen-off border fill, the per-line background init, `Case 0`'s text-mode border fill, and the `Default`
+fallback — any non-grayscale border/background color would have rendered wrong before this fix. All 5
+sites fixed with an explicit `#PB_Long` fourth argument. See `docs/SPEC.md` module 32o for the full
+session log (including two harness-only pitfalls found along the way — R#2's low bits and SprTab/SprGen
+placement — that were never fossauro bugs, just invalid raw-register test setups a real BASIC program
+would never produce).
+
+Real fMSX has no 192KB/V9958-addon concept and no MSX2+ SCREEN 10-12 support either (those extend the
+V9958's YJK modes) — not attempted here, out of scope until real fMSX parity is otherwise complete.
 
 **VDP command engine** (`VDPDraw()`) — ABRT/POINT/PSET/SRCH/LINE/LMMV/LMMM/LMCM/LMMC/HMMV/HMMM/YMMM/HMMC
 all implemented, and audited line-by-line against real `V9938.c`'s `SrchEngine`/`LineEngine`/
@@ -242,6 +284,19 @@ One real (minor) bug found and fixed: register writes on port `$A1` didn't mask 
 `$FF` to a 5-bit register and read it back would see `$FF` instead of `$1F`) — never affected audio output
 since the read side already masked correctly at point of use.
 
+**Verified end-to-end (2026-08-18)** — `AY8910.pbi` was already `XIncludeFile`'d via `MSX.pbi` and
+`StartAudio()`/`StopAudio()` were already wired into `fossauro.pb`'s window lifecycle (start after
+cartridge load, stop on window close) before this session, but neither had actually been confirmed
+running - the "ainda falta audio" note in the commit that added the wiring reflected that uncertainty,
+not a known bug. New harness `audio_verify.pb` (see §4) renders known register sequences through the
+real `PSG_Render()` into a `.wav` (measured tone frequency matched the theoretical formula almost
+exactly: 279Hz measured vs 279.7Hz expected) and smoke-tests the live `StartAudio()`/`StopAudio()`
+`waveOut` thread (opens the real device, streams 1.5s, stops cleanly within the timeout, no hang/crash).
+Not yet tested: a real BASIC `SOUND` statement typed into the running `fossauro.exe` window (would need
+synthetic keystrokes into the `CanvasGadget`, considered lower-value than the two mechanical tests above
+since they already cover every link in the chain except port-write routing, which was already audited in
+`docs/SPEC.md` module 32f). See `docs/SPEC.md` module 32n for the full session log.
+
 ### GUI / Menu / Save-state — **File/Hardware/Emulation menus real, more UI still to come**
 
 `fossauro.pb`. Window + `CanvasGadget` + native Win32 menu, non-blocking emulation on its own thread.
@@ -276,36 +331,30 @@ This is the practical "what would make fossauro emulate MSX more completely" lis
 likely most valuable for the project's stated current priority (debugger + BASIC correctness first, then
 games):
 
-1. **SCREEN 6/7 rendering** in `RefreshLine()` (`V9938.pbi`) — needed for MSX2 BASIC users doing bitmap
-   graphics in those modes, including the now-fixed MSX2 boot sequence's own logo/icon draw (invisible
-   today, drawn correctly into VRAM but never rendered to screen). Modes 5/8 already implement the exact
-   pixel-packing/palette math needed; 6/7 just need their own `Case` in the same `Select` block
-   (2bpp/4-colors-per-byte for mode 6, matching `VDPPixelsPerByte()`'s existing table).
-2. **Disk (FDC) emulation** — the largest remaining gap. Real fMSX's `EMULib/WD1793.c` (controller command
-   state machine) + `EMULib/FDIDisk.c` (raw-sector .DSK image container, no FAT12 awareness needed at that
-   layer) is the reference; needs a real `DISK.ROM` loaded into Slot 3-1 pages 2-3 (file already present at
-   `fMSX/DISK.ROM`) to have any driver code to issue commands, memory-mapped register dispatch at
-   `$7FF8-$7FFF` gated on `PSL=3/SSL=1` (matching real fMSX's default WD1793-hardware-emulation mode, not
-   the simpler-but-less-general `-simbdos` BDOS-trap alternative). The main Paleobasic project's own
-   `editor/MSXDisk.pbi` (FAT12-aware) is NOT a substitute for this - it operates one layer up (parsing the
-   filesystem inside an already-readable disk image) and doesn't overlap with what the FDC/WD1793 layer
-   itself needs to do (raw sector I/O only).
-3. **VDP command engine timing** — matters for games/demos that poll VDP busy status for timing, not for
+1. **Disk (FDC) emulation — finish the job** — the WD1793 register/command mechanism itself is done and
+   verified (`FDC.pbi`, `fdc_verify.pb`, see §2). What's left: figure out why mapping `DISK.ROM` into
+   Slot 3-1 pages 2-3 breaks MSX2/2+ boot (docs/SPEC.md module 32p has the full symptom writeup and a
+   suggested next step) and re-enable `MSXLoadDiskROM()`'s call site in `MSXLoadBIOSForModel()` once
+   fixed. Getting real fMSX C source (`fMSX/fMSX/MSX.c`'s `StartMSX()`) onto this machine to check the
+   real `MemMap[3][1][]` disk-ROM placement against would likely resolve this fastest.
+2. **VDP command engine timing** — matters for games/demos that poll VDP busy status for timing, not for
    BASIC. Real fMSX's `VdpOpsCnt`/scanline-sliced `LoopVDP()` model (`fMSX/fMSX/V9938.c`) is the reference
    if this becomes a priority.
-4. **Cassette (.CAS) emulation** — explicitly deferred, no immediate plan.
-5. **Cheat (.CHT) support**, openMSX/BlueMSX-compatible format — explicitly deferred, no immediate plan.
-6. **`NX`/`NY` register = 0 meaning "1024"** VDP quirk — rare edge case, low priority.
-7. **LMCM ($0A, VRAM→CPU) may have the same "immediate first engine tick" gap as LMMC/HMMC did** (see
+3. **Cassette (.CAS) emulation** — explicitly deferred, no immediate plan.
+4. **Cheat (.CHT) support**, openMSX/BlueMSX-compatible format — explicitly deferred, no immediate plan.
+5. **`NX`/`NY` register = 0 meaning "1024"** VDP quirk — rare edge case, low priority.
+6. **LMCM ($0A, VRAM→CPU) may have the same "immediate first engine tick" gap as LMMC/HMMC did** (see
    module 32j's fix) — real fMSX's generic immediate-tick applies to all VDP commands uniformly, but LMCM
    wasn't touched since no failing repro exists for it. Only worth revisiting if a real hang shows up.
-8. **`-rom <type>` CLI flag** — still accepted-and-logged only, not wired to the new MegaROM mapper
+7. **`-rom <type>` CLI flag** — still accepted-and-logged only, not wired to the new MegaROM mapper
    support (module 32k/2026-08-18 has the real mapper logic; only the CLI plumbing for the "two `-rom`
    options, one per cartridge slot" convention is missing). Use Hardware→Cartridge Slot A/B's Mapper Type
    submenu in the meantime.
-9. **MegaROM SRAM persistence** (`.sav`-equivalent file) — SRAM (ASCII8/ASCII16/GameMaster2/FMPAC) works
+8. **MegaROM SRAM persistence** (`.sav`-equivalent file) — SRAM (ASCII8/ASCII16/GameMaster2/FMPAC) works
    in-session but is never saved/loaded, so battery-backed game saves don't survive a restart. No immediate
    plan.
+9. **MSX2+ SCREEN 10-12 (YJK bitmap modes)** — real fMSX has no support for these either (V9958-only modes);
+   out of scope until real fMSX parity is otherwise complete.
 10. Joystick/mouse, printer, serial, Kanji ROM, config/settings UI — no immediate plan, listed for
     completeness.
 
@@ -315,6 +364,22 @@ games):
 
 - `fossauro_verify.pb` / `basic_verify.pb` — console-based Z80/BIOS/PPI regression harnesses, compile
   with `pbcompiler ... /CONSOLE`.
+- `audio_verify.pb` — console-based PSG/audio harness (`pbcompiler audio_verify.pb /CONSOLE /OUTPUT
+  audio_verify.exe`, then `.\audio_verify.exe [output.wav]`). Renders known register sequences through
+  the real `PSG_Render()` into a listenable `.wav` (silence/tone/sweep/noise/envelope/chord/silence) and
+  prints measured-vs-expected frequency plus a live `StartAudio()`/`StopAudio()` smoke test. See §2's PSG
+  entry and `docs/SPEC.md` module 32n.
+- `screen67_verify.pb` — console-based VDP rendering harness (`pbcompiler screen67_verify.pb /CONSOLE
+  /OUTPUT screen67_verify.exe`, then `.\screen67_verify.exe [outdir]`). Drives `RefreshLine()` directly
+  with a hand-built SCREEN 6/7 VRAM scene (color bars + one sprite) and dumps the result to plain 24-bit
+  `.bmp` files, since pixel correctness can't be confirmed from console text alone. See §2's V9938 entry
+  and `docs/SPEC.md` module 32o.
+- `fdc_verify.pb` — console-based WD1793 FDC harness (`pbcompiler fdc_verify.pb /CONSOLE /OUTPUT
+  fdc_verify.exe`, then `.\fdc_verify.exe <disco.dsk>`). Replays the exact memory-mapped register
+  sequence a real DISK.ROM issues (SIDE→DRIVE→RESTORE→SEEK→SECTOR→READ/WRITE→poll→DATA transfer)
+  against a real `.dsk` image and checks the transferred bytes byte-for-byte. See §2's disk entry and
+  `docs/SPEC.md` module 32p (includes the still-open boot-integration regression this harness does NOT
+  cover, since it drives `FDC_ReadReg()`/`FDC_WriteReg()` directly rather than through a running CPU).
 - `fMSX/fMSX.exe` — the **real** fMSX 6.0 Windows binary, already in the repo, configured with the same
   ROM set fossauro uses (`fMSX/*.ROM`). Invaluable as a ground-truth reference for "does real fMSX even do
   this" questions — several apparent fossauro bugs during this project turned out to be real fMSX
