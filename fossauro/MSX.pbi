@@ -11,6 +11,17 @@
 #MSX_NTSC   = $00
 #MSX_PAL    = $04
 
+; MegaROM bank-switch mapper types - matches real fMSX exactly (MSX.h: MAP_* constants).
+#MAP_GEN8     = 0   ; Generic switch, 8kB pages, any address in $4000-$BFFF
+#MAP_GEN16    = 1   ; Generic switch, 16kB pages (MSXDOS2-style)
+#MAP_KONAMI5  = 2   ; Konami 5000h/7000h/9000h/B000h (SCC games; SCC sound itself not emulated)
+#MAP_KONAMI4  = 3   ; Konami 4000h/6000h/8000h/A000h (plain, no SCC)
+#MAP_ASCII8   = 4   ; ASCII 6000h-7FFFh, 8kB pages, SRAM-capable
+#MAP_ASCII16  = 5   ; ASCII 6000h/7000h, 16kB pages, SRAM-capable
+#MAP_GMASTER2 = 6   ; Konami GameMaster2, SRAM-capable
+#MAP_FMPAC    = 7   ; Panasonic FMPAC, SRAM-capable (FM/OPLL sound itself not emulated)
+#MAP_GUESS    = 8   ; Auto-detect from ROM content (GuessROMType())
+
 ; CPU Cycles per scanline phase
 #CPU_HPERIOD = 228                ; 1368 VDP cycles / 6
 #CPU_H240    = 160                ; 960 VDP cycles / 6
@@ -126,9 +137,20 @@ Global Dim KeysMask.a(129)        ; Keyboard matrix mask for each code
 ; it run long enough, it did get past $7D0D and into the normal per-frame loop). Pass
 ; -verbose on the command line to turn this back on for diagnostics.
 Global Verbose.a = 0
-Global Mode.l = #MSX_MSX2 | #MSX_NTSC  ; Default MSX2 NTSC
-Global RAMPages.l = 4             ; 4 x 16KB = 64KB RAM
-Global VRAMPages.l = 8            ; 8 x 16KB = 128KB VRAM
+Global Mode.l = #MSX_MSX1 | #MSX_NTSC  ; Default MSX1 NTSC (project owner's choice, 2026-08-18)
+; RAM mapper state (ports $FC-$FF), matching real fMSX (MSX.c: RAMPages/RAMMask/RAMMapper[],
+; ResetMSX()) - see docs/SPEC.md for the full writeup. fMSX does NOT model MSX1 RAM expansion
+; as separate cartridges in extra slots; it uses this SAME bank-switched mapper (hardwired to
+; Primary Slot 3, Secondary Slot 2) for every model alike, only the minimum page count differs
+; (MSX1 min 4 pages/64KB, MSX2/2+ min 8 pages/128KB - real MSX1 machines rarely had a mapper at
+; all, but fMSX's emulation always implements one underneath; MSX1 software that never touches
+; $FC-$FF just sees a flat, correctly-ordered 64KB and never notices).
+Global RAMPages.l = 4              ; Number of 16KB RAM pages (4=64KB ... 64=1024KB); see ClampRAMPages()
+Global RAMMask.a = 0               ; RAMPages-1, masks mapper port reads/writes to valid pages
+Global Dim RAMMapper.a(3)          ; Current 16KB segment selected for each of the 4 CPU pages
+Global VRAMPages.l = 1            ; 1 x 16KB = 16KB VRAM (MSX1 default; see ClampVRAMPages() in
+                                   ; V9938.pbi for why MSX1 accepts this at all - a deliberate
+                                   ; deviation from real fMSX, project owner's choice 2026-08-18)
 Global UPeriod.a = 75             ; % of frames to draw (defaults to 75)
 
 ; Include V9938 VDP Graphics Processor Emulation
@@ -144,6 +166,19 @@ Global *BIOSExtData                ; MSX2/MSX2+ extended BIOS ROM buffer (16KB) 
                                     ; matching real fMSX's MemMap[3][1][0/1]=EmptyRAM for MSX1
                                     ; (MSX.c, StartMSX(), MSX_MSX1 case).
 Global Dim *ROMData(5)            ; Cartridge/System ROM data pointers
+; MegaROM mapper state, one entry per cartridge slot - fossauro only ever uses indices 0 (Cart
+; A / Primary Slot 1) and 1 (Cart B / Primary Slot 2), unlike real fMSX's MAXSLOTS=6 (which also
+; covers system carts like MSXDOS2/FMPAC/GameMaster2 loaded at boot - fossauro doesn't load
+; those). Matches real fMSX's ROMMask[]/ROMType[]/ROMMapper[][4] (MSX.c) - see MapROM() below.
+Global Dim ROMMask.a(5)           ; (pages-1) AND-mask for bank-select values; 0 = not a MegaROM
+Global Dim ROMType.a(5)           ; one of #MAP_* above
+Global Dim ROMMapper.a(5, 3)      ; current 8KB-page index for each of the 4 CPU windows
+                                   ; ($4000/$6000/$8000/$A000), or $FF = SRAM selected for that window
+Global Dim *SRAMData(5)           ; battery-backed SRAM (ASCII8/ASCII16/GameMaster2/FMPAC only,
+                                   ; allocated on first use) - session-only, never saved to a
+                                   ; .sav file (no persistence support yet, same as real fMSX
+                                   ; needs an explicit "-sram"-equivalent to persist across runs)
+Global Dim FMPACKey.u(5)          ; FMPAC's $5FFE/$5FFF SRAM-unlock latch state, per slot
 
 ; Intel 8255 PPI Helper Procedures
 Procedure Reset8255(*D.I8255)
@@ -241,18 +276,72 @@ Procedure.a RTCIn(R.a)
   ProcedureReturn J | $F0
 EndProcedure
 
+; Round Requested up to the nearest power of 2, then clamp to a valid RAM page count for the
+; CURRENT model - matches real fMSX exactly (MSX.c, ResetMSX()): MSX1 minimum 4 pages (64KB),
+; MSX2/MSX2+ minimum 8 pages (128KB), maximum 256 pages (4096KB) either way. Out-of-range values
+; snap straight to the model's minimum (not clamp down to 256) - a real fMSX quirk, kept as-is
+; for parity: requesting more than 4096KB resets to the model's smallest valid size, it doesn't
+; cap at the largest.
+Procedure.l ClampRAMPages(Requested.l)
+  Protected P.l = 1
+  While P < Requested
+    P << 1
+  Wend
+  Protected MinPages.l = 8
+  If (Mode & #MSX_MODEL) = #MSX_MSX1 : MinPages = 4 : EndIf
+  If P < MinPages Or P > 256 : P = MinPages : EndIf
+  ProcedureReturn P
+EndProcedure
+
+; (Re)allocate *RAMData at the current RAMPages size and rebuild the RAM-mapper's default
+; power-on mapping - matches real fMSX's ResetMSX() (MSX.c): segment (3-J) at CPU page J, i.e.
+; RAMMapper[]=3:2:1:0, so segment 0 ends up visible at $C000 by the same reset convention real
+; MSX2-mapper hardware uses. Only the first 4 segments (64KB) are reachable this way without
+; software writing the $FC-$FF mapper ports itself - exactly like real hardware/fMSX, any RAM
+; beyond that is present in *RAMData but only reachable via the mapper ports.
+Procedure ReallocateRAM()
+  If *RAMData : FreeMemory(*RAMData) : EndIf
+  RAMPages = ClampRAMPages(RAMPages)
+  RAMMask = RAMPages - 1
+  *RAMData = AllocateMemory(RAMPages * $4000)
+  FillMemory(*RAMData, RAMPages * $4000, $FF) ; uninitialized RAM reads as $FF, matching real fMSX/hardware
+  Protected J.l
+  For J = 0 To 3
+    RAMMapper(J) = 3 - J
+    *MemMap(3, 2, J * 2)     = *RAMData + (3 - J) * $4000
+    *MemMap(3, 2, J * 2 + 1) = *MemMap(3, 2, J * 2) + $2000
+  Next J
+EndProcedure
+
+; Force primary/secondary slots back to their power-on state (both pointing at Slot 0-0, the
+; BIOS ROM) and re-derive the CPU-visible *RAM()/EnWrite() pointers from scratch - shared by
+; InitializeMSXMemory() (first-ever startup) and ApplyRAMSize() (RAM size changed mid-session,
+; which - like a real -ram change or Hardware->Model switch - implies a full cold reset).
+Procedure ResetSlotsToStartup()
+  Protected J.l
+  PSLReg = $00
+  For J = 0 To 3
+    PSL(J) = 0
+    SSL(J) = 0
+    SSLReg(J) = $00
+    *RAM(J * 2)     = *MemMap(0, 0, J * 2)
+    *RAM(J * 2 + 1) = *MemMap(0, 0, J * 2 + 1)
+    EnWrite(J) = 0
+  Next J
+EndProcedure
+
 ; Initialize Z80-mapped slot memories and hardware registers
 Procedure InitializeMSXMemory()
   Protected I.l, J.l, K.l
-  
+
   ; Allocate empty RAM region (filled with $FF)
   *EmptyRAM = AllocateMemory($2000)
   FillMemory(*EmptyRAM, $2000, $FF)
-  
+
   ; Allocate main BIOS ROM memory (32KB default)
   *BIOSData = AllocateMemory($8000)
   FillMemory(*BIOSData, $8000, $FF)
-  
+
   ; Initialize all Slot memory mappings to EmptyRAM
   For I = 0 To 3
     For J = 0 To 3
@@ -261,32 +350,13 @@ Procedure InitializeMSXMemory()
       Next K
     Next J
   Next I
-  
-  ; Allocate main system RAM (64KB default)
-  *RAMData = AllocateMemory($10000)
-  FillMemory(*RAMData, $10000, $00)
-  
-  ; Map main RAM to Slot 3-2 (Primary 3, Secondary 2)
-  For J = 0 To 3
-    *MemMap(3, 2, J * 2)     = *RAMData + J * $4000
-    *MemMap(3, 2, J * 2 + 1) = *MemMap(3, 2, J * 2) + $2000
-  Next J
-  
+
+  ; Allocate main system RAM and wire up the mapper's default power-on mapping
+  ReallocateRAM()
+
   ; Set initial primary and secondary slots
-  PSLReg = $00
-  For J = 0 To 3
-    PSL(J) = 0
-    SSL(J) = 0
-    SSLReg(J) = $00
-    
-    ; Map slot 0-0 initially
-    *RAM(J * 2)     = *MemMap(0, 0, J * 2)
-    *RAM(J * 2 + 1) = *MemMap(0, 0, J * 2 + 1)
-    
-    ; Enable writes only if slot maps to RAM
-    EnWrite(J) = 0
-  Next J
-  
+  ResetSlotsToStartup()
+
   ; Load Keyboard matrix configuration from DataSection
   Restore KeyboardData
   For I = 0 To 129
@@ -633,6 +703,236 @@ Procedure.a MSXRdZ80(A.u)
   ProcedureReturn V
 EndProcedure
 
+; Auto-detect a MegaROM's bank-switch mapper type by scanning its content for characteristic
+; "LD (nnnn),A" ($32,lo,hi) bank-select writes - matches real fMSX's GuessROM() (MSX.c) content
+; heuristic (the CRC/SHA1 known-ROM database part of the real function is not ported - fossauro
+; ships no such database - only the byte-scanning heuristic, which is the fallback path anyway).
+Procedure.a GuessROMType(*Data, Length.l)
+  Protected Dim ROMCount.l(7)
+  Protected i.l
+  For i = 0 To 7 : ROMCount(i) = 1 : Next i
+  ROMCount(#MAP_GEN8) + 1
+  ROMCount(#MAP_ASCII8) - 1
+
+  Protected addr.l, target.l
+  For addr = 0 To Length - 3
+    If PeekA(*Data + addr) = $32
+      target = PeekA(*Data + addr + 1) | (PeekA(*Data + addr + 2) << 8)
+      Select target
+        Case $5000, $9000, $B000
+          ROMCount(#MAP_KONAMI5) + 1
+        Case $4000, $8000, $A000
+          ROMCount(#MAP_KONAMI4) + 1
+        Case $6800, $7800
+          ROMCount(#MAP_ASCII8) + 1
+        Case $6000
+          ROMCount(#MAP_KONAMI4) + 1
+          ROMCount(#MAP_ASCII8) + 1
+          ROMCount(#MAP_ASCII16) + 1
+        Case $7000
+          ROMCount(#MAP_KONAMI5) + 1
+          ROMCount(#MAP_ASCII8) + 1
+          ROMCount(#MAP_ASCII16) + 1
+        Case $77FF
+          ROMCount(#MAP_ASCII16) + 1
+      EndSelect
+    EndIf
+  Next addr
+
+  Protected best.a = #MAP_GEN8, bestCount.l = ROMCount(#MAP_GEN8)
+  For i = 1 To 7
+    If ROMCount(i) > bestCount
+      bestCount = ROMCount(i)
+      best = i
+    EndIf
+  Next i
+  ProcedureReturn best
+EndProcedure
+
+Procedure.s ROMTypeName(T.a)
+  Select T
+    Case #MAP_GEN8     : ProcedureReturn "Generic/8kB"
+    Case #MAP_GEN16    : ProcedureReturn "Generic/16kB"
+    Case #MAP_KONAMI5  : ProcedureReturn "Konami5000h/SCC"
+    Case #MAP_KONAMI4  : ProcedureReturn "Konami4000h"
+    Case #MAP_ASCII8   : ProcedureReturn "ASCII8kB"
+    Case #MAP_ASCII16  : ProcedureReturn "ASCII16kB"
+    Case #MAP_GMASTER2 : ProcedureReturn "GameMaster2"
+    Case #MAP_FMPAC    : ProcedureReturn "FMPAC"
+    Default             : ProcedureReturn "Unknown"
+  EndSelect
+EndProcedure
+
+; Re-derive the live *RAM()/EnWrite() cache for one 8KB CPU half-page (Win 0-3, i.e. *MemMap
+; index Win+2) if that primary slot's page is currently actually selected - same pattern as
+; PSlot()/SSlot()/the RAM-mapper port write handler elsewhere in this file. Cartridge slots
+; never have subslots (SSlot() already enforces SSL=0 for them), so only PSL/SSL=0 need checking.
+Procedure RefreshMegaROMPage(PrimarySlot.l, Win.l)
+  Protected J.l = (Win + 2) >> 1        ; which of the 4 CPU quarter-pages (0-3) this 8KB half belongs to
+  Protected sub.l = (Win + 2) & 1       ; 0 = low 8KB half, 1 = high 8KB half of that quarter-page
+  If PSL(J) = PrimarySlot And SSL(J) = 0
+    *RAM(J * 2 + sub) = *MemMap(PrimarySlot, 0, Win + 2)
+    EnWrite(J) = 0 ; cartridge ROM windows are never plain-writable RAM, even when SRAM-backed
+                    ; (SRAM writes go through MapROM() below, not the generic EnWrite() path)
+  EndIf
+EndProcedure
+
+; Allocate a slot's SRAM buffer on first use (ASCII8/ASCII16/GameMaster2/FMPAC only).
+Procedure EnsureSRAM(SlotIdx.l, Size.l)
+  If Not *SRAMData(SlotIdx)
+    *SRAMData(SlotIdx) = AllocateMemory(Size)
+    FillMemory(*SRAMData(SlotIdx), Size, $FF)
+  EndIf
+EndProcedure
+
+; Preset a MegaROM's initial bank state at load time - matches real fMSX's SetMegaROM() (MSX.c),
+; always in 8KB-page units regardless of the mapper's native bank granularity.
+Procedure ApplyMegaROMPage(SlotIdx.l, PrimarySlot.l, Win.l, Page.a)
+  Page = Page & ROMMask(SlotIdx)
+  ROMMapper(SlotIdx, Win) = Page
+  *MemMap(PrimarySlot, 0, Win + 2) = *ROMData(SlotIdx) + (Page << 13)
+  RefreshMegaROMPage(PrimarySlot, Win)
+EndProcedure
+
+; MegaROM bank-switch write trap - matches real fMSX's MapROM() (MSX.c) for every mapper type
+; except the SCC (Konami5)/OPLL (FMPAC) sound-chip registers, which aren't ported since fossauro
+; doesn't emulate those chips - ROM/SRAM banking itself works identically without them (see
+; docs/SPEC.md for the per-mapper address/semantics table this was ported from).
+Procedure MapROM(A.u, V.a)
+  Protected J.l = A >> 14
+  Protected SlotIdx.l, PrimarySlot.l = PSL(J)
+  If PrimarySlot = 1
+    SlotIdx = 0
+  ElseIf PrimarySlot = 2
+    SlotIdx = 1
+  Else
+    ProcedureReturn ; no cartridge mapped to this CPU page
+  EndIf
+
+  If ROMMask(SlotIdx) = 0 : ProcedureReturn : EndIf ; plain ROM, not a MegaROM - nothing to switch
+
+  Protected mask.a = ROMMask(SlotIdx)
+  Protected Win.l, sramBit.a, page.a
+
+  Select ROMType(SlotIdx)
+    Case #MAP_GEN8
+      If A >= $4000 And A < $C000
+        Win = (A - $4000) >> 13
+        ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, V & mask)
+      EndIf
+
+    Case #MAP_GEN16
+      If A >= $4000 And A < $C000
+        Win = (A & $8000) >> 14 ; 0 (for $4000-$7FFF) or 2 (for $8000-$BFFF)
+        page = (V << 1) & mask
+        ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, page)
+        ApplyMegaROMPage(SlotIdx, PrimarySlot, Win + 1, page | 1)
+      EndIf
+
+    Case #MAP_KONAMI5 ; SCC - sound chip registers ($9800-$99FF etc.) not implemented
+      If (A = $5000 Or A = $7000 Or A = $9000 Or A = $B000)
+        Win = (A - $5000) >> 13
+        ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, V & mask)
+      EndIf
+
+    Case #MAP_KONAMI4 ; plain Konami, no SCC - $4000 window is fixed, never switched
+      If (A = $6000 Or A = $8000 Or A = $A000)
+        Win = (A - $4000) >> 13
+        ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, V & mask)
+      EndIf
+
+    Case #MAP_ASCII8
+      sramBit = mask + 1
+      If A >= $6000 And A < $8000
+        Win = (A >> 11) & 3
+        If V & sramBit
+          EnsureSRAM(SlotIdx, $2000)
+          ROMMapper(SlotIdx, Win) = $FF
+          *MemMap(PrimarySlot, 0, Win + 2) = *SRAMData(SlotIdx)
+          RefreshMegaROMPage(PrimarySlot, Win)
+        Else
+          ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, V & mask)
+        EndIf
+      ElseIf A >= $8000 And A < $C000
+        Win = (A - $4000) >> 13
+        If ROMMapper(SlotIdx, Win) = $FF
+          PokeA(*SRAMData(SlotIdx) + (A & $1FFF), V)
+        EndIf
+      EndIf
+
+    Case #MAP_ASCII16
+      sramBit = mask + 1
+      If A >= $6000 And A < $8000 And (V <= mask + 1 Or (A & $0FFF) = 0)
+        ; Guard against garbage writes some real carts make into $7xxx - only honored if V is a
+        ; plausible page/SRAM-select number, or the address is exactly $6000/$7000-aligned
+        ; (matches real fMSX's Vauxall/Darwin/Androgynus compatibility comments, MSX.c).
+        Win = (A & $1000) >> 11 ; 0 (for $6000) or 2 (for $7000)
+        If V & sramBit
+          EnsureSRAM(SlotIdx, $800)
+          ROMMapper(SlotIdx, Win) = $FF
+          ROMMapper(SlotIdx, Win + 1) = $FF
+          *MemMap(PrimarySlot, 0, Win + 2) = *SRAMData(SlotIdx)
+          *MemMap(PrimarySlot, 0, Win + 3) = *SRAMData(SlotIdx)
+          RefreshMegaROMPage(PrimarySlot, Win)
+          RefreshMegaROMPage(PrimarySlot, Win + 1)
+        Else
+          page = (V << 1) & mask
+          ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, page)
+          ApplyMegaROMPage(SlotIdx, PrimarySlot, Win + 1, page | 1)
+        EndIf
+      ElseIf A >= $8000 And A < $C000
+        Win = (A - $4000) >> 13
+        If ROMMapper(SlotIdx, Win) = $FF
+          ; 2kB SRAM chip mirrored 8x across the 16kB window - matches real fMSX (MSX.c).
+          PokeA(*SRAMData(SlotIdx) + (A & $07FF), V)
+        EndIf
+      EndIf
+
+    Case #MAP_GMASTER2
+      If (A = $6000 Or A = $8000 Or A = $A000)
+        Win = (A - $4000) >> 13
+        If V & $10
+          EnsureSRAM(SlotIdx, $2000)
+          ROMMapper(SlotIdx, Win) = $FF
+          *MemMap(PrimarySlot, 0, Win + 2) = *SRAMData(SlotIdx) + Bool(V & $20) * $1000
+          RefreshMegaROMPage(PrimarySlot, Win)
+        Else
+          ApplyMegaROMPage(SlotIdx, PrimarySlot, Win, V & mask)
+        EndIf
+      ElseIf A >= $B000 And A < $C000
+        Win = 3
+        If ROMMapper(SlotIdx, Win) = $FF
+          PokeA(*SRAMData(SlotIdx) + (A & $0FFF), V)
+        EndIf
+      EndIf
+
+    Case #MAP_FMPAC ; OPLL/FM sound register ($7FF6) not implemented - ROM/SRAM banking only
+      Select A
+        Case $5FFE
+          FMPACKey(SlotIdx) = (FMPACKey(SlotIdx) & $FF00) | V
+        Case $5FFF
+          FMPACKey(SlotIdx) = (FMPACKey(SlotIdx) & $00FF) | (V << 8)
+          If FMPACKey(SlotIdx) = $694D ; FMPAC_MAGIC - unlock sequence complete
+            EnsureSRAM(SlotIdx, $2000)
+            ROMMapper(SlotIdx, 0) = $FF
+            ROMMapper(SlotIdx, 1) = $FF
+            *MemMap(PrimarySlot, 0, 2) = *SRAMData(SlotIdx)
+            *MemMap(PrimarySlot, 0, 3) = *SRAMData(SlotIdx) + $2000
+            RefreshMegaROMPage(PrimarySlot, 0)
+            RefreshMegaROMPage(PrimarySlot, 1)
+          EndIf
+        Case $7FF7
+          page = (V << 1) & mask
+          ApplyMegaROMPage(SlotIdx, PrimarySlot, 0, page)
+          ApplyMegaROMPage(SlotIdx, PrimarySlot, 1, page | 1)
+          FMPACKey(SlotIdx) = 0 ; any ROM-page select re-locks SRAM, matches real fMSX
+      EndSelect
+      If A >= $4000 And A < $5FFE And ROMMapper(SlotIdx, 0) = $FF
+        PokeA(*SRAMData(SlotIdx) + (A & $1FFF), V)
+      EndIf
+  EndSelect
+EndProcedure
+
 ; Memory writing callback
 Procedure MSXWrZ80(A.u, V.a)
   If Not RealRdZ80
@@ -661,7 +961,9 @@ Procedure MSXWrZ80(A.u, V.a)
     ProcedureReturn
   EndIf
 
-  ; TODO: Switch MegaROM pages (MapROM)
+  If A >= $4000 And A < $C000
+    MapROM(A, V)
+  EndIf
 EndProcedure
 
 ; Input port reading callback
@@ -693,6 +995,10 @@ Procedure.a MSXInZ80(Port.u)
 
     Case $B5 ; RTC data (MSX2/2+ only, but harmless to expose on any model)
       ProcedureReturn RTCIn(RTCReg)
+
+    Case $FC, $FD, $FE, $FF ; RAM mapper page select ($FC=page@0000h ... $FF=page@C000h)
+      ; Unimplemented high bits read back as 1, matching real mapper hardware (MSX.c: InZ80()).
+      ProcedureReturn RAMMapper(Port - $FC) | ~RAMMask
 
     Default:
       ProcedureReturn $FF
@@ -748,6 +1054,24 @@ Procedure MSXOutZ80(Port.u, V.a)
         RTC(RTCMode & $03, RTCReg) = V
       ElseIf RTCReg = 13
         RTCMode = V
+      EndIf
+
+    Case $FC, $FD, $FE, $FF ; RAM mapper page select - matches real fMSX (MSX.c: OutZ80())
+      Protected mapperJ.a = Port - $FC
+      V = V & RAMMask
+      If RAMMapper(mapperJ) <> V
+        Protected mapperI.a = mapperJ << 1
+        RAMMapper(mapperJ) = V
+        *MemMap(3, 2, mapperI)     = *RAMData + (V << 14)
+        *MemMap(3, 2, mapperI + 1) = *MemMap(3, 2, mapperI) + $2000
+        ; Only refresh the live *RAM()/EnWrite() pointers if this CPU page is currently
+        ; actually viewing Slot 3-2 - otherwise just update MemMap(3,2,...) for whenever
+        ; PSlot()/SSlot() next selects that mapping (same as real fMSX's OutZ80()).
+        If PSL(mapperJ) = 3 And SSL(mapperJ) = 2
+          EnWrite(mapperJ) = 1
+          *RAM(mapperI)     = *MemMap(3, 2, mapperI)
+          *RAM(mapperI + 1) = *MemMap(3, 2, mapperI + 1)
+        EndIf
       EndIf
   EndSelect
 EndProcedure

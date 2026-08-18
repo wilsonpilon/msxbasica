@@ -4,7 +4,7 @@
 EnableExplicit
 
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "8.0.1"
+  #App_Version = "8.1.3"
 CompilerEndIf
 
 ; Windows constant + import for AttachConsole()/FreeConsole() - not part of PureBasic's
@@ -120,7 +120,21 @@ EndProcedure
 ; behavior - File menu, legacy -rom <file> shorthand). Slot=2 maps ONLY into primary slot 2
 ; (using a second ROM buffer, *ROMData(1)) and leaves slot 1 alone, for real fMSX-style dual
 ; cartridge use (positional [filename1] [filename2] - see RunEmulator's CLI parsing).
-Procedure.l LoadCartridge(FileName.s, Slot.l = 1)
+; Remembered mapper-type selection per slot (Hardware->Cartridge Slot A/B->Mapper Type), so a
+; cartridge reload triggered by a RAM/VRAM size change or model switch keeps using the same
+; mapper instead of silently re-guessing. Declared here (after the XIncludeFile block above)
+; since #MAP_GUESS is defined in MSX.pbi.
+Global CurCartAMapper.a = #MAP_GUESS
+Global CurCartBMapper.a = #MAP_GUESS
+
+; Loads FileName into cartridge Slot (1=Cart A/Primary Slot 1, 2=Cart B/Primary Slot 2), each
+; slot fully independent now (a real bug in the old code had Cart A mirror into BOTH primary
+; slots "for legacy single-cartridge support", which meant loading Cart A after Cart B silently
+; stole Cart B's slot - fixed as part of adding proper independent Slot A/B menus). ROMs up to
+; 32KB (4 x 8KB pages) load flat/mirrored with no mapper, exactly like before; larger ones are
+; real MegaROMs, rounded up to the next power-of-2 page count and switched via MapROM()
+; (MSX.pbi) using MapperType (or auto-detected via GuessROMType() if MapperType=#MAP_GUESS).
+Procedure.l LoadCartridge(FileName.s, Slot.l = 1, MapperType.a = #MAP_GUESS)
   LogGeneral("LoadCartridge called for: " + FileName + " (slot " + Str(Slot) + ")")
   Protected FileNum.i = ReadFile(#PB_Any, FileName)
   If FileNum = 0
@@ -130,69 +144,83 @@ Procedure.l LoadCartridge(FileName.s, Slot.l = 1)
 
   Protected Length.q = Lof(FileNum)
   LogGeneral("LoadCartridge: File size = " + Str(Length) + " bytes")
-  If Length > 32768
-    Length = 32768
-    LogGeneral("LoadCartridge WARNING: Truncating ROM mapping to 32KB")
-  EndIf
 
-  Protected BufIdx.l = Slot - 1 ; Slot 1 -> ROMData(0), Slot 2 -> ROMData(1)
-  If *ROMData(BufIdx)
-    FreeMemory(*ROMData(BufIdx))
-  EndIf
-  *ROMData(BufIdx) = AllocateMemory(Length)
-  ReadData(FileNum, *ROMData(BufIdx), Length)
+  Protected BufIdx.l = Slot - 1 ; Slot 1 -> index 0 (Cart A), Slot 2 -> index 1 (Cart B)
+  Protected PrimarySlot.l = Slot ; Cart A -> Primary Slot 1, Cart B -> Primary Slot 2 (fixed 1:1)
+
+  ; Round up to a whole number of 8KB pages, next power of 2 (matches real fMSX's ROM
+  ; allocation rounding) - bank-select values (0..Pages-1) then always address real, allocated
+  ; data even for odd-sized dumps (e.g. a 24KB dump rounds up to 32KB/4 pages).
+  Protected Pages.l = 1
+  Protected NeededPages.l = (Length + $1FFF) / $2000
+  While Pages < NeededPages : Pages << 1 : Wend
+  Protected AllocSize.l = Pages * $2000
+
+  If *ROMData(BufIdx) : FreeMemory(*ROMData(BufIdx)) : EndIf
+  *ROMData(BufIdx) = AllocateMemory(AllocSize)
+  FillMemory(*ROMData(BufIdx), AllocSize, $FF)
+  Protected ReadLen.q = Length
+  If ReadLen > AllocSize : ReadLen = AllocSize : EndIf
+  ReadData(FileNum, *ROMData(BufIdx), ReadLen)
   CloseFile(FileNum)
+
+  ; Mirror the image to fill the rest of the rounded-up allocation - matches real hardware
+  ; address decoding wrapping within the cartridge's actual (smaller) address space.
+  If ReadLen < AllocSize And ReadLen > 0
+    Protected mirrorOfs.q = ReadLen, chunk.q
+    While mirrorOfs < AllocSize
+      chunk = ReadLen
+      If mirrorOfs + chunk > AllocSize : chunk = AllocSize - mirrorOfs : EndIf
+      CopyMemory(*ROMData(BufIdx), *ROMData(BufIdx) + mirrorOfs, chunk)
+      mirrorOfs + chunk
+    Wend
+  EndIf
 
   Protected header.s = Chr(PeekA(*ROMData(BufIdx))) + Chr(PeekA(*ROMData(BufIdx)+1))
   LogGeneral("LoadCartridge: ROM Header Bytes = $" + Hex(PeekA(*ROMData(BufIdx))) + " $" + Hex(PeekA(*ROMData(BufIdx)+1)) + " ('" + header + "')")
 
+  ; Clear this slot's OWN primary-slot pages first - independent per-cartridge-slot state.
   Protected J.l
-  If Slot = 1
-    ; Reset slot maps first to empty
-    For J = 2 To 5
-      *MemMap(1, 0, J) = *EmptyRAM
-      *MemMap(2, 0, J) = *EmptyRAM
-    Next J
+  For J = 2 To 5
+    *MemMap(PrimarySlot, 0, J) = *EmptyRAM
+  Next J
+  ROMMask(BufIdx) = 0
+  ROMType(BufIdx) = #MAP_GEN8
+  If *SRAMData(BufIdx) : FreeMemory(*SRAMData(BufIdx)) : *SRAMData(BufIdx) = 0 : EndIf
+  ROMMapper(BufIdx, 0) = 0 : ROMMapper(BufIdx, 1) = 0 : ROMMapper(BufIdx, 2) = 0 : ROMMapper(BufIdx, 3) = 0
 
-    ; Map cartridge (mirrored into both slots - legacy single-cartridge behavior)
-    If Length = 32768
-      For J = 2 To 5
-        *MemMap(1, 0, J) = *ROMData(BufIdx) + (J - 2) * $2000
-        *MemMap(2, 0, J) = *ROMData(BufIdx) + (J - 2) * $2000
-      Next J
-      LogGeneral("LoadCartridge: Mapped 32KB ROM to Slot 1-0 and Slot 2-0")
-    ElseIf Length = 16384
-      *MemMap(1, 0, 2) = *ROMData(BufIdx) : *MemMap(1, 0, 3) = *ROMData(BufIdx) + $2000
-      *MemMap(1, 0, 4) = *ROMData(BufIdx) : *MemMap(1, 0, 5) = *ROMData(BufIdx) + $2000
-      *MemMap(2, 0, 2) = *ROMData(BufIdx) : *MemMap(2, 0, 3) = *ROMData(BufIdx) + $2000
-      *MemMap(2, 0, 4) = *ROMData(BufIdx) : *MemMap(2, 0, 5) = *ROMData(BufIdx) + $2000
-      LogGeneral("LoadCartridge: Mapped 16KB ROM (Mirrored) to Slot 1-0 and Slot 2-0")
-    Else
-      LogGeneral("LoadCartridge WARNING: Unsupported ROM size " + Str(Length))
-    EndIf
-  Else
-    ; Cartridge B: slot 2 only, slot 1 untouched
+  If Pages <= 4
+    ; Plain <=32KB ROM - no mapper needed, flat/mirrored mapping exactly like before.
     For J = 2 To 5
-      *MemMap(2, 0, J) = *EmptyRAM
+      *MemMap(PrimarySlot, 0, J) = *ROMData(BufIdx) + ((J - 2) % Pages) * $2000
     Next J
-    If Length = 32768
-      For J = 2 To 5
-        *MemMap(2, 0, J) = *ROMData(BufIdx) + (J - 2) * $2000
-      Next J
-      LogGeneral("LoadCartridge: Mapped 32KB ROM to Slot 2-0")
-    ElseIf Length = 16384
-      *MemMap(2, 0, 2) = *ROMData(BufIdx) : *MemMap(2, 0, 3) = *ROMData(BufIdx) + $2000
-      *MemMap(2, 0, 4) = *ROMData(BufIdx) : *MemMap(2, 0, 5) = *ROMData(BufIdx) + $2000
-      LogGeneral("LoadCartridge: Mapped 16KB ROM (Mirrored) to Slot 2-0")
+    LogGeneral("LoadCartridge: " + Str(Length) + " byte ROM, flat-mapped (no MegaROM mapper) to Primary Slot " + Str(PrimarySlot))
+  Else
+    ; MegaROM - guess or use the requested mapper type, wire up MapROM() bank-switching.
+    ROMMask(BufIdx) = Pages - 1
+    If MapperType >= #MAP_GUESS
+      ROMType(BufIdx) = GuessROMType(*ROMData(BufIdx), Length)
     Else
-      LogGeneral("LoadCartridge WARNING: Unsupported ROM size " + Str(Length))
+      ROMType(BufIdx) = MapperType
     EndIf
+    ; Preset initial paging: page 0 at $4000, page 1 at $6000, second-to-last/last page at
+    ; $8000/$A000 - matches real fMSX's SetMegaROM() call for GEN16-style carts (MSX.c); a
+    ; reasonable default for the others too, since most MegaROMs boot fine as long as page 0
+    ; is at $4000 (the machine's reset vector reads from there first).
+    ApplyMegaROMPage(BufIdx, PrimarySlot, 0, 0)
+    ApplyMegaROMPage(BufIdx, PrimarySlot, 1, 1)
+    ApplyMegaROMPage(BufIdx, PrimarySlot, 2, ROMMask(BufIdx) - 1)
+    ApplyMegaROMPage(BufIdx, PrimarySlot, 3, ROMMask(BufIdx))
+    LogGeneral("LoadCartridge: " + Str(Length) + " byte MegaROM, mapper type " + Str(ROMType(BufIdx)) +
+               " (" + ROMTypeName(ROMType(BufIdx)) + "), " + Str(Pages) + " x 8KB pages, mapped to Primary Slot " + Str(PrimarySlot))
   EndIf
 
   If Slot = 1
     CurCartAPath = FileName
+    CurCartAMapper = MapperType
   Else
     CurCartBPath = FileName
+    CurCartBMapper = MapperType
   EndIf
 
   ; Reset hardware state
@@ -204,6 +232,39 @@ Procedure.l LoadCartridge(FileName.s, Slot.l = 1)
   ProcedureReturn 1
 EndProcedure
 
+; Removes whatever cartridge is in Slot (1 or 2), freeing its ROM/SRAM buffers and leaving the
+; primary slot's pages back at *EmptyRAM - real MSX hardware equivalent of physically pulling
+; the cartridge out. Does a full reset, same as Load - a real MSX doesn't hot-swap cartridges
+; either (usually crashes or hangs if you try on real hardware without powering off first).
+Procedure EjectCartridge(Slot.l)
+  Protected BufIdx.l = Slot - 1
+  Protected PrimarySlot.l = Slot
+  Protected J.l
+  For J = 2 To 5
+    *MemMap(PrimarySlot, 0, J) = *EmptyRAM
+  Next J
+  If *ROMData(BufIdx) : FreeMemory(*ROMData(BufIdx)) : *ROMData(BufIdx) = 0 : EndIf
+  If *SRAMData(BufIdx) : FreeMemory(*SRAMData(BufIdx)) : *SRAMData(BufIdx) = 0 : EndIf
+  ROMMask(BufIdx) = 0
+  ROMType(BufIdx) = #MAP_GEN8
+  If Slot = 1
+    CurCartAPath = ""
+  Else
+    CurCartBPath = ""
+  EndIf
+  ResetZ80(@CPU)
+  ResetVDP()
+  ResetPSG()
+  LogGeneral("EjectCartridge: Slot " + Str(Slot) + " ejected, hardware reset.")
+EndProcedure
+
+; Forward-declared here since LoadSnapshot() (right below) needs to call them and they're
+; defined further down in this file (near SwitchModel()/ApplyRAMSize(), their main callers).
+Declare UpdateModelMenuCheck()
+Declare UpdateRAMSizeMenuCheck()
+Declare UpdateVRAMSizeMenuCheck()
+Declare UpdateCartMapperMenuCheck()
+
 ; --- Snapshot save/load ---
 ; Custom binary format, not cross-version/cross-build stable (structs are dumped raw via
 ; WriteData/ReadData - fine since a snapshot is only ever meant to be reloaded by the same
@@ -214,9 +275,12 @@ EndProcedure
 ; state are all included, which is everything MemMap() pointers themselves are NOT (raw addresses
 ; only valid for this process run) - the slot mapping is rebuilt on load by forcing PSlot() to
 ; recompute from the restored SSLReg()/PSLReg values, the same derivation the emulator itself
-; uses on every real slot-select write.
+; uses on every real slot-select write. RAM size is variable (RAMPages, ports $FC-$FF) since
+; the Hardware->RAM Size feature was added - RAMPages/RAMMapper() are saved alongside the RAM
+; contents itself so a snapshot taken with e.g. 1024KB restores at 1024KB, not the default.
 #SnapshotMagic = "FSNP"
-#SnapshotVersion = 1
+#SnapshotVersion = 3 ; v2: RAM size is now variable (RAMPages/RAMMapper()); v3: VRAM size too
+                      ; (VRAMPages) - see docs/SPEC.md
 
 Procedure.l SaveSnapshot(FileName.s)
   Protected FileNum.i = CreateFile(#PB_Any, FileName)
@@ -230,9 +294,15 @@ Procedure.l SaveSnapshot(FileName.s)
   WriteLong(FileNum, Mode)
   WriteStringN(FileNum, CurCartAPath, #PB_UTF8)
   WriteStringN(FileNum, CurCartBPath, #PB_UTF8)
+  WriteByte(FileNum, CurCartAMapper)
+  WriteByte(FileNum, CurCartBMapper)
 
-  WriteData(FileNum, *RAMData, $10000)
-  WriteData(FileNum, *VRAM, $20000)
+  WriteLong(FileNum, RAMPages)
+  Protected mI.l
+  For mI = 0 To 3 : WriteByte(FileNum, RAMMapper(mI)) : Next mI
+  WriteData(FileNum, *RAMData, RAMPages * $4000)
+  WriteLong(FileNum, VRAMPages)
+  WriteData(FileNum, *VRAM, VRAMPages * $4000)
   WriteData(FileNum, @CPU, SizeOf(Z80))
 
   Protected I.l
@@ -287,6 +357,8 @@ Procedure.l LoadSnapshot(FileName.s)
   Protected loadedMode.l = ReadLong(FileNum)
   Protected loadedCartA.s = ReadString(FileNum, #PB_UTF8)
   Protected loadedCartB.s = ReadString(FileNum, #PB_UTF8)
+  Protected loadedCartAMapper.a = ReadByte(FileNum)
+  Protected loadedCartBMapper.a = ReadByte(FileNum)
 
   Mode = loadedMode
   If Not MSXLoadBIOSForModel()
@@ -294,11 +366,28 @@ Procedure.l LoadSnapshot(FileName.s)
     CloseFile(FileNum)
     ProcedureReturn 0
   EndIf
-  If loadedCartA <> "" : LoadCartridge(loadedCartA, 1) : EndIf
-  If loadedCartB <> "" : LoadCartridge(loadedCartB, 2) : EndIf
+  If loadedCartA <> "" : LoadCartridge(loadedCartA, 1, loadedCartAMapper) : EndIf
+  If loadedCartB <> "" : LoadCartridge(loadedCartB, 2, loadedCartBMapper) : EndIf
 
-  ReadData(FileNum, *RAMData, $10000)
-  ReadData(FileNum, *VRAM, $20000)
+  ; RAMPages is whatever was live when the snapshot was saved - already a valid clamped size
+  ; for the model it was saved under, and Mode is restored above before this runs, so
+  ; ReallocateRAM()'s ClampRAMPages() call is a no-op here in practice (kept anyway, since
+  ; asserting the invariant is cheap and it's the same call path RAM-size changes always go
+  ; through). The mapper's default reversed-segment mapping ReallocateRAM() sets up gets
+  ; immediately overwritten below by the actual saved RAMMapper() values.
+  RAMPages = ReadLong(FileNum)
+  ReallocateRAM()
+  Protected mI.l, mV.a
+  For mI = 0 To 3
+    mV = ReadByte(FileNum)
+    RAMMapper(mI) = mV
+    *MemMap(3, 2, mI * 2)     = *RAMData + (mV << 14)
+    *MemMap(3, 2, mI * 2 + 1) = *MemMap(3, 2, mI * 2) + $2000
+  Next mI
+  ReadData(FileNum, *RAMData, RAMPages * $4000)
+  VRAMPages = ReadLong(FileNum)
+  ReallocateVRAM()
+  ReadData(FileNum, *VRAM, VRAMPages * $4000)
   ReadData(FileNum, @CPU, SizeOf(Z80))
 
   Protected I.l
@@ -333,6 +422,9 @@ Procedure.l LoadSnapshot(FileName.s)
   PSLReg = loadedPSLReg ! $FF
   PSlot(loadedPSLReg)
   SetScreen()
+  UpdateModelMenuCheck()
+  UpdateRAMSizeMenuCheck()
+  UpdateVRAMSizeMenuCheck()
 
   LogGeneral("LoadSnapshot: restored " + FileName)
   ProcedureReturn 1
@@ -392,10 +484,15 @@ Procedure.s GetFmsxHelpText()
   T + "  -logsnd <filename>  - Accepted, not yet implemented (no PSG audio yet)." + #CRLF$
   T + "  -state <filename>   - Accepted, not yet implemented (no save-state yet)." + #CRLF$
   T + "  -auto/-noauto       - Accepted, not yet implemented (autofire on SPACE)." + #CRLF$
-  T + "  -ram <pages>        - Accepted, not yet wired to the RAM allocator (fixed" + #CRLF$
-  T + "                        64KB today)." + #CRLF$
-  T + "  -vram <pages>       - Accepted, not yet wired to the VRAM allocator (fixed" + #CRLF$
-  T + "                        128KB today)." + #CRLF$
+  T + "  -ram <pages>        - Number of 16KB RAM mapper pages [4/8/8]. Rounded to a power" + #CRLF$
+  T + "                        of 2 and clamped per model (MSX1 min 4, MSX2/2+ min 8, max" + #CRLF$
+  T + "                        256) - same as real fMSX. Also settable live via" + #CRLF$
+  T + "                        Hardware -> RAM Size." + #CRLF$
+  T + "  -vram <pages>       - Number of 16KB VRAM pages [2/8/8]. Rounded to a power of 2;" + #CRLF$
+  T + "                        MSX1 only accepts 2/4/8 (else resets to 2), MSX2/2+ only" + #CRLF$
+  T + "                        accept exactly 8 (else resets to 8) - same as real fMSX," + #CRLF$
+  T + "                        which has no 16KB-on-MSX1 or 192KB case at all. Also" + #CRLF$
+  T + "                        settable live via Hardware -> VRAM Size." + #CRLF$
   T + "  -joy <type>         - Accepted, not yet implemented (no joystick input yet)." + #CRLF$
   T + "  -simbdos/-wd1793    - Accepted, not yet implemented (no disk controller yet)." + #CRLF$
   T + "  -sound [<quality>]  - Accepted, not yet implemented (no PSG audio yet)." + #CRLF$
@@ -425,6 +522,38 @@ Procedure UpdateModelMenuCheck()
   SetMenuItemState(0, 13, Bool((Mode & #MSX_MODEL) = #MSX_MSX2P))
 EndProcedure
 
+; Reflect the ACTUAL current RAMPages (post-ClampRAMPages, may differ from what was clicked -
+; see ClampRAMPages()'s docstring) as a checkmark on Hardware->RAM Size's five items.
+Procedure UpdateRAMSizeMenuCheck()
+  SetMenuItemState(0, 20, Bool(RAMPages = 4))
+  SetMenuItemState(0, 21, Bool(RAMPages = 8))
+  SetMenuItemState(0, 22, Bool(RAMPages = 16))
+  SetMenuItemState(0, 23, Bool(RAMPages = 32))
+  SetMenuItemState(0, 24, Bool(RAMPages = 64))
+EndProcedure
+
+; Same idea as UpdateRAMSizeMenuCheck(), for Hardware->VRAM Size - post-ClampVRAMPages(), so
+; e.g. clicking "192 KB" on any model, or "16 KB" on MSX2/2+, ends up checking a DIFFERENT item
+; than the one clicked (real fMSX has no 16KB-survives-on-MSX1 or 192KB/V9958-addon case at all
+; - see ClampVRAMPages()'s docstring).
+Procedure UpdateVRAMSizeMenuCheck()
+  SetMenuItemState(0, 30, Bool(VRAMPages = 1))
+  SetMenuItemState(0, 31, Bool(VRAMPages = 2))
+  SetMenuItemState(0, 32, Bool(VRAMPages = 4))
+  SetMenuItemState(0, 33, Bool(VRAMPages = 8))
+  SetMenuItemState(0, 34, Bool(VRAMPages = 12))
+EndProcedure
+
+; Reflect CurCartAMapper/CurCartBMapper as checkmarks on each slot's Mapper Type submenu (item
+; IDs offset by #MAP_* + 42 for Slot A, + 62 for Slot B - see the menu creation block).
+Procedure UpdateCartMapperMenuCheck()
+  Protected m.a
+  For m = 0 To 8
+    SetMenuItemState(0, 42 + m, Bool(CurCartAMapper = m))
+    SetMenuItemState(0, 62 + m, Bool(CurCartBMapper = m))
+  Next m
+EndProcedure
+
 ; Switch the running machine to a different MSX model: reloads the model-appropriate BIOS and
 ; does a full hardware reset, same as picking a fresh -msx1/-msx2/-msx2+ at startup would - RAM/
 ; VRAM content and any loaded cartridge are NOT preserved (a model switch is a cold boot in real
@@ -435,12 +564,66 @@ Procedure SwitchModel(NewModel.l)
   If Not MSXLoadBIOSForModel()
     MessageRequester("fossauro Error", "Could not load MSX BIOS ROM for the selected model.")
   EndIf
-  If CurCartAPath <> "" : LoadCartridge(CurCartAPath, 1) : EndIf
-  If CurCartBPath <> "" : LoadCartridge(CurCartBPath, 2) : EndIf
+  ; Re-clamp RAMPages against the NEW model's minimum (MSX1 4 pages/64KB, MSX2/2+ 8 pages/128KB
+  ; - see ClampRAMPages()) and rebuild the RAM mapper's default mapping, same as real fMSX
+  ; re-invoking ResetMSX() with the same RAMPages value against a different model on every
+  ; switch. This also re-derives *RAM()/EnWrite() from scratch, since ReallocateRAM() frees and
+  ; reallocates *RAMData - the old MemMap(3,2,...) pointers it invalidates would otherwise still
+  ; be cached in *RAM() if some CPU page was currently viewing Slot 3-2.
+  ReallocateRAM()
+  ResetSlotsToStartup()
+  ; Same re-clamp idea for VRAM (MSX1 2/4/8 pages, MSX2/2+ locked to exactly 8 - see
+  ; ClampVRAMPages()) - a model switch changing e.g. MSX1's 32KB up to MSX2's mandatory 128KB.
+  ReallocateVRAM()
+  If CurCartAPath <> "" : LoadCartridge(CurCartAPath, 1, CurCartAMapper) : EndIf
+  If CurCartBPath <> "" : LoadCartridge(CurCartBPath, 2, CurCartBMapper) : EndIf
   ResetZ80(@CPU)
   ResetVDP()
   ResetPSG()
   UpdateModelMenuCheck()
+  UpdateRAMSizeMenuCheck()
+  UpdateVRAMSizeMenuCheck()
+  ThreadPaused = 0
+  SetActiveGadget(0)
+EndProcedure
+
+; Change the amount of RAM (in 16KB pages behind the mapper) and do a full cold reset - same
+; shape as real fMSX (MSX.c, Menu.c): changing RAM size always re-runs ResetMSX(), it's not a
+; hot-swap. RequestedPages need not already be a valid size - ClampRAMPages() (called inside
+; ReallocateRAM()) rounds up to the nearest power of 2 and clamps to the current model's valid
+; range, so the actual applied size may silently differ from what was clicked (e.g. clicking
+; "64KB" while running MSX2/2+ applies 128KB instead, MSX2's real minimum) - UpdateRAMSizeMenuCheck()
+; reflects whatever was actually applied, not the raw click.
+Procedure ApplyRAMSize(RequestedPages.l)
+  ThreadPaused = 1
+  RAMPages = RequestedPages
+  ReallocateRAM()
+  ResetSlotsToStartup()
+  If Not MSXLoadBIOSForModel()
+    MessageRequester("fossauro Error", "Could not reload MSX BIOS ROM after changing RAM size.")
+  EndIf
+  If CurCartAPath <> "" : LoadCartridge(CurCartAPath, 1, CurCartAMapper) : EndIf
+  If CurCartBPath <> "" : LoadCartridge(CurCartBPath, 2, CurCartBMapper) : EndIf
+  ResetZ80(@CPU)
+  ResetVDP()
+  ResetPSG()
+  UpdateRAMSizeMenuCheck()
+  ThreadPaused = 0
+  SetActiveGadget(0)
+EndProcedure
+
+; Same idea as ApplyRAMSize(), for VRAM. See ClampVRAMPages()'s docstring for why most of the
+; five menu options other than the model's real default silently apply something else instead.
+Procedure ApplyVRAMSize(RequestedPages.l)
+  ThreadPaused = 1
+  VRAMPages = RequestedPages
+  ReallocateVRAM()
+  If CurCartAPath <> "" : LoadCartridge(CurCartAPath, 1, CurCartAMapper) : EndIf
+  If CurCartBPath <> "" : LoadCartridge(CurCartBPath, 2, CurCartBMapper) : EndIf
+  ResetZ80(@CPU)
+  ResetVDP()
+  ResetPSG()
+  UpdateVRAMSizeMenuCheck()
   ThreadPaused = 0
   SetActiveGadget(0)
 EndProcedure
@@ -529,10 +712,32 @@ Procedure RunEmulator()
       Case "-ntsc"
         Mode = Mode & ~#MSX_PAL : ParamIdx + 1
 
+      ; -ram <pages> - number of 16KB RAM mapper pages (real fMSX convention). Just stores the
+      ; raw value into RAMPages here, same as real fMSX's own CLI parser (fMSX.c) - the actual
+      ; rounding-to-power-of-2/per-model clamping happens later in ClampRAMPages(), called from
+      ; InitializeMSXMemory() below via ReallocateRAM().
+      Case "-ram"
+        If HasNextArg And LooksNumeric(NextArg)
+          RAMPages = Val(NextArg)
+          ParamIdx + 2
+        Else
+          ParamIdx + 1
+        EndIf
+
+      ; -vram <pages> - same idea as -ram, for VRAMPages/ClampVRAMPages() (called from
+      ; InitializeVDP() below via ReallocateVRAM()).
+      Case "-vram"
+        If HasNextArg And LooksNumeric(NextArg)
+          VRAMPages = Val(NextArg)
+          ParamIdx + 2
+        Else
+          ParamIdx + 1
+        EndIf
+
       ; Flags that take a filename/value argument - accepted and logged, not yet wired to
       ; actual behavior (see GetFmsxHelpText() for what each one is supposed to do).
       Case "-home", "-printer", "-serial", "-diska", "-diskb", "-tape", "-font", "-logsnd",
-           "-state", "-ram", "-vram", "-joy", "-skip", "-sync", "-scale", "-trap"
+           "-state", "-joy", "-skip", "-sync", "-scale", "-trap"
         If HasNextArg
           LogGeneral("CLI: " + LParam + " " + NextArg + " (accepted, not yet implemented)")
           ParamIdx + 2
@@ -637,9 +842,58 @@ Procedure RunEmulator()
         MenuItem(12, "MSX2")
         MenuItem(13, "MSX2+")
       CloseSubMenu()
+      OpenSubMenu("RAM Size")
+        MenuItem(20, "64 KB")
+        MenuItem(21, "128 KB")
+        MenuItem(22, "256 KB")
+        MenuItem(23, "512 KB")
+        MenuItem(24, "1024 KB")
+      CloseSubMenu()
+      OpenSubMenu("VRAM Size")
+        MenuItem(30, "16 KB")
+        MenuItem(31, "32 KB")
+        MenuItem(32, "64 KB")
+        MenuItem(33, "128 KB")
+        MenuItem(34, "192 KB")
+      CloseSubMenu()
+      OpenSubMenu("Cartridge Slot A")
+        MenuItem(40, "Load...")
+        MenuItem(41, "Eject")
+        MenuBar()
+        OpenSubMenu("Mapper Type")
+          MenuItem(42, "Guess MegaROM mapper")
+          MenuItem(43, "Generic 8KB")
+          MenuItem(44, "Generic 16KB")
+          MenuItem(45, "Konami 5000h (SCC)")
+          MenuItem(46, "Konami 4000h")
+          MenuItem(47, "ASCII 8KB")
+          MenuItem(48, "ASCII 16KB")
+          MenuItem(49, "Konami GameMaster2")
+          MenuItem(50, "Panasonic FMPAC")
+        CloseSubMenu()
+      CloseSubMenu()
+      OpenSubMenu("Cartridge Slot B")
+        MenuItem(60, "Load...")
+        MenuItem(61, "Eject")
+        MenuBar()
+        OpenSubMenu("Mapper Type")
+          MenuItem(62, "Guess MegaROM mapper")
+          MenuItem(63, "Generic 8KB")
+          MenuItem(64, "Generic 16KB")
+          MenuItem(65, "Konami 5000h (SCC)")
+          MenuItem(66, "Konami 4000h")
+          MenuItem(67, "ASCII 8KB")
+          MenuItem(68, "ASCII 16KB")
+          MenuItem(69, "Konami GameMaster2")
+          MenuItem(70, "Panasonic FMPAC")
+        CloseSubMenu()
+      CloseSubMenu()
     EndIf
     UpdateModelMenuCheck()
-    
+    UpdateRAMSizeMenuCheck()
+    UpdateVRAMSizeMenuCheck()
+    UpdateCartMapperMenuCheck()
+
     ; Create Canvas Gadget
     CanvasGadget(0, 0, 0, win_w, win_h, #PB_Canvas_Keyboard)
     SetActiveGadget(0)
@@ -765,6 +1019,86 @@ Procedure RunEmulator()
 
             Case 13 ; Hardware -> Model -> MSX2+
               SwitchModel(#MSX_MSX2P)
+
+            Case 20 ; Hardware -> RAM Size -> 64 KB
+              ApplyRAMSize(4)
+
+            Case 21 ; Hardware -> RAM Size -> 128 KB
+              ApplyRAMSize(8)
+
+            Case 22 ; Hardware -> RAM Size -> 256 KB
+              ApplyRAMSize(16)
+
+            Case 23 ; Hardware -> RAM Size -> 512 KB
+              ApplyRAMSize(32)
+
+            Case 24 ; Hardware -> RAM Size -> 1024 KB
+              ApplyRAMSize(64)
+
+            Case 30 ; Hardware -> VRAM Size -> 16 KB
+              ApplyVRAMSize(1)
+
+            Case 31 ; Hardware -> VRAM Size -> 32 KB
+              ApplyVRAMSize(2)
+
+            Case 32 ; Hardware -> VRAM Size -> 64 KB
+              ApplyVRAMSize(4)
+
+            Case 33 ; Hardware -> VRAM Size -> 128 KB
+              ApplyVRAMSize(8)
+
+            Case 34 ; Hardware -> VRAM Size -> 192 KB
+              ApplyVRAMSize(12)
+
+            Case 40 ; Hardware -> Cartridge Slot A -> Load...
+              ThreadPaused = 1
+              Protected cartA_file.s = OpenFileRequester("Select MSX Cartridge ROM (Slot A)", "", "MSX ROM (*.rom)|*.rom;*.mx1;*.mx2|All files (*.*)|*.*", 0)
+              If cartA_file <> ""
+                LoadCartridge(cartA_file, 1, CurCartAMapper)
+              EndIf
+              ThreadPaused = 0
+              SetActiveGadget(0)
+
+            Case 41 ; Hardware -> Cartridge Slot A -> Eject
+              ThreadPaused = 1
+              EjectCartridge(1)
+              ThreadPaused = 0
+              SetActiveGadget(0)
+
+            Case 42 To 50 ; Hardware -> Cartridge Slot A -> Mapper Type -> ...
+              CurCartAMapper = EventMenu() - 42
+              If CurCartAPath <> ""
+                ThreadPaused = 1
+                LoadCartridge(CurCartAPath, 1, CurCartAMapper)
+                ThreadPaused = 0
+                SetActiveGadget(0)
+              EndIf
+              UpdateCartMapperMenuCheck()
+
+            Case 60 ; Hardware -> Cartridge Slot B -> Load...
+              ThreadPaused = 1
+              Protected cartB_file.s = OpenFileRequester("Select MSX Cartridge ROM (Slot B)", "", "MSX ROM (*.rom)|*.rom;*.mx1;*.mx2|All files (*.*)|*.*", 0)
+              If cartB_file <> ""
+                LoadCartridge(cartB_file, 2, CurCartBMapper)
+              EndIf
+              ThreadPaused = 0
+              SetActiveGadget(0)
+
+            Case 61 ; Hardware -> Cartridge Slot B -> Eject
+              ThreadPaused = 1
+              EjectCartridge(2)
+              ThreadPaused = 0
+              SetActiveGadget(0)
+
+            Case 62 To 70 ; Hardware -> Cartridge Slot B -> Mapper Type -> ...
+              CurCartBMapper = EventMenu() - 62
+              If CurCartBPath <> ""
+                ThreadPaused = 1
+                LoadCartridge(CurCartBPath, 2, CurCartBMapper)
+                ThreadPaused = 0
+                SetActiveGadget(0)
+              EndIf
+              UpdateCartMapperMenuCheck()
           EndSelect
           
         Case #PB_Event_Gadget

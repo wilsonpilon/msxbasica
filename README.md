@@ -6,7 +6,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](images/msxbasica-01.png)
 
-**Versão atual: 8.0.1** — versão e build (data/hora UTC de compilação, em
+**Versão atual: 8.1.3** — versão e build (data/hora UTC de compilação, em
 hexadecimal) são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -3049,6 +3049,56 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   dados da ROM - relido do disco no load). Verificado com um teste headless temporário (removido depois):
   save → corrompe estado → load → todos os valores batem exato. Ver `docs/SPEC.md` módulo 32i pro
   detalhamento completo.
+- **2026-08-18** — pedido explícito do usuário pra continuar a investigação do freeze de boot do MSX2 puro
+  (módulos 32g/32h). **Causa raiz encontrada e corrigida**: a ROM emite um comando de VDP LMMC (128
+  pixels, `NX=16 NY=8`) pro logo/ícone de boot e alimenta exatamente 127 bytes via porta `$9B` - um a
+  menos que os 128 que `VDPWrite()` (`V9938.pbi`) exigia pra completar o comando e limpar o flag CE
+  (Command Executing). Comparação com `fMSX/fMSX/V9938.c` real revelou o porquê: hardware real consome um
+  pixel imediatamente ao iniciar o comando (usando o valor já latched em VDP register 44), então a BIOS
+  real só precisa mandar `NX*NY-1` bytes - o `fossauro` nunca fazia esse "tick" inicial. Corrigido em
+  `VDPDraw()` (`Case $0B, $0F`, LMMC/HMMC): chama `VDPWrite(VDP(44))` uma vez logo após iniciar o comando,
+  espelhando o comportamento real. **MSX2 agora boota completamente** ("MSX BASIC version 2.1"),
+  confirmado por screenshot; MSX1/MSX2+ testados de novo sem regressão. Ver `docs/SPEC.md` módulo 32j pro
+  detalhamento completo (metodologia de trace por instrução real em vez de desmontagem manual, e a
+  comparação linha-a-linha contra o C real que resolveu o mistério).
+- **2026-08-18, mesmo dia** — pedido explícito do usuário: suporte a tamanho de RAM (64/128/256/512/
+  1024KB) no menu `Hardware` do Fossauro, com a pergunta de como o MSX1 deveria expandir memória (mapeador
+  igual MSX2/2+, ou cartuchos de RAM em slot/sub-slot, mais comum em hardware real) - pedido explícito pra
+  checar o fonte real do fMSX e seguir de perto. Resposta encontrada em `fMSX/fMSX/MSX.c`: o fMSX real
+  **não** modela RAM de MSX1 como cartuchos - usa o mesmo mapeador por bancos (portas `$FC`-`$FF`, sempre
+  em Slot 3-2) pra todo modelo, só o mínimo de páginas válido muda (MSX1 4 páginas/64KB, MSX2/2+ 8
+  páginas/128KB, máximo 256/4096KB ambos). Portado fielmente pro `fossauro/MSX.pbi`
+  (`ClampRAMPages()`/`ReallocateRAM()`, portas `$FC`-`$FF` em `MSXInZ80`/`MSXOutZ80`), com **Hardware →
+  RAM Size** novo no menu e `-ram <páginas>` finalmente ligado na CLI (antes só aceito, ignorado). Formato
+  de snapshot `.fss` bump de v1→v2 pra incluir o tamanho de RAM salvo. Testado ao vivo via `WM_COMMAND`
+  trocando RAM em MSX1 e MSX2 (128KB/512KB/1024KB), screenshot confirmando boot limpo em cada tamanho, sem
+  regressão. Ver `docs/SPEC.md` módulo 32k pro detalhamento completo.
+- **2026-08-18, mesmo dia** — pedido explícito do usuário "seguindo a mesma lógica" do RAM: tamanho de
+  VRAM configurável (16/32/64/128/192KB) e suporte a mappers MegaROM em Cartucho Slot A/B (Guess/Generic
+  8KB/Generic 16KB/Konami 5000h/Konami 4000h/ASCII 8KB/ASCII 16KB/GameMaster2/FMPAC), mais um pedido de
+  Disk Drive A/B (inserir/ejetar/criar/salvar disco) pausado antes de começar - de longe a maior das três
+  frentes, precisa de emulação real de WD1793/FDC. **VRAM**: mesmo padrão de arredondamento/limite do RAM,
+  mas o fMSX real é mais rígido (MSX2/2+ só 128KB exato, MSX1 só 32/64/128KB - "16KB"/"192KB" do menu
+  sempre voltam pro padrão do modelo). **MegaROM**: `MapROM()` portado do `MSX.c` real pros 8 tipos de
+  mapper, com SRAM (não-persistida) pros que precisam; corrigido um bug real no processo - o Slot A
+  espelhava nos dois slots primários e roubava o Slot B se carregado depois. Testado com MegaROMs reais
+  de 128KB já no repositório (ASCII8/Konami5-SCC) - carregamento correto, mapper identificado certo pelo
+  `GuessROMType()`. Achado (não-relacionado) durante o teste: reproduzido o bug **já documentado** de
+  estouro de pilha do hook H.TIMI com um cartucho simples de 16KB, confirmando que não é regressão desta
+  sessão. Ver `docs/SPEC.md` módulo 32l pro detalhamento completo.
+- **2026-08-18, mesmo dia** — pedido explícito do usuário: padrão de inicialização (sem argumentos) virar
+  MSX1/64KB RAM/16KB VRAM. Esbarrou num conflito real: o clamp fiel ao fMSX (módulo 32l) rejeita 16KB de
+  VRAM no MSX1 (mínimo real do fMSX é 32KB) - perguntado ao usuário, que escolheu relaxar esse mínimo pra
+  16KB de propósito (único ponto onde fossauro diverge do comportamento real do fMSX nesse subsistema,
+  já que 16KB era comum em hardware MSX1 de verdade). `Mode`/`VRAMPages` (`MSX.pbi`) atualizados; `RAMPages`
+  já tinha o valor certo. Confirmado por screenshot: sem argumentos, sobe direto até o prompt do BASIC do
+  MSX1. Ver `docs/SPEC.md` módulo 32m.
+- **2026-08-18, mesmo dia — release `8.1.3` "MSX2 DE VERDADE"**: pedido explícito do usuário pra fechar a
+  sessão - bump de versão (`8.0.1` → `8.1.3`) marcando tudo que aconteceu hoje no Fossauro como um
+  lançamento formal: causa raiz do freeze de boot do MSX2 puro finalmente achada
+  e corrigida (os três modelos bootam de ponta a ponta), RAM/VRAM configuráveis via mapeador por bancos
+  (fiel ao fMSX real), mappers MegaROM em cartucho (9 tipos + SRAM), e novo padrão de inicialização
+  (MSX1/64KB RAM/16KB VRAM). Ver `docs/RELEASE_NOTES.md` pra nota de lançamento formal completa.
 
 ## Ferramentas e ambiente
 

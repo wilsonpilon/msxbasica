@@ -84,6 +84,8 @@
 /fossauro/*.ROM
 /fossauro/*.exe
 /fossauro/debug.log
+/fossauro/fossauro.log
+/fossauro/fossauro.log.*
 
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json

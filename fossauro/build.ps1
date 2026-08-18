@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "Iniciando compilação do fossauro..." -ForegroundColor Cyan
 
 # Executa o compilador PureBasic
-& pbcompiler fossauro.pb /THREAD /OUTPUT fossauro.exe /CONSTANT "App_Version=8.0.1"
+& pbcompiler fossauro.pb /THREAD /OUTPUT fossauro.exe /CONSTANT "App_Version=8.1.3"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "------------------------------------------------------------" -ForegroundColor Green

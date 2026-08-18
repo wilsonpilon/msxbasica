@@ -6969,6 +6969,202 @@ sentinela, corrompeu esses mesmos valores, recarregou o snapshot, e confirmou qu
 COM, automatizar via mensagem é frágil o bastante que não valeu a pena tentar nesta sessão; o teste
 headless cobre a lógica de serialização, que é a parte que importa).
 
+### 32j. Fossauro — causa raiz do freeze de boot MSX2 puro encontrada e corrigida: LMMC precisa de um "tick" imediato (2026-08-18, `8.1.3`)
+
+Continuação direta dos módulos 32g/32h, a pedido explícito do usuário ("continuar tentando fazer o MSX 2
+dar boot" → depois "continuar investigando" quando perguntado se parava ou seguia). Resultado: **causa
+raiz encontrada e corrigida** - MSX2 puro agora **boota completamente até o prompt do BASIC** ("MSX BASIC
+version 2.1"), confirmado por screenshot. MSX1 e MSX2+ testados de novo depois da correção, sem regressão
+(também confirmado por screenshot).
+
+**Metodologia**: a técnica já estabelecida (PC exato + ler endereço de retorno da pilha no primeiro hit)
+foi reaplicada em cima do achado do módulo 32h (`ret=$1244`, uma chamada em RAM pra `$2980`), mas desta vez
+com um refinamento importante - em vez de só capturar o endereço de retorno, o loop de trace acumulou
+contagens ao longo de **milhares** de hits (não só os primeiros poucos), revelando que a rotina em `$2980`
+não é revisitada porque está presa num loop interno - ela é chamada de verdade, repetidamente, uma vez por
+frame, para sempre, por uma sequência de RAM bem mais longa (`$123A` em diante) que nunca termina de
+verdade. A pista decisiva veio de expandir o trace de leitura de status do VDP (`DBGSTATUS`, todos os
+registradores de status, não só S#2) por uma janela de tempo bem maior: os primeiros ~20 samples (todos no
+mesmo frame inicial) mostravam sempre bit0 (CE - Command Executing) limpo, levando o módulo 32h a descartar
+erroneamente a hipótese de "flag CE travado" - mas amostras tiradas **centenas de frames depois** (frame
+230+) mostravam bit0 **sempre setado** (`$81`/`$A1`/`$C1`), ou seja, CE ficou preso em 1 permanentemente a
+partir de um certo ponto do boot, e a amostra pequena do módulo 32h simplesmente não durou o suficiente
+para pegar isso.
+
+**Rastreamento do comando que trava**: um trace em `VDPDraw()` (capturando `CM`/`NX`/`NY`/registradores)
+achou o culpado - por volta do frame 175, a ROM emite um comando **LMMC** (`Op=$B0`, CPU→VRAM,
+`NX=16, NY=8` = 128 pixels) pra desenhar o logo/ícone de boot (invisível hoje por causa da lacuna já
+conhecida de SCREEN 6/7, módulo 32c). Um trace de instrução real (não desmontagem manual - uma primeira
+tentativa de decodificar o loop de alimentação à mão errou a contagem de iterações) no intervalo exato de
+endereços RAM onde o loop de alimentação roda (`$1250-$1299`, achado via mais um nível de "ler retorno da
+pilha") confirmou que a ROM envia exatamente **127** bytes via porta `$9B` para esse comando - um a menos
+que os 128 que `VDPWrite()`/`MMC\ASX`/`MMC\ADX` (`V9938.pbi`) exigiam pra considerar o comando completo e
+limpar CE. Como o registrador de status S#2 (via `$2980`, a rotina de espera "VDP pronto?" chamada antes/
+depois de quase toda operação de desenho) nunca via CE cair pra 0, toda chamada futura a `$2980` no resto
+do boot ficava presa pra sempre - exatamente o sintoma "preso em `$2980`, uma vez por frame, para sempre"
+que os módulos 32g/32h observaram sem conseguir explicar.
+
+**Por que 127 e não 128 - comparação com o C real do fMSX**: em vez de continuar adivinhando por que a ROM
+"erra" a contagem (ROM essa que é validada em hardware real e já confirmada bootando com sucesso no
+`fMSX.exe` real, módulo 32d), a pergunta certa era "o que o fMSX real faz diferente". `fMSX/fMSX/V9938.c`
+real (`VDPDraw()`, linha ~1024) responde: `if(VdpEngine&&(VdpOpsCnt>0)) VdpEngine();` - o motor de comando
+é chamado **uma vez, imediatamente**, no exato momento em que o comando começa (logo depois de setar
+CE=1), ANTES de qualquer escrita da CPU chegar. Esse primeiro tick consome um pixel usando o que já estava
+travado em `VDP[44]`/S#7 nesse instante (`LmmcEngine()`: `VDP[44]&=Mask[SM]` direto, sem esperar uma
+escrita nova). Ou seja: hardware real (e portanto a BIOS real, escrita contra hardware real) só precisa
+mandar `NX*NY-1` bytes depois de iniciar o comando - o primeiro pixel já foi "gratuito". `fossauro`'s
+`VDPDraw()` nunca fazia esse tick inicial, exigindo os `NX*NY` completos vindos só da CPU - por isso nunca
+completava com uma ROM que segue o protocolo real.
+
+**Correção aplicada** (`V9938.pbi`, `VDPDraw()`, `Case $0B, $0F` - LMMC/HMMC): logo depois de setar
+`MMC\Active=1`/CE=1/TR=1, chama `VDPWrite(VDP(44))` uma vez, espelhando o tick imediato do fMSX real -
+consome o primeiro pixel usando o valor de `VDP(44)` já capturado em `MMC\CL` no início do dispatch.
+`LMCM` (`$0A`, direção VRAM→CPU) **não foi tocado** - o tick imediato genérico do fMSX real se aplica a ele
+também em princípio, mas não existe nenhum repro real de travamento em LMCM ainda, então mexer nele agora
+seria mudança sem verificação; registrado em `fossauro/SPEC.md` §3 item 8 pra retomar só se aparecer um
+caso real.
+
+**Verificação**: screenshot dos três modelos depois da correção - MSX1 ("MSX BASIC version 1.0..."), MSX2
+("MSX BASIC version 2.1..." - **novo**, antes travava), MSX2+ ("MSX BASIC version 3.0...") - todos
+chegando no prompt normalmente, sem regressão. Toda a instrumentação temporária desta sessão (múltiplos
+`Global Dbg*`/logs `DBG2980`/`DBG123A`/`DBGSTATUS`/`DBGCMD`/`DBGVDPWRITE`/`DBGNX`/`DBGFEED`/`DBGINT` em
+`Z80.pbi`/`V9938.pbi`/`MSX.pbi`) foi removida ao final, recompilado e re-testado pra confirmar que a
+correção sobrevive à limpeza - só a chamada `VDPWrite(VDP(44))` (com o comentário explicando o porquê)
+ficou no código.
+
+**Lição de metodologia pra próxima vez** (também registrada em `fossauro/OUTLINE.md` §4): quando o modelo
+simplificado/síncrono do `fossauro` diverge do que uma ROM real (validada em hardware) espera, a pergunta
+certa não é "por que a ROM está errada" - é "o que hardware real faz nesse exato passo que o fossauro
+não faz". `fMSX/fMSX/V9938.c`/`MSX.c` (já no repo como material de referência) geralmente tem a resposta
+mais rápido que adivinhar a partir dos sintomas.
+
+### 32k. Fossauro — tamanho de RAM configurável (mapeador por bancos, portas $FC-$FF) (2026-08-18, `8.1.3`)
+
+Pedido explícito do usuário: adicionar suporte a tamanho de RAM (64/128/256/512/1024KB) no menu
+`Hardware`, com a pergunta explícita sobre como o MSX1 deveria expandir memória - via o mesmo mapeador do
+MSX2/2+, ou via cartuchos de RAM separados no sistema de slot/sub-slot (prática mais comum em hardware
+MSX1 real), com a instrução de checar o fonte real do fMSX e fazer de maneira bem similar.
+
+**Resposta encontrada no fonte real** (`fMSX/fMSX/MSX.c`): o fMSX real **não** modela expansão de RAM do
+MSX1 como cartuchos separados - não existe `RAMSlot`, nem branch por modelo pra isso em lugar nenhum do
+código. Tanto MSX1 quanto MSX2/MSX2+ usam o **mesmo** mapeador de RAM por bancos (`RAMMapper[4]`/
+`RAMMask`, portas `$FC`-`$FF`, sempre cravado em Slot Primário 3/Secundário 2) - `PSlot()`/`SSlot()` e os
+handlers de `$FC`-`$FF` em `InZ80()`/`OutZ80()` não têm nenhum `MODEL()` check. A única diferença por
+modelo é o **mínimo** de páginas válido, aplicado em `ResetMSX()`: MSX1 mínimo 4 páginas (64KB), MSX2/2+
+mínimo 8 páginas (128KB), máximo 256 páginas (4096KB) em ambos - valores fora da faixa (incluindo acima do
+máximo) somam pro **mínimo** do modelo, não pro máximo, um comportamento específico do fMSX mantido aqui
+por fidelidade. Na prática: hardware MSX1 real raramente tinha mapeador (expansão normalmente era mesmo
+por cartucho), mas a emulação do fMSX sempre implementa um por baixo dos panos - como o mapeamento padrão
+de reset (`RAMMapper[]=3:2:1:0`) já apresenta os primeiros 64KB de forma contígua e na ordem certa sem
+nenhuma escrita de I/O necessária, software de MSX1 que nunca toca as portas do mapeador funciona
+normalmente e nunca percebe a diferença.
+
+**Port pra `fossauro/MSX.pbi`**: `ClampRAMPages()` (arredonda pra potência de 2 + aplica o mínimo/máximo
+por modelo, espelhando `ResetMSX()`), `ReallocateRAM()` (realoca `*RAMData` no tamanho `RAMPages*$4000`,
+preenche com `$FF` - RAM não inicializada lê como `$FF` no fMSX real via `NORAM`, não `$00` como o
+fossauro fazia antes - e reconstrói o mapeamento padrão `RAMMapper[]=3:2:1:0`), `ResetSlotsToStartup()`
+(zera slots primário/secundário de volta ao estado de power-on). Portas `$FC`-`$FF` adicionadas a
+`MSXInZ80`/`MSXOutZ80` espelhando `InZ80()`/`OutZ80()` do fMSX real linha por linha (leitura devolve
+`RAMMapper(Port-$FC) | ~RAMMask`; escrita só atualiza os ponteiros `*RAM()`/`EnWrite()` ao vivo se a
+página da CPU estiver de fato olhando pro Slot 3-2 no momento).
+
+**Interface**: submenu `Hardware → RAM Size` novo (`fossauro.pb`, itens 20-24, mesmo padrão de
+`WM_COMMAND`/checkmark já usado em `Hardware → Model`) e `-ram <páginas>` na linha de comando, ligado de
+verdade agora (antes era só aceito e ignorado, RAM sempre fixa em 64KB). Trocar o tamanho de RAM sempre
+faz um reset completo (recarrega BIOS/cartucho, `ResetZ80`/`ResetVDP`/`ResetPSG`) - não é hot-swap, mesmo
+espírito de uma troca de modelo real ou de `ResetMSX()` sendo re-chamado no fMSX real. `SwitchModel()`
+também foi ajustado pra re-aplicar `ReallocateRAM()`/`ResetSlotsToStartup()` a cada troca de modelo -
+antes a troca de modelo não reconstruía o estado de RAM/slots nenhuma vez, o que já era uma lacuna latente
+(nunca dava problema porque RAM sempre tinha exatamente 64KB e nunca era realocada), mas passaria a
+crashar de verdade agora que `*RAMData` pode ser realocado com tamanhos diferentes.
+
+**Save-state**: formato `.fss` bump de versão 1→2 - `RAMPages`/`RAMMapper()` agora são salvos junto do
+conteúdo de RAM (que passou a ter tamanho variável, `RAMPages*$4000` em vez de `$10000` fixo), senão um
+snapshot salvo com mais RAM corromperia a leitura/escrita ao recarregar com o tamanho padrão.
+
+**Verificação**: compilação limpa; testado via `WM_COMMAND` direto pro `HWND` (mesma técnica já
+estabelecida) trocando RAM ao vivo pra 128KB/512KB/1024KB tanto em MSX2 quanto MSX1, screenshot
+confirmando boot limpo até o prompt do BASIC em cada caso, sem crash nem corrupção visual. MSX1 com 512KB
+mostrou os mesmos "28815 Bytes free" do padrão (esperado - BIOS de MSX1 real nunca sonda o mapeador atrás
+de RAM extra, diferente da BIOS de MSX2, que faz detecção de memória via mapeador durante o boot).
+
+### 32l. Fossauro — tamanho de VRAM configurável e mappers MegaROM (2026-08-18, `8.1.3`)
+
+Pedido explícito do usuário, "seguindo a mesma lógica" do módulo 32k (RAM): (1) tamanho de VRAM
+configurável (16/32/64/128/192KB) no menu `Hardware`, implementando só o que fizer sentido por modelo,
+igual o fMSX faz; (2) suporte a mappers MegaROM em Cartucho Slot A/Slot B (Load/Eject + Guess/Generic
+8KB/Generic 16KB/Konami 5000h/Konami 4000h/ASCII 8KB/ASCII 16KB/GameMaster2/FMPAC); (3) Disk Drive A/B
+com inserir/ejetar/criar/salvar disco "se for possível" - pausado neste módulo antes de começar (ver nota
+no final).
+
+**VRAM configurável** (`V9938.pbi`: `ClampVRAMPages()`/`ReallocateVRAM()`) - mesmo padrão do módulo 32k,
+pesquisado no fonte real (`MSX.c`, `ResetMSX()`): o fMSX real é **mais rígido** com VRAM que com RAM -
+MSX2/MSX2+ só aceitam exatamente 8 páginas (128KB), qualquer outro valor volta pro padrão (não só valores
+abaixo do mínimo); MSX1 só aceita 2/4/8 páginas (32/64/128KB) - 1 página (16KB) sempre volta pra 32KB. Não
+existe conceito de "192KB"/addon V9958 no fMSX real - essas duas opções do menu (16KB e 192KB) existem
+porque o usuário pediu, mas o clamp sempre as rejeita de volta pro padrão do modelo, fielmente. Achado
+importante: `SafePeekVRAM()` (guarda de bounds já existente, criada por outro motivo - proteger leituras
+de `ChrTab`/`ColTab`/`ChrGen`/`SprTab`) checava um tamanho `$20000` (128KB) **fixo**, não `VRAMPages`-based
+- corrigido, já que agora a VRAM pode genuinamente encolher (MSX1 em 32/64KB) pela primeira vez. O fMSX
+real não tem proteção equivalente ali - ele simplesmente nunca encolhe VRAM o suficiente pra precisar.
+Verificado via `WM_COMMAND`: MSX2 com qualquer seleção ≠128KB volta corretamente e reboota limpo; MSX1
+com 64KB de verdade (tamanho genuinamente menor que os 128KB fixos de antes) bootou com texto completo,
+sem corrupção - confirma que a correção do `SafePeekVRAM()` funciona.
+
+**Mappers MegaROM** (`MSX.pbi`: `MapROM()`/`GuessROMType()`/`ApplyMegaROMPage()`/`ROMMask()`/`ROMType()`/
+`ROMMapper()`) - portado do `MapROM()`/`GuessROM()`/`SetMegaROM()` reais (`MSX.c`), os 8 tipos
+(`MAP_GEN8`/`GEN16`/`KONAMI5`/`KONAMI4`/`ASCII8`/`ASCII16`/`GMASTER2`/`FMPAC`), identificados por qual
+slot de cartucho (0=Slot A/Primário 1, 1=Slot B/Primário 2) está atualmente mapeado no endereço da CPU que
+recebeu a escrita - o fMSX real faz essa mesma indireção via `CartMap[PSL][SSL]`, aqui simplificado já que
+fossauro só tem 2 slots de cartucho de usuário (não os 6 do fMSX real, que incluem ROMs de sistema como
+MSXDOS2/FMPAC/GameMaster2 carregadas no boot - fossauro não carrega essas). Chips de som (SCC do Konami5,
+OPLL/FM do FMPAC) são interceptados (pra não cair em "bad write") mas não emulados - bank-switching de
+ROM/SRAM funciona igual sem eles, confirmado no fonte real. SRAM (ASCII8/ASCII16/GameMaster2/FMPAC) é
+só-sessão, nunca persistida em arquivo `.sav`.
+
+**Bug real corrigido no processo**: `LoadCartridge()` antigo espelhava o Slot A (cartucho 1) nos dois
+slots primários simultaneamente ("compatibilidade com cartucho único legado") - carregar o Slot A DEPOIS
+do Slot B roubava silenciosamente o slot do Slot B. Cada slot agora é independente (Slot A sempre Slot
+Primário 1, Slot B sempre Slot Primário 2), igual ao `CartMap[][]` real do fMSX.
+
+**Verificação**: compilação limpa; testado com MegaROMs reais já presentes no repositório
+(`editor/tools/msxbas2rom/demo/`/`games/` - cartuchos ASCII8 e Konami5/SCC de 128KB de verdade, não
+sintéticos) - `GuessROMType()` identificou corretamente o ASCII8 (confirmado no log: "mapper type 4
+(ASCII8kB), 16 x 8KB pages"), carregou sem erro, sem regressão no boot padrão sem cartucho. **Achado
+separado durante o teste**: carregar qualquer um dos dois MegaROMs de teste - e, confirmado separadamente,
+também o `Kingsvalley.rom` de 16KB **pré-existente e sem relação nenhuma com MegaROM** - trava no bug **já
+documentado** de estouro de pilha do hook H.TIMI (`docs/MANUAL.md`, seção Fossauro, "achado separado,
+ainda em aberto" de uma sessão anterior - SP cresce sem limite e dá a volta, causa raiz ainda não
+isolada). Confirmado que isso é **não-relacionado** ao trabalho desta sessão, reproduzindo o sintoma
+idêntico (`PC=$0038` preso, SP subindo a cada frame) com um cartucho que não passa por nenhum código novo
+de hoje.
+
+**Formato de snapshot**: bump de versão v2→v3 pra incluir `VRAMPages` (VRAM agora de tamanho variável) e
+`CurCartAMapper`/`CurCartBMapper` (mapper escolhido por slot, preservado ao recarregar).
+
+**Não feito nesta sessão - pausado antes de começar**: Disk Drive A/B (inserir/ejetar/criar/salvar disco)
+foi pedido mas é de longe a maior das três frentes - precisa de uma emulação real de controlador de
+disquete (WD1793/2793, `fMSX/EMULib/WD1793.c` real) mais o formato de imagem `.DSK` bruto por setor
+(`fMSX/EMULib/FDIDisk.c` real, sem consciência de FAT12 nessa camada - isso é trabalho da `DISK.ROM`) e
+carregamento de uma `DISK.ROM` de verdade (já presente em `fMSX/DISK.ROM`) no Slot 3-1. Pesquisa completa
+já feita (metodologia, portas, formato de comando WD1793, semântica de save/eject do fMSX real) - ver
+`fossauro/SPEC.md` §3 item 2 pro resumo e próximo passo. Retomar quando o usuário confirmar que quer
+seguir para essa frente.
+
+### 32m. Fossauro — padrão de inicialização mudado pra MSX1/64KB RAM/16KB VRAM (2026-08-18, `8.1.3`)
+
+Pedido explícito do usuário: fazer o padrão de inicialização (sem argumentos de linha de comando) ser
+MSX1, 64KB de RAM e 16KB de VRAM. `RAMPages` (`MSX.pbi`) já tinha padrão 4 (64KB), sem mudança necessária.
+`Mode` mudou de `#MSX_MSX2` pra `#MSX_MSX1`. `VRAMPages` mudou de 8 (128KB) pra 1 (16KB) - mas isso esbarrou
+num conflito real: `ClampVRAMPages()` (módulo 32l, fiel ao fMSX real) rejeita 16KB no MSX1, sempre
+resetando pro mínimo real do fMSX (32KB/2 páginas). Perguntado ao usuário como resolver - escolheu
+**relaxar o mínimo de VRAM do MSX1 pra 16KB**, afastando-se deliberadamente do comportamento do fMSX real
+(que nunca aceita isso), já que 16KB era o tamanho comum em hardware MSX1 real. `ClampVRAMPages()`'s
+`MinPages` pro MSX1 mudou de 2 pra 1, com comentário no código deixando claro que essa é a ÚNICA divergência
+proposital do comportamento do fMSX real neste subsistema (pra não ser confundido com bug numa sessão
+futura). Verificado: `fossauro.exe` sem nenhum argumento agora sobe direto até "MSX BASIC version 1.0 ...
+28815 Bytes free ... Ok", confirmado por screenshot.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido

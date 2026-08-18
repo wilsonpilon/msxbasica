@@ -45,7 +45,7 @@ Global SprTabM.l = 0
 ; fossauro.log instead of guessed at.
 Global VRAMBoundsLogged.b = 0
 Procedure.a SafePeekVRAM(*Addr, Context.s)
-  If *Addr < *VRAM Or *Addr >= *VRAM + $20000
+  If *Addr < *VRAM Or *Addr >= *VRAM + (VRAMPages * $4000)
     If Not VRAMBoundsLogged
       VRAMBoundsLogged = 1
       LogVDP("CRITICAL: VRAM pointer out of bounds in " + Context + " *Addr=$" + Hex(*Addr) +
@@ -212,10 +212,49 @@ Procedure SetScreen()
   EndIf
 EndProcedure
 
-Procedure InitializeVDP()
-  *VRAM = AllocateMemory($20000) ; 128KB VRAM
-  FillMemory(*VRAM, $20000, $00)
+; Round Requested up to the nearest power of 2, then clamp/reset to a valid VRAM page count
+; for the CURRENT model. MSX2/MSX2+ match real fMSX exactly (MSX.c, ResetMSX()): ONLY exactly 8
+; pages (128KB) is accepted - any other value (including "192KB"/12->16 pages) resets to 8; real
+; fMSX has no 192KB/V9958-addon concept at all, that menu option always snaps back to 128KB.
+; MSX1's minimum is 1 page (16KB) here - a DELIBERATE deviation from real fMSX (which only
+; accepts 2/4/8 pages on MSX1, silently resetting a 1-page/16KB request to the 2-page default)
+; - chosen 2026-08-18 at the project owner's explicit request, since 16KB was the common real
+; MSX1-hardware VRAM size and is now this project's own MSX1 default, even though real fMSX
+; itself never actually runs MSX1 with 16KB. If you're trying to match real fMSX behavior
+; exactly for some other reason, this is the one place fossauro intentionally diverges.
+Procedure.l ClampVRAMPages(Requested.l)
+  Protected P.l = 1
+  While P < Requested
+    P << 1
+  Wend
+  Protected MinPages.l = 8
+  Protected MaxPages.l = 8
+  If (Mode & #MSX_MODEL) = #MSX_MSX1
+    MinPages = 1
+    MaxPages = 8
+  EndIf
+  If P < MinPages Or P > MaxPages : P = MinPages : EndIf
+  ProcedureReturn P
+EndProcedure
+
+; (Re)allocate *VRAM at the current VRAMPages size. Unlike RAM, real V9938/fMSX has no bank-
+; switch mapper for VRAM to preserve here - it's just a flat buffer, page-selected for CPU
+; access via VDP register 14 (already masked to VRAMPages-1 at every use site) and, for the
+; V9938 command engine (modes 5-8), addressed with no size-aware masking at all in real fMSX -
+; safe there only because non-MSX1 models are always exactly 128KB (see ClampVRAMPages()).
+; SafePeekVRAM()'s bounds check (this file, top) is what protects the OTHER read paths
+; (ChrTab/ColTab/ChrGen/SprTab table pointers, modes 0-4) against a smaller MSX1 buffer -
+; real fMSX has no equivalent guard there either, it just never shrinks VRAM enough to need one.
+Procedure ReallocateVRAM()
+  If *VRAM : FreeMemory(*VRAM) : EndIf
+  VRAMPages = ClampVRAMPages(VRAMPages)
+  *VRAM = AllocateMemory(VRAMPages * $4000)
+  FillMemory(*VRAM, VRAMPages * $4000, $00)
   *VPAGE = *VRAM
+EndProcedure
+
+Procedure InitializeVDP()
+  ReallocateVRAM()
   ResetVDP()
 EndProcedure
 
@@ -382,10 +421,10 @@ EndProcedure
 
 Procedure VDPDraw(Op.a)
   If ScrMode < 5 : ProcedureReturn : EndIf
-  
+
   Protected CM.a = Op >> 4
   Protected LO.a = Op & $0F
-  
+
   Protected SX.l = (VDP(32) | (VDP(33) << 8)) & 511
   Protected SY.l = (VDP(34) | (VDP(35) << 8)) & 1023
   Protected DX.l = (VDP(36) | (VDP(37) << 8)) & 511
@@ -539,7 +578,15 @@ Procedure VDPDraw(Op.a)
       MMC\Active = 1
       VDPStatus(2) = VDPStatus(2) | $01 ; CE = 1
       VDPStatus(2) = VDPStatus(2) | $80 ; TR = 1
-      
+      ; Real V9938/fMSX consumes one pixel immediately when the command starts, using
+      ; whatever value is already latched in VDP register 44 (S#7) - see real fMSX's
+      ; VDPDraw() in V9938.c, which calls VdpEngine() once right after setup, before any
+      ; CPU feed byte arrives. A real MSX2 BIOS LMMC feed loop (found booting plain MSX2,
+      ; docs/SPEC.md module 32j) relies on this and only ever sends NX*NY-1 more bytes -
+      ; without this immediate first plot, MMC\ASX/ADX can never reach NX*NY, CE (Command
+      ; Executing) never clears, and every later "wait for VDP ready" poll hangs forever.
+      VDPWrite(VDP(44))
+
     Case $0A ; LMCM (VRAM to CPU)
       MMC\SX = SX : MMC\SY = SY
       MMC\DX = DX : MMC\DY = DY

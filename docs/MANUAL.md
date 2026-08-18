@@ -3070,13 +3070,15 @@ veja `docs/SPEC.md`.
 - Compilar: `.\fossauro\build.ps1` (precisa de `pbcompiler` no `PATH`, mesma exigência do `build.ps1`
   principal da IDE — não usa o `build.config.json` do Paleobasic, são scripts independentes).
 - Rodar: `fossauro\fossauro.exe [-msx1|-msx2|-msx2+] [-rom <arquivo>] [-verbose]`. Sem argumentos, sobe
-  direto pro boot do MSX1 (BIOS `fMSX/MSX.ROM`) sem cartucho — confirmado 2026-08-17 (screenshot) que
-  isso já mostra o boot completo de verdade: "`MSX BASIC version 1.0` / `Copyright 1983 by Microsoft` /
-  `28815 Bytes free` / `Ok`" com o cursor piscando e a barra de teclas de função (`color auto goto list
-  run`) no rodapé, igual ao fMSX real. `-msx2+` também chega no prompt do BASIC completo ("MSX BASIC
-  version 3.0"), carregando a BIOS certa por modelo — ver a tabela de linha de comando abaixo pro estado
-  de `-msx2` (carrega a BIOS certa mas ainda trava antes do prompt). A janela abre com menus **File**,
-  **Emulation** e **Hardware**.
+  direto pro boot do MSX1 (BIOS `fMSX/MSX.ROM`) com 64KB de RAM e 16KB de VRAM (padrão explícito do
+  projeto desde 2026-08-18 - `Mode`/`RAMPages`/`VRAMPages` em `MSX.pbi`) sem cartucho — confirmado
+  2026-08-17 (screenshot) que isso já mostra o boot completo de verdade: "`MSX BASIC version 1.0` /
+  `Copyright 1983 by Microsoft` / `28815 Bytes free` / `Ok`" com o cursor piscando e a barra de teclas de
+  função (`color auto goto list run`) no rodapé, igual ao fMSX real. **Os três modelos chegam no prompt do
+  BASIC completo**
+  (`-msx1`="MSX BASIC version 1.0", `-msx2`="MSX BASIC version 2.1" desde a correção do freeze de boot em
+  2026-08-18 (`docs/SPEC.md` módulo 32j), `-msx2+`="MSX BASIC version 3.0"), carregando a BIOS certa por
+  modelo. A janela abre com menus **File**, **Emulation** e **Hardware**.
 - **Menu File**: `Open Cartridge...` (carrega um `.rom`/`.mx1`/`.mx2`), `Open Disk...` (seleciona um
   `.dsk` mas ainda não faz nada com ele - sem controlador de disquete implementado), `Save Snapshot...`/
   `Open Snapshot...` (salva/carrega o estado completo da máquina - RAM, VRAM, CPU, VDP, PSG, PPI, RTC,
@@ -3086,6 +3088,29 @@ veja `docs/SPEC.md`.
 - **Menu Hardware → Model**: troca entre MSX1/MSX2/MSX2+ com a máquina já rodando (recarrega a BIOS certa,
   recarrega o cartucho atual se houver, reset completo - equivalente a reiniciar com um modelo diferente,
   não preserva RAM/VRAM). O item do modelo atual aparece marcado.
+- **Menu Hardware → RAM Size**: 64/128/256/512/1024 KB, também com reset completo (igual trocar de
+  modelo - não é hot-swap). Implementado igual ao fMSX real: o mapeador de RAM por bancos (portas
+  `$FC`-`$FF`, sempre no Slot Primário 3/Secundário 2) é usado em **todos** os modelos, não só MSX2/2+ -
+  o fMSX real não modela expansão de RAM do MSX1 como cartuchos separados, mesmo sendo essa a prática mais
+  comum em hardware real da época. O tamanho pedido é arredondado pra potência de 2 e limitado por modelo
+  (MSX1 mínimo 4 páginas/64KB, MSX2/2+ mínimo 8 páginas/128KB, máximo 256 páginas/4096KB) - pedir 64KB
+  rodando MSX2/2+, por exemplo, aplica 128KB (mínimo do modelo) em vez de travar ou dar erro, mesmo
+  comportamento do fMSX original. Também setável via `-ram <páginas>` na linha de comando. O item do
+  tamanho realmente aplicado aparece marcado (pode diferir do que foi clicado, por causa do
+  arredondamento/limite acima).
+- **Menu Hardware → VRAM Size**: 16/32/64/128/192 KB, mesma lógica da RAM Size acima. O fMSX real é ainda
+  mais rígido aqui: MSX2/MSX2+ só aceitam exatamente 128KB (qualquer outro valor volta pra 128KB), MSX1
+  só aceita 32/64/128KB (16KB volta pra 32KB) - "192KB"/addon V9958 não existe no fMSX real, nunca fica
+  selecionado de verdade. Também setável via `-vram <páginas>`.
+- **Menu Hardware → Cartridge Slot A / Cartridge Slot B**: `Load...`/`Eject` independentes por slot (Slot
+  A sempre Slot Primário 1, Slot B sempre Slot Primário 2 - um bug real do código antigo fazia o Slot A
+  espelhar nos dois slots primários "por compatibilidade com cartucho único", roubando o Slot B se
+  carregado depois; corrigido) mais um submenu `Mapper Type` (Guess MegaROM mapper/Generic 8KB/Generic
+  16KB/Konami 5000h-SCC/Konami 4000h/ASCII 8KB/ASCII 16KB/GameMaster2/FMPAC, mesma lista do `-rom <tipo>`
+  do fMSX real). ROMs maiores que 32KB agora trocam de banco de verdade (`MapROM()`, portado do
+  `MSX.c` real) em vez de simplesmente truncar - inclui RAM battery-backed (SRAM) pros mappers que
+  precisam, só que sem persistir em arquivo `.sav` ainda (só dura a sessão). Trocar o mapper com um
+  cartucho já carregado recarrega ele ao vivo com o novo mapper.
 - **Menu Emulation**: `Reset`, `Pause`, `Resume`.
 - Se a tela ficar azul sólida sem nada desenhado por mais que alguns segundos, isso **não** é o
   comportamento esperado — é sintoma do bug de `EX (SP),HL` corrigido em 2026-08-17 (`docs/SPEC.md`
@@ -3107,9 +3132,11 @@ Resumo do que já tem efeito real vs. só é aceito (não trava, não gera erro,
 | Categoria | Exemplos | Estado |
 |---|---|---|
 | Cartucho | `[arquivo1] [arquivo2]` posicionais (padrão fMSX real — 1º = slot A, 2º = slot B), `-rom <arquivo>` (atalho antigo do fossauro, ainda aceito) | **Funciona** — carrega e mapeia nos slots 1 e 2 respectivamente. |
-| Modelo/vídeo | `-msx1`/`-msx2`/`-msx2+`, `-pal`/`-ntsc` | **`-msx1` e `-msx2+` funcionam de ponta a ponta** — carregam a BIOS certa por modelo (`MSX.ROM` / `MSX2P.ROM`+`MSX2PEXT.ROM`) e chegam no prompt do BASIC (confirmado por screenshot 2026-08-17, `docs/SPEC.md` módulo 32g: MSX1 mostra "MSX BASIC version 1.0", MSX2+ mostra "MSX BASIC version 3.0"). **`-msx2` carrega a BIOS certa mas ainda não chega no prompt** — trava num loop de polling de hardware na extended BIOS depois de ligar a tela (ver módulo 32g para o estado exato); além disso SCREEN 6/7 (usado durante esse trecho do boot do MSX2) ainda não é desenhado por `RefreshLine()` (só modos 0-5/8), então mesmo quando esse loop for resolvido a tela ficará em branco até esse suporte existir. |
+| Modelo/vídeo | `-msx1`/`-msx2`/`-msx2+`, `-pal`/`-ntsc` | **Os três modelos funcionam de ponta a ponta** — carregam a BIOS certa por modelo (`MSX.ROM` / `MSX2.ROM`+`MSX2EXT.ROM` / `MSX2P.ROM`+`MSX2PEXT.ROM`) e chegam no prompt do BASIC (MSX1 mostra "MSX BASIC version 1.0", MSX2 mostra "MSX BASIC version 2.1" desde a correção do freeze de boot em 2026-08-18, `docs/SPEC.md` módulo 32j, MSX2+ mostra "MSX BASIC version 3.0"). SCREEN 6/7 (usado durante o boot do MSX2, pro logo/ícone) ainda não é desenhado por `RefreshLine()` (só modos 0-5/8) - desenhado corretamente na VRAM, só não aparece na tela. |
+| Memória | `-ram <páginas>` | **Funciona** — número de páginas de 16KB atrás do mapeador de RAM (portas `$FC`-`$FF`, mesmo mecanismo em todo modelo). Arredondado pra potência de 2 e limitado por modelo (MSX1 mín. 4/64KB, MSX2/2+ mín. 8/128KB, máx. 256/4096KB), igual ao fMSX real. Também setável ao vivo via **Hardware → RAM Size**. |
+| Vídeo (memória) | `-vram <páginas>` | **Funciona** — mesma ideia, pro tamanho de VRAM. MSX2/2+ só aceitam exatamente 8 páginas (128KB), MSX1 só 2/4/8 (32/64/128KB), igual ao fMSX real. Também setável ao vivo via **Hardware → VRAM Size**. |
 | Log | `-verbose [<máscara>]` | **Funciona**, mas com bitmask própria do fossauro (1=geral, 2=memória, 4=VDP, 8=PSG, 16=CPU) — não é a mesma numeração do `-verbose <level>` do fMSX real. |
-| `-rom <tipo>` (mapeador MegaROM, 0-7) | — | Aceito e guardado, sem efeito — troca de mapeador MegaROM ainda não implementada. |
+| `-rom <tipo>` (mapeador MegaROM, 0-7) | — | Aceito e guardado, ainda sem efeito na CLI (troca de banco em si **já funciona** — ver **Hardware → Cartridge Slot A/B → Mapper Type**, só a flag de linha de comando que ainda não está ligada a isso). |
 | Resto (disco, fita, som, joystick, escala de tela, filtros de vídeo, trap do debugger, etc.) | `-diska`, `-diskb`, `-tape`, `-sound`, `-joy`, `-scale`, `-trap`, `-tv`/`-lcd`/`-raster`, `-mono`/`-sepia`, etc. | **Só aceito** — reconhecido, consome o argumento certo, registrado em `fossauro.log` com `-verbose` ligado, mas não muda comportamento nenhum ainda (disco/fita/som/joystick/filtros de vídeo não existem no fossauro hoje). |
 
 > **Corrigido 2026-08-17**: rodando um cartucho por tempo suficiente (~20-25s em modo padrão MSX2, ou

@@ -26,10 +26,9 @@ to his exceptional work in MSX emulation — this project would not exist withou
   verified byte-for-byte against real fMSX's C source. Per-model BIOS loading (MSX1/MSX2/MSX2+),
   cassette BIOS patches, and Real-Time Clock chip all implemented.
 - [x] **MSX1 boot** — boots completely to the BASIC prompt ("MSX BASIC version 1.0").
+- [x] **MSX2 boot** — boots completely to the BASIC prompt ("MSX BASIC version 2.1"). Root cause of the
+  long-standing freeze found and fixed 2026-08-18 — see `SPEC.md` §2.
 - [x] **MSX2+ boot** — boots completely to the BASIC prompt ("MSX BASIC version 3.0").
-- [ ] **MSX2 (non-Plus) boot** — reaches much further than before (screen turns on, `SCREEN 6` reached)
-  but still doesn't reach the BASIC prompt — stuck in a VDP status-polling loop with an unidentified
-  root cause. See `SPEC.md` §2/§3.
 - [x] **V9938 VDP** — text/bitmap rendering for modes 0/1/2/3/4/5/8, sprites, and the full VDP command
   engine (SRCH/LINE/LMMV/LMMM/LMCM/LMMC/HMMV/HMMM/YMMM/HMMC), all audited against real `V9938.c`. Missing:
   SCREEN 6/7 bitmap rendering, VDP command timing (commands complete instantly).
@@ -37,12 +36,31 @@ to his exceptional work in MSX emulation — this project would not exist withou
   machine), Win32 `waveOut` streaming.
 - [x] **File menu** — Open Cartridge (works), Save/Open Snapshot (real save-state, not a stub), Quit.
 - [x] **Hardware → Model menu** — live MSX1/MSX2/MSX2+ switching.
+- [x] **Hardware → RAM Size menu** — 64/128/256/512/1024KB, live (full reset). Real fMSX's bank-switched
+  RAM mapper (ports `$FC`-`$FF`, hardwired to Primary Slot 3/Secondary Slot 2) for every model alike -
+  fMSX doesn't model MSX1 RAM expansion as separate cartridges, even though that was the common real-
+  hardware approach. Also settable via `-ram <pages>`.
+- [x] **Hardware → VRAM Size menu** — 16/32/64/128/192KB, live (full reset). MSX2/MSX2+ match real fMSX
+  exactly (only ever accept exactly 128KB, any other selection silently snaps back). MSX1 accepts
+  16/32/64/128KB (192KB snaps to 16KB) - one deliberate deviation from real fMSX here: real fMSX's MSX1
+  minimum is actually 32KB (16KB always resets to it), but 16KB was the project owner's explicit choice
+  since it was the common real MSX1-hardware VRAM size and is now fossauro's own MSX1 default. Also
+  settable via `-vram <pages>`.
+- [x] **Startup defaults**: MSX1, 64KB RAM, 16KB VRAM (no CLI arguments needed) - project owner's explicit
+  choice, 2026-08-18.
+- [x] **Hardware → Cartridge Slot A/B menus** — independent Load.../Eject per slot (a real bug in the old
+  code had Slot A mirror into both primary slots, silently stealing Slot B's cartridge if loaded after
+  it - fixed), plus a Mapper Type submenu (Guess/Generic 8kB/Generic 16kB/Konami 5000h-SCC/Konami 4000h/
+  ASCII 8kB/ASCII 16kB/GameMaster2/FMPAC) matching real fMSX's `-rom <type>` list. MegaROMs (>32KB) get
+  real bank-switch emulation (`MapROM()`, ported from `MSX.c`) including SRAM for ASCII8/ASCII16/
+  GameMaster2/FMPAC (session-only, not persisted to a `.sav` file yet); SCC/OPLL sound chip registers are
+  trapped but not emulated (ROM/SRAM banking works without them). Auto-detection (`GuessROMType()`) ports
+  fMSX's content-scanning heuristic (no CRC/SHA1 known-ROM database, fossauro ships none).
 - [ ] **Disk (FDC) emulation** — not implemented. File→Open Disk... accepts a `.dsk` path but does nothing
   with it yet.
 - [ ] **Cassette (.CAS) emulation** — not implemented, explicitly deferred.
 - [ ] **Cheat (.CHT) support** — not implemented, explicitly deferred (planned: openMSX/BlueMSX-compatible
   format).
-- [ ] **MegaROM mappers** — not implemented; cartridges limited to flat 16KB/32KB.
 - [ ] Joystick/mouse, printer, serial, Kanji ROM, settings/config UI.
 
 ---

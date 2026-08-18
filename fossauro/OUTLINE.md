@@ -5,10 +5,11 @@ Claude conversation, or another developer). Read `SPEC.md` first for full compon
 prioritized "what's left" list — this file is about *how to work in this codebase efficiently*, not
 what's done.
 
-**Work was paused here on 2026-08-17 specifically to continue on a different PC.** The single most
-useful next action, if picking this up cold, is: read `SPEC.md` section 3 ("What's left to do"), then
-decide whether to keep chasing the plain-MSX2 boot freeze or move to the SCREEN 6/7 rendering gap or
-MegaROM mapper support — all three are independent and don't block each other.
+**Update 2026-08-18**: the plain-MSX2 boot freeze (this file's top priority as of 2026-08-17) is
+**fixed** — see `SPEC.md` §2 "Fixed 2026-08-18" and `docs/SPEC.md` module 32j for the full investigation.
+MSX1/MSX2/MSX2+ all boot to their BASIC prompts now. The single most useful next action, picking this up
+fresh, is: read `SPEC.md` section 3 ("What's left to do") and pick between SCREEN 6/7 rendering or MegaROM
+mapper support — both independent, neither blocks the other.
 
 ---
 
@@ -116,6 +117,21 @@ very long story) converged on a few techniques worth reusing rather than redisco
 - **Always clean up temporary trace/test code before finishing a session** — grep the diff for leftover
   `Global ...TraceCount` declarations, stray blank lines from edits, etc. This has bitten a couple of
   passes in this project's history (see `git diff` hygiene notes in `docs/SPEC.md` module 32g).
+- **Don't hand-simulate a loop's iteration count from a single static RAM dump — trace the real
+  execution instead.** The LMMC feed-loop investigation (module 32j) hand-decoded a `DJNZ`/`PUSH BC`/
+  `POP BC` outer-loop structure from one RAM snapshot and got the byte count wrong (concluded 8 bytes
+  when the real number needed cross-checking); a targeted per-instruction trace gated on the exact PC
+  range and frame window (same "bounded, PC-exact" principle as above, just logging every instruction in
+  the range instead of only edge-transitions) settled it in one recompile instead of several more rounds
+  of manual arithmetic.
+- **When fossauro's synchronous/instant command model disagrees with what a real, hardware-validated ROM
+  expects, check the real `fMSX/fMSX/V9938.c`/`MSX.c` source for what real hardware's own state machine
+  actually does at that exact step** — don't assume fossauro's simplified model is a faithful shortcut.
+  The LMMC "off by one" (module 32j) turned out to be exactly this: real fMSX's `VDPDraw()` calls the
+  command engine once immediately at command start (consuming whatever was already latched in VDP
+  register 44), so real ROMs correctly send `NX*NY-1` CPU feed bytes, not `NX*NY` — fossauro's model
+  required the full `NX*NY` and could never complete. The C source was the fastest way to find this,
+  faster than more rounds of guessing from symptoms alone.
 
 ## 5. Build & run
 

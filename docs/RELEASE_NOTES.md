@@ -6,6 +6,47 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.1.3 — "MSX2 DE VERDADE" (2026-08-18)
+
+**Tema da versão**: o Fossauro sai do "esqueleto que só boota MSX1/MSX2+" pra emulador MSX de verdade —
+causa raiz do freeze de boot do MSX2 puro finalmente encontrada e corrigida (os três modelos bootam de
+ponta a ponta agora), mais tamanho de RAM/VRAM configurável e suporte a mappers MegaROM em cartucho, tudo
+portado fielmente do fonte C real do fMSX.
+
+### Novidades
+
+- **MSX2 puro agora boota completamente** ("MSX BASIC version 2.1"), depois de duas sessões anteriores
+  sem conseguir isolar a causa. Achado: um comando de VDP LMMC (desenho do logo de boot) alimentado com
+  127 de 128 bytes esperados — correto pelo protocolo real do V9938 (hardware consome o primeiro pixel
+  imediatamente ao iniciar o comando), mas o `fossauro` exigia os 128 completos e nunca limpava o flag CE,
+  travando toda espera de "VDP pronto" depois disso. Ver `docs/SPEC.md` módulo 32j.
+- **Hardware → RAM Size** (64/128/256/512/1024KB) e **Hardware → VRAM Size** (16/32/64/128/192KB): mapeador
+  de RAM por bancos (portas `$FC`-`$FF`) portado fielmente do `MSX.c` real, usado em todo modelo (o fMSX
+  real não modela expansão de RAM do MSX1 como cartuchos separados, mesmo sendo a prática mais comum em
+  hardware real da época). VRAM segue o mesmo padrão, com uma divergência proposital: MSX1 aceita 16KB de
+  verdade (o fMSX real exige mínimo 32KB) — tamanho comum em hardware MSX1 real, escolha explícita do
+  usuário. `-ram`/`-vram` na CLI finalmente ligados. Ver módulos 32k/32l/32m.
+- **Hardware → Cartridge Slot A/B** com suporte a mappers MegaROM: Guess/Generic 8KB/Generic 16KB/Konami
+  5000h(SCC)/Konami 4000h/ASCII 8KB/ASCII 16KB/GameMaster2/FMPAC, com RAM battery-backed (SRAM, só-sessão)
+  pros que precisam. Corrigido de quebra um bug real onde o Slot A espelhava nos dois slots primários e
+  roubava o Slot B se carregado depois. Ver módulo 32l.
+- **Padrão de inicialização mudou pra MSX1, 64KB RAM, 16KB VRAM** (escolha explícita do usuário) — antes
+  era MSX2/128KB/128KB. Ver módulo 32m.
+
+### Bastidores
+
+- Metodologia decisiva pro achado do MSX2: trace de instrução real (não desmontagem manual) numa faixa de
+  endereço/frame exata, mais comparação linha-a-linha contra `fMSX/fMSX/V9938.c`/`MSX.c` reais quando o
+  modelo simplificado do `fossauro` divergia do que hardware real faz - mais rápido que adivinhar a partir
+  dos sintomas.
+- Formato de snapshot `.fss` passou de v1 pra v3 (RAM de tamanho variável em v2, VRAM em v3) - snapshots
+  salvos antes desta versão não carregam mais (checagem de versão já existente recusa educadamente).
+- Achado durante o teste de MegaROM (não-relacionado, não é regressão): reproduzido um bug **já
+  documentado** de sessão anterior (estouro de pilha do hook H.TIMI) com um cartucho simples que não passa
+  por nenhum código novo desta versão - confirmado que não tem relação com o trabalho de hoje.
+
+---
+
 ## 8.0.1 — "OVO DE FOSSAURO" (2026-08-15)
 
 **Tema da versão**: navegação por cursor no debugger visual Z80, e o port nativo em PureBasic do fMSX
