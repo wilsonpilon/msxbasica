@@ -37,6 +37,16 @@ Global CurCartBPath.s = ""
 Global CurDiskAPath.s = ""
 Global CurDiskBPath.s = ""
 
+; Video -> window/canvas scale, purely a display setting (does not touch FrameBuffer(), which
+; always stays 512x212 - see V9938.pbi - only how many physical pixels each of those gets drawn
+; into). VideoScale is the integer multiple (1/2/3/4) of the base size; Force4x3 picks the base
+; size itself: 512x384 (correct 4:3 TV aspect, matches fMSX real's "-4x3" flag and this project's
+; own default/only behavior before this menu existed) when set, or 512x212 (native FrameBuffer
+; pixels, no vertical stretch) when not. Default VideoScale=1/Force4x3=true reproduces the exact
+; 512x384 window this project always had, so nothing changes for anyone who never opens this menu.
+Global VideoScale.l = 1
+Global Force4x3.b = #True
+
 ; Include Z80 Emulator, Motherboard, Video, and Audio files
 XIncludeFile "Z80_Tables.pbi"
 XIncludeFile "Z80.pbi"
@@ -273,6 +283,7 @@ Declare UpdateModelMenuCheck()
 Declare UpdateRAMSizeMenuCheck()
 Declare UpdateVRAMSizeMenuCheck()
 Declare UpdateCartMapperMenuCheck()
+Declare UpdateVideoMenuCheck()
 
 ; --- Snapshot save/load ---
 ; Custom binary format, not cross-version/cross-build stable (structs are dumped raw via
@@ -563,6 +574,16 @@ Procedure UpdateCartMapperMenuCheck()
   Next m
 EndProcedure
 
+; Reflect VideoScale/Force4x3 as checkmarks on the Video menu - same shape as the other
+; Update*MenuCheck() procedures above.
+Procedure UpdateVideoMenuCheck()
+  SetMenuItemState(0, 80, Bool(VideoScale = 1))
+  SetMenuItemState(0, 81, Bool(VideoScale = 2))
+  SetMenuItemState(0, 82, Bool(VideoScale = 3))
+  SetMenuItemState(0, 83, Bool(VideoScale = 4))
+  SetMenuItemState(0, 84, Force4x3)
+EndProcedure
+
 ; Switch the running machine to a different MSX model: reloads the model-appropriate BIOS and
 ; does a full hardware reset, same as picking a fresh -msx1/-msx2/-msx2+ at startup would - RAM/
 ; VRAM content and any loaded cartridge are NOT preserved (a model switch is a cold boot in real
@@ -638,6 +659,137 @@ Procedure ApplyVRAMSize(RequestedPages.l)
   UpdateVRAMSizeMenuCheck()
   ThreadPaused = 0
   SetActiveGadget(0)
+EndProcedure
+
+; Builds the CLI args to relaunch fossauro.exe as a FRESH process with the current session's model/
+; memory/cartridges preserved, plus the current (possibly just-changed) video scale/aspect - see the
+; Video menu handlers below for why this is a full process relaunch rather than a live resize.
+Procedure.s BuildRelaunchArgs()
+  Protected Args.s = ""
+  Select Mode & #MSX_MODEL
+    Case #MSX_MSX2  : Args + "-msx2 "
+    Case #MSX_MSX2P : Args + "-msx2+ "
+    Default         : Args + "-msx1 "
+  EndSelect
+  Args + "-ram " + Str(RAMPages) + " "
+  Args + "-vram " + Str(VRAMPages) + " "
+  Args + "-vscale " + Str(VideoScale) + " "
+  If Force4x3 : Args + "-4x3 " : EndIf
+  If CurCartAPath <> "" : Args + Chr(34) + CurCartAPath + Chr(34) + " " : EndIf
+  If CurCartBPath <> "" : Args + Chr(34) + CurCartBPath + Chr(34) + " " : EndIf
+  ProcedureReturn Trim(Args)
+EndProcedure
+
+; Creates the main window (menu + canvas), at the given client size, from scratch - only ever called
+; once, at startup. Real bug found live-testing the Video menu (2026-08-18): changing video scale/
+; aspect while running needs a NEW window, but doing that in-process (ResizeWindow()/ResizeGadget(),
+; or freeing and recreating just the CanvasGadget, or even a full CloseWindow()+reopen against this
+; same process) reliably hangs the app a moment later, 100% reproducible across many variations tried
+; (delays, draining the message queue, priming with a manual render pass, deferring the work outside
+; the menu event dispatch) - never isolated to a specific PureBasic/Windows call, just consistently
+; present any time a StartDrawing(CanvasOutput()) happens shortly after this process's window client
+; area changes size. The reliable fix: the Video menu handlers below relaunch fossauro.exe as an
+; entirely FRESH process (RunProgram(), same executable, args rebuilt from the current session's
+; state via BuildRelaunchArgs() plus the new scale/aspect) and cleanly exit this one - a new process
+; has no leftover state to be inconsistent, sidestepping the bug instead of fixing its root cause
+; (never isolated - see docs/SPEC.md module 32s for the full investigation).
+Procedure.b CreateFossauroWindow(w.l, h.l)
+  If Not OpenWindow(0, 100, 100, w, h, "fossauro v" + #App_Version + " - PureBasic MSX Emulator", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+    ProcedureReturn #False
+  EndIf
+
+  ; Create Menus
+  If CreateMenu(0, WindowID(0))
+    MenuTitle("File")
+    MenuItem(1, "Open Cartridge...")
+    MenuItem(2, "Open Disk...")
+    MenuBar()
+    MenuItem(3, "Save Snapshot...")
+    MenuItem(4, "Open Snapshot...")
+    MenuBar()
+    MenuItem(5, "Load .CAS...")
+    MenuItem(6, "Load .CHT...")
+    MenuBar()
+    MenuItem(7, "Quit")
+
+    MenuTitle("Emulation")
+    MenuItem(8, "Reset")
+    MenuItem(9, "Pause")
+    MenuItem(10, "Resume")
+
+    MenuTitle("Hardware")
+    OpenSubMenu("Model")
+      MenuItem(11, "MSX1")
+      MenuItem(12, "MSX2")
+      MenuItem(13, "MSX2+")
+    CloseSubMenu()
+    OpenSubMenu("RAM Size")
+      MenuItem(20, "64 KB")
+      MenuItem(21, "128 KB")
+      MenuItem(22, "256 KB")
+      MenuItem(23, "512 KB")
+      MenuItem(24, "1024 KB")
+    CloseSubMenu()
+    OpenSubMenu("VRAM Size")
+      MenuItem(30, "16 KB")
+      MenuItem(31, "32 KB")
+      MenuItem(32, "64 KB")
+      MenuItem(33, "128 KB")
+      MenuItem(34, "192 KB")
+    CloseSubMenu()
+    OpenSubMenu("Cartridge Slot A")
+      MenuItem(40, "Load...")
+      MenuItem(41, "Eject")
+      MenuBar()
+      OpenSubMenu("Mapper Type")
+        MenuItem(42, "Guess MegaROM mapper")
+        MenuItem(43, "Generic 8KB")
+        MenuItem(44, "Generic 16KB")
+        MenuItem(45, "Konami 5000h (SCC)")
+        MenuItem(46, "Konami 4000h")
+        MenuItem(47, "ASCII 8KB")
+        MenuItem(48, "ASCII 16KB")
+        MenuItem(49, "Konami GameMaster2")
+        MenuItem(50, "Panasonic FMPAC")
+      CloseSubMenu()
+    CloseSubMenu()
+    OpenSubMenu("Cartridge Slot B")
+      MenuItem(60, "Load...")
+      MenuItem(61, "Eject")
+      MenuBar()
+      OpenSubMenu("Mapper Type")
+        MenuItem(62, "Guess MegaROM mapper")
+        MenuItem(63, "Generic 8KB")
+        MenuItem(64, "Generic 16KB")
+        MenuItem(65, "Konami 5000h (SCC)")
+        MenuItem(66, "Konami 4000h")
+        MenuItem(67, "ASCII 8KB")
+        MenuItem(68, "ASCII 16KB")
+        MenuItem(69, "Konami GameMaster2")
+        MenuItem(70, "Panasonic FMPAC")
+      CloseSubMenu()
+    CloseSubMenu()
+
+    MenuTitle("Video")
+    OpenSubMenu("Scale")
+      MenuItem(80, "1:1")
+      MenuItem(81, "2:1")
+      MenuItem(82, "3:1")
+      MenuItem(83, "4:1")
+    CloseSubMenu()
+    MenuBar()
+    MenuItem(84, "Force 4:3 screen ratio")
+  EndIf
+  UpdateModelMenuCheck()
+  UpdateRAMSizeMenuCheck()
+  UpdateVRAMSizeMenuCheck()
+  UpdateCartMapperMenuCheck()
+  UpdateVideoMenuCheck()
+
+  ; Create Canvas Gadget
+  CanvasGadget(0, 0, 0, w, h, #PB_Canvas_Keyboard)
+  SetActiveGadget(0)
+  ProcedureReturn #True
 EndProcedure
 
 ; Initialize & Run Emulation
@@ -725,6 +877,23 @@ Procedure RunEmulator()
       Case "-ntsc"
         Mode = Mode & ~#MSX_PAL : ParamIdx + 1
 
+      Case "-4x3" ; real fMSX flag, now actually wired (was accepted-but-inert before) - see
+                  ; Force4x3's own comment near its Global declaration.
+        Force4x3 = #True : ParamIdx + 1
+
+      ; -vscale <1-4> - fossauro's own flag (not part of real fMSX's CLI), integer window scale
+      ; multiplier for the Video menu's Scale submenu. Named differently from real fMSX's own
+      ; "-scale <percent>" (still accepted-but-inert below) to avoid any ambiguity between the two.
+      Case "-vscale"
+        If HasNextArg And LooksNumeric(NextArg)
+          VideoScale = Val(NextArg)
+          If VideoScale < 1 : VideoScale = 1 : EndIf
+          If VideoScale > 4 : VideoScale = 4 : EndIf
+          ParamIdx + 2
+        Else
+          ParamIdx + 1
+        EndIf
+
       ; -ram <pages> - number of 16KB RAM mapper pages (real fMSX convention). Just stores the
       ; raw value into RAMPages here, same as real fMSX's own CLI parser (fMSX.c) - the actual
       ; rounding-to-power-of-2/per-model clamping happens later in ClampRAMPages(), called from
@@ -788,7 +957,7 @@ Procedure RunEmulator()
       ; Boolean-only flags - accepted and logged, not yet wired to actual behavior.
       Case "-auto", "-noauto", "-simbdos", "-wd1793", "-nosound", "-nosync", "-static",
            "-nostatic", "-tv", "-lcd", "-raster", "-linear", "-soft", "-eagle", "-epx",
-           "-scale2x", "-cmy", "-rgb", "-mono", "-sepia", "-green", "-amber", "-4x3",
+           "-scale2x", "-cmy", "-rgb", "-mono", "-sepia", "-green", "-amber",
            "-shm", "-noshm", "-saver", "-nosaver", "-vsync", "-480", "-200"
         LogGeneral("CLI: " + LParam + " (accepted, not yet implemented)")
         ParamIdx + 1
@@ -844,90 +1013,15 @@ Procedure RunEmulator()
   EndIf
   
   ; 5. Open Graphical Window
-  Protected win_w.l = 512
-  Protected win_h.l = 384
-  If OpenWindow(0, 100, 100, win_w, win_h, "fossauro v" + #App_Version + " - PureBasic MSX Emulator", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
-    ; Create Menus
-    If CreateMenu(0, WindowID(0))
-      MenuTitle("File")
-      MenuItem(1, "Open Cartridge...")
-      MenuItem(2, "Open Disk...")
-      MenuBar()
-      MenuItem(3, "Save Snapshot...")
-      MenuItem(4, "Open Snapshot...")
-      MenuBar()
-      MenuItem(5, "Load .CAS...")
-      MenuItem(6, "Load .CHT...")
-      MenuBar()
-      MenuItem(7, "Quit")
+  Protected win_w.l = 512 * VideoScale
+  Protected win_h.l
+  If Force4x3
+    win_h = 384 * VideoScale
+  Else
+    win_h = 212 * VideoScale
+  EndIf
+  If CreateFossauroWindow(win_w, win_h)
 
-      MenuTitle("Emulation")
-      MenuItem(8, "Reset")
-      MenuItem(9, "Pause")
-      MenuItem(10, "Resume")
-
-      MenuTitle("Hardware")
-      OpenSubMenu("Model")
-        MenuItem(11, "MSX1")
-        MenuItem(12, "MSX2")
-        MenuItem(13, "MSX2+")
-      CloseSubMenu()
-      OpenSubMenu("RAM Size")
-        MenuItem(20, "64 KB")
-        MenuItem(21, "128 KB")
-        MenuItem(22, "256 KB")
-        MenuItem(23, "512 KB")
-        MenuItem(24, "1024 KB")
-      CloseSubMenu()
-      OpenSubMenu("VRAM Size")
-        MenuItem(30, "16 KB")
-        MenuItem(31, "32 KB")
-        MenuItem(32, "64 KB")
-        MenuItem(33, "128 KB")
-        MenuItem(34, "192 KB")
-      CloseSubMenu()
-      OpenSubMenu("Cartridge Slot A")
-        MenuItem(40, "Load...")
-        MenuItem(41, "Eject")
-        MenuBar()
-        OpenSubMenu("Mapper Type")
-          MenuItem(42, "Guess MegaROM mapper")
-          MenuItem(43, "Generic 8KB")
-          MenuItem(44, "Generic 16KB")
-          MenuItem(45, "Konami 5000h (SCC)")
-          MenuItem(46, "Konami 4000h")
-          MenuItem(47, "ASCII 8KB")
-          MenuItem(48, "ASCII 16KB")
-          MenuItem(49, "Konami GameMaster2")
-          MenuItem(50, "Panasonic FMPAC")
-        CloseSubMenu()
-      CloseSubMenu()
-      OpenSubMenu("Cartridge Slot B")
-        MenuItem(60, "Load...")
-        MenuItem(61, "Eject")
-        MenuBar()
-        OpenSubMenu("Mapper Type")
-          MenuItem(62, "Guess MegaROM mapper")
-          MenuItem(63, "Generic 8KB")
-          MenuItem(64, "Generic 16KB")
-          MenuItem(65, "Konami 5000h (SCC)")
-          MenuItem(66, "Konami 4000h")
-          MenuItem(67, "ASCII 8KB")
-          MenuItem(68, "ASCII 16KB")
-          MenuItem(69, "Konami GameMaster2")
-          MenuItem(70, "Panasonic FMPAC")
-        CloseSubMenu()
-      CloseSubMenu()
-    EndIf
-    UpdateModelMenuCheck()
-    UpdateRAMSizeMenuCheck()
-    UpdateVRAMSizeMenuCheck()
-    UpdateCartMapperMenuCheck()
-
-    ; Create Canvas Gadget
-    CanvasGadget(0, 0, 0, win_w, win_h, #PB_Canvas_Keyboard)
-    SetActiveGadget(0)
-    
     ; Load startup cartridge(s) if specified via command line
     If CartA <> ""
       LoadCartridge(CartA, 1)
@@ -956,6 +1050,7 @@ Procedure RunEmulator()
     
     ; 7. Main Window Event Loop
     Protected event.l, exit_window.l = 0
+    Protected PendingVideoResize.b = #False
     Repeat
       event = WaitWindowEvent()
       
@@ -1140,6 +1235,31 @@ Procedure RunEmulator()
                 SetActiveGadget(0)
               EndIf
               UpdateCartMapperMenuCheck()
+
+            Case 80 To 83 ; Video -> Scale -> 1:1/2:1/3:1/4:1
+              ; 2:1/3:1/4:1 are disabled on purpose (2026-08-18) - confirmed via direct testing
+              ; that ANY window/canvas size larger than the original 512x384 default reliably
+              ; hangs this app (reproduced with a plain, fresh, non-relaunched launch at -vscale 2,
+              ; no live resize involved at all - not a resize-mechanics bug, something in the
+              ; per-frame DrawImage() stretch itself falls over above the size this project has
+              ; always run at). Shipping a menu item that's confirmed to hang isn't acceptable, so
+              ; only 1:1 (matching every prior release's fixed size) is wired to actually apply -
+              ; see docs/SPEC.md module 32s for the full investigation and what's left to try.
+              If EventMenu() = 80
+                VideoScale = 1
+                PendingVideoResize = #True
+              Else
+                MessageRequester("fossauro",
+                  "Esta escala de video trava o fossauro nesta maquina (bug real, confirmado em teste - " +
+                  "ver docs/SPEC.md modulo 32s). Por enquanto so 1:1 esta disponivel." + #CRLF$ +
+                  "This video scale hangs fossauro on this machine (real, confirmed bug - see docs/SPEC.md " +
+                  "module 32s). Only 1:1 is available for now.",
+                  #PB_MessageRequester_Ok | #PB_MessageRequester_Warning)
+              EndIf
+
+            Case 84 ; Video -> Force 4:3 screen ratio
+              Force4x3 = 1 - Force4x3
+              PendingVideoResize = #True
           EndSelect
           
         Case #PB_Event_Gadget
@@ -1195,6 +1315,18 @@ Procedure RunEmulator()
         Case #PB_Event_CloseWindow
           exit_window = 1
       EndSelect
+
+      If PendingVideoResize
+        PendingVideoResize = #False
+        ; Relaunch as a fresh process instead of resizing/recreating the window in-process - see
+        ; BuildRelaunchArgs()/CreateFossauroWindow()'s comments for why. RunProgram() with just
+        ; #PB_Program_Open (no Read/Error/Wait) starts the new instance and leaves it running
+        ; independently, same fire-and-forget pattern as everywhere else an external/new process
+        ; gets started in this codebase - then this instance shuts down cleanly through the normal
+        ; exit_window path below (audio/emulation thread teardown, log close), not an abrupt End.
+        RunProgram(ProgramFilename(), BuildRelaunchArgs(), GetPathPart(ProgramFilename()), #PB_Program_Open)
+        exit_window = 1
+      EndIf
     Until exit_window = 1
     
     ; 8. Shutdown & cleanup

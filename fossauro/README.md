@@ -64,6 +64,10 @@ to his exceptional work in MSX emulation — this project would not exist withou
   GameMaster2/FMPAC (session-only, not persisted to a `.sav` file yet); SCC/OPLL sound chip registers are
   trapped but not emulated (ROM/SRAM banking works without them). Auto-detection (`GuessROMType()`) ports
   fMSX's content-scanning heuristic (no CRC/SHA1 known-ROM database, fossauro ships none).
+- [x]/[ ] **Video → Scale/Force 4:3 menu** — 1:1 and the 4:3 toggle work, verified live. 2:1/3:1/4:1 show
+  a warning instead of applying: confirmed real, 100% reproducible hang any time the window/canvas
+  exceeds the original 512x384 default (not a resize-mechanics issue - even a fresh, non-relaunched
+  `-vscale 2` launch hangs on its own), root cause not isolated. See `docs/SPEC.md` module 32s.
 - [ ] **Disk (FDC) emulation** — WD1793 register/command mechanism implemented and verified in isolation
   (`FDC.pbi`, `fdc_verify.pb`: 4/4 tests pass against a real 720KB image, byte-exact). NOT yet usable
   end-to-end: mapping `DISK.ROM` into memory breaks MSX2/2+ boot (real regression, root cause not

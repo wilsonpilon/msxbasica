@@ -224,6 +224,7 @@ XIncludeFile "N80Support.pbi"
 XIncludeFile "AsmsxSupport.pbi"
 XIncludeFile "AsmsxHelpData.pbi"
 XIncludeFile "AsmsxHelpGui.pbi"
+XIncludeFile "FossauroSupport.pbi"
 XIncludeFile "MamuteSupport.pbi"
 XIncludeFile "MamuteHelpData.pbi"
 XIncludeFile "MamuteHelpGui.pbi"
@@ -558,6 +559,7 @@ Enumeration MenuItems
   #Menu_HexEditor
   #Menu_MamuteAssembler
   #Menu_OpenMSXConsole
+  #Menu_RunFossauro
   #Menu_ViewMdTxt
   #Menu_ViewMdTxtSplit
   #Menu_ConfigureBadig
@@ -569,6 +571,7 @@ Enumeration MenuItems
   #Menu_ConfigureAsmsx
   #Menu_ConfigureMamuteAssembler
   #Menu_ConfigureOpenMSX
+  #Menu_ConfigureFossauro
   #Menu_ConfigureProject
   #Menu_HelpEditor
   #Menu_HelpNestorBasic
@@ -587,6 +590,7 @@ Enumeration MenuItems
   #Menu_HelpMsxBas2Rom
   #Menu_HelpN80
   #Menu_HelpAsmsx
+  #Menu_HelpFossauro
   #Menu_HelpAbout
 EndEnumeration
 
@@ -645,7 +649,7 @@ EndEnumeration
 ; binarios que antes caiam em "dados crus": .COM, SuperCalc 2 (.CAL), dBase
 ; II (.DBF) e os 4 formatos nativos do Graphos III (.ALF/.LAY/.SCR/.SHP).
 CompilerIf Not Defined(App_Version, #PB_Constant)
-  #App_Version = "8.1.5"
+  #App_Version = "8.1.6"
 CompilerEndIf
 CompilerIf Not Defined(App_Build, #PB_Constant)
   #App_Build = "DEV"
@@ -4473,6 +4477,8 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuBar()
     MenuItem(#Menu_OpenMSXConsole, "openMSX (console de comandos)..." + Chr(9) + "F8")
     MenuBar()
+    MenuItem(#Menu_RunFossauro, "Fossauro..." + Chr(9) + "F10")
+    MenuBar()
     MenuItem(#Menu_ViewMdTxt, "Ver MD/TXT..." + Chr(9) + "F9")
     MenuItem(#Menu_ViewMdTxtSplit, "Ver MD+TXT..." + Chr(9) + "Shift+F9")
   MenuTitle("Configurar")
@@ -4485,6 +4491,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_ConfigureAsmsx, "asMSX...")
     MenuItem(#Menu_ConfigureMamuteAssembler, "Mamute Assembler...")
     MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
+    MenuItem(#Menu_ConfigureFossauro, "Fossauro...")
     MenuBar()
     MenuItem(#Menu_ConfigureProject, "Projeto...")
   MenuTitle("Ajuda")
@@ -4505,6 +4512,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_HelpMsxBas2Rom, "MSXBas2Rom...")
     MenuItem(#Menu_HelpN80, "N80...")
     MenuItem(#Menu_HelpAsmsx, "asMSX...")
+    MenuItem(#Menu_HelpFossauro, "Fossauro...")
     MenuItem(#Menu_HelpAbout, "Sobre...")
 
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_N, #Menu_New)
@@ -4537,6 +4545,7 @@ AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_S
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F6, #Menu_RenumberBasic)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F7, #Menu_HexEditor)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F8, #Menu_OpenMSXConsole)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F10, #Menu_RunFossauro)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_F9, #Menu_ViewMdTxt)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Shift | #PB_Shortcut_F9, #Menu_ViewMdTxtSplit)
 
@@ -4750,6 +4759,9 @@ Repeat
         Case #Menu_OpenMSXConsole
           OMSXGui_OpenWindow(#MainWindow)
 
+        Case #Menu_RunFossauro
+          Fossauro_Launch()
+
         Case #Menu_ViewMdTxt
           MdView_OpenSingle(#MainWindow)
 
@@ -4790,6 +4802,9 @@ Repeat
 
         Case #Menu_ConfigureOpenMSX
           OpenMsxCfg_OpenSettingsWindow(#MainWindow)
+
+        Case #Menu_ConfigureFossauro
+          FossauroSettings_OpenWindow(#MainWindow)
 
         Case #Menu_ConfigureProject
           ProjSettings_OpenWindow(#MainWindow)
@@ -4844,6 +4859,9 @@ Repeat
 
         Case #Menu_HelpAsmsx
           AsmsxHelp_OpenWindow(#MainWindow)
+
+        Case #Menu_HelpFossauro
+          GenMdHelp_OpenWindow(#MainWindow, "Ajuda - Fossauro", Fossauro_HelpDir())
 
         Case #Menu_HelpAbout
           ShowAboutDialog()

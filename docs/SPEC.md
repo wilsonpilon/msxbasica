@@ -7399,6 +7399,152 @@ outro caso (x64/arm64). Verificado: compila limpo e a janela principal abre e re
 projeto no futuro e só falhar em build x86, é exatamente esse mesmo padrão** - falta decorar o nome real
 pro ABI stdcall x86.
 
+### 32r. Integração Paleobasic ↔ Fossauro: `Executar → Fossauro`/`Configurar → Fossauro...` (2026-08-18, `8.1.5`)
+
+Resolve parte da pendência registrada no módulo 32b ("integração Paleobasic ↔ Fossauro"): a IDE principal
+agora sabe **iniciar** o Fossauro como processo externo, com opções padrão configuráveis - sem tentar
+linkar/incorporar (a licença não-comercial do Fossauro, `LICENSE-fossauro`, continua incompatível com a
+deste projeto, então ele nunca é compilado junto nem entra no pacote de distribuição, mesma relação que
+o openMSX já tem).
+
+**Novo `editor/FossauroSupport.pbi`**, mesmo molde de `AsmsxSupport.pbi` (ferramenta externa avulsa, sem
+canal de controle por pipe como o `OpenMSXBridge.pbi` do openMSX precisa - o Fossauro é um `.exe` GUI
+autônomo, só precisa ser iniciado):
+- `Structure FossauroSettings` (`ExePath`/`Model`/`RAMPages`/`VRAMPages`/`Pal`/`Verbose`/
+  `CartridgePath`) persistida em `fossauro_settings.json` (ao lado do executável da IDE, gitignored -
+  adicionado ao `.gitignore` nesta mesma sessão, já que as outras 3 configs machine-local do mesmo
+  padrão - `editor_settings.json`/`badig_settings.json`/`mamute_settings.json` - já estavam lá, mas 3
+  outras (`asmsx_settings.json`/`n80_settings.json`/`msxbas2rom_settings.json`/
+  `basic_options_settings.json`) seguem **commitadas de verdade** no repo, inconsistência pré-existente
+  não relacionada a esta sessão, não corrigida agora por estar fora do escopo pedido).
+- `Fossauro_FindExe()` tenta achar `fossauro/fossauro.exe` como pasta irmã de `editor/` (mesmo padrão de
+  `Asmsx_FindExe()`) só pra pré-preencher o campo da tela de configuração - **não** é usado como
+  fallback silencioso em `Fossauro_Launch()`, que exige o caminho configurado e salvo explicitamente
+  (`Salvar` na tela), mesma exigência de toda outra ferramenta externa configurável nesta IDE
+  (`BadigCfg\EmulatorPath` do openMSX, `AsmsxCfg\ExePath`, etc.).
+- `Fossauro_BuildCliArgs()`/`Fossauro_Launch()` montam `-msx1`/`-msx2`/`-msx2+ -ram N -vram N -pal`/
+  `-ntsc` [`-verbose`] [cartucho entre aspas] e chamam `RunProgram(... #PB_Program_Open)` simples (sem
+  `Read`/`Error`/`Wait` - não há nada pra acompanhar depois de abrir, a janela do Fossauro roda
+  independente) - `CloseProgram()` chamado imediatamente após só libera o identificador do PB, não
+  encerra o processo do Fossauro (mesma semântica de `CreateProcess()`/handle do Windows).
+- `-diska`/`-diskb` **deliberadamente fora desta tela** por enquanto - o FDC do Fossauro existe
+  (módulo 32p) mas ainda não está ligado ao boot, expor esses campos agora só confundiria (pareceria
+  funcional sem ser).
+
+**Menu**: `#Menu_RunFossauro` (Executar, atalho `F10` - livre, confirmado antes de usar) e
+`#Menu_ConfigureFossauro` (Configurar, sem atalho), ambos posicionados logo depois dos itens
+equivalentes do openMSX em cada menu (`Enumeration MenuItems`/`MenuTitle`/dispatch `#PB_Event_Menu`,
+`BadigEditor.pb`).
+
+**Metodologia de verificação real** (sem GUI automation frágil - `WM_KEYDOWN`/`WM_KEYUP` sintéticos pro
+atalho `F10` **não funcionam**: aceleradores Win32 só são processados via `TranslateAccelerator()` no
+loop de mensagens real, injetar a tecla direto via `SendMessage` pula essa etapa por completo, mesmo com
+`SetForegroundWindow()` bem-sucedido - achado nesta sessão, vale lembrar se algo parecido for tentado de
+novo): `WM_COMMAND` enviado direto pro `HWND` da janela principal com o ID numérico do item de menu
+(contado à mão na `Enumeration MenuItems` - `#Menu_New` = 0, cada linha seguinte +1) **funciona
+perfeitamente** e é o jeito confiável de testar qualquer item de menu sem depender de foco/acelerador -
+confirmado abrindo a tela "Configurar → Fossauro" de verdade (`EnumChildWindows` + `GetWindowText` pra
+listar os controles e confirmar textos/layout, `PrintWindow` pra um screenshot real) e, separadamente,
+confirmando `Executar → Fossauro` abrindo o `fossauro.exe` de verdade (processo reconhecido rodando,
+screenshot mostrando "MSX BASIC version 1.0" batendo com os padrões configurados). Fechar a janela de
+configurações via clique sintético (`BM_CLICK` nos botões temáticos `ThemedButton`) **não funcionou** -
+são `ButtonImageGadget` desenhados à mão (owner-draw), que não respondem a `BM_CLICK` da forma que um
+botão nativo simples responderia; matar o processo de teste foi o jeito prático de fechar depois de já
+ter confirmado visualmente o conteúdo da janela.
+
+### 32s. Fossauro — menu Video (escala 1:1-4:1 + forçar 4:3): 1:1 funcional, 2:1/3:1/4:1 com bug real de travamento não resolvido (2026-08-18, `8.1.5`)
+
+Pedido do usuário: menu **Video** no Fossauro com escala de janela 1:1 (atual)/2:1/3:1/4:1 e uma opção
+pra forçar proporção 4:3. Implementado o menu, os flags de CLI (`-vscale <1-4>`, `-4x3` - este último já
+existia no fMSX real como aceito-mas-inerte, agora ligado de verdade) e a persistência de estado
+(`VideoScale`/`Force4x3`, globais em `fossauro.pb`) - mas **só 1:1 ficou habilitado pra valer** depois de
+uma investigação longa que confirmou um bug real, 100% reproduzível, que trava o app em qualquer tamanho
+de janela/canvas maior que o padrão original (512x384).
+
+**Sintoma**: `fossauro.exe` iniciado (ou uma janela recriada em qualquer combinação de técnicas testada)
+numa resolução maior que 512x384 - `Responding=False` no `Get-Process` do Windows em poucos segundos, uso
+de CPU subindo continuamente (chegou a 230%+ de um núcleo, sugerindo múltiplas threads disputando algo),
+nunca se recupera sozinho (esperado até 30s+ sem melhora).
+
+**O que foi definitivamente descartado como causa, por teste direto**:
+- **Não é sobre redimensionar ao vivo** - um `fossauro.exe` iniciado do zero, direto, com só `-vscale 2`
+  (nenhum resize em tempo de execução envolvido) trava do mesmo jeito.
+- **Não é sobre o mecanismo de resize/recriação em si** - testadas, todas travando de forma consistente
+  (4/4 execuções cada): `ResizeWindow()`+`ResizeGadget()` ao vivo; `ResizeWindow()` sozinho sem tocar no
+  gadget; `FreeGadget()`+`CanvasGadget()` recriando o canvas; fechar e reabrir a janela inteira
+  (`CloseWindow()`+reabrir) dentro do mesmo processo; adiar a recriação pra fora do dispatch aninhado do
+  menu; relançar como processo **totalmente novo** via `RunProgram()` (`BuildRelaunchArgs()`) - até um
+  processo novo, limpo, sem nenhum estado herdado, trava se receber `-vscale 2`.
+- **Não é sobre o flag `-4x3` especificamente** - alternar só entre 512x384 e 512x212 (escala 1:1 nos dois
+  casos, dentro da faixa de tamanho já usada desde sempre) funciona perfeitamente nas duas direções.
+- **Não é sobre `FramePending` ficar travado** (uma hipótese real encontrada no caminho: fechar a janela
+  enquanto `FramePending=1` faz o motor de emulação nunca mais postar outro evento de frame, já que seu
+  guard "só um pendente por vez" nunca é limpo - real, mas não é a causa da trava, só de uma tela branca
+  permanente numa das variantes testadas sem ela travar).
+
+**Isolado até**: qualquer chamada a `StartDrawing(CanvasOutput(0))`/`DrawImage()`/`StopDrawing()` (o loop
+de render por frame em `RunEmulator()`) contra um canvas maior que 512x384 eventualmente trava - não
+identificada a causa raiz exata dentro do `DrawImage()`/GDI/DWM em si (sem acesso a um debugger real
+anexado ao processo nesta sessão). Repetição do padrão já documentado desta mesma máquina/instalação do
+PureBasic 6.40 (módulo 32q é outro exemplo) - vale considerar que pode ser outra peculiaridade do
+ambiente, não necessariamente um bug do próprio fossauro que se manifestaria em qualquer máquina.
+
+**Decisão**: `Video → Scale → 2:1/3:1/4:1` mostram um aviso (`MessageRequester`) em vez de aplicar -
+confirmado que não trava mais nesse caminho. `1:1` e o toggle `Force 4:3 screen ratio` (que só alterna
+dentro da faixa 512x212-512x384, nunca excede o padrão) estão totalmente funcionais e verificados ao vivo
+(`WM_COMMAND` + captura de tela real). `-vscale <N>` aceita 1-4 mas N>1 herda o mesmo bug - não há
+validação especial pra isso no parser de CLI, é o mesmo caminho de renderização quebrado.
+
+**Hipótese testada e descartada (mesmo dia, depois de uma dica do usuário)**: o usuário observou que as
+resoluções reais do fMSX pra escala 1/2/3/4 são 256x212/512x424/768x636/1024x848 - proporção plana (sem
+correção 4:3 embutida, só o próprio buffer 256x212 multiplicado pelo mesmo N nos dois eixos), diferente do
+que o `Force4x3` padrão desta sessão fazia (512x384 na escala 1:1, esticando só a altura de forma
+desproporcional ao N de largura). Isso levantou uma hipótese nova: será que o travamento não era sobre
+"maior que 512x384" em si, mas especificamente sobre pedir ao `DrawImage()` fatores de esticamento
+DIFERENTES por eixo (ex.: 2x largura + ~3.6x altura em 1024x768) em vez de um fator uniforme (2x nos dois
+eixos, como as resoluções reais do fMSX)? **Testado e descartado**: `Force4x3` temporariamente default
+`#False` + `-vscale 2` (dá exatamente 1024x424, fator 2x limpo nos dois eixos, batendo com a resolução 2
+real do fMSX) **também trava**, idêntico ao caso 1024x768. Confirma que o travamento é mesmo sobre o
+TAMANHO ABSOLUTO do canvas excedendo ~512x384, não sobre a relação entre os fatores de esticamento por
+eixo - a proporção fiel ao fMSX real (`Case 80 To 83`'s fórmula já usa `212 * VideoScale` sem 4:3, que já
+bate exatamente com os números do fMSX real: 212/424/636/848) fica registrada aqui como a fórmula correta
+pra quando o travamento em si for resolvido, mas não muda o status atual (2:1+ continuam desabilitados).
+
+**Próximo passo pra quem pegar isso depois**: instrumentar com um debugger real (não disponível nesta
+sessão) anexado no momento exato do travamento pra pegar a pilha de chamadas nativa, seria o caminho mais
+rápido pra achar a causa raiz de verdade. Alternativa sem debugger: substituir o `DrawImage()` com stretch
+implícito por um pré-escalonamento manual (uma única vez por mudança de tamanho, não por frame) seguido de
+um blit 1:1 todo frame - se isso também travar, aponta mais forte pra um problema de tamanho de canvas em
+si (não do `DrawImage`); se resolver, aponta pro custo do stretch por frame como causa real (mais provável
+dado o crescimento de CPU observado, mas não confirmado nesta sessão por falta de tempo).
+
+### 32t. Ajuda → Fossauro... na IDE principal + achado real no GenMdHelp_RenderMarkdown() (2026-08-18, próxima versão)
+
+`Ajuda → Fossauro...` (novo item de menu) reaproveita o motor genérico já usado por `Ajuda → N80.../
+MSXBas2Rom...` (`GenericMdHelpGui.pbi`, `GenMdHelp_OpenWindow()`) apontando pra uma pasta nova e
+**versionada** (não um cache de download): `fossauro/help/*.md` + `_index.json` (3 tópicos: Status
+atual, Fossauro no Paleobasic, Teclado e linha de comando - o último adaptado de
+`fossauro/fossauro.md`, os outros dois curados a partir da própria seção Fossauro do
+`docs/MANUAL.md`, atualizada nesta mesma sessão pra bater com o menu Video novo). `Fossauro_HelpDir()`
+(`editor/FossauroSupport.pbi`) só devolve o caminho, sem lógica de "Baixar" nenhuma - o conteúdo já
+vem pronto no repositório.
+
+**Achado ao verificar ao vivo** (screenshot real, `WM_COMMAND` no item de menu): o conteúdo aparece e
+navega corretamente (árvore com os 3 tópicos, busca, clique troca de conteúdo), mas `**negrito**` e
+`` `código` `` aparecem com os marcadores literais na tela (não convertidos pra estilo), e `## ` não
+vira um cabeçalho H2 visualmente distinto (só `# ` no início do arquivo funcionou). Tentativas de
+diagnóstico: conferido que o arquivo `.md` chega certinho em disco (sem BOM, sem CRLF misto, conteúdo
+exatamente como esperado); adicionado BOM UTF-8 nos 3 arquivos por precaução (mesma lição do módulo
+sobre `pbcompiler.exe`/UTF-8 no `CLAUDE.md`) - **não mudou nada**; não deu tempo de confirmar se é um
+bug pré-existente do próprio `GenMdHelp_RenderMarkdown()` (não teria sido introduzido nesta sessão,
+já que N80/MSXBas2Rom's usam o mesmo motor há mais tempo) ou algo específico do meu conteúdo - uma
+tentativa de comparar contra a Ajuda do MSXBas2Rom (que já tem conteúdo baixado de sessões antigas)
+não deu tempo de concluir. **Não bloqueia o uso** (o texto é perfeitamente legível mesmo com os
+marcadores visíveis), mas fica registrado como pendência de polish visual pra quem pegar isso depois -
+o primeiro passo seria comparar lado a lado com `Ajuda → MSXBas2Rom...`/`Ajuda → N80...` (conteúdo já
+baixado, mesmo motor) pra confirmar se é ou não um bug pré-existente antes de mexer em
+`GenericMdHelpGui.pbi`.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido

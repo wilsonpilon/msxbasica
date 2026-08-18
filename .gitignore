@@ -116,3 +116,7 @@
 # guarda caminhos de arquivo (BIOS/BASIC/etc.) especificos da maquina do
 # usuario, igual as outras acima.
 /editor/mamute_settings.json
+
+# Configuracao do Fossauro (Configurar -> Fossauro...) - caminho do
+# executavel/modelo/RAM/VRAM padrao, especificos da maquina do usuario.
+/editor/fossauro_settings.json

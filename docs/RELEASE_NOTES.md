@@ -6,6 +6,46 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.1.6 — "FÓSSIL NÃO CRESCE, MAS APRENDEU A SE EXPLICAR" (2026-08-18)
+
+**Tema da versão**: o Fossauro se integra de vez ao Paleobasic (Executar/Configurar/Ajuda, tudo num só
+menu) e ganha um menu de Vídeo de verdade — só que a escala 1:1 é a única que sai da caixa sem travar a
+máquina, um bug real e reprodutível ainda não isolado. Nome escolhido pra render homenagem ao tema
+paleontológico do projeto e à mesma honestidade das notas anteriores: o fóssil não cresce de tamanho,
+mas pelo menos agora tem uma ajuda própria pra se consultar.
+
+### Novidades
+
+- **Integração completa Executar/Configurar/Ajuda → Fossauro**: o Paleobasic agora abre, configura e
+  documenta o Fossauro sem sair do editor principal — `Executar → Fossauro` (F10) lança o emulador com
+  as configurações salvas, `Configurar → Fossauro...` edita máquina/memória/caminho num diálogo dedicado
+  (padrão `AsmsxSupport.pbi`: JSON ao lado do `.exe`, botões temáticos, Salvar/Cancelar), e
+  `Ajuda → Fossauro...` abre uma referência estática (status atual, integração, teclado/linha de
+  comando) reaproveitando o mesmo visualizador markdown do N80/MSXBas2Rom.
+- **Menu Vídeo no Fossauro**: `Vídeo → Escala → 1:1/2:1/3:1/4:1` e `Forçar proporção de tela 4:3`, mais
+  as flags de linha de comando equivalentes (`-vscale <1-4>`, `-4x3`). Só **1:1** e o **4:3** aplicam de
+  verdade hoje — **2:1/3:1/4:1 mostram um aviso em vez de travar**: qualquer janela/canvas maior que
+  512x384 trava o processo de forma 100% reproduzível nesta máquina, independente da técnica usada
+  (redimensionar, recriar gadget, recriar janela inteira, até relançar o processo do zero) — causa raiz
+  não isolada apesar de investigação extensa. Decisão consciente: travar nunca, mesmo que isso signifique
+  entregar menos escala do que o planejado. Ver `docs/SPEC.md` módulo 32s para a investigação completa.
+- Corrigido de quebra, achado durante essa mesma investigação: uma bandeira interna (`FramePending`)
+  ficava presa em 1 se a janela fosse fechada com um frame pendente, parando o rendering pra sempre sem
+  travar nem dar erro — silencioso o bastante pra passar despercebido até agora.
+
+### Bastidores
+
+- A ajuda nova do Fossauro (`fossauro/help/*.md`) tem um bug cosmético conhecido e não bloqueante:
+  `**negrito**`, `` `código` `` e `## H2` aparecem com a sintaxe markdown literal em vez de formatados —
+  só o título `# H1` renderiza certo. BOM UTF-8 testado como hipótese, não resolveu; causa raiz não
+  isolada por falta de tempo nesta sessão. Conteúdo continua legível. Ver `docs/SPEC.md` módulo 32t.
+- Metodologia: `WM_KEYDOWN`/`WM_KEYUP` injetados via `SendMessage`/`PostMessage` **não** disparam
+  atalhos de teclado do PureBasic (`AddKeyboardShortcut()` depende do `TranslateAccelerator()` real do
+  loop de mensagens) — `WM_COMMAND` com o ID numérico do menu (contado pela posição no bloco
+  `Enumeration MenuItems`) é o jeito confiável de testar isso automatizado.
+
+---
+
 ## 8.1.5 — "SOM E TELA DE VERDADE, DISCO QUE NÃO GIRA" (2026-08-18)
 
 **Tema da versão**: o Fossauro ganha áudio e vídeo completos (PSG verificado tocando de ponta a ponta,

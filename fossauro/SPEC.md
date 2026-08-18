@@ -319,6 +319,12 @@ since they already cover every link in the chain except port-write routing, whic
   `.CHT` is planned to be openMSX/BlueMSX cheat-format-compatible once implemented).
 - **File → Quit**, **Emulation → Reset/Pause/Resume**: work.
 - **Hardware → Model → MSX1/MSX2/MSX2+**: live model switching, see above.
+- **Video → Scale → 1:1 / Force 4:3 screen ratio**: work, verified live. **2:1/3:1/4:1 show a warning
+  instead of applying** — confirmed real, 100% reproducible hang (not a resize-mechanics bug: even a
+  fresh, non-relaunched `fossauro.exe -vscale 2` hangs on its own) any time the window/canvas exceeds the
+  original 512x384 default, root cause not isolated (no debugger attached this session). `-vscale <N>`/
+  `-4x3` CLI flags exist (`-4x3` was already an accepted-but-inert real-fMSX flag, now wired). See
+  `docs/SPEC.md` module 32s for the full investigation and what to try next.
 
 No settings/config screens yet (font, theme, key remapping, controller config, video filters, etc. — all
 still just accepted-but-inert CLI flags, see the CLI table in `docs/MANUAL.md`'s Fossauro section).

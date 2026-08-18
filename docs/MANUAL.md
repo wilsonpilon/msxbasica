@@ -3055,10 +3055,31 @@ ainda, pede pra rodar `A` primeiro; `NEW` invalida esse resultado guardado.
 **🦴 Fossauro** (`fossauro/`) é um port nativo em PureBasic do emulador **fMSX** de Marat Fayzullin —
 projeto irmão dentro deste repositório, com licença própria (não-comercial, ver
 [`LICENSE-fossauro`](../LICENSE-fossauro) na raiz e a seção Licença do `README.md`). Roda como
-executável **separado** (`fossauro/fossauro.exe`), sem integração com o IDE principal ainda — ver
-`docs/SPEC.md`, módulos 32b/32c, para arquitetura, status por componente e o roteiro de integração
-futura. Esta seção documenta só a operação da janela e da linha de comando; para arquitetura interna,
-veja `docs/SPEC.md`.
+executável **separado** (`fossauro/fossauro.exe`), nunca linkado nem distribuído junto (licença
+incompatível com a deste projeto) — mas desde 2026-08-18 a IDE principal sabe **iniciá-lo** como
+processo externo, ver "Integração com o Paleobasic" abaixo. Ver `docs/SPEC.md`, módulos 32b/32c/32r,
+para arquitetura, status por componente e o roteiro de integração futura. Esta seção documenta a
+operação da janela e da linha de comando do próprio Fossauro; para arquitetura interna, veja
+`docs/SPEC.md`.
+
+### Integração com o Paleobasic (Executar/Configurar → Fossauro)
+
+- **Configurar → Fossauro...**: tela de configurações padrão (`editor/FossauroSupport.pbi`,
+  `fossauro_settings.json` ao lado do executável da IDE - machine-local, gitignored, mesmo padrão de
+  `asmsx_settings.json`/`n80_settings.json`). Campos: caminho do executável (tenta auto-detectar
+  `fossauro/fossauro.exe` como pasta irmã de `editor/` se o campo estiver vazio - ainda precisa clicar
+  Salvar uma vez, mesma exigência de qualquer ferramenta externa configurável nesta IDE), tipo de
+  máquina (MSX1/MSX2/MSX2+), RAM (64/128/256/512/1024KB) e VRAM (16/32/64/128/192KB) — mesmos valores
+  válidos dos próprios menus **Hardware → RAM Size/VRAM Size** do Fossauro —, temporização PAL/NTSC, log
+  verboso (`-verbose`) e um cartucho padrão opcional carregado no Slot A ao iniciar.
+- **Executar → Fossauro...** (`F10`): inicia o executável configurado com as opções acima
+  (`-msx1`/`-msx2`/`-msx2+ -ram N -vram N -pal`/`-ntsc` [`-verbose`] [cartucho]), like um processo
+  independente — sem canal de controle por pipe (diferente do openMSX), a janela do Fossauro abre e
+  fica rodando por conta própria. Sem caminho configurado, mostra um erro apontando pra **Configurar →
+  Fossauro...**.
+- **`-diska`/`-diskb` (disco padrão) ainda não expostos aqui de propósito** — o controlador de disquete
+  (FDC) do Fossauro existe mas ainda não está ligado ao boot (regressão conhecida, `docs/SPEC.md` módulo
+  32p); serão adicionados à tela de configuração quando isso for corrigido.
 
 > `fossauro/manual.md` (mantido pelo próprio sub-projeto) descreve um conjunto bem mais amplo de menus
 > e opções de linha de comando do que o que existe implementado hoje — a tabela abaixo separa
@@ -3112,6 +3133,11 @@ veja `docs/SPEC.md`.
   precisam, só que sem persistir em arquivo `.sav` ainda (só dura a sessão). Trocar o mapper com um
   cartucho já carregado recarrega ele ao vivo com o novo mapper.
 - **Menu Emulation**: `Reset`, `Pause`, `Resume`.
+- **Menu Video → Scale → 1:1 / Force 4:3 screen ratio**: funcionam, verificados ao vivo. **2:1/3:1/4:1
+  mostram um aviso em vez de aplicar** — bug real e 100% reproduzível confirmado nesta máquina: qualquer
+  janela/canvas maior que 512x384 trava o `fossauro.exe` (não é sobre redimensionar em si — até um
+  processo novo iniciado direto com `-vscale 2` trava sozinho). Causa raiz não isolada, ver `docs/SPEC.md`
+  módulo 32s. Também setável via `-vscale <1-4>` (N>1 herda o mesmo bug) e `-4x3` na linha de comando.
 - Se a tela ficar azul sólida sem nada desenhado por mais que alguns segundos, isso **não** é o
   comportamento esperado — é sintoma do bug de `EX (SP),HL` corrigido em 2026-08-17 (`docs/SPEC.md`
   módulo 32b, achado #2) ou de alguma regressão parecida; rode com `-verbose` e acompanhe
@@ -3136,6 +3162,8 @@ Resumo do que já tem efeito real vs. só é aceito (não trava, não gera erro,
 | Memória | `-ram <páginas>` | **Funciona** — número de páginas de 16KB atrás do mapeador de RAM (portas `$FC`-`$FF`, mesmo mecanismo em todo modelo). Arredondado pra potência de 2 e limitado por modelo (MSX1 mín. 4/64KB, MSX2/2+ mín. 8/128KB, máx. 256/4096KB), igual ao fMSX real. Também setável ao vivo via **Hardware → RAM Size**. |
 | Vídeo (memória) | `-vram <páginas>` | **Funciona** — mesma ideia, pro tamanho de VRAM. MSX2/2+ só aceitam exatamente 8 páginas (128KB), MSX1 só 2/4/8 (32/64/128KB), igual ao fMSX real. Também setável ao vivo via **Hardware → VRAM Size**. |
 | Log | `-verbose [<máscara>]` | **Funciona**, mas com bitmask própria do fossauro (1=geral, 2=memória, 4=VDP, 8=PSG, 16=CPU) — não é a mesma numeração do `-verbose <level>` do fMSX real. |
+| Vídeo (janela) | `-vscale <1-4>` | **Funciona só pra `1`** (única escala sem o bug de travamento do módulo 32s acima) — N>1 é aceito mas herda o mesmo travamento. Fórmula (`largura=256×N×2, altura=212×N`) confirmada batendo com as resoluções reais do fMSX (256x212/512x424/768x636/1024x848). |
+| Vídeo (proporção) | `-4x3` | **Funciona** — real flag do fMSX, antes aceita-mas-inerte, agora ligada de verdade. Mesmo efeito do toggle **Video → Force 4:3 screen ratio**. |
 | `-rom <tipo>` (mapeador MegaROM, 0-7) | — | Aceito e guardado, ainda sem efeito na CLI (troca de banco em si **já funciona** — ver **Hardware → Cartridge Slot A/B → Mapper Type**, só a flag de linha de comando que ainda não está ligada a isso). |
 | Resto (disco, fita, som, joystick, escala de tela, filtros de vídeo, trap do debugger, etc.) | `-diska`, `-diskb`, `-tape`, `-sound`, `-joy`, `-scale`, `-trap`, `-tv`/`-lcd`/`-raster`, `-mono`/`-sepia`, etc. | **Só aceito** — reconhecido, consome o argumento certo, registrado em `fossauro.log` com `-verbose` ligado, mas não muda comportamento nenhum ainda (disco/fita/som/joystick/filtros de vídeo não existem no fossauro hoje). |
 
@@ -3174,8 +3202,11 @@ projeto que ainda está construindo a base):
   já abre vazio - carregar ROM só funciona via `-rom` na linha de comando, não pela GUI ainda.
 - Menu **Emulation** (Reset, Pause/Resume, velocidade Fast Forward/Slow Motion, troca de sistema
   MSX1/MSX2/MSX2+ em runtime).
-- Menu **Video** (escala de janela, NTSC/PAL, scanlines) e **Audio** (mute, volume) — sem PSG
-  implementado (módulo 32c), não haveria o que controlar ainda de qualquer forma.
+- Menu **Video** — parcialmente implementado desde 2026-08-18 (escala 1:1 real + `Force 4:3`; 2:1/3:1/4:1
+  bloqueados por um bug real, ver acima), NTSC/PAL já existia via linha de comando, scanlines segue sem
+  implementar.
+- Menu **Audio** (mute, volume) — PSG em si já funciona (síntese de áudio real, verificada
+  `docs/SPEC.md` módulo 32n), mas o menu de controle de volume/mute ainda não existe.
 
 **Atualização 2026-08-17**: as opções de CLI que essa lista mencionava (`-msx1`/`-msx2`/`-msx2+`,
 `-diska`/`-diskb`, `-tape`, `-pal`/`-ntsc`, `-trap`, `-help`) **agora existem** — `fossauro.exe` passou a
