@@ -7545,6 +7545,168 @@ o primeiro passo seria comparar lado a lado com `Ajuda → MSXBas2Rom...`/`Ajuda
 baixado, mesmo motor) pra confirmar se é ou não um bug pré-existente antes de mexer em
 `GenericMdHelpGui.pbi`.
 
+### 32u. Fossauro — protocolo de controle remoto próprio via named pipe (`PING`/`LOAD`/`POKE`/`PEEK`/`RUN`) (2026-08-18, próxima versão)
+
+Pedido do usuário: dar ao Fossauro algo equivalente ao controle remoto do openMSX (sockets no Linux/
+named pipes no Windows, protocolo documentado) para permitir, no futuro, transferir um programa BASIC
+já compilado pelo Basic Dignified direto pra RAM do emulador (sem passar por disco) e, em caso de erro
+numa linha X, já apontar essa linha de volta no editor. Decisão explícita do usuário (confirmada antes
+de implementar): **não replicar o protocolo do openMSX** — aquele é uma sequência de comandos Tcl
+envelopados em XML, feito pra um interpretador Tcl completo do outro lado (já implementado no
+Paleobasic pro openMSX de verdade, ver `OpenMSXBridge.pbi`/módulo 12 — mas é escopo grande demais só
+pra isso). Caminho escolhido: protocolo próprio, mínimo, texto+binário sobre named pipe do Windows.
+
+**Implementado** (`fossauro/fossauro.pb`, thread nova `PipeServerThreadProc`, criada junto da
+`EmulationThread` em `RunEmulator()`): pipe único `\\.\pipe\fossauro`, um cliente por vez, síncrono
+(sem `OVERLAPPED`, mais simples). Comandos, uma linha ASCII terminada em LF (CRLF também aceito) por
+requisição, resposta sempre uma linha ASCII:
+- `PING` → `PONG`
+- `LOAD <addr> <len>\n<len bytes crus>` → `OK`/`ERR <msg>` — escreve bytes crus na RAM MSX a partir do
+  endereço Z80 `<addr>` (decimal, 0-65535) via `MSXWrZ80` já existente; sem validação de slot/página,
+  fica a cargo de quem chama escolher um endereço de RAM mapeada de verdade
+- `POKE <addr> <valor>` → `OK`/`ERR <msg>` — forma de 1 byte só do `LOAD`
+- `PEEK <addr>` → `VAL <valor>`/`ERR <msg>` — lê 1 byte via `SafeRdZ80`
+- `RUN <addr>` → `OK`/`ERR <msg>` — seta `CPU\PC\W` direto (um jump cru, **não** "digitar RUN e
+  Enter" — ver "pendências" abaixo)
+- qualquer outro texto → `ERR unknown command`
+
+Cada escrita (`LOAD`/`POKE`/`RUN`) liga `ThreadPaused` em volta do toque em memória/registrador, igual
+ao padrão já usado por `SwitchModel()`/`ApplyRAMSize()`/`ApplyVRAMSize()` — `MSXLoopZ80()`
+(`MSX.pbi`) já gira num `While ThreadPaused: Delay(10)` a cada scanline, então a pausa efetiva acontece
+dentro de ~1 scanline de tempo real, não instantaneamente; mesma race pequena e aceita que o resto do
+código já tem, não uma sincronização nova.
+
+**Verificado ao vivo** com um cliente `.NET NamedPipeClientStream` via PowerShell (não um harness `.pb`
+— mais rápido pra esse teste pontual): `PING`→`PONG`; `POKE 49152 65` seguido de `PEEK 49152`→`VAL 65`;
+`LOAD 49153 5` com o payload binário `"HELLO"` seguido de 5×`PEEK` consecutivos devolvendo 72/69/76/76/
+79 (bytes corretos, na ordem certa); `RUN 0` (jump pro vetor de reset) não travou nem crashou;
+`BOGUS`→`ERR unknown command`. Processo continuou respondendo (`Get-Process.Responding=True`) depois de
+tudo isso, sem qualquer relação com o bug de travamento do menu Vídeo (módulo 32s) — não mexe em
+janela/canvas.
+
+**Pendências (fora do escopo desta primeira fatia, pedido explícito do usuário era "comece pelo mais
+simples")**:
+- `RUN` hoje é um jump cru de PC, não um `RUN` de BASIC de verdade. Pra rodar um `.bmx` tokenizado do
+  Basic Dignified de fato, falta a parte específica do BASIC: religar os ponteiros de link de cada
+  linha tokenizada pro endereço real onde o `LOAD` colocou o programa (o formato tokenizado do MSX
+  embute o endereço absoluto da próxima linha em cada cabeçalho de linha), e setar as variáveis de
+  sistema `TXTTAB`/`VARTAB`/`ARYTAB`/`STREND` antes de entrar no interpretador — nenhuma dessas contas
+  foi feita ainda.
+  - Sub-decisão de outro lado, quando chegar a hora: `RUN` cru direto pra um endereço arbitrário já
+  serve muito bem pro fluxo do Mamute Assembler (`A`/`A O`, código-objeto Z80 puro) — talvez a
+  prioridade real seja essa integração primeiro, não a do BASIC (o usuário só citou BASIC como
+  exemplo motivador, não pediu explicitamente qual vem primeiro).
+- Reportar "erro na linha X de volta pro editor" precisa de duas peças que ainda não existem: (1) um
+  jeito do lado Fossauro notificar o cliente de forma assíncrona quando o interpretador BASIC bate um
+  erro (o protocolo hoje é só requisição/resposta, nada empurra do servidor sozinho — precisaria de um
+  comando tipo `WAITERROR` bloqueante, ou um segundo pipe/canal de eventos), e (2) achar o endereço de
+  memória certo onde o BASIC guarda o número da linha atual/de erro (variável de sistema equivalente a
+  `ERL`/ponteiro de execução) pra poder ler via `PEEK` — não pesquisado ainda.
+- Sem `WaitThread()` no shutdown pra `PipeThread` (fica documentado como comentário no próprio código):
+  ele normalmente está bloqueado em `ConnectNamedPipe_`/`ReadFile_`, que `ThreadExit=1` sozinho não
+  acorda, mas o processo inteiro dá `End()` logo depois do bloco de cleanup de qualquer forma — decisão
+  consciente de não complicar isso agora, não um bug pendente.
+
+### 32v. Primeira ponta-a-ponta real: comando `FOSSAURO` no Mamute Assembler (2026-08-18, próxima versão)
+
+Pedido explícito do usuário, na sequência direta do módulo 32u: "primeiro ver funcionando ponta a
+ponta com o Mamute Assembler (LOAD do código-objeto + RUN)". Cliente do pipe implementado
+(`Fossauro_SendAndRun()`/`FossauroPipe_*`, `editor/FossauroSupport.pbi`) e ligado a um comando NOVO no
+MON> do Mamute Assembler, `FOSSAURO` (fora do vocabulário do MegaAssembler original de propósito, ver
+comentário de `MamuteGui_CmdFossauro()`, `MamuteAssemblerGui.pbi`): reenvia o intervalo
+`[MamuteAsmLastStartAddr, MamuteAsmLastByteCount)` da última montagem bem-sucedida **com `O`** (lido de
+volta via `Mamute_ReadByte()`, respeitando o mapeamento `PAGE` ativo) via `LOAD`, depois `RUN` pro
+mesmo endereço inicial.
+
+Precisou de um flag novo, `MamuteAsmLastWroteToRam` (`Global`, `MamuteSupport.pbi`), porque
+`Mamute_AsmAssemble()` sozinha NÃO sabe se a chamada foi `"A"` ou `"A O"` (quem decide isso e escreve
+em `MamuteMem()` é o código em `MamuteEditGui.pbi`, fora da procedure) — sem esse flag, `FOSSAURO`
+depois de um `"A"` sem `O` enviaria lixo (memória nunca escrita) sem avisar nada. Zerado no início de
+toda tentativa de montagem, setado `#True` só pelo `If AsmHasO` que efetivamente grava os bytes.
+
+**Verificado ao vivo, de duas formas independentes** (screenshot real do MON>, `WM_COMMAND`/`WM_SETTEXT`
+automatizados via PowerShell pra digitar no `EDIT`, mesma técnica de sempre - accelerators do
+PureBasic só respondem a `WM_COMMAND` com o ID certo, não a `WM_KEYDOWN` injetado):
+1. **Repro isolado, direto no protocolo** (sem o Mamute): `LOAD 49152 6` com os bytes crus de
+   `LD A,55H / LD (0C100H),A / HALT` (`3E 55 32 00 C1 76`), depois `RUN 49152` - `PEEK 49408` (0xC100)
+   devolveu `VAL 85` (0x55), confirmando que o Z80 real do fossauro executou o código enviado pelo pipe
+   de ponta a ponta, não só que os bytes chegaram na RAM.
+2. **Fluxo real do usuário**: `Executar → Mamute Assembler` → `EDIT` → digitado
+   `10 ORG 0C000H` / `20 LD A,55H` / `30 LD (0C100H),A` / `40 HALT` → `A O` (monta e grava em
+   `MamuteMem`) → `QUIT` (volta pro MON>) → `FOSSAURO` → log mostrou
+   `"OK - RODANDO NO FOSSAURO A PARTIR DE C000H"`, fossauro continuou rodando/respondendo depois.
+
+**Uma flutuação não reproduzida**: na primeira tentativa desse fluxo real, o fossauro morreu (processo
+saiu do `tasklist`) bem no meio do comando `FOSSAURO`, mas SEM nenhum evento de crash no Event Log do
+Windows (nada em Application/Application Error) - ou seja, não foi uma exceção não tratada, foi uma
+saída "limpa" por algum motivo não identificado. A causa mais provável, dado o contexto: o script de
+automação desta sessão relançou/matou várias instâncias de fossauro.exe em sequência rápida enquanto
+testava (`-WindowStyle Minimized`, CPU quase zero, log que parou de escrever mesmo com o pipe
+respondendo - sintomas que sugerem algo ambiental/de timing da própria maquinaria de teste, não do
+código novo). Repetida a MESMA sequência duas vezes depois (isolada e via MON> de verdade), ambas
+tiveram sucesso limpo e reprodutível. Fica registrado por transparência, não descartado como
+"impossível", mas também não bloqueia considerar o mecanismo verificado - se aparecer nova evidência de
+uma morte real do processo ligada a isso, voltar aqui primeiro.
+
+### 32w. Fossauro — travamento real e reproduzível ao chamar CHPUT (BIOS) via `RUN` cru (2026-08-18, próxima versão)
+
+Reportado pelo usuário logo depois do módulo 32v: rodou pelo fluxo real (Mamute `EDIT`→`A O`→`QUIT`→
+`FOSSAURO`) um programa que imprime texto via a rotina de BIOS de verdade `CHPUT` ($00A2):
+```
+10 chput: equ 0a2
+20 org 0c100
+30 ld hl,print
+40 salt: ld a,(hl)
+50 and a
+60 ret z
+70 call chput
+80 inc hl
+90 jr salt
+100 print: defb 'MEGA ASSEMBLER'
+110 defb 0
+```
+O fossauro travou - a mensagem nunca apareceu na tela, a thread de emulação ficou consumindo CPU
+continuamente. Diferente do repro do módulo 32v (`LD A,55H`/`LD (nn),A`/`HALT`, sem tocar BIOS/VDP/
+teclado), este programa faz a PRIMEIRA chamada de BIOS de verdade através do `RUN` cru.
+
+**Diagnóstico ao vivo** (não só teoria): adicionado um comando `REGS` novo ao protocolo do pipe
+(diagnóstico, não documentado como parte "oficial" ainda - ver comentário no próprio código,
+`fossauro.pb`) que pausa a emulação via `ThreadPaused` (o mesmo mecanismo de sempre - `MSXLoopZ80()`
+ainda cruza a fronteira de `#IPeriod`=228 T-states com frequência mesmo dentro de um laço apertado) e
+devolve `PC`/`SP`/`AF`/`BC`/`DE`/`HL`/`IX`/`IY`. Reproduzido o MESMO programa do usuário via o fluxo
+real da GUI (não bytes montados à mão, pra não arriscar erro meu de montagem) e amostrado `REGS` três
+vezes (~500ms de intervalo): `PC` variou entre `$0D62`/`$0D68`/`$0D6D` - ou seja, **não é um travamento
+estático** (CPU não está parada numa única instrução), é um **laço curto e repetido** dentro dessa
+faixa de ~30 bytes. `PEEK` byte-a-byte de `$0D60`-`$0D80` decodifica pra um trecho reconhecível de BIOS
+real (`EI` / `PUSH HL` / `PUSH DE` / `PUSH BC` / `CALL $0B9F` / `JR NC,+15` / `LD A,($FBCD)` /
+`LD HL,$FBEB` / `XOR (HL)` / `LD HL,$F3DE` / `AND (HL)` / `RRCA` / `CALL C,...`) - o padrão (salvar
+registradores, chamar uma sub-rotina, testar carry, XOR/AND com variáveis de sistema em `$FBEB`/
+`$F3DE`) bate com checagem de teclado/tecla BREAK (Ctrl+STOP) que MUITAS rotinas de saída de caractere
+da BIOS do MSX fazem periodicamente. `PEEK` do contador de jiffy (`$FC9E`/`$FC9F`, endereço padrão do
+contador de interrupção do MSX) **avançou** entre duas leituras com 1s de intervalo (`213,11` →
+`13,12`) - ou seja, **as interrupções continuam disparando normalmente**, não é um travamento de
+"interrupção morta" (hipótese inicial descartada).
+
+**Diagnóstico provável (não 100% confirmado até o fundo - faltaria comparar contra o disassembly real
+da BIOS/fMSX C pra fechar de vez)**: `RUN` hoje só troca `CPU\PC\W`, sem tocar em mais nada (`SP`,
+`IFF`, variáveis de sistema) - ele sequestra a execução de dentro de uma sessão de BASIC/BIOS *já viva
+e em andamento*, no meio do que quer que ela estivesse fazendo. Chamar uma rotina de BIOS de verdade
+(`CALL $00A2`/CHPUT) desse jeito arrisca justamente isso: a rotina real de saída de caractere depende
+de estado (variáveis de sistema, flags de reentrância do scan de teclado, contadores de debounce) que
+uma BASIC rodando de verdade mantém consistente sozinha - um `RUN` cru não garante nada disso, e o
+laço de checagem de BREAK que a BIOS roda durante a saída de caractere parece estar esperando por uma
+condição (provavelmente ligada ao estado do scan de teclado) que nunca fica satisfeita nesse contexto
+sequestrado. O primeiro repro (módulo 32v, sem chamada de BIOS) nunca bateu nesse caminho, por isso
+passou limpo.
+
+**Não corrigido ainda** - decisão em aberto pro usuário (não uma escolha óbvia): consertar isso direito
+provavelmente significa OU (a) o `RUN` fazer algum tipo de preparo de estado antes de saltar (o quê
+exatamente, não determinado - arriscado/frágil), OU (b) aceitar que `RUN` cru só é seguro pra código
+Z80 que NÃO chama rotinas de BIOS (o caso do módulo 32v), documentando isso como limitação conhecida e
+deixando "rodar código que usa CHPUT/BIOS" pra uma fase futura (talvez ligada à mesma pauta pendente do
+`RUN`/`TXTTAB` de BASIC de verdade, módulo 32u). O comando `REGS` fica no protocolo (útil de qualquer
+forma pra futura depuração), mesmo sem estar listado ainda como "oficial" no módulo 32u.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido

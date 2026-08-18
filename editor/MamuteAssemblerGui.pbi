@@ -1226,6 +1226,48 @@ Procedure MamuteGui_CmdR(G_Log, *State.MamuteGui_State, Args.s)
     "R - CARREGAMENTO DE PROGRAMA ASSEMBLADO AINDA NAO IMPLEMENTADO, FICA PRA UMA FASE FUTURA")
 EndProcedure
 
+; FOSSAURO - comando NOVO, fora do vocabulario do MegaAssembler original de
+; proposito (nao existe um "envie pra outro emulador rodando de verdade" no
+; manual de 1986) - pedido explicito do usuario, primeira ponta-a-ponta do
+; protocolo de controle remoto (ver docs/SPEC.md modulo 32u). Reenvia o
+; MESMO intervalo [MamuteAsmLastStartAddr, MamuteAsmLastByteCount) que "A O"
+; (tela EDIT) acabou de gravar em MamuteMem, lido de volta byte a byte via
+; Mamute_ReadByte() (respeita o mapeamento PAGE ativo, igual DM/qualquer
+; outro comando de memoria) - depois manda "RUN" pro mesmo endereco inicial.
+; Exige MamuteAsmLastWroteToRam (so' fica #True depois de um "A ...O..."
+; bem-sucedido - "A" sozinho, sem "O", NAO escreve nada em MamuteMem, entao
+; enviar seria so' lixo/zeros).
+Procedure MamuteGui_CmdFossauro(G_Log, *State.MamuteGui_State)
+  If Not MamuteAsmHasResult Or Not MamuteAsmLastWroteToRam
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      "?NADA MONTADO COM 'O' AINDA (monte com 'A O' na tela EDIT antes de FOSSAURO)")
+    ProcedureReturn
+  EndIf
+  If MamuteAsmLastByteCount <= 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?NADA GERADO (0 BYTES)")
+    ProcedureReturn
+  EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "FOSSAURO: ENVIANDO " + Str(MamuteAsmLastByteCount) + " BYTES PARA " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H...")
+
+  Protected *Payload = AllocateMemory(MamuteAsmLastByteCount)
+  Protected I.i
+  For I = 0 To MamuteAsmLastByteCount - 1
+    PokeA(*Payload + I, Mamute_ReadByte((MamuteAsmLastStartAddr + I) & $FFFF))
+  Next I
+
+  Protected ErrMsg.s = Fossauro_SendAndRun(MamuteAsmLastStartAddr, *Payload, MamuteAsmLastByteCount)
+  FreeMemory(*Payload)
+
+  If ErrMsg = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      "OK - RODANDO NO FOSSAURO A PARTIR DE " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H")
+  Else
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?" + UCase(ErrMsg))
+  EndIf
+EndProcedure
+
 ; Valor de 16 bits do par PairName (AF/BC/DE/HL a partir dos bytes, IX/IY/SP
 ; direto) - usado pelo modo "par" do X (ver comentario da Procedure abaixo).
 Procedure.i MamuteGui_RegPairValue(*State.MamuteGui_State, PairName.s)
@@ -1566,6 +1608,9 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
 
     Case "R"
       MamuteGui_CmdR(G_Log, *State, Args)
+
+    Case "FOSSAURO"
+      MamuteGui_CmdFossauro(G_Log, *State)
 
     Case "L"
       MamuteGui_CmdL(G_Log, *State, Args)

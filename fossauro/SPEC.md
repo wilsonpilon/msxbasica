@@ -329,6 +329,19 @@ since they already cover every link in the chain except port-write routing, whic
 No settings/config screens yet (font, theme, key remapping, controller config, video filters, etc. — all
 still just accepted-but-inert CLI flags, see the CLI table in `docs/MANUAL.md`'s Fossauro section).
 
+**Remote control (named pipe `\\.\pipe\fossauro`) — server AND a first real client, verified live
+end-to-end**: a small custom protocol (deliberately *not* the openMSX Tcl/XML control protocol — see
+`docs/SPEC.md` module 32u), `PING`/`LOAD <addr> <len>`/`POKE <addr> <val>`/`PEEK <addr>`/`RUN <addr>`,
+running on its own thread (`PipeServerThreadProc`) alongside the emulation thread. `LOAD`/`POKE` write
+straight into MSX RAM via the existing `MSXWrZ80`, `RUN` sets `CPU\PC` directly (a raw jump, not "type
+RUN and press Enter" — no BASIC-specific line-relinking/`TXTTAB` bookkeeping yet). Paleobasic's side
+(`Fossauro_SendAndRun()`, `editor/FossauroSupport.pbi`) is now wired to a real command, `FOSSAURO`, in
+the Mamute Assembler's MON> — sends whatever the last `A O` assembled and jumps to it. Verified live
+both as an isolated raw-protocol repro and through the real Mamute Assembler `EDIT`→`A O`→`FOSSAURO`
+flow — see `docs/SPEC.md` module 32v.
+
+
+
 ---
 
 ## 3. What's left to do, in priority order

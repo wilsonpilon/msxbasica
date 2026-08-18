@@ -72,6 +72,202 @@ Procedure EmulationThreadProc(*Param)
   RunZ80(@CPU)
 EndProcedure
 
+; --- Named Pipe Control Protocol (2026-08-18) ------------------------------------------------
+; Minimal custom protocol over a Windows named pipe - deliberately NOT the openMSX control
+; protocol (Tcl commands wrapped in XML, built for a full Tcl interpreter on the other end,
+; way more surface than anything here needs). One ASCII header line (LF or CRLF terminated)
+; per command, raw binary payload immediately after for LOAD. Single well-known pipe name/one
+; client session at a time - the server loop just waits for the next connection once a client
+; disconnects, so Paleobasic can connect, send a few commands and disconnect per compile/run
+; cycle without fossauro needing to be relaunched.
+;
+; Commands (request -> reply, reply is always one LF-terminated ASCII line):
+;   PING                     -> PONG
+;   LOAD <addr> <len>\n<len raw bytes>
+;                            -> OK | ERR <msg>   writes raw bytes into MSX RAM starting at Z80
+;                                                 address <addr> (decimal, 0-65535) via
+;                                                 MSXWrZ80 - caller's job to pick a mapped RAM
+;                                                 address, this does no slot/page validation
+;   POKE <addr> <value>      -> OK | ERR <msg>   single-byte convenience form of LOAD
+;   PEEK <addr>              -> VAL <value> | ERR <msg>
+;   RUN <addr>               -> OK | ERR <msg>   sets the Z80 PC register directly (a raw
+;                                                 jump) - NOT "type RUN and press Enter"; a real
+;                                                 MSX BASIC RUN needs TXTTAB/line-pointer
+;                                                 bookkeeping on top of this, not implemented
+;                                                 yet - see docs/SPEC.md module 32u
+;   REGS                     -> REGS PC=.. SP=.. AF=.. BC=.. DE=.. HL=.. IX=.. IY=..
+;                                                 diagnostic-only, added live to investigate a
+;                                                 real hang report - see docs/SPEC.md module 32w
+;   (anything else)          -> ERR unknown command
+;
+; Every write (LOAD/POKE/RUN) briefly sets ThreadPaused around the memory/register touch -
+; same pattern already used by SwitchModel()/ApplyRAMSize()/ApplyVRAMSize() above: the emu
+; thread's MSXLoopZ80() spins on ThreadPaused every scanline (MSX.pbi), so the actual pause
+; lands within roughly one scanline's worth of real time, not instantly - accepted small race,
+; consistent with how the rest of this codebase already touches shared emulator state from the
+; main thread while the emu thread is nominally "paused".
+#PipeName = "\\.\pipe\fossauro"
+#Pipe_BufSize = 65536
+Global PipeThread.i = 0
+
+Procedure.s PipeReadLine(hPipe.i)
+  Protected Line.s = ""
+  Protected Ch.a
+  Protected BytesRead.l
+  Repeat
+    If Not ReadFile_(hPipe, @Ch, 1, @BytesRead, 0) Or BytesRead = 0
+      ProcedureReturn "" ; client disconnected mid-line
+    EndIf
+    If Ch = 10 ; LF
+      ProcedureReturn RTrim(Line, Chr(13)) ; drop a trailing CR if the client sent CRLF
+    EndIf
+    Line + Chr(Ch)
+    If Len(Line) > 4096 ; runaway header guard - nothing legitimate needs a header this long
+      ProcedureReturn ""
+    EndIf
+  ForEver
+EndProcedure
+
+Procedure.b PipeReadBytes(hPipe.i, *Buffer, Length.l)
+  Protected Got.l = 0, BytesRead.l
+  While Got < Length
+    If Not ReadFile_(hPipe, *Buffer + Got, Length - Got, @BytesRead, 0) Or BytesRead = 0
+      ProcedureReturn #False
+    EndIf
+    Got + BytesRead
+  Wend
+  ProcedureReturn #True
+EndProcedure
+
+Procedure PipeWriteLine(hPipe.i, Text.s)
+  Protected Line.s = Text + Chr(10)
+  Protected ByteLen.l = Len(Line) ; protocol replies are plain ASCII, 1 byte/char
+  Protected *Buf = AllocateMemory(ByteLen)
+  Protected Written.l
+  PokeS(*Buf, Line, ByteLen, #PB_Ascii | #PB_String_NoZero)
+  WriteFile_(hPipe, *Buf, ByteLen, @Written, 0)
+  FreeMemory(*Buf)
+EndProcedure
+
+Procedure PipeHandleClient(hPipe.i)
+  Protected Line.s, Cmd.s, Rest.s, SpacePos.l
+  Repeat
+    Line = PipeReadLine(hPipe)
+    If Line = "" : Break : EndIf ; client disconnected
+
+    SpacePos = FindString(Line, " ")
+    If SpacePos
+      Cmd = UCase(Left(Line, SpacePos - 1))
+      Rest = Mid(Line, SpacePos + 1)
+    Else
+      Cmd = UCase(Line)
+      Rest = ""
+    EndIf
+
+    Select Cmd
+      Case "PING"
+        PipeWriteLine(hPipe, "PONG")
+
+      Case "LOAD"
+        Protected AddrStr.s = StringField(Rest, 1, " ")
+        Protected LenStr.s = StringField(Rest, 2, " ")
+        Protected Addr.l = Val(AddrStr)
+        Protected PayloadLen.l = Val(LenStr)
+        If AddrStr = "" Or LenStr = "" Or Addr < 0 Or Addr > 65535 Or PayloadLen <= 0 Or PayloadLen > 65536
+          PipeWriteLine(hPipe, "ERR bad LOAD arguments")
+        Else
+          Protected *Payload = AllocateMemory(PayloadLen)
+          If PipeReadBytes(hPipe, *Payload, PayloadLen)
+            ThreadPaused = 1
+            Protected I.l
+            For I = 0 To PayloadLen - 1
+              MSXWrZ80((Addr + I) & $FFFF, PeekA(*Payload + I))
+            Next I
+            ThreadPaused = 0
+            PipeWriteLine(hPipe, "OK")
+          Else
+            PipeWriteLine(hPipe, "ERR short payload")
+          EndIf
+          FreeMemory(*Payload)
+        EndIf
+
+      Case "POKE"
+        Protected PAddrStr.s = StringField(Rest, 1, " ")
+        Protected PValStr.s = StringField(Rest, 2, " ")
+        If PAddrStr = "" Or PValStr = ""
+          PipeWriteLine(hPipe, "ERR bad POKE arguments")
+        Else
+          ThreadPaused = 1
+          MSXWrZ80(Val(PAddrStr) & $FFFF, Val(PValStr) & $FF)
+          ThreadPaused = 0
+          PipeWriteLine(hPipe, "OK")
+        EndIf
+
+      Case "PEEK"
+        If Rest = ""
+          PipeWriteLine(hPipe, "ERR bad PEEK arguments")
+        Else
+          PipeWriteLine(hPipe, "VAL " + Str(SafeRdZ80(Val(Rest) & $FFFF)))
+        EndIf
+
+      Case "RUN"
+        If Rest = ""
+          PipeWriteLine(hPipe, "ERR bad RUN arguments")
+        Else
+          ThreadPaused = 1
+          CPU\PC\W = Val(Rest) & $FFFF
+          ThreadPaused = 0
+          PipeWriteLine(hPipe, "OK")
+        EndIf
+
+      Case "REGS"
+        ; Diagnostico - nao faz parte do protocolo "de producao" documentado no docs/SPEC.md
+        ; modulo 32u (ainda), adicionado ao vivo pra investigar um travamento real reportado
+        ; pelo usuario (Z80 preso num busy-wait dentro de uma rotina de BIOS de verdade,
+        ; ver docs/SPEC.md modulo 32w). MSXLoopZ80() (MSX.pbi) checa ThreadPaused a cada
+        ; #IPeriod ciclos (228 T-states) - um laco apertado de poucas instrucoes ainda cruza
+        ; essa fronteira com frequencia, entao ThreadPaused=1 consegue pausar mesmo com a
+        ; emulacao presa num loop.
+        ThreadPaused = 1
+        PipeWriteLine(hPipe, "REGS PC=" + Hex(CPU\PC\W, #PB_Word) +
+                              " SP=" + Hex(CPU\SP\W, #PB_Word) +
+                              " AF=" + Hex(CPU\AF\W, #PB_Word) +
+                              " BC=" + Hex(CPU\BC\W, #PB_Word) +
+                              " DE=" + Hex(CPU\DE\W, #PB_Word) +
+                              " HL=" + Hex(CPU\HL\W, #PB_Word) +
+                              " IX=" + Hex(CPU\IX\W, #PB_Word) +
+                              " IY=" + Hex(CPU\IY\W, #PB_Word))
+        ThreadPaused = 0
+
+      Default
+        PipeWriteLine(hPipe, "ERR unknown command")
+    EndSelect
+  ForEver
+EndProcedure
+
+Procedure PipeServerThreadProc(*Param)
+  Protected hPipe.i, Connected.l
+  Repeat
+    hPipe = CreateNamedPipe_(#PipeName, #PIPE_ACCESS_DUPLEX,
+                              #PIPE_TYPE_BYTE | #PIPE_READMODE_BYTE | #PIPE_WAIT,
+                              #PIPE_UNLIMITED_INSTANCES, #Pipe_BufSize, #Pipe_BufSize, 0, 0)
+    If hPipe = #INVALID_HANDLE_VALUE
+      LogGeneral("PipeServerThreadProc: CreateNamedPipe failed, GetLastError=" + Str(GetLastError_()))
+      ProcedureReturn
+    EndIf
+
+    Connected = ConnectNamedPipe_(hPipe, 0)
+    If Connected Or GetLastError_() = #ERROR_PIPE_CONNECTED
+      LogGeneral("PipeServerThreadProc: client connected")
+      PipeHandleClient(hPipe)
+      LogGeneral("PipeServerThreadProc: client disconnected")
+    EndIf
+
+    DisconnectNamedPipe_(hPipe)
+    CloseHandle_(hPipe)
+  Until ThreadExit
+EndProcedure
+
 ; Map PC Key Codes to MSX Keyboard Matrix Codes
 Procedure.l MapCanvasKey(PBKey.l)
   Select PBKey
@@ -1047,7 +1243,12 @@ Procedure RunEmulator()
     ThreadExit = 0
     ThreadPaused = 0
     EmulationThread = CreateThread(@EmulationThreadProc(), 0)
-    
+    ; PipeThread isn't WaitThread()'d at shutdown below - it's normally blocked in
+    ; ConnectNamedPipe_/ReadFile_, which ThreadExit=1 alone can't wake up, and this whole
+    ; process is about to End() right after the cleanup block anyway (see the "Shutdown &
+    ; cleanup" comment near exit_window), which tears down every thread including this one.
+    PipeThread = CreateThread(@PipeServerThreadProc(), 0)
+
     ; 7. Main Window Event Loop
     Protected event.l, exit_window.l = 0
     Protected PendingVideoResize.b = #False

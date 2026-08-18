@@ -1147,6 +1147,7 @@ Procedure MamuteEdit_Open(ParentWindow)
                         For WByte = 0 To AsmRes\ByteCount - 1
                           Mamute_WriteByte((AsmRes\StartAddr + WByte) & $FFFF, AsmOutBytes(WByte))
                         Next
+                        MamuteAsmLastWroteToRam = #True ; ve o comentario junto do Global, MamuteSupport.pbi - habilita o comando FOSSAURO no MON>
                       EndIf
 
                       ; "P" - manda a MESMA listagem (ja' com/sem NN

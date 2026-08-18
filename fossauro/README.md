@@ -77,6 +77,13 @@ to his exceptional work in MSX emulation — this project would not exist withou
 - [ ] **Cheat (.CHT) support** — not implemented, explicitly deferred (planned: openMSX/BlueMSX-compatible
   format).
 - [ ] Joystick/mouse, printer, serial, Kanji ROM, settings/config UI.
+- [x]/[ ] **Remote control protocol** — a small custom named-pipe protocol (`\\.\pipe\fossauro`), NOT
+  the openMSX Tcl/XML control protocol on purpose (too much surface for what's needed here):
+  `PING`/`LOAD <addr> <len>`/`POKE <addr> <val>`/`PEEK <addr>`/`RUN <addr>` (raw PC jump). Server side
+  and a first real Paleobasic client both verified live end-to-end through the Mamute Assembler's new
+  `FOSSAURO` MON> command (assemble with `A O`, then `FOSSAURO` loads + runs it for real on fossauro's
+  Z80 core). `RUN` still doesn't do real MSX BASIC line-relinking/`TXTTAB` bookkeeping — see
+  `docs/SPEC.md` modules 32u/32v.
 
 ---
 

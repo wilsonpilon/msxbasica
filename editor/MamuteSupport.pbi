@@ -1517,6 +1517,17 @@ Global MamuteAsmLastStartAddr.u
 Global MamuteAsmLastEndAddr.u
 Global MamuteAsmLastByteCount.i
 
+; #True somente quando a montagem que gerou LastStartAddr/LastEndAddr/
+; LastByteCount tambem usou a flag "O" (gravou de verdade em MamuteMem via
+; Mamute_WriteByte - ver o "If AsmHasO" em MamuteEditGui.pbi). Zerado no
+; INICIO de toda tentativa de montagem (Mamute_AsmAssemble abaixo, antes de
+; saber se "O" foi pedido desta vez) e setado #True so' pelo chamador, apos
+; escrever os bytes com sucesso - existe pro comando FOSSAURO
+; (MamuteGui_CmdFossauro(), MamuteAssemblerGui.pbi) conseguir recusar enviar
+; um intervalo de enderecos que na verdade nunca foi escrito na RAM simulada
+; (ex.: usuario rodou so' "A", sem "O", e tentou "FOSSAURO" na sequencia).
+Global MamuteAsmLastWroteToRam.b = #False
+
 ; Listagem formatada (linhas de texto ja' prontas pra desenhar) da ULTIMA
 ; montagem bem-sucedida - pedido explicito do usuario, reproduzindo o
 ; formato classico do comando A do MegaAssembler original: "numero da
@@ -2523,6 +2534,7 @@ Procedure Mamute_AsmAssemble(*Out.MamuteAsmResult, Array OutBytes.a(1), HideLine
   *Out\ByteCount = 0
   *Out\StartAddr = 0
   *Out\EndAddr = 0
+  MamuteAsmLastWroteToRam = #False ; ve o comentario junto do Global acima - o chamador seta #True se "O" escrever com sucesso
 
   ; Reconstroi cada linha a partir dos campos JA' separados (Label/Instr/
   ; Operand), em vez de usar RawText direto - precisa traduzir o Operando

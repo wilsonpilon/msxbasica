@@ -151,9 +151,13 @@ Procedure.s Fossauro_BuildCliArgs()
 EndProcedure
 
 ; Inicia o fossauro.exe configurado com as opcoes padrao (Configurar ->
-; Fossauro...) e deixa rodando no seu proprio processo/janela - sem pipe de
-; controle (diferente do openMSX/OpenMSXBridge.pbi), nao ha nada pra
-; acompanhar depois de abrir.
+; Fossauro...) e deixa rodando no seu proprio processo/janela - RunProgram()
+; fire-and-forget, nao ha nada pra acompanhar aqui logo apos abrir. A
+; instancia recem-aberta ainda pode ser controlada DEPOIS via o pipe de
+; controle proprio (ver Fossauro_SendAndRun() abaixo) - diferente do
+; OpenMSXBridge.pbi (openMSX de verdade), que usa o protocolo de controle
+; nativo do openMSX (Tcl/XML); o Fossauro fala um protocolo bem mais simples,
+; proprio, ver docs/SPEC.md modulo 32u.
 Procedure.b Fossauro_Launch()
   FossauroCfg_Load()
   If FossauroCfg\ExePath = "" Or FileSize(FossauroCfg\ExePath) <= 0
@@ -174,6 +178,88 @@ Procedure.b Fossauro_Launch()
   EndIf
   CloseProgram(Prog) ; so libera o identificador do PB - o processo do fossauro continua rodando
   ProcedureReturn #True
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Pipe de controle (cliente) - fala com o servidor de fossauro/fossauro.pb
+;- (PipeServerThreadProc, ver docs/SPEC.md modulo 32u)
+;- ------------------------------------------------------------
+
+; Protocolo proprio, texto+binario, deliberadamente NAO o protocolo do
+; openMSX (Tcl/XML) - ver o comentario de Fossauro_Launch() acima e o modulo
+; 32u. So conversa com uma instancia JA RODANDO (nao lanca o fossauro.exe
+; sozinho) - CreateFile_ falhando com #INVALID_HANDLE_VALUE e' o sinal disso.
+#Fossauro_PipeName = "\\.\pipe\fossauro"
+
+Procedure.s FossauroPipe_ReadLine(hPipe.i)
+  Protected Line.s = ""
+  Protected Ch.a
+  Protected BytesRead.l
+  Repeat
+    If Not ReadFile_(hPipe, @Ch, 1, @BytesRead, 0) Or BytesRead = 0
+      ProcedureReturn "" ; fossauro fechou a conexao
+    EndIf
+    If Ch = 10 ; LF
+      ProcedureReturn RTrim(Line, Chr(13))
+    EndIf
+    Line + Chr(Ch)
+    If Len(Line) > 4096
+      ProcedureReturn ""
+    EndIf
+  ForEver
+EndProcedure
+
+Procedure.b FossauroPipe_WriteRaw(hPipe.i, *Buffer, Length.l)
+  Protected Written.l
+  ProcedureReturn Bool(WriteFile_(hPipe, *Buffer, Length, @Written, 0) And Written = Length)
+EndProcedure
+
+Procedure.b FossauroPipe_WriteLine(hPipe.i, Text.s)
+  Protected Line.s = Text + Chr(10)
+  Protected ByteLen.l = Len(Line) ; comandos do protocolo sao ASCII puro, 1 byte/char
+  Protected *Buf = AllocateMemory(ByteLen)
+  PokeS(*Buf, Line, ByteLen, #PB_Ascii | #PB_String_NoZero)
+  Protected Ok.b = FossauroPipe_WriteRaw(hPipe, *Buf, ByteLen)
+  FreeMemory(*Buf)
+  ProcedureReturn Ok
+EndProcedure
+
+; Conecta no fossauro ja rodando, manda "LOAD <Addr> <ByteCount>" + os bytes
+; de *Payload, depois "RUN <Addr>". Generico de proposito - nao sabe nada
+; sobre Mamute/MamuteMem, so recebe um ponteiro/tamanho ja prontos; quem
+; chama (MamuteGui_CmdFossauro(), MamuteAssemblerGui.pbi) e' quem monta o
+; buffer a partir de Mamute_ReadByte() - assim este arquivo nao depende de
+; MamuteSupport.pbi (que e' incluido DEPOIS deste no XIncludeFile de
+; BadigEditor.pb - ver a nota de ordem de declaracao no topo do CLAUDE.md).
+; Retorna "" em sucesso total, ou uma mensagem de erro pronta pra log.
+Procedure.s Fossauro_SendAndRun(Addr.u, *Payload, ByteCount.i)
+  Protected hPipe.i = CreateFile_(#Fossauro_PipeName, #GENERIC_READ | #GENERIC_WRITE, 0, 0,
+                                   #OPEN_EXISTING, 0, 0)
+  If hPipe = #INVALID_HANDLE_VALUE
+    ProcedureReturn "fossauro nao esta rodando (ou o pipe de controle nao esta disponivel) - abra Executar -> Fossauro primeiro"
+  EndIf
+
+  Protected Result.s = ""
+  If Not FossauroPipe_WriteLine(hPipe, "LOAD " + Str(Addr) + " " + Str(ByteCount))
+    Result = "falha ao enviar o comando LOAD"
+  ElseIf Not FossauroPipe_WriteRaw(hPipe, *Payload, ByteCount)
+    Result = "falha ao enviar o codigo-objeto"
+  Else
+    Protected LoadReply.s = FossauroPipe_ReadLine(hPipe)
+    If LoadReply <> "OK"
+      Result = "fossauro recusou o LOAD: " + LoadReply
+    ElseIf Not FossauroPipe_WriteLine(hPipe, "RUN " + Str(Addr))
+      Result = "falha ao enviar o comando RUN"
+    Else
+      Protected RunReply.s = FossauroPipe_ReadLine(hPipe)
+      If RunReply <> "OK"
+        Result = "fossauro recusou o RUN: " + RunReply
+      EndIf
+    EndIf
+  EndIf
+
+  CloseHandle_(hPipe)
+  ProcedureReturn Result
 EndProcedure
 
 ;- ------------------------------------------------------------
