@@ -1,8 +1,8 @@
 # Release Notes
 
 Notas de lançamento formais, uma entrada por versão com codinome — versão mais recente primeiro.
-Para o histórico completo e detalhado sessão a sessão (incluindo versões sem codinome), ver o
-"Changelog resumido" em `README.md`. Para a arquitetura/spec de cada módulo, ver `docs/SPEC.md`.
+Para o histórico completo e detalhado sessão a sessão (incluindo versões sem codinome), ver
+[`CHANGELOG.md`](../CHANGELOG.md). Para a arquitetura/spec de cada módulo, ver `docs/SPEC.md`.
 
 ---
 

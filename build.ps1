@@ -186,7 +186,7 @@ $BuildDateText = $UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
 # reextrai esse mesmo recurso do proprio .exe (ExtractIconEx) pra aplicar em
 # cada janela (barra de titulo/sistema, barra de tarefas, Alt+Tab) - nao
 # depende do arquivo .ico sobreviver ao lado do executavel depois do build.
-$IconFile = Join-Path $PSScriptRoot "resource\branding\paleobasic.ico"
+$IconFile = Join-Path $PSScriptRoot "resource\branding\paleobasic-new.ico"
 $IconArgs = @()
 if (Test-Path $IconFile) {
     $IconArgs = @("/ICON", $IconFile)

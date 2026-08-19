@@ -30,11 +30,24 @@ if (Test-Path $ConfigPath) {
     }
 }
 
+# Mesmo icone do PaleoBasic.exe (resource/branding/paleobasic-new.ico), por pedido explicito do
+# usuario (2026-08-19) - "por hora" o mesmo icone nos dois, ver build.ps1 (raiz do repo) pro
+# mesmo padrao. So embute o icone do .exe (Explorer/propriedades) - diferente do BadigEditor.pb,
+# fossauro.pb ainda nao tem codigo de runtime (WM_SETICON) pra reaplicar isso na barra de titulo
+# das janelas, entao o icone da JANELA continua o padrao do PureBasic por enquanto.
+$IconFile = Join-Path $RepoRoot "resource\branding\paleobasic-new.ico"
+$IconArgs = @()
+if (Test-Path $IconFile) {
+    $IconArgs = @("/ICON", $IconFile)
+} else {
+    Write-Warning "Icone nao encontrado em $IconFile - compilando sem /ICON."
+}
+
 Write-Host "Iniciando compilação do fossauro..." -ForegroundColor Cyan
 Write-Host "Fonte : $SourceFile"
 Write-Host "Saida : $OutputExe"
 
-& $CompilerPath $SourceFile /THREAD /OUTPUT $OutputExe /CONSTANT "App_Version=8.2.0"
+& $CompilerPath $SourceFile /THREAD /OUTPUT $OutputExe @IconArgs /CONSTANT "App_Version=8.2.0"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "------------------------------------------------------------" -ForegroundColor Green

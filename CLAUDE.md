@@ -19,8 +19,9 @@ which stays the actual name of the input *dialect* (ported from the original Pyt
 is not being renamed.
 
 **`docs/SPEC.md` is the source of truth for architecture and scope decisions** — read it before
-proposing structural changes. `README.md` has a running changelog and a quick "what already exists"
-summary. `docs/MANUAL.md` is the end-user guide (editor keybindings, disk manager, config screens).
+proposing structural changes. `README.md` has a quick "what already exists" summary; the running,
+session-by-session changelog lives in `CHANGELOG.md` (split out 2026-08-19, README had grown past 3000
+lines). `docs/MANUAL.md` is the end-user guide (editor keybindings, disk manager, config screens).
 
 ## Commands
 
