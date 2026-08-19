@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Compila o executavel do MSX BASIC+Z80 IDE (editor\BadigEditor.pb) usando o
-    PureBasic Compiler (pbcompiler.exe).
+    Compila o executavel do MSX BASIC+Z80 IDE (src\editor\BadigEditor.pb) usando o
+    PureBasic Compiler (pbcompiler.exe), gerando dist\PaleoBasic.exe.
 
 .DESCRIPTION
     O caminho do pbcompiler.exe e resolvido nesta ordem de prioridade:
@@ -52,15 +52,17 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida no executavel (padrao: 8.1.7).
+  -V, --version <versao>    Versao embutida no executavel (padrao: 8.2.0).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
-                             (padrao: editor\BadigEditor.pb).
+                             (padrao: src\editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
-                             (padrao: editor\PaleoBasic.exe).
-  -D, --distribute          Depois de compilar com sucesso, monta o pacote de
-                             distribuicao na pasta distribute\ (executavel
-                             final, README.md, docs\MANUAL.md, LICENSE,
-                             pasta sample\, paleobasic.ico, paleobasic.png).
+                             (padrao: dist\PaleoBasic.exe).
+  -D, --distribute          Depois de compilar com sucesso, atualiza dist\editor\
+                             com os recursos de resource\ (fontes, imagens de
+                             ajuda, ferramentas externas) e copia README.md/
+                             docs\MANUAL.md/LICENSE/paleobasic.png pra dist\.
+                             NAO apaga dist\sample\ nem dist\projects\ (sao
+                             conteudo versionado, nao gerado).
 
 Exemplos:
   .\build.ps1
@@ -75,9 +77,9 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "8.1.7"
-$SourceFile = Join-Path $PSScriptRoot "editor\BadigEditor.pb"
-$OutputExe = Join-Path $PSScriptRoot "editor\PaleoBasic.exe"
+$Version = "8.2.0"
+$SourceFile = Join-Path $PSScriptRoot "src\editor\BadigEditor.pb"
+$OutputExe = Join-Path $PSScriptRoot "dist\PaleoBasic.exe"
 $Distribute = $false
 
 # $args e uma variavel automatica por escopo (uma funcao chamada daqui teria
@@ -184,7 +186,7 @@ $BuildDateText = $UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
 # reextrai esse mesmo recurso do proprio .exe (ExtractIconEx) pra aplicar em
 # cada janela (barra de titulo/sistema, barra de tarefas, Alt+Tab) - nao
 # depende do arquivo .ico sobreviver ao lado do executavel depois do build.
-$IconFile = Join-Path $PSScriptRoot "paleobasic.ico"
+$IconFile = Join-Path $PSScriptRoot "resource\branding\paleobasic.ico"
 $IconArgs = @()
 if (Test-Path $IconFile) {
     $IconArgs = @("/ICON", $IconFile)
@@ -218,35 +220,67 @@ Write-Host "Build concluido: $OutputExe"
 
 if ($Distribute) {
     Write-Host ""
-    Write-Host "Montando pacote de distribuicao..."
+    Write-Host "Atualizando dist\..."
 
-    $DistributeDir = Join-Path $PSScriptRoot "distribute"
-    if (Test-Path $DistributeDir) {
-        Remove-Item -Path $DistributeDir -Recurse -Force
-    }
-    New-Item -ItemType Directory -Path $DistributeDir -Force | Out-Null
+    # dist\ NAO e mais um pacote descartavel (era o caso da antiga distribute\,
+    # sempre apagada e refeita do zero) - agora tem conteudo VERSIONADO junto
+    # (dist\sample\, dist\projects\, dist\res\) que este passo nao pode tocar.
+    # So copia por cima os itens GERADOS/derivados de resource\+src\ (fontes,
+    # imagens de ajuda, ferramentas externas, docs, branding) - Copy-Item -Force
+    # sobrescreve arquivo por arquivo sem remover o resto da arvore.
+    $DistDir = Join-Path $PSScriptRoot "dist"
+    $DistEditorDir = Join-Path $DistDir "editor"
+    New-Item -ItemType Directory -Path $DistEditorDir -Force | Out-Null
 
-    function Copy-DistItem([string]$Path, [switch]$Recurse) {
+    function Copy-DistItem([string]$Path, [string]$Destination, [switch]$Recurse) {
         if (Test-Path $Path) {
-            Copy-Item -Path $Path -Destination $DistributeDir -Recurse:$Recurse -Force
-            Write-Host "  incluido: $Path"
+            # Bug real encontrado rodando -D pela SEGUNDA vez (2026-08-19): quando $Destination ja
+            # existe como pasta (sobrou da execucao anterior), "Copy-Item -Recurse" copia a pasta
+            # ORIGEM PRA DENTRO dela em vez de sobrescrever arquivo por arquivo - resultado
+            # "dist\editor\fonts\fonts\..." aninhado. Apagar o destino primeiro (so quando -Recurse
+            # e' pasta) torna o passo idempotente de verdade.
+            if ($Recurse -and (Test-Path $Destination -PathType Container)) {
+                Remove-Item -Path $Destination -Recurse -Force
+            }
+            Copy-Item -Path $Path -Destination $Destination -Recurse:$Recurse -Force
+            Write-Host "  incluido: $Path -> $Destination"
         } else {
             Write-Warning "  nao encontrado, pulando: $Path"
         }
     }
 
-    Copy-DistItem -Path $OutputExe
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "README.md")
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "docs\MANUAL.md")
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE")
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "sample") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\fonts") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\redbook_images") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "editor\th2handbook_images") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "paleobasic.ico")
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "paleobasic.png")
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "README.md") -Destination $DistDir
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "docs\MANUAL.md") -Destination $DistDir
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE") -Destination $DistDir
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\branding\paleobasic.png") -Destination $DistDir
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fonts") -Destination (Join-Path $DistEditorDir "fonts") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\redbook_images") -Destination (Join-Path $DistEditorDir "redbook_images") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\th2handbook_images") -Destination (Join-Path $DistEditorDir "th2handbook_images") -Recurse
+    $DistToolsDir = Join-Path $DistEditorDir "tools"
+    New-Item -ItemType Directory -Path $DistToolsDir -Force | Out-Null
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\msxbas2rom") -Destination (Join-Path $DistToolsDir "msxbas2rom") -Recurse
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\n80") -Destination (Join-Path $DistToolsDir "n80") -Recurse
 
-    Write-Host "Pacote de distribuicao criado em: $DistributeDir"
+    # help do Fossauro - so a pasta help\, NAO o executavel (fossauro.exe tem
+    # licenca propria/nao-comercial, LICENSE-fossauro, e continua so' sendo
+    # buildado por src\fossauro\build.ps1 separadamente, nunca por este script).
+    $DistFossauroDir = Join-Path $DistDir "fossauro"
+    New-Item -ItemType Directory -Path $DistFossauroDir -Force | Out-Null
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fossauro_help") -Destination (Join-Path $DistFossauroDir "help") -Recurse
+
+    # ROMs do sistema MSX pro Fossauro (MSX.pbi le "roms/MSX.ROM" e afins, caminho
+    # cru relativo ao diretorio de trabalho no lancamento - dist\fossauro.exe roda
+    # com CWD = dist\, entao a pasta precisa se chamar dist\roms\, nao
+    # dist\fossauro\roms\). Fonte canonica fica em resource\roms\ - copyright
+    # proprio, nunca rastreado no git (ver .gitignore); so' copia se o usuario ja
+    # tiver colocado as ROMs la.
+    if (Test-Path (Join-Path $PSScriptRoot "resource\roms")) {
+        $DistRomsDir = Join-Path $DistDir "roms"
+        New-Item -ItemType Directory -Path $DistRomsDir -Force | Out-Null
+        Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\roms\*.ROM") -Destination $DistRomsDir
+    }
+
+    Write-Host "dist\ atualizado em: $DistDir"
 }
 
 if ($Run) {

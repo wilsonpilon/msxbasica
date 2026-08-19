@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# build.sh — compila o executavel do MSX BASIC+Z80 IDE (editor/BadigEditor.pb)
-# usando o PureBasic Compiler para Linux (pbcompiler), tipicamente rodado de
+# build.sh — compila o executavel do MSX BASIC+Z80 IDE (src/editor/BadigEditor.pb)
+# usando o PureBasic Compiler para Linux (pbcompiler), gerando
+# dist/PaleoBasic, tipicamente rodado de
 # dentro do WSL (Windows Subsystem for Linux) apontando pro mesmo checkout do
 # repositorio (ex.: /mnt/c/dos/msxbasica).
 #
@@ -64,13 +65,14 @@ Opcoes:
   -H, --help                 Mostra esta ajuda e sai.
   -V, --version <versao>     Versao embutida no executavel (padrao: 7.33.9).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
-                              (padrao: editor/BadigEditor.pb).
+                              (padrao: src/editor/BadigEditor.pb).
   -o, --outputexe <arquivo>  Caminho do executavel de saida
-                              (padrao: editor/PaleoBasic).
-  -D, --distribute           Depois de compilar com sucesso, monta o pacote de
-                              distribuicao na pasta distribute-linux/
-                              (executavel final, README.md, docs/MANUAL.md,
-                              LICENSE, pasta sample/, paleobasic.png).
+                              (padrao: dist/PaleoBasic).
+  -D, --distribute           Depois de compilar com sucesso, atualiza dist/editor/
+                              com os recursos de resource/ (fontes, imagens de
+                              ajuda) e copia README.md/docs/MANUAL.md/LICENSE/
+                              paleobasic.png pra dist/. NAO apaga dist/sample/
+                              nem dist/projects/ (sao conteudo versionado).
 
 Exemplos:
   ./build.sh
@@ -86,8 +88,8 @@ HELP=0
 COMPILER=""
 RUN=0
 VERSION="7.33.9"
-SOURCE_FILE="$SCRIPT_DIR/editor/BadigEditor.pb"
-OUTPUT_EXE="$SCRIPT_DIR/editor/PaleoBasic"
+SOURCE_FILE="$SCRIPT_DIR/src/editor/BadigEditor.pb"
+OUTPUT_EXE="$SCRIPT_DIR/dist/PaleoBasic"
 DISTRIBUTE=0
 
 while [ $# -gt 0 ]; do
@@ -224,30 +226,57 @@ echo "Build concluido: $OUTPUT_EXE"
 
 if [ "$DISTRIBUTE" -eq 1 ]; then
     echo ""
-    echo "Montando pacote de distribuicao..."
+    echo "Atualizando dist/..."
 
-    DISTRIBUTE_DIR="$SCRIPT_DIR/distribute-linux"
-    rm -rf "$DISTRIBUTE_DIR"
-    mkdir -p "$DISTRIBUTE_DIR"
+    # dist/ tem conteudo VERSIONADO junto (dist/sample/, dist/projects/,
+    # dist/res/) - nao apaga a pasta inteira como a antiga distribute-linux/
+    # fazia, so copia por cima os itens gerados/derivados de resource/+src/.
+    DIST_DIR="$SCRIPT_DIR/dist"
+    DIST_EDITOR_DIR="$DIST_DIR/editor"
+    mkdir -p "$DIST_EDITOR_DIR"
 
     copy_dist_item() {
         local path="$1"
+        local dest="$2"
         if [ -e "$path" ]; then
-            cp -r "$path" "$DISTRIBUTE_DIR/"
-            echo "  incluido: $path"
+            # Mesmo bug de idempotencia do build.ps1 (ver comentario la): "cp -r origem destino"
+            # quando $destino ja existe como pasta copia a origem PRA DENTRO dela em vez de
+            # sobrescrever - apaga o destino primeiro quando origem e' pasta e destino ja existe.
+            if [ -d "$path" ] && [ -d "$dest" ]; then
+                rm -rf "$dest"
+            fi
+            cp -r "$path" "$dest"
+            echo "  incluido: $path -> $dest"
         else
             echo "Aviso: nao encontrado, pulando: $path" >&2
         fi
     }
 
-    copy_dist_item "$OUTPUT_EXE"
-    copy_dist_item "$SCRIPT_DIR/README.md"
-    copy_dist_item "$SCRIPT_DIR/docs/MANUAL.md"
-    copy_dist_item "$SCRIPT_DIR/LICENSE"
-    copy_dist_item "$SCRIPT_DIR/sample"
-    copy_dist_item "$SCRIPT_DIR/paleobasic.png"
+    copy_dist_item "$SCRIPT_DIR/README.md" "$DIST_DIR/"
+    copy_dist_item "$SCRIPT_DIR/docs/MANUAL.md" "$DIST_DIR/"
+    copy_dist_item "$SCRIPT_DIR/LICENSE" "$DIST_DIR/"
+    copy_dist_item "$SCRIPT_DIR/resource/branding/paleobasic.png" "$DIST_DIR/"
+    copy_dist_item "$SCRIPT_DIR/resource/fonts" "$DIST_EDITOR_DIR/"
+    copy_dist_item "$SCRIPT_DIR/resource/redbook_images" "$DIST_EDITOR_DIR/"
+    copy_dist_item "$SCRIPT_DIR/resource/th2handbook_images" "$DIST_EDITOR_DIR/"
+    mkdir -p "$DIST_EDITOR_DIR/tools"
+    copy_dist_item "$SCRIPT_DIR/resource/tools/msxbas2rom" "$DIST_EDITOR_DIR/tools/"
+    copy_dist_item "$SCRIPT_DIR/resource/tools/n80" "$DIST_EDITOR_DIR/tools/"
+    mkdir -p "$DIST_DIR/fossauro"
+    copy_dist_item "$SCRIPT_DIR/resource/fossauro_help" "$DIST_DIR/fossauro/help"
 
-    echo "Pacote de distribuicao criado em: $DISTRIBUTE_DIR"
+    # ROMs do sistema MSX pro Fossauro - mesma logica do build.ps1 (ver
+    # comentario la): dist/fossauro roda com CWD = dist/, entao a pasta de
+    # ROMs precisa se chamar dist/roms/, nao dist/fossauro/roms/. Fonte
+    # canonica em resource/roms/ - copyright proprio, nunca rastreado no git.
+    if [ -d "$SCRIPT_DIR/resource/roms" ]; then
+        mkdir -p "$DIST_DIR/roms"
+        for rom in "$SCRIPT_DIR"/resource/roms/*.ROM; do
+            [ -e "$rom" ] && copy_dist_item "$rom" "$DIST_DIR/roms/"
+        done
+    fi
+
+    echo "dist/ atualizado em: $DIST_DIR"
 fi
 
 if [ "$RUN" -eq 1 ]; then

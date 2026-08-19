@@ -4,7 +4,7 @@
 # (nome do diretorio default e "badig", mas o .zip/clone do GitHub tambem pode
 # cair como "basic-dignified" dependendo de como foi baixado manualmente -
 # a documentacao usada por Ajuda -> Basic Dignified... foi lida de uma copia
-# baixada assim, ver editor/BasicDignifiedHelpData.pbi).
+# baixada assim, ver src/editor/help/BasicDignifiedHelpData.pbi).
 /badig/
 /basic-dignified/
 
@@ -20,16 +20,20 @@
 # portar nativamente pro modulo 14 (Graphos III), nao dependencia de runtime.
 /graphos-IV/
 
-# Cache local de fontes (nao faz parte do projeto) - exceto Source Code Pro,
-# que e sincronizada com o GitHub (fonte usada/testada pelo editor).
-/fonts/*
-!/fonts/Source_Code_Pro.zip
+# Cache local de fontes baixadas via Configurar -> Editor... -> Baixar fontes
+# (FontDownloader.pbi, destino "<exe>\..\fonts" = dist\fonts\ agora que o exe
+# vive em dist\editor\) - exceto Source Code Pro, que e sincronizada com o
+# GitHub (fonte usada/testada pelo editor). NAO confundir com
+# dist\editor\fonts\ (fonte padrao embutida, copiada de resource\fonts\ pelo
+# build -D, essa sim rastreada).
+/dist/fonts/*
+!/dist/fonts/Source_Code_Pro.zip
 
 # Copia local do SEE (Sound Effect Editor, Fuzzy Logic 1991/95) - shareware,
 # nao dominio publico (uso comercial exige pagamento aos autores, ver
 # see/SEE3HELP.TXT) - referencia de leitura do formato .SEE/driver de replay
 # (see/SEE3PLAY.ASC) a portar nativamente pro futuro tracker de SFX
-# compativel (ver docs/SPEC.md modulo 23, editor/SeeTrackerHelpData.pbi),
+# compativel (ver docs/SPEC.md modulo 23, src/editor/visual_editors/SeeTrackerHelpData.pbi),
 # nao dependencia de runtime nem material pra distribuir com o repositorio.
 /see/
 
@@ -66,26 +70,53 @@
 /fMSX/
 /fmsx/
 
-# fossauro/ (apelido oficial, ex-"bafmsx/" - renomeado 2026-08-15) - port
-# nativo em PureBasic do fMSX (Z80/MSX/V9938), decisao explicita do usuario:
-# o FONTE do port (fossauro/*.pbi, fossauro/*.pb, fossauro/*.md,
-# fossauro/LICENSE, fossauro/build.ps1, fossauro/translate.py) e parte do
-# projeto e fica versionado normalmente - NAO adicionar "/fossauro/" aqui.
-# As linhas abaixo excluem so o que nunca deveria ter sido commitado: a
-# copia vendorizada do fMSX original em C (fossauro/fMSX/ - mesmo material/
-# mesma licenca ja excluida em /fmsx/ acima, so que apareceu de novo dentro
-# de fossauro/ por engano), os binarios de ROM do sistema MSX (copyright
-# proprio, nao redistribuivel, independente da licenca do fMSX) e artefatos
-# de build/teste (.exe/log, regenerados por fossauro/build.ps1, nao sao
-# fonte).
-/fossauro/fMSX/
-/fossauro/fMSX.exe
-/fossauro/fMSX.html
-/fossauro/*.ROM
-/fossauro/*.exe
-/fossauro/debug.log
-/fossauro/fossauro.log
-/fossauro/fossauro.log.*
+# src/fossauro/ (fonte movido de fossauro/ pra src/fossauro/ na reorganizacao
+# de diretorios, ver docs/SPEC.md) - port nativo em PureBasic do fMSX (Z80/
+# MSX/V9938), decisao explicita do usuario: o FONTE do port
+# (src/fossauro/*.pbi, *.pb, *.md, LICENSE, build.ps1, translate.py) e parte
+# do projeto e fica versionado normalmente - NAO adicionar "/src/fossauro/"
+# aqui. As linhas abaixo excluem so o que nunca deveria ter sido commitado: a
+# copia vendorizada do fMSX original em C (src/fossauro/fMSX/ - mesmo
+# material/mesma licenca ja excluida em /fmsx/ acima, so que apareceu de novo
+# por engano), os binarios de ROM do sistema MSX (copyright proprio, nao
+# redistribuivel, independente da licenca do fMSX) e artefatos de build/teste
+# (.exe/log, regenerados por src/fossauro/build.ps1, nao sao fonte).
+/src/fossauro/fMSX/
+/src/fossauro/fMSX.exe
+/src/fossauro/fMSX.html
+/src/fossauro/*.ROM
+/src/fossauro/*.exe
+/src/fossauro/debug.log
+/src/fossauro/fossauro.log
+/src/fossauro/fossauro.log.*
+
+# fossauro.exe/ROMs distribuidos NUNCA sao rastreados aqui tambem, mesmo
+# motivo acima (licenca propria nao-comercial/copyright de ROM). Pedido
+# explicito do usuario (2026-08-19): os dois executaveis ficam na RAIZ de
+# dist/ (dist/PaleoBasic.exe, dist/fossauro.exe), cada um busca help/config
+# na subpasta com seu nome (dist/editor/, dist/fossauro/) - src/fossauro/
+# build.ps1 grava dist/fossauro.exe direto. ROMs do sistema MSX: fonte
+# canonica em resource/roms/*.ROM (tambem nunca rastreado, mesmo motivo;
+# renomeado de resource/fmsx/ - "fMSX" era o nome do emulador original, nao
+# do que a pasta guarda), copiado por build.ps1/build.sh -D pra dist/roms/
+# (fossauro.exe roda com CWD = dist/, carrega "roms/MSX.ROM" relativo a
+# isso - nao pra dist/fossauro/roms/, que so' tem help/config).
+/dist/fossauro.exe
+/dist/roms/
+/resource/roms/*.ROM
+
+# Preferencias locais de cada maquina/usuario - nunca fazem parte do pacote
+# versionado em dist/ (mesmo espirito de badig_settings.json etc abaixo).
+/dist/editor/*_settings.json
+/dist/editor/editor_settings.json
+/dist/editor/hexeditor_templates.json
+
+# Projeto implicito "sem projeto especificado" (ProjectDB::NewTempPath(),
+# src/editor/core/ProjectDB.pbi) - criado sozinho na primeira vez que o
+# editor precisa dele, muda a cada sessao de uso, nao e' conteudo fixo pra
+# versionar (mesmo espirito dos *_settings.json acima). A pasta dist/projects/
+# em si fica rastreada (dist/projects/README.md) pra sobreviver a um clone.
+/dist/projects/noname.msxproject
 
 # Caminho local do pbcompiler.exe, gravado por build.ps1 (-Compiler/-C)
 /build.config.json
@@ -95,28 +126,8 @@
 # script pisar na config do outro.
 /build.config.linux.json
 
-# Pacote de distribuicao gerado por build.ps1 -D/--distribute (artefato de
-# build, nao fonte).
-/distribute/
-
-# Pacote de distribuicao gerado por build.sh -D/--distribute (Linux).
-/distribute-linux/
-
-# Executavel Linux gerado por build.sh (equivalente ao editor/PaleoBasic.exe
-# do Windows, sem extensao).
-/editor/PaleoBasic
-
-# Preferencias locais persistidas pelo proprio editor (Configurar -> ...),
-# especificas de cada maquina/usuario.
-/editor/editor_settings.json
-/editor/badig_settings.json
-/editor/hexeditor_templates.json
-
-# Configuracao do Mamute Assembler (Configurar -> Mamute Assembler...) -
-# guarda caminhos de arquivo (BIOS/BASIC/etc.) especificos da maquina do
-# usuario, igual as outras acima.
-/editor/mamute_settings.json
-
-# Configuracao do Fossauro (Configurar -> Fossauro...) - caminho do
-# executavel/modelo/RAM/VRAM padrao, especificos da maquina do usuario.
-/editor/fossauro_settings.json
+# Executavel Linux gerado por build.sh (equivalente ao dist/PaleoBasic.exe
+# do Windows, sem extensao) - dist/PaleoBasic.exe (Windows) FICA
+# rastreado de proposito (mesma convencao de release ja usada neste projeto -
+# ver docs/RELEASE_NOTES.md), so o binario Linux e' local/nao versionado.
+/dist/PaleoBasic

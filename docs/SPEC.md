@@ -7995,6 +7995,172 @@ aba "Emulador" dentro da tela do Basic Dignified foi dada como suficientemente c
 verificação da tela standalone `Configurar → openMSX...` (código 100% compartilhado, mesma
 `Structure`/mesmas `Procedure`s) em vez de forçar esse clique de novo.
 
+### 35. Reorganização completa de diretórios: `src/`, `dist/`, `resource/`, `docs/`, `others/` (2026-08-19, próxima versão)
+
+Pedido explícito e detalhado do usuário: separar fonte compilado (`src/`, organizado por função lógica),
+tudo que o programa precisa pra rodar (`dist/`, incluindo `sample/` e um `projects/` com o projeto
+padrão), recursos não-compilados que o projeto ainda possui (`resource/` — alfabetos, aquarela, fontes,
+imagens de ajuda, ferramentas externas, cópias vendorizadas de referência), documentação consolidada
+(`docs/`), e diretórios sem uso nenhum isolados como candidatos a remoção (`others/`).
+
+**Pesquisa antes de mexer em qualquer arquivo** (dois agentes em paralelo, ver histórico da sessão):
+confirmado que `editor/BadigEditor.pb` tinha 94 linhas `XIncludeFile` de topo (todas nomes de arquivo
+sem subpasta) + 4 arquivos incluídos só indiretamente (de dentro de outro `.pbi`, não direto do
+`BadigEditor.pb`); mapeado TODO caminho relativo em tempo de execução (`GetPathPart(ProgramFilename())`
+e variantes `..\`) usado pelo editor e pelo fossauro, e os 4 pontos de `.gitignore`/scripts de build que
+dependiam da estrutura antiga.
+
+**Achado crítico, confirmado empiricamente antes de mexer em qualquer include aninhado**: `XIncludeFile`
+resolve caminho relativo **em relação ao arquivo que contém a diretiva**, NÃO em relação ao arquivo raiz
+passado ao compilador — testado com um caso mínimo de 3 arquivos (`main.pb` → `sub/child.pbi` →
+`grandchild.pbi`, este último colocado ao lado de `main.pb` de propósito, não de `child.pbi`): a
+compilação falhou com "File not found" procurando `grandchild.pbi` **dentro de `sub/`**, confirmando a
+resolução relativa-ao-includer. Isso importa porque só **1 dos 4** includes aninhados cruza pastas na
+nova organização (`ProjectDB.pbi`, agora em `core/`, incluindo `DefaultCharsetMsx.pbi`, agora em
+`visual_editors/`) — os outros 3 (`Z80Asm.pbi`→`Z80RelFormat.pbi`, `Z80Link.pbi`→`Z80RelFormatLink.pbi`,
+`MmlSynth.pbi`→`PsgSynth.pbi`) ficaram no MESMO subdiretório de quem os inclui, então continuam
+funcionando com o nome de arquivo puro, sem prefixo de caminho.
+
+**Mapeamento final**:
+- `src/editor/` — `BadigEditor.pb` na raiz + 98 `.pbi` distribuídos em `core/` (16), `assemblers/` (28),
+  `basic/` (5), `emulators/` (4), `visual_editors/` (20), `help/` (25 — só visualizadores de referência
+  genéricos tipo Livro Vermelho/BIOS/hardware/manuais MSX; ajuda específica de uma feature, tipo a do
+  Mamute ou da NestorBasic, ficou junto da feature em vez de em `help/`), mais `tools/` (as 15 CLIs de
+  teste + seus `.exe` já compilados, que também eram rastreados no git).
+- `src/fossauro/` — movido inteiro, estrutura interna continua plana (só 16 arquivos, não precisava de
+  subpastas), zero mudança nos 3 `XIncludeFile` dele.
+- `dist/` — `dist/editor/PaleoBasic.exe` (o próprio `.exe` de release, já era rastreado no git antes da
+  reorganização — convenção mantida), `dist/fossauro/` (`fossauro.exe` NÃO rastreado, licença própria
+  não-comercial — só `help/` fica versionado), `dist/res/` (NBASIC.BIN/.DAT + MSX-DOS), `dist/sample/`,
+  `dist/fonts/` (cache de fontes baixadas, só `Source_Code_Pro.zip` rastreado), `dist/projects/` (ver
+  abaixo), `dist/paleobasic.png`, `dist/README.md`/`MANUAL.md`/`LICENSE` (cópias, atualizadas por
+  `build.ps1 -D`). **`dist/editor/fonts/`, `redbook_images/`, `th2handbook_images/`, `tools/{msxbas2rom,
+  n80}` ficaram rastreados também** (não só gerados) — decisão deliberada: como o `.exe` de release já é
+  commitado no repo por convenção deste projeto, `dist/` inteiro vira um pacote "pronto pra rodar"
+  autocontido, coerente com essa mesma convenção, mesmo que isso duplique o conteúdo de `resource/`
+  (fonte único) — `build.ps1 -D`/`build.sh -D` são quem sincroniza a cópia, não apagam mais `dist/`
+  inteiro do zero (a versão antiga de `distribute/` fazia `Remove-Item -Recurse` sempre, o que agora
+  destruiria `dist/sample/`/`dist/projects/`).
+- `resource/` — `openmsx/`, `graphos/`, `Aquarela/`, `alfabetos/`, `nestor/`, `fx80/`, `megasm/`,
+  `Konpass/` (cópias vendorizadas de referência, confirmado por grep que nenhuma é lida por código
+  compilado, só citadas em comentário/prosa), `fonts/` (fonte padrão embutida, era `editor/fonts/`),
+  `redbook_images/`, `th2handbook_images/` (imagens dos visualizadores de ajuda), `tools/msxbas2rom/`,
+  `tools/n80/` (binários de ferramenta externa, rastreados desde sempre), `fossauro_help/` (era
+  `fossauro/help/`), `branding/` (`paleobasic.ico`/`.png`).
+- `docs/` — `tradutor.txt`, `transcricao.md`, `images/` (as 22 capturas de tela do `README.md`, com os
+  links do próprio `README.md` atualizados de `images/...` pra `docs/images/...`), `docs/fossauro/`
+  (`SPEC.md`/`OUTLINE.md`/`manual.md`/`fMSX-reference.md`, extraídos de dentro de `fossauro/` antes dele
+  virar `src/fossauro/`).
+- `others/` — `prj/`, `support/`, `msxword/`, `superx/` (zero referência em código compilado, confirmado
+  por grep), `filehunter/` (app Python irmão sem relação nenhuma com o Paleobasic — escolha explícita do
+  usuário), `disk/` (renomeado `others/disk_generated_artifacts/` — os 7 arquivos rastreados nele eram
+  só saída regenerada de "Executar → BASIC" comprometida por engano, `RunOnOpenMSX_DiskDir()` já limpa
+  essa pasta a cada execução), e `others/misplaced_or_build_artifacts/` — um achado real e inesperado:
+  `editor/` tinha um binário ELF Linux rastreado (`BadigEditor`, saída de uma compilação via `build.sh`
+  comitada por engano em algum momento) e as MESMAS ROMs do commit "ROMs" (`4320b82`) duplicadas ali —
+  `CARTS.SHA`/`CMOS.ROM`/`DISK.ROM`/etc. já existem (como conteúdo local não-rastreado) dentro de
+  `fossauro/`/agora `src/fossauro/`, e nada no código compilado do editor as lê; parecem ter ido pro
+  lugar errado no commit original. Quarentenados, não apagados.
+
+**`dist/projects/` e o projeto padrão** (pedido explícito: "aquele que é salvo e carregado
+automaticamente se o usuário não especificar projeto algum") — isso é exatamente
+`ProjectDB::NewTempPath()`/`EnsureOpen()` (`src/editor/core/ProjectDB.pbi`), que antes resolvia pra
+`GetTemporaryDirectory()` (pasta temp do SO — perdida em qualquer limpeza de temp ou troca de máquina).
+Mudado pra `<exe>\..\projects\noname.msxproject` (mesmo padrão relativo de `dist\res\`/`dist\sample\`),
+criando o diretório se não existir (`CreateDirectory()` — `CreateFile()` do PureBasic NÃO cria pastas-pai
+sozinho, confirmado lendo `OpenAt()`). O ARQUIVO `noname.msxproject` em si não é versionado (estado
+mutável de sessão pra sessão, ver `.gitignore`) — só a pasta `dist/projects/` fica garantida via um
+`README.md` placeholder (git não versiona pasta vazia). Verificado ao vivo: reconstruído o editor,
+lançado a partir de `dist/editor/PaleoBasic.exe` sem nenhum parâmetro, confirmado `dist/projects/
+noname.msxproject` criado (86016 bytes) e **nada** criado na pasta temp do SO.
+
+**Achado incidental, não relacionado à reorganização em si, não corrigido (fora de escopo)**:
+`MsxDignifiedHelpData.pbi` não é incluído em lugar NENHUM (nem topo nem aninhado) — código morto
+pré-existente, confirmado por grep no repositório inteiro. Preservado no lugar (agora em `help/`), só
+registrado aqui pra não ser confundido com um erro desta reorganização se alguém notar depois.
+
+**Verificado ao vivo, várias vezes ao longo da reorganização** (não só no fim): `pbcompiler.exe`
+compilando limpo direto de `src/editor/BadigEditor.pb` → `dist/editor/PaleoBasic.exe` na primeira
+tentativa depois da reescrita das 94 linhas `XIncludeFile` (nenhum erro de arquivo não encontrado);
+`src/fossauro/fossauro.pb` compilando limpo sem nenhuma mudança de código (só a pasta moveu);
+`build.ps1 -D` populando `dist/` corretamente a partir de `resource/` (fontes/imagens/ferramentas);
+`dist/editor/PaleoBasic.exe` lançado e capturado por screenshot (`SetProcessDPIAware()` +
+`WM_COMMAND`/`EnumWindows`, nunca clique real) mostrando o ícone/abas/menus renderizando normalmente,
+sem diálogo de erro; o teste do projeto padrão descrito acima.
+
+**Scripts de build atualizados**: `build.ps1` (fonte/saída default apontam pra `src/`/`dist/`, `-D` não
+apaga mais `dist/` inteiro, só sincroniza os itens derivados de `resource/`), `build.sh` (mesma lógica,
+não testado por falta de compilador Linux nesta máquina — só revisão cuidadosa espelhando o `build.ps1`),
+`src/fossauro/build.ps1` (agora resolve `$PSScriptRoot`-relativo em vez de nomes crus que só funcionavam
+rodando de dentro da própria pasta, e usa o MESMO `build.config.json` do script raiz em vez de depender
+do `pbcompiler` estar no PATH — testado, compila limpo pra `dist/fossauro/fossauro.exe`).
+
+**`CLAUDE.md` atualizado** (seções "Commands"/"Architecture" — as instruções ativas, não o changelog
+histórico deste `SPEC.md`) com os caminhos novos e a nova subdivisão de `src/editor/`; aproveitado pra
+corrigir de passagem um exemplo desatualizado (`build.ps1 -Version` → `-V`, a flag real).
+
+**Pendências explícitas**: `.gitignore` cobre os padrões de download conhecidos (`badig/`, ROMs do
+fossauro, cache de fontes) mas alguns diretórios-de-download mais obscuros (`/nestor80/`, `/asmsx/`,
+`/msxbas2rom/`, etc., referência histórica pra ferramentas baixadas sob demanda em telas de Configurar)
+não foram auditados um a um contra o novo `dist/` — deixados como estavam (raiz do repo), imperfeito mas
+inofensivo (só significa que um download futuro nesses caminhos específicos cairia num lugar não-ideal,
+não quebra nada). `build.sh` não foi recompilado de verdade (sem WSL/compilador Linux nesta sessão) - a
+próxima vez que alguém rodar via WSL é o primeiro teste real das mudanças nele.
+
+### 36. Segunda passada na reorganização: executáveis na raiz de `dist/`, cada um buscando seus próprios recursos na subpasta com seu nome (2026-08-19, próxima versão)
+
+Pedido de ajuste do usuário, na sessão seguinte ao módulo 35: os dois `.exe` (`PaleoBasic.exe`,
+`fossauro.exe`) deviam ficar direto na raiz de `dist/` (não `dist/editor/`/`dist/fossauro/`), com cada
+programa continuando a buscar help/config/recursos na subpasta com seu próprio nome
+(`dist/editor/`/`dist/fossauro/`) - e as ROMs do Fossauro passam a vir de `resource/fmsx/*.ROM`.
+
+**Por que isso muda código-fonte, não só localização de arquivo**: todo caminho de recurso em tempo de
+execução neste projeto é calculado via `GetPathPart(ProgramFilename())` (diretório do próprio `.exe` -
+ver módulo 35). Com os dois `.exe` subindo pra raiz de `dist/`, qualquer referência que antes era
+"mesmo diretório do `.exe`" (ex.: `fonts\`, `*_settings.json`) passa a precisar do prefixo `editor\`
+explícito, e qualquer referência que antes subia um nível com `..\` (splash `paleobasic.png`, `res\`,
+`disk\`, `projects\`, `badig` legado, `FossauroDir()`) passa a ser **mesmo nível** (sem `..\`), já que o
+`.exe` subiu um nível também. Mapeados e corrigidos todos os ~24 pontos (`grep -rn
+"GetPathPart(ProgramFilename())"` em todo `src/editor/`, conferido um a um contra o novo layout):
+`BadigEditor.pb` (splash, `disk\`, `res\`), `BadigSettings.pbi` (`badig` legado, `badig_settings.json`),
+`EditorSettings.pbi` (`fonts\` embutida, `editor_settings.json`), `FontDownloader.pbi` (cache de fontes
+baixadas - trocou o truque de "subir 2 níveis" por "mesmo nível"), `HexEditorGui.pbi`,
+`ProjectDB.pbi` (`projects\`), `FossauroSupport.pbi` (`FossauroDir()`, `fossauro_settings.json`, e
+**`Fossauro_FindExe()` mudou de buscar dentro de `FossauroDir()` pra buscar no mesmo diretório do
+`PaleoBasic.exe`** - achado ao revisar essa função: antes ela procurava `fossauro.exe` dentro da pasta
+de help/config do Fossauro, que nunca fazia sentido pra onde o executável realmente ficaria depois desta
+mudança), `RedBookHelpGui.pbi`/`Th2HandbookHelpGui.pbi` (imagens), e os `*_settings.json`/`tools\` de
+Asmsx/N80/MsxBas2Rom/Mamute/AssemblyOptions/BasicOptions.
+
+**ROMs do Fossauro**: `MSX.pbi` carrega `"fMSX/MSX.ROM"` (e afins) como caminho cru **relativo ao
+diretório de trabalho no lançamento**, não a `GetPathPart(ProgramFilename())` (achado já registrado no
+módulo 33) - como `Fossauro_Launch()` sempre lança com `CWD = GetPathPart(FossauroCfg\ExePath)`, e
+`fossauro.exe` agora mora na raiz de `dist/`, a pasta de ROMs precisa se chamar `dist/fMSX/` (não
+`dist/fossauro/fMSX/`, que só tem help/config). Fonte canônica em `resource/fmsx/*.ROM` (nunca
+rastreado no git, mesmo motivo de copyright já documentado pro resto do material fMSX) - `build.ps1`/
+`build.sh -D` copiam de lá pra `dist/fMSX/` quando a pasta existir.
+
+**`src/fossauro/build.ps1`** atualizado pra gravar `dist/fossauro.exe` direto (era
+`dist/fossauro/fossauro.exe`).
+
+**Verificado ao vivo, os dois executáveis a partir da raiz de `dist/`**: `fossauro.exe` lançado de
+`dist/` - `REGS` via pipe mostrou `PC=$0B9F` (a mesma região de "sistema vivo/idle saudável" já
+estabelecida como assinatura de boot correto ao longo desta sessão), confirmando que carregou as ROMs
+de `dist/fMSX/` com sucesso via o caminho cru relativo ao diretório de trabalho.
+`PaleoBasic.exe` lançado de `dist/` - screenshot mostrando ícone/menus/abas normais, sem diálogo de
+erro; conferido que `dist/projects/noname.msxproject` continua sendo criado/atualizado corretamente no
+lugar certo (prova de que `ProjectDB::NewTempPath()` resolve certo com o `.exe` na raiz).
+
+**Documentação atualizada** (`CLAUDE.md`, `docs/MANUAL.md`) pra refletir os caminhos novos dos dois
+executáveis e a explicação de que cada um busca recursos na subpasta com seu próprio nome.
+
+**Correção no mesmo dia**: `resource/fmsx/`/`dist/fMSX/` (o nome do diretório acima) renomeados pra
+`resource/roms/`/`dist/roms/` - pedido do usuário, "fMSX" era o nome do emulador original de Marat
+Fayzullin de quem o Fossauro deriva, não uma descrição do que a pasta guarda (ROMs de sistema).
+Atualizados os 9 caminhos crus `"fMSX/..."` em `src/fossauro/MSX.pbi`/`basic_verify.pb`/
+`fossauro_verify.pb` pra `"roms/..."`, `build.ps1`/`build.sh -D` e `.gitignore` junto. Verificado ao
+vivo de novo (mesmo padrão de sempre - `REGS` via pipe, `PC` na faixa saudável de boot).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido

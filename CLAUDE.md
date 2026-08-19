@@ -10,7 +10,7 @@ meant to become a self-contained `.exe` (no Python/other runtime dependencies) c
 dev workflow: editing, preprocessing/tokenizing, assembling, disk image management, and running/
 debugging in the openMSX emulator.
 
-**Codename (2026-08-13): "Paleobasic"** — `#App_Title` in `editor/BadigEditor.pb` (window title/About
+**Codename (2026-08-13): "Paleobasic"** — `#App_Title` in `src/editor/BadigEditor.pb` (window title/About
 dialog). Cosmetic only, no files or procedures were renamed. Internal modules also got prehistoric-theme
 nicknames used in header comments/conversation (Raptor = preprocessor, Compsognato = tokenizer, Diplodoco
 = disk manager, Pixelossauro = SCREEN 0/1/2 pixel editors, Pteranodonte = openMSX bridge, Mamute =
@@ -170,12 +170,13 @@ link with "undefined symbol" specifically on an x86 build, this exact decoration
 to check** — see `docs/SPEC.md` module 32q for the full investigation.
 
 ```powershell
-# Compile editor\BadigEditor.pb -> editor\PaleoBasic.exe (finds pbcompiler.exe automatically,
+# Compile src\editor\BadigEditor.pb -> dist\PaleoBasic.exe (finds pbcompiler.exe automatically,
 # or pass -C once and it's remembered in build.config.json, gitignored/machine-local)
 .\build.ps1
 .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"   # first time on a new machine
 .\build.ps1 -R                                        # build then run
-.\build.ps1 -Version "5.4.0" -R                       # stamp a version + run
+.\build.ps1 -V "5.4.0" -R                             # stamp a version + run
+.\build.ps1 -D                                        # also refresh dist\ from resource\ (fonts/help images/tools)
 .\build.ps1 -H                                        # list all flags
 ```
 
@@ -202,19 +203,19 @@ Possibly not exhaustive — if another `-l<name>` shows up at link time, it's th
 package missing, not a source bug); map the library name to its Ubuntu `-dev` package and add it here.
 
 There is no automated test runner — verification happens through small standalone console harnesses in
-`editor/tools/` (each is its own `.pb`, compiled separately with `/CONSOLE`, exercising one subsystem
+`src/editor/tools/` (each is its own `.pb`, compiled separately with `/CONSOLE`, exercising one subsystem
 without opening the GUI):
 
 ```powershell
 # Compile a harness (same pbcompiler.exe as above)
-& "C:\Basic\Compilers\pbcompiler.exe" editor\tools\DigTestCli.pb /EXE editor\tools\DigTestCli.exe /CONSOLE
+& "C:\Basic\Compilers\pbcompiler.exe" src\editor\tools\DigTestCli.pb /EXE src\editor\tools\DigTestCli.exe /CONSOLE
 
-editor\tools\DigTestCli.exe sample\teste.dmx <out_prefix> tok   # Dignified -> ASCII (-> tokenized if "tok")
-editor\tools\MSXDiskTestCli.exe <scratch_dir>                    # round-trips MSXDisk.pbi (create/add/list/extract/delete)
-editor\tools\RunBasicTestCli.exe <entrada.dmx> <scratch_dir>     # reproduces the "Executar -> BASIC" disk-build pipeline
+src\editor\tools\DigTestCli.exe dist\sample\teste.dmx <out_prefix> tok   # Dignified -> ASCII (-> tokenized if "tok")
+src\editor\tools\MSXDiskTestCli.exe <scratch_dir>                        # round-trips MSXDisk.pbi (create/add/list/extract/delete)
+src\editor\tools\RunBasicTestCli.exe <entrada.dmx> <scratch_dir>         # reproduces the "Executar -> BASIC" disk-build pipeline
 ```
 
-`sample/teste.dmx` (~900 lines, real production code — "Change Graph Kit" by Fred Rique, not a
+`dist/sample/teste.dmx` (~900 lines, real production code — "Change Graph Kit" by Fred Rique, not a
 synthetic fixture) is the regression suite for the preprocessor/tokenizer: **run `DigTestCli` against it
 after any change to `DignifiedPreprocessor.pbi` or `MsxTokenizer.pbi`** and diff the byte size / spot-check
 output against the previous known-good result.
@@ -223,15 +224,39 @@ The disk tooling can also be exercised headlessly through the shipped `.exe` its
 fastest way to validate `MSXDisk.pbi` changes:
 
 ```powershell
-editor\PaleoBasic.exe --diskmanipulator create|list|add|extract|delete disco.dsk ...
+dist\PaleoBasic.exe --diskmanipulator create|list|add|extract|delete disco.dsk ...
 ```
 
 ## Architecture
 
-**Single compilation unit.** `editor/BadigEditor.pb` is the only file passed to `pbcompiler.exe`; every
-`.pbi` file is pulled in via `XIncludeFile` (textual inclusion, not a real module boundary) and compiles
-into one `.exe`. `MSXDisk.pbi` is the one file using a real `DeclareModule`/`Module` (`MSXDisk::`), so
-its calls are qualified.
+**Top-level directory layout** (reorganized 2026-08-19, see `docs/SPEC.md` modules 35/36 for the full
+rationale/mapping): `src/` (all compiled source — `src/editor/`, `src/fossauro/`), `dist/` (everything
+the built app needs to run — `dist/PaleoBasic.exe` and `dist/fossauro.exe` both live at the *root* of
+`dist/`, each looking up its own help/config/resources in the matching subfolder, `dist/editor/`/
+`dist/fossauro/`; `dist/res/`, `dist/sample/`, `dist/projects/`, `dist/roms/` (Fossauro's system ROMs,
+copyright — never tracked) sit alongside — versioned alongside the generated pieces `build.ps1 -D`
+refreshes, see Commands above), `resource/` (vendored/non-compiled assets the project owns — bundled
+fonts, help-viewer images, external tool bundles, reference-only vendored trees like
+`resource/openmsx/`, `resource/nestor/`, `resource/roms/` (canonical source for Fossauro's ROMs, also
+never tracked)), `docs/` (all documentation, including `docs/fossauro/`), `others/` (zero-reference
+directories kept only as deletion candidates, not part of the live project). Moving a file: compiled
+source goes in `src/`, anything the running `.exe` reads goes in (or gets copied by `build.ps1 -D` into)
+`dist/`, everything else non-compiled that the project still owns goes in `resource/`. **Every runtime
+path is computed relative to `GetPathPart(ProgramFilename())`** (the exe's own directory) — since both
+exes sit at `dist/`'s root, editor-specific resources are looked up via an explicit `"editor\"` prefix
+and fossauro-specific ones via `"fossauro\"` (see `FossauroDir()`, `FossauroSupport.pbi`), not a bare
+filename or a `"..\"` climb like before this second layout pass.
+
+**Single compilation unit.** `src/editor/BadigEditor.pb` is the only file passed to `pbcompiler.exe`;
+every `.pbi` file is pulled in via `XIncludeFile` (textual inclusion, not a real module boundary) and
+compiles into one `.exe` (`dist/PaleoBasic.exe` — the two exes now live at the root of `dist/`, each
+looking up its own help/config in the matching subfolder, `dist/editor/`/`dist/fossauro/`).
+`MSXDisk.pbi` is the one file using a real
+`DeclareModule`/`Module` (`MSXDisk::`), so its calls are qualified. **`XIncludeFile` paths resolve
+relative to the file containing the directive, not relative to the root `.pb`** (confirmed empirically
+compiling a throwaway 3-file test case, 2026-08-19, before the directory reorg below) — this matters the
+moment a `.pbi` in one `src/editor/<category>/` folder needs to `XIncludeFile` one in another (needs a
+`../other_category/File.pbi` relative path; same-folder includes stay a bare filename).
 
 **`EnableExplicit` + textual inclusion means declaration order is load-bearing.** Every `Global`/
 `Structure` a later-included file reads must appear textually *before* that file's `XIncludeFile` line —
@@ -248,19 +273,30 @@ normal include position — same idiom as the procedure `Declare`s already there
 currently declared "further down" in `BadigEditor.pb`, this is the pattern: hoist the bare declaration,
 not the logic that depends on it.
 
+`src/editor/` is split into subfolders by logical function — `core/` (preprocessor/tokenizer/disk/
+project/settings foundation), `assemblers/` (Mamute, Z80Asm engine, N80/Asmsx wrappers, linker),
+`basic/` (Nestor Basic, MsxBas2Rom, BASIC-specific options), `emulators/` (openMSX bridge, Fossauro
+bridge), `visual_editors/` (sprite/screen/charset/sound editors), `help/` (standalone reference-book
+viewers — Red Book, BIOS calls, hardware, MSX manuals; feature-specific help like Mamute's or
+NestorBasic's own stays alongside that feature's files instead), plus `tools/` (the console test
+harnesses). A handful of representative files:
+
 ```
-editor/BadigEditor.pb          main window, menus, tab/document management, event loop, all XIncludeFile wiring
-editor/DignifiedPreprocessor.pbi   Dignified source -> classic ASCII pipeline (see below)
-editor/MsxTokenizer.pbi            classic ASCII -> tokenized MSX-BASIC binary (.bmx)
-editor/MSXDisk.pbi                 FAT12 .dsk image read/write (DeclareModule MSXDisk)
-editor/DiskManagerGui.pbi          "Criar -> Disco..." dual-pane disk manager window
-editor/BadigSettings.pbi           "Configurar -> Basic Dignified..." settings + JSON persistence
-editor/EditorSettings.pbi          "Configurar -> Editor..." settings (font/theme/tabs) + JSON persistence
-editor/EditorSearch.pbi            Buscar/Substituir/Ir para linha (Ctrl+F/H/G, F3) - editor keybindings otherwise are plain Scintilla/Windows defaults
-editor/EditorHelpGui.pbi           "Ajuda -> Editor..." static shortcuts reference window
-editor/ThemedButtons.pbi           Macro ThemedButton()/#Icon_* - every dialog's buttons (ButtonGadget is native Win32 chrome, ignores Color_*) render as theme-colored images instead, with an optional real Nerd Font glyph icon
-editor/FontDownloader.pbi          Nerd Fonts download picker
-editor/tools/*Cli.pb               standalone console test harnesses, see Commands above
+src/editor/BadigEditor.pb                    main window, menus, tab/document management, event loop, all XIncludeFile wiring
+src/editor/core/DignifiedPreprocessor.pbi    Dignified source -> classic ASCII pipeline (see below)
+src/editor/core/MsxTokenizer.pbi             classic ASCII -> tokenized MSX-BASIC binary (.bmx)
+src/editor/core/MSXDisk.pbi                  FAT12 .dsk image read/write (DeclareModule MSXDisk)
+src/editor/core/DiskManagerGui.pbi           "Criar -> Disco..." dual-pane disk manager window
+src/editor/core/BadigSettings.pbi            "Configurar -> Basic Dignified..." settings + JSON persistence
+src/editor/core/EditorSettings.pbi           "Configurar -> Editor..." settings (font/theme/tabs) + JSON persistence
+src/editor/core/EditorSearch.pbi             Buscar/Substituir/Ir para linha (Ctrl+F/H/G, F3) - editor keybindings otherwise are plain Scintilla/Windows defaults
+src/editor/core/EditorHelpGui.pbi            "Ajuda -> Editor..." static shortcuts reference window
+src/editor/core/ThemedButtons.pbi            Macro ThemedButton()/#Icon_* - every dialog's buttons (ButtonGadget is native Win32 chrome, ignores Color_*) render as theme-colored images instead, with an optional real Nerd Font glyph icon
+src/editor/core/FontDownloader.pbi           Nerd Fonts download picker
+src/editor/assemblers/MamuteAssemblerGui.pbi "Executar -> Mamute Assembler..." monitor, see module 31
+src/editor/emulators/OpenMSXBridge.pbi       real openMSX remote-control bridge (Tcl/XML), see module 12
+src/editor/emulators/FossauroSupport.pbi     Fossauro (own emulator) launch + named-pipe client
+src/editor/tools/*Cli.pb                     standalone console test harnesses, see Commands above
 ```
 
 **The Dignified pipeline** (the core value of the project) is a from-scratch PureBasic **port** of a
@@ -281,11 +317,11 @@ and launches openMSX with the configured machine/extension.
 
 **MSXDisk.pbi** originated as a vendored copy of the user's separate `msxDiskUtil` project. As of
 2026-07-28, `msxDiskUtil/` was removed from the repo — a runtime/build audit confirmed
-`editor/MSXDisk.pbi` is fully self-contained (no `XIncludeFile` reaching outside `editor/`) and the app
+`MSXDisk.pbi` is fully self-contained (no `XIncludeFile` reaching outside `src/editor/`) and the app
 has zero dependency on the external directory; a Unicode `MatchesFAT11` bugfix that had only been
 applied to the vendored copy was ported back into `msxDiskUtil/MSXDisk.pbi` before deletion, so the two
-were in sync at removal time. `editor/MSXDisk.pbi` is now the sole source of truth for disk format
-logic. It's exposed three ways: internally by
+were in sync at removal time. `src/editor/core/MSXDisk.pbi` is now the sole source of truth for disk
+format logic. It's exposed three ways: internally by
 `RunOnOpenMSX()`, as a headless CLI (`PaleoBasic.exe --diskmanipulator ...`, detected at the very start
 of the "Programa principal" section before any window opens), and as the graphical
 `DiskMgr_OpenWindow()` (`DiskManagerGui.pbi`). The GUI tool stages all edits on a temp copy
@@ -294,13 +330,13 @@ Cancelar discards the temp copy untouched. Left-panel/right-panel transfers in t
 copies, never moves (deliberate: never delete the user's source file as a side effect).
 
 **Settings screens** (`BadigSettings.pbi`, `EditorSettings.pbi`) persist to JSON next to the `.exe`
-(`badig_settings.json`, `editor_settings.json`, both gitignored — machine-local) via PureBasic's native
-`CreateJSON`/`LoadJSON`/`SaveJSON`, not by editing the reference `.ini` files under `badig/` (those stay
-read-only reference material), with one exception: `emulator_path` gets patched back into
-`emulator_interface.ini` because the original Python tool has no CLI flag for it.
+(`dist/editor/badig_settings.json`, `editor_settings.json`, both gitignored — machine-local) via
+PureBasic's native `CreateJSON`/`LoadJSON`/`SaveJSON`, not by editing the reference `.ini` files under
+`badig/` (those stay read-only reference material), with one exception: `emulator_path` gets patched
+back into `emulator_interface.ini` because the original Python tool has no CLI flag for it.
 
 **Verification approach**: this is a GUI-heavy PureBasic app with no unit test framework, so prefer the
-`editor/tools/*Cli.pb` console harnesses (or the `--diskmanipulator` CLI) to validate logic changes —
+`src/editor/tools/*Cli.pb` console harnesses (or the `--diskmanipulator` CLI) to validate logic changes —
 they're fast, deterministic, and don't require driving the actual window. When live GUI verification is
 unavoidable, prefer message-based automation targeted at a specific window handle (`WM_COMMAND` to a
 menu ID, `BM_CLICK` to a button) over real cursor/keyboard input simulation or cross-process pointer

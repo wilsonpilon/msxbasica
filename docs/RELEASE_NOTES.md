@@ -6,6 +6,62 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.2.0 — "ESQUELETO NOVO" (2026-08-19)
+
+**Tema da versão**: o projeto inteiro trocou de esqueleto — `src/`, `dist/`, `resource/`, `docs/`,
+`others/` no lugar de `editor/`/`fossauro/`/uma dúzia de pastas soltas na raiz — sem trocar de espécie:
+a experiência de uso não muda (o `.exe` continua sendo o mesmo Paleobasic), mas por baixo praticamente
+todo caminho relativo do programa foi reescrito e testado de novo. Release pra **teste**, não pra uso
+despreocupado ainda: é a mudança de infraestrutura mais ampla que este projeto já passou de uma vez só.
+
+### Reorganização de diretórios
+
+- **`src/`** — todo código-fonte compilado. `src/editor/` dividido por função lógica (`core/`,
+  `assemblers/`, `basic/`, `emulators/`, `visual_editors/`, `help/`, `tools/`); `src/fossauro/` movido
+  inteiro. As 94 linhas `XIncludeFile` do `BadigEditor.pb` reescritas com o prefixo de subpasta
+  correto - confirmado por teste empírico, antes de mexer em qualquer coisa, que `XIncludeFile`
+  resolve caminho relativo ao arquivo que o contém, não ao arquivo raiz.
+- **`dist/`** — tudo que o programa precisa pra rodar. **Os dois executáveis (`PaleoBasic.exe`,
+  `fossauro.exe`) ficam na raiz**, cada um buscando help/config/recursos na subpasta com seu nome
+  (`dist/editor/`, `dist/fossauro/`). `dist/roms/` guarda as ROMs de sistema do Fossauro (fonte
+  canônica em `resource/roms/`, nunca versionada - direitos autorais). `dist/projects/` recebe o
+  projeto padrão implícito (antes vivia na pasta temp do Windows, se perdia em qualquer limpeza ou
+  troca de máquina - agora é permanente, ao lado do executável). `dist/sample/`, `dist/res/`
+  continuam versionados junto.
+- **`resource/`** — recursos não-compilados que o projeto possui (fontes, imagens de ajuda,
+  ferramentas externas empacotadas) e cópias vendorizadas de referência (openMSX, Graphos, Aquarela,
+  Nestor, etc.) - confirmado por grep que nenhuma é lida por código compilado, só citadas como
+  referência.
+- **`docs/`** — documentação consolidada, incluindo a do Fossauro que estava solta.
+- **`others/`** — diretórios sem nenhuma referência no código (`prj/`, `support/`, `msxword/`,
+  `superx/`, `filehunter/`) e dois achados reais inesperados: um binário Linux e ROMs duplicadas
+  comitadas por engano dentro do antigo `editor/`. Candidatos a remoção futura, não apagados agora.
+
+### Correções
+
+- **`Configurar → Basic Dignified... → Emulador` / `Configurar → openMSX...`**: ordem dos campos
+  corrigida (executável primeiro - antes um campo sem relação nenhuma com ele pedia "informe o
+  executável primeiro"), `-setting` corrigido (existia na tela mas nunca virava flag de verdade),
+  `-script` novo, e a extensão única virou **4 slots reais e independentes** (`-exta`/`-extb`/`-extc`/
+  `-extd`, confirmado no código-fonte real do openMSX) com rótulo corrigido (não é só disco).
+- **Comando `FOSSAURO` do Mamute Assembler**: não usa mais `RUN` cru (sequestrava `PC`/`SP` de uma
+  sessão MSX já viva) - agora digita `DEFUSR0=&Hxxxx` na sessão via o buffer de teclado real do MSX,
+  o mesmo mecanismo seguro usado pelo openMSX de verdade. Sintaxe corrigida (`DEFUSR0`/`USR0(0)`, não
+  `DEFUSR(0)`/`USR(0)`) e nova flag opcional pra executar automaticamente após transferir.
+- **Comando `OPENMSX` novo no Mamute Assembler** - mesmo fluxo do `FOSSAURO`, mirando uma instância
+  real de openMSX via o bridge Tcl/XML já existente, em vez do protocolo próprio do Fossauro.
+
+### Bastidores
+
+- `build.ps1 -D`/`build.sh -D` agora são realmente idempotentes (bug real encontrado nesta sessão:
+  rodar `-D` duas vezes aninhava pastas, `dist/editor/fonts/fonts/...`, em vez de sobrescrever).
+- Verificado ao vivo em cada etapa: compilação limpa dos dois executáveis a partir da nova estrutura,
+  `fossauro.exe` bootando com sucesso a partir de `dist/` (ROMs carregadas de `dist/roms/`),
+  `PaleoBasic.exe` com ícone/fontes/menus renderizando normalmente, projeto padrão criado no lugar
+  certo. Detalhamento completo em `docs/SPEC.md`, módulos 33 a 36.
+
+---
+
 ## 8.1.7 — "PILHA EMPRESTADA" (2026-08-19)
 
 **Tema da versão**: release menor, focada num único bug corrigido — o travamento do `RUN` do Fossauro
