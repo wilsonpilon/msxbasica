@@ -85,6 +85,15 @@ Global MamuteFontName.s = "Consolas"
 Global MamuteFontSize.i = 16
 Global MamuteFontBold.b = #True
 
+; Comando FOSSAURO (MamuteGui_CmdFossauro(), MamuteAssemblerGui.pbi) - depois do LOAD, sempre
+; digita "DEFUSR0=&H<endereco>" na sessao MSX (ver Fossauro_SendAndType(), FossauroSupport.pbi,
+; e docs/SPEC.md modulo 32y); se esta flag estiver ligada, digita ":A=USR0(0)" junto na MESMA
+; linha, executando na hora que o Enter e' "digitado" - continua passando pelo interpretador
+; BASIC de verdade (nao e' RUN cru), so' automatiza o "digitar A=USR0(0) e apertar Enter"
+; manual. Desligada por padrao de proposito - pedido explicito do usuario (2026-08-19): o
+; comportamento padrao continua so' transferir, executar e' opt-in.
+Global MamuteFossauroAutoRun.b = #False
+
 ; Fonte carregada (HFONT) a partir dos 3 campos acima - Global aqui (nao em
 ; MamuteAssemblerGui.pbi, onde MamuteGui_EnsureFont() de fato a carrega/
 ; recarrega) so pela ordem de declaracao: MamuteEditGui.pbi (janela do
@@ -1077,6 +1086,7 @@ Procedure MamuteCfg_Load()
   MamuteFontBold = #True
   Mamute_SKeyMapDefaults()
   MamuteVramSize = 16384
+  MamuteFossauroAutoRun = #False
 
   Protected FilePath.s = MamuteCfg_FilePath()
   If FileSize(FilePath) <= 0
@@ -1094,6 +1104,7 @@ Procedure MamuteCfg_Load()
   M = GetJSONMember(Root, "FontSize") : If M : MamuteFontSize = GetJSONInteger(M) : EndIf
   M = GetJSONMember(Root, "FontBold") : If M : MamuteFontBold = GetJSONBoolean(M) : EndIf
   M = GetJSONMember(Root, "VramSize") : If M : MamuteVramSize = GetJSONInteger(M) : EndIf
+  M = GetJSONMember(Root, "FossauroAutoRun") : If M : MamuteFossauroAutoRun = GetJSONBoolean(M) : EndIf
   If MamuteVramSize <> 16384 And MamuteVramSize <> 131072 And MamuteVramSize <> 196608
     MamuteVramSize = 16384 ; valor invalido/corrompido - volta pro padrao seguro
   EndIf
@@ -1137,6 +1148,7 @@ Procedure MamuteCfg_Save()
   SetJSONInteger(AddJSONMember(Root, "FontSize"), MamuteFontSize)
   SetJSONBoolean(AddJSONMember(Root, "FontBold"), MamuteFontBold)
   SetJSONInteger(AddJSONMember(Root, "VramSize"), MamuteVramSize)
+  SetJSONBoolean(AddJSONMember(Root, "FossauroAutoRun"), MamuteFossauroAutoRun)
   Protected CellsElem = SetJSONArray(AddJSONMember(Root, "Cells"))
 
   Protected Slot, Pagina, Elem
@@ -1318,6 +1330,13 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
   EndSelect
   KeysY + 34
 
+  ; Comando FOSSAURO (MamuteAssemblerGui.pbi/FossauroSupport.pbi) - ver comentario do Global
+  ; MamuteFossauroAutoRun acima. Desligado por padrao.
+  Protected G_FossauroAutoRun = CheckBoxGadget(#PB_Any, 24, KeysY + 3, WinW - 48, 22,
+                                               "Fossauro: executar automaticamente apos transferir (A=USR0(0))")
+  SetGadgetState(G_FossauroAutoRun, MamuteFossauroAutoRun)
+  KeysY + 34
+
   Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
   GadgetToolTip(G_Save, "Salvar")
   Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
@@ -1449,6 +1468,8 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
       Case 2 : MamuteVramSize = 196608
       Default : MamuteVramSize = 16384
     EndSelect
+
+    MamuteFossauroAutoRun = GetGadgetState(G_FossauroAutoRun)
 
     MamuteCfg_Save()
   EndIf

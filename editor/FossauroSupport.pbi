@@ -262,6 +262,63 @@ Procedure.s Fossauro_SendAndRun(Addr.u, *Payload, ByteCount.i)
   ProcedureReturn Result
 EndProcedure
 
+; Conecta no fossauro ja rodando, manda "LOAD <Addr> <ByteCount>" + os bytes de *Payload,
+; depois digita "DEFUSR0=&H<Addr>" (+ ":A=USR0(0)" se AutoRun) + Enter via TYPE (Case "TYPE",
+; fossauro.pb) - NAO usa RUN cru. Pedido explicito do usuario (2026-08-19, ver docs/SPEC.md
+; modulo 32y): tecnicamente so' precisa transferir o programa pra RAM, nao rodar - RUN cru
+; sequestra PC/SP de uma sessao MSX ja viva (ver o comentario de Fossauro_SendAndRun() acima e
+; o modulo 32x), enquanto digitar DEFUSR no prompt de verdade deixa a BIOS/BASIC tratar a
+; chamada com o proprio contexto consistente dela. Sintaxe corrigida na mesma sessao (usuario
+; apontou o erro ao testar): "DEFUSR0=" (nao "DEFUSR(0)=") e "USR0(0)" (nao "USR(0)") - MSX
+; BASIC tem 10 funcoes USR numeradas (USR0-USR9, cada uma com seu proprio DEFUSRn), e "USR(0)"
+; sem numero e' a forma de UM UNICO USR (equivalente a DEFUSR0 e' DEFUSR, chamado por USR(0) com
+; o "0" sendo so' o argumento passado pra funcao, nao o indice dela) - as duas formas nao se
+; misturam. AutoRun (ligado via "Fossauro: executar automaticamente..." em Configurar -> Mamute
+; Assembler..., MamuteFossauroAutoRun, default desligado) digita a chamada ":A=USR0(0)" na MESMA
+; linha do DEFUSR0, executando assim que o Enter e' "digitado" - ainda passa pelo interpretador
+; BASIC de verdade, so' automatiza o "digitar e apertar Enter" manual. Mesma divisao de
+; responsabilidade do Fossauro_SendAndRun(): generico, nao sabe nada sobre Mamute/MamuteMem.
+Procedure.s Fossauro_SendAndType(Addr.u, *Payload, ByteCount.i, AutoRun.b = #False)
+  Protected hPipe.i = CreateFile_(#Fossauro_PipeName, #GENERIC_READ | #GENERIC_WRITE, 0, 0,
+                                   #OPEN_EXISTING, 0, 0)
+  If hPipe = #INVALID_HANDLE_VALUE
+    ProcedureReturn "fossauro nao esta rodando (ou o pipe de controle nao esta disponivel) - abra Executar -> Fossauro primeiro"
+  EndIf
+
+  Protected Result.s = ""
+  If Not FossauroPipe_WriteLine(hPipe, "LOAD " + Str(Addr) + " " + Str(ByteCount))
+    Result = "falha ao enviar o comando LOAD"
+  ElseIf Not FossauroPipe_WriteRaw(hPipe, *Payload, ByteCount)
+    Result = "falha ao enviar o codigo-objeto"
+  Else
+    Protected LoadReply.s = FossauroPipe_ReadLine(hPipe)
+    If LoadReply <> "OK"
+      Result = "fossauro recusou o LOAD: " + LoadReply
+    Else
+      Protected DefUsrLine.s = "DEFUSR0=&H" + RSet(Hex(Addr & $FFFF), 4, "0")
+      If AutoRun
+        DefUsrLine + ":A=USR0(0)"
+      EndIf
+      DefUsrLine + Chr(13)
+      Protected TypeBytes.l = Len(DefUsrLine)
+      Protected *TypeBuf = AllocateMemory(TypeBytes)
+      PokeS(*TypeBuf, DefUsrLine, TypeBytes, #PB_Ascii | #PB_String_NoZero)
+      If Not FossauroPipe_WriteLine(hPipe, "TYPE " + Str(TypeBytes)) Or Not FossauroPipe_WriteRaw(hPipe, *TypeBuf, TypeBytes)
+        Result = "falha ao enviar o comando TYPE"
+      Else
+        Protected TypeReply.s = FossauroPipe_ReadLine(hPipe)
+        If TypeReply <> "OK"
+          Result = "fossauro recusou o TYPE: " + TypeReply
+        EndIf
+      EndIf
+      FreeMemory(*TypeBuf)
+    EndIf
+  EndIf
+
+  CloseHandle_(hPipe)
+  ProcedureReturn Result
+EndProcedure
+
 ;- ------------------------------------------------------------
 ;- Tela "Configurar -> Fossauro..."
 ;- ------------------------------------------------------------

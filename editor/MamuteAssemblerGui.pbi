@@ -1233,10 +1233,20 @@ EndProcedure
 ; MESMO intervalo [MamuteAsmLastStartAddr, MamuteAsmLastByteCount) que "A O"
 ; (tela EDIT) acabou de gravar em MamuteMem, lido de volta byte a byte via
 ; Mamute_ReadByte() (respeita o mapeamento PAGE ativo, igual DM/qualquer
-; outro comando de memoria) - depois manda "RUN" pro mesmo endereco inicial.
-; Exige MamuteAsmLastWroteToRam (so' fica #True depois de um "A ...O..."
-; bem-sucedido - "A" sozinho, sem "O", NAO escreve nada em MamuteMem, entao
-; enviar seria so' lixo/zeros).
+; outro comando de memoria) - depois digita "DEFUSR0=&H<endereco>" na
+; janela do Fossauro (ver Fossauro_SendAndType(), FossauroSupport.pbi).
+; NAO executa mais o codigo sozinho por padrao (nao manda mais RUN cru):
+; pedido explicito do usuario (2026-08-19, modulo 32y) - tecnicamente so'
+; precisa transferir pra RAM, nao rodar; RUN cru sequestrava PC/SP de uma
+; sessao MSX ja viva (modulo 32x), enquanto DEFUSR digitado deixa a
+; BIOS/BASIC tratar a chamada com o contexto consistente dela. Se
+; MamuteFossauroAutoRun estiver ligado (Configurar -> Mamute Assembler...,
+; MamuteSupport.pbi, default desligado), digita ":A=USR0(0)" na mesma linha
+; do DEFUSR0, executando na hora - senao fica so' o DEFUSR0, pronto pro
+; usuario digitar "A=USR0(0)" manualmente na janela do Fossauro quando
+; quiser. Exige MamuteAsmLastWroteToRam (so' fica #True depois
+; de um "A ...O..." bem-sucedido - "A" sozinho, sem "O", NAO escreve nada em
+; MamuteMem, entao enviar seria so' lixo/zeros).
 Procedure MamuteGui_CmdFossauro(G_Log, *State.MamuteGui_State)
   If Not MamuteAsmHasResult Or Not MamuteAsmLastWroteToRam
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
@@ -1257,12 +1267,18 @@ Procedure MamuteGui_CmdFossauro(G_Log, *State.MamuteGui_State)
     PokeA(*Payload + I, Mamute_ReadByte((MamuteAsmLastStartAddr + I) & $FFFF))
   Next I
 
-  Protected ErrMsg.s = Fossauro_SendAndRun(MamuteAsmLastStartAddr, *Payload, MamuteAsmLastByteCount)
+  Protected ErrMsg.s = Fossauro_SendAndType(MamuteAsmLastStartAddr, *Payload, MamuteAsmLastByteCount, MamuteFossauroAutoRun)
   FreeMemory(*Payload)
 
   If ErrMsg = ""
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
-      "OK - RODANDO NO FOSSAURO A PARTIR DE " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H")
+      "OK - CARREGADO NO FOSSAURO EM " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H, DEFUSR0 JA DIGITADO")
+    If MamuteFossauroAutoRun
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "EXECUTADO (A=USR0(0))")
+    Else
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+        "DIGITE A=USR0(0) NA JANELA DO FOSSAURO PRA RODAR")
+    EndIf
   Else
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?" + UCase(ErrMsg))
   EndIf

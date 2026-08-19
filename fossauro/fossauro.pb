@@ -216,6 +216,47 @@ Procedure PipeHandleClient(hPipe.i)
           PipeWriteLine(hPipe, "VAL " + Str(SafeRdZ80(Val(Rest) & $FFFF)))
         EndIf
 
+      Case "TYPE"
+        ; Simula digitacao real no buffer de teclado do MSX (ver docs/SPEC.md modulo 32y) - em
+        ; vez de sequestrar PC/SP como o RUN cru faz (ver o comentario do Case "RUN" logo
+        ; abaixo), escreve os bytes recebidos direto no keyboard ring buffer real da BIOS
+        ; (KEYBUF, $FBF0, 40 bytes - confirmado em editor/BiosCallsHelpData.pbi/
+        ; MsxManualsHelpData.pbi, os mesmos enderecos $F3F8/PUTPNT e $F3FA/GETPNT que apareceram
+        ; no diagnostico do modulo 32x) e avanca PUTPNT ($F3F8) do mesmo jeito que a rotina de
+        ; interrupcao de teclado faria a cada tecla - o texto aparece pro BASIC exatamente como
+        ; se tivesse sido digitado de verdade (um CR/Chr(13) no payload "pressiona Enter" e
+        ; submete a linha), sem tocar em PC/SP/nada do contexto de execucao que ja esta rodando.
+        ; Limite de 39 bytes (nao 40) de proposito: um buffer circular convencional (sem um
+        ; contador de ocupacao separado) nao consegue distinguir "cheio" de "vazio" quando
+        ; PUTPNT alcança GETPNT por tras - deixar 1 posicao sempre livre evita essa ambiguidade,
+        ; mesma tecnica que a BIOS real usa antes de gravar uma tecla nova.
+        If Rest = ""
+          PipeWriteLine(hPipe, "ERR bad TYPE arguments")
+        Else
+          Protected TypeLen.l = Val(Rest)
+          If TypeLen <= 0 Or TypeLen > 39
+            PipeWriteLine(hPipe, "ERR bad TYPE length (max 39)")
+          Else
+            Protected *TypePayload = AllocateMemory(TypeLen)
+            If PipeReadBytes(hPipe, *TypePayload, TypeLen)
+              ThreadPaused = 1
+              Protected PutPnt.u = SafeRdZ80($F3F8) | (SafeRdZ80($F3F9) << 8)
+              Protected T.l
+              For T = 0 To TypeLen - 1
+                MSXWrZ80(PutPnt, PeekA(*TypePayload + T))
+                PutPnt = $FBF0 + ((PutPnt - $FBF0 + 1) % 40)
+              Next T
+              MSXWrZ80($F3F8, PutPnt & $FF)
+              MSXWrZ80($F3F9, (PutPnt >> 8) & $FF)
+              ThreadPaused = 0
+              PipeWriteLine(hPipe, "OK")
+            Else
+              PipeWriteLine(hPipe, "ERR short payload")
+            EndIf
+            FreeMemory(*TypePayload)
+          EndIf
+        EndIf
+
       Case "RUN"
         If Rest = ""
           PipeWriteLine(hPipe, "ERR bad RUN arguments")

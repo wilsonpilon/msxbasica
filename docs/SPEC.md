@@ -7778,6 +7778,83 @@ poderia, em tese, ainda estourar a folga e colidir com o próprio trap. Se isso 
 (o trap deixar de ficar em `PC` fixo/estável), aumentar `#FossauroRunStackSlack` é o primeiro lugar pra
 olhar.
 
+### 32y. Fossauro — comando `FOSSAURO` do Mamute troca `RUN` cru por digitação real de `DEFUSR(0)` (2026-08-19, próxima versão)
+
+Sessão seguinte ao módulo 32x (já com o fix do frame de retorno sintético publicado na release
+`8.1.7`). Relato do usuário: mesmo com o fix, rodar `A O` + `FOSSAURO` no Mamute Assembler ainda
+"congela" a sessão MSX visível - comportamento esperado, não uma regressão: `RUN` continua sequestrando
+`PC` (mesmo com `SP` agora seguro) de uma sessão BASIC/BIOS que estava viva e em andamento, então a
+sessão original nunca mais volta a rodar depois do jump, ainda que o trap evite invadir código alheio.
+Proposta do próprio usuário, mais robusta que qualquer ajuste incremental no `RUN`: **não sequestrar a
+execução**. Como ele mesmo observou, `FOSSAURO` tecnicamente só precisa transferir o programa pra RAM -
+rodar automaticamente pode ficar pra uma fase futura (junto da pauta maior de "RUN de BASIC de verdade",
+módulo 32u). No lugar disso: enviar o `LOAD` normalmente, depois **digitar** `DEFUSR(0)=&H<endereço>` +
+Enter na sessão MSX já rodando, exatamente como se o usuário tivesse digitado à mão - deixando o
+usuário decidir quando (e como) rodar de verdade, ex. digitando `A=USR(0)` na janela do Fossauro.
+
+**Mecanismo**: novo comando de protocolo `TYPE <len>\n<len bytes crus>` (`Case "TYPE"`, `fossauro.pb`) -
+em vez de tocar `PC`/`SP`, escreve os bytes recebidos direto no **keyboard ring buffer real da BIOS**
+(`KEYBUF`, `$FBF0`, 40 bytes) e avança `PUTPNT` (`$F3F8`) do mesmo jeito que a rotina de interrupção de
+teclado faria a cada tecla pressionada - endereços confirmados contra a própria documentação de BIOS já
+embutida no editor (`editor/BiosCallsHelpData.pbi`/`MsxManualsHelpData.pbi`: `F3F8 PUTPNT`/`F3FA
+GETPNT`/`FBF0 KEYBUF DEFS 40`), os MESMOS três endereços que já tinham aparecido no diagnóstico do
+módulo 32x (na época interpretados só como "algo que o BREAKX consulta"; agora confirma-se que aquele
+laço era literalmente o `CHSNS`/checagem "tem tecla no buffer?" de sempre). Limite de 39 bytes por
+chamada (não 40) de propósito: um buffer circular sem contador de ocupação separado não distingue
+"cheio" de "vazio" quando os dois ponteiros colidem - deixar 1 posição sempre livre evita essa
+ambiguidade, mesma técnica que a BIOS real usa antes de gravar uma tecla nova. Como o texto entra pelo
+mesmo buffer que teclas de verdade usam, a BIOS/BASIC processa a linha com o próprio contexto consistente
+dela (pilha, variáveis de sistema, tudo) - nenhum dos riscos do `RUN` cru se aplica aqui.
+
+Lado do editor: `Fossauro_SendAndType()` (`editor/FossauroSupport.pbi`) substitui
+`Fossauro_SendAndRun()` como o que `MamuteGui_CmdFossauro()` chama (`editor/MamuteAssemblerGui.pbi`) -
+`LOAD` do intervalo `[MamuteAsmLastStartAddr, MamuteAsmLastByteCount)` igual antes, depois monta
+`"DEFUSR(0)=&H" + Hex4(Addr) + Chr(13)` e manda via `TYPE`. `Fossauro_SendAndRun()`/o comando `RUN` do
+protocolo **não foram removidos** - continuam disponíveis (o `RUN` com o fix do módulo 32x já é seguro
+contra invadir código alheio), só não são mais o que `FOSSAURO` usa por padrão.
+
+**Verificado ao vivo** (`fossauro.exe`/`PaleoBasic.exe` recompilados, ambos limpos): `LOAD` do mesmo
+programa de teste do módulo 32x (impressão de texto via `CHPUT`) seguido de `TYPE` com
+`"DEFUSR(0)=&HC100\r"` - `REGS` amostrado logo depois mostra `PC` **variando entre amostras** (não
+travado num valor fixo, ao contrário de uma sessão realmente presa), e `PEEK` em `PUTPNT`/`GETPNT`
+mostra os dois ponteiros **convergindo pro mesmo valor** depois do `TYPE` - ou seja, o próprio
+interpretador BASIC já leu e processou a linha digitada sozinho, sem ajuda nenhuma além de ter os bytes
+no buffer. Repetido enviando `TYPE` com `"A=USR(0)\r"` logo em seguida (simulando o usuário digitando
+isso na janela do Fossauro) - `REGS` amostrado 6 vezes ao longo de ~2.4s mostra `PC` cruzando por
+várias regiões diferentes a cada amostra (padrão de sistema vivo/ciclando, idêntico ao estado
+pré-hijack de qualquer teste anterior), confirmando que a chamada `USR(0)` executou o código injetado
+via BASIC de verdade e a sessão continuou respondendo depois - nenhum travamento.
+
+**Correção (ver módulo 32z)**: a sintaxe `DEFUSR(0)=&Hxxxx`/`USR(0)` usada acima estava **errada** -
+MSX BASIC tem 10 funções `USR` numeradas (`USR0`-`USR9`, cada uma com seu próprio `DEFUSRn`); a forma
+certa é `DEFUSR0=&Hxxxx` + `A=USR0(0)`. O usuário apontou o erro testando ao vivo.
+
+### 32z. Fossauro — corrige sintaxe `DEFUSR0`/`USR0(0)` e adiciona flag de auto-execução ao `FOSSAURO` (2026-08-19, próxima versão)
+
+Sessão seguinte ao módulo 32y. Dois pedidos do usuário, testando o `FOSSAURO` ao vivo:
+
+1. **Bug de sintaxe**: `DEFUSR(0)=&Hxxxx` (módulo 32y) está errado - MSX BASIC usa `DEFUSR0`-`DEFUSR9`
+   (10 funções `USR` numeradas, cada uma com seu próprio `DEFUSRn`), chamadas via `USR0(x)`-`USR9(x)`;
+   `USR(x)` sem número é a forma de UM ÚNICO `USR` (`DEFUSR` sem número), uma sintaxe totalmente
+   separada - as duas não se misturam. Corrigido em `Fossauro_SendAndType()`
+   (`editor/FossauroSupport.pbi`): agora monta `"DEFUSR0=&H" + Hex4(Addr)`.
+2. **Flag de auto-execução** (`Configurar → Mamute Assembler...`): novo `CheckBoxGadget` "Fossauro:
+   executar automaticamente após transferir (A=USR0(0))", persistido em `MamuteFossauroAutoRun`
+   (`Global.b`, `MamuteSupport.pbi`, default **desligado** - pedido explícito do usuário, mantém o
+   comportamento padrão só-transferir do módulo 32y) e `mamute_settings.json`
+   (`"FossauroAutoRun"`). Quando ligada, `Fossauro_SendAndType()` recebe um novo parâmetro `AutoRun.b`
+   e monta a linha combinada `"DEFUSR0=&H" + Hex4(Addr) + ":A=USR0(0)"` (dois comandos BASIC na mesma
+   linha, separados por `:`) em vez de só o `DEFUSR0` - executa assim que o `Chr(13)` final "aperta
+   Enter", ainda inteiramente via o buffer de teclado real (`TYPE`, módulo 32y), sem nenhum `RUN` cru
+   envolvido.
+
+**Verificado ao vivo** (`fossauro.exe` sem mudanças nesta sessão - só o lado cliente/`editor`
+mudou -, `PaleoBasic.exe` recompilado limpo): repetido o mesmo programa de teste (impressão via
+`CHPUT`) com `TYPE` da linha combinada `"DEFUSR0=&HC100:A=USR0(0)\r"` de uma vez só - `REGS` amostrado 6
+vezes ao longo de ~2.4s mostra `PC` variando entre regiões diferentes a cada amostra (mesmo padrão de
+sistema vivo/ciclando confirmado no módulo 32y, sem nenhum sinal de travamento), confirmando que a
+sintaxe corrigida define E chama o `USR0` corretamente numa única linha digitada.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido
