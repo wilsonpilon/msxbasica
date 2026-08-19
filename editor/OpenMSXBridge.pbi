@@ -192,14 +192,29 @@ Global OMSX_AwaitingDeviceQuery.s = ""
 ; guardado aqui em vez de se perder).
 Global OMSX_PendingDiskPath.s = ""
 
-; Maquina/extensao com que a instancia ATUAL foi de fato lancada (preenchido
+; Mesma ideia de OMSX_PendingDiskPath acima, mas pro comando OPENMSX do Mamute Assembler
+; (MamuteGui_CmdOpenMSX(), MamuteAssemblerGui.pbi) - guarda um programa montado que precisou
+; esperar o openMSX subir/conectar antes de poder ser transferido. OMSX_PendingMamuteAddr = -1
+; quer dizer "nada pendente" (0 e' um endereco valido de verdade, por isso nao serve de
+; sentinela). *OMSX_PendingMamuteBytes e' uma COPIA propria (AllocateMemory) - o *Payload de
+; quem chama e' liberado logo depois da chamada, nao sobrevive ate o flush assincrono.
+Global OMSX_PendingMamuteAddr.i = -1
+Global *OMSX_PendingMamuteBytes = 0
+Global OMSX_PendingMamuteByteCount.i = 0
+Global OMSX_PendingMamuteAutoRun.b = #False
+
+; Maquina/extensoes com que a instancia ATUAL foi de fato lancada (preenchido
 ; em OMSX_Start() so quando ele realmente sobe um processo novo, nao quando
-; so reaproveita um ja rodando) - "-machine"/"-ext" so valem no lancamento,
-; entao isso serve pra comparar com BadigCfg\EmMachine/EmExtension e avisar
-; o usuario se ele mudou a configuracao com o openMSX ja aberto (ver
-; OpenMSXConsoleGui.pbi).
+; so reaproveita um ja rodando) - "-machine"/"-exta".."-extd" so valem no
+; lancamento, entao isso serve pra comparar com BadigCfg\EmMachine/
+; EmExtensionA..D e avisar o usuario se ele mudou a configuracao com o
+; openMSX ja aberto (ver OpenMSXConsoleGui.pbi). Um Global por slot (nao um
+; unico como antes) - 4 slots simultaneos de verdade, ver OMSX_BuildParams().
 Global OMSX_LaunchedMachine.s = ""
-Global OMSX_LaunchedExtension.s = ""
+Global OMSX_LaunchedExtensionA.s = ""
+Global OMSX_LaunchedExtensionB.s = ""
+Global OMSX_LaunchedExtensionC.s = ""
+Global OMSX_LaunchedExtensionD.s = ""
 
 ; Usada por OMSX_ExtractAnySettingUpdate() - diferente de
 ; OMSX_ExtractSettingUpdate() (que so serve quando ja sabemos o nome exato
@@ -213,6 +228,7 @@ EndStructure
 
 Declare OMSX_SendCommand(Cmd.s)
 Declare OMSX_ShowWindow()
+Declare OMSX_FlushMamuteProgram(Addr.u, *Payload, ByteCount.i, AutoRun.b)
 
 ; Zera todo o estado ligado a UMA instancia do openMSX (handles, flags de
 ; conexao/power/pause, disco pendente) - usado tanto quando
@@ -251,25 +267,37 @@ Procedure.b OMSX_IsRunning()
   ProcedureReturn #True
 EndProcedure
 
-; Mesma convencao "-machine"/"-ext" (aceitando "Nome" ou "Nome:slot", onde o
-; slot vira parte do NOME da flag, ex. "-exta") ja usada por RunOnOpenMSX()
-; em BadigEditor.pb - mantida separada aqui porque as duas funcoes montam
-; parametros diferentes (RunOnOpenMSX tambem monta "-diska", esta so
-; acrescenta "-control pipe:<nome>").
+; Monta os parametros de linha de comando do openMSX a partir de BadigCfg\Em* - "-setting"/
+; "-script" sao flags reais do openMSX (CommandLineParser.cc: "-setting", "-script", ambas
+; BEFORE_SETTINGS), confirmado lendo o codigo-fonte vendorizado neste repo
+; (openmsx/openmsx/src/CommandLineParser.cc). Extensoes: openMSX aceita ate 4 SLOTS
+; simultaneos e independentes - "-exta"/"-extb"/"-extc"/"-extd" (mais um "-ext" generico de
+; slot automatico que esta tela nao expoe, ver openmsx/openmsx/src/CliExtension.cc:
+; `for (const auto* ext : {"-ext", "-exta", "-extb", "-extc", "-extd"})`) - nao "so disco",
+; qualquer hardware de extensao real (bug de rotulo/campo unico corrigido nesta mesma sessao,
+; pedido explicito do usuario: "o openmsx permite 4 extensões simultâneas, todas opcionais").
 Procedure.s OMSX_BuildParams(PipeName.s)
   Protected Params.s = "-control pipe:" + PipeName + " "
+  If BadigCfg\EmSetting <> ""
+    Params + "-setting " + Chr(34) + BadigCfg\EmSetting + Chr(34) + " "
+  EndIf
+  If BadigCfg\EmScript <> ""
+    Params + "-script " + Chr(34) + BadigCfg\EmScript + Chr(34) + " "
+  EndIf
   If BadigCfg\EmMachine <> ""
     Params + "-machine " + Chr(34) + BadigCfg\EmMachine + Chr(34) + " "
   EndIf
-  If BadigCfg\EmExtension <> ""
-    Protected ExtValue.s = BadigCfg\EmExtension
-    Protected ExtFlag.s = "-ext"
-    Protected ColonPos.i = FindString(ExtValue, ":")
-    If ColonPos > 0
-      ExtFlag = "-" + Mid(ExtValue, ColonPos + 1)
-      ExtValue = Left(ExtValue, ColonPos - 1)
-    EndIf
-    Params + ExtFlag + " " + Chr(34) + ExtValue + Chr(34) + " "
+  If BadigCfg\EmExtensionA <> ""
+    Params + "-exta " + Chr(34) + BadigCfg\EmExtensionA + Chr(34) + " "
+  EndIf
+  If BadigCfg\EmExtensionB <> ""
+    Params + "-extb " + Chr(34) + BadigCfg\EmExtensionB + Chr(34) + " "
+  EndIf
+  If BadigCfg\EmExtensionC <> ""
+    Params + "-extc " + Chr(34) + BadigCfg\EmExtensionC + Chr(34) + " "
+  EndIf
+  If BadigCfg\EmExtensionD <> ""
+    Params + "-extd " + Chr(34) + BadigCfg\EmExtensionD + Chr(34) + " "
   EndIf
   ProcedureReturn Params
 EndProcedure
@@ -327,6 +355,15 @@ Procedure OMSX_PipeConnectThread(*Dummy)
       OMSX_SendCommand("reset")
       OMSX_PendingDiskPath = ""
     EndIf
+
+    ; Mesma ideia acima, pro comando OPENMSX do Mamute Assembler (ver comentario do Global
+    ; OMSX_PendingMamuteAddr, topo do arquivo).
+    If OMSX_PendingMamuteAddr >= 0
+      OMSX_FlushMamuteProgram(OMSX_PendingMamuteAddr, *OMSX_PendingMamuteBytes, OMSX_PendingMamuteByteCount, OMSX_PendingMamuteAutoRun)
+      FreeMemory(*OMSX_PendingMamuteBytes)
+      *OMSX_PendingMamuteBytes = 0
+      OMSX_PendingMamuteAddr = -1
+    EndIf
   EndIf
 EndProcedure
 
@@ -371,11 +408,14 @@ Procedure.b OMSX_Start()
     ProcedureReturn #False
   EndIf
 
-  ; "-machine"/"-ext" so valem no lancamento - guarda o que foi de fato usado
-  ; pra dar pra comparar depois com BadigCfg\EmMachine/EmExtension (ver
-  ; comentario dos globais, topo do arquivo).
+  ; "-machine"/"-exta".."-extd" so valem no lancamento - guarda o que foi de
+  ; fato usado pra dar pra comparar depois com BadigCfg\EmMachine/
+  ; EmExtensionA..D (ver comentario dos globais, topo do arquivo).
   OMSX_LaunchedMachine = BadigCfg\EmMachine
-  OMSX_LaunchedExtension = BadigCfg\EmExtension
+  OMSX_LaunchedExtensionA = BadigCfg\EmExtensionA
+  OMSX_LaunchedExtensionB = BadigCfg\EmExtensionB
+  OMSX_LaunchedExtensionC = BadigCfg\EmExtensionC
+  OMSX_LaunchedExtensionD = BadigCfg\EmExtensionD
 
   OMSX_PipeConnected = #False
   OMSX_PipeThread = CreateThread(@OMSX_PipeConnectThread(), 0)
@@ -445,6 +485,57 @@ Procedure OMSX_TypeText(Text.s)
     ProcedureReturn
   EndIf
   OMSX_SendCommand("type -- " + OMSX_TclEscapeWord(Text))
+EndProcedure
+
+; Escreve *Payload (ByteCount bytes, a partir de Addr) direto na RAM visivel do Z80 via o
+; comando de debug nativo do openMSX "debug write memory <endereco> <valor>" (debuggable
+; "memory" = espaco de enderecamento de 64KB que o CPU enxerga, confirmado lendo
+; openmsx/openmsx/src/cpu/MSXCPUInterface.cc/src/debugger/Debugger.cc, "checkNumArgs(tokens,
+; 5, ..., "debuggable address value")" - um byte por comando, sem bloco). Depois digita
+; "DEFUSR0=&H<Addr>" (+ ":A=USR0(0)" se AutoRun) via OMSX_TypeText() - mesma logica do
+; Fossauro_SendAndType() (FossauroSupport.pbi, docs/SPEC.md modulos 32y/32z): nao existe RUN
+; cru aqui, o texto entra pelo teclado emulado de verdade e o BASIC processa com o proprio
+; contexto. Uso interno - chamado direto (ja conectado) ou via OMSX_PendingMamuteAddr
+; (OMSX_PipeConnectThread() acima) quando o openMSX ainda estava subindo.
+Procedure OMSX_FlushMamuteProgram(Addr.u, *Payload, ByteCount.i, AutoRun.b)
+  Protected I.i
+  For I = 0 To ByteCount - 1
+    OMSX_SendCommand("debug write memory " + Str((Addr + I) & $FFFF) + " " + Str(PeekA(*Payload + I) & $FF))
+  Next I
+
+  Protected DefUsrLine.s = "DEFUSR0=&H" + RSet(Hex(Addr & $FFFF), 4, "0")
+  If AutoRun
+    DefUsrLine + ":A=USR0(0)"
+  EndIf
+  OMSX_TypeText(DefUsrLine + Chr(13))
+EndProcedure
+
+; Comando OPENMSX do Mamute Assembler (MamuteGui_CmdOpenMSX(), MamuteAssemblerGui.pbi) -
+; equivalente ao FOSSAURO (Fossauro_SendAndType(), FossauroSupport.pbi), so' que mirando a
+; instancia de openMSX de verdade em vez do Fossauro. Sobe o openMSX se precisar (OMSX_Start(),
+; reaproveita se ja estiver rodando, mesmo padrao de OMSX_LoadDisk() logo abaixo) - se o pipe
+; ainda nao tiver conectado, guarda uma COPIA dos bytes em OMSX_PendingMamuteBytes pra
+; OMSX_PipeConnectThread() mandar assim que a conexao completar, em vez de perder o pedido
+; (o *Payload de quem chama e' liberado logo depois desta chamada retornar).
+Procedure.b OMSX_SendMamuteProgram(Addr.u, *Payload, ByteCount.i, AutoRun.b = #False)
+  If OMSX_IsRunning() And OMSX_PipeConnected
+    OMSX_FlushMamuteProgram(Addr, *Payload, ByteCount, AutoRun)
+    ProcedureReturn #True
+  EndIf
+
+  If Not OMSX_Start()
+    ProcedureReturn #False
+  EndIf
+
+  If *OMSX_PendingMamuteBytes
+    FreeMemory(*OMSX_PendingMamuteBytes)
+  EndIf
+  *OMSX_PendingMamuteBytes = AllocateMemory(ByteCount)
+  CopyMemory(*Payload, *OMSX_PendingMamuteBytes, ByteCount)
+  OMSX_PendingMamuteByteCount = ByteCount
+  OMSX_PendingMamuteAutoRun = AutoRun
+  OMSX_PendingMamuteAddr = Addr ; por ultimo de proposito - e' o sinal que o flush usa (>= 0)
+  ProcedureReturn #True
 EndProcedure
 
 ; Atalho pro botao "Mostrar janela" da console (OpenMSXConsoleGui.pbi) -

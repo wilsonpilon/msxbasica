@@ -42,13 +42,18 @@ Structure BadigSettings
 
   ; -- Pagina 3: Emulador (emulator_interface.ini) --
   EmRun.b
-  EmSetting.s
+  EmulatorPath.s      ; caminho do executavel - PRIMEIRO campo real de proposito, os de baixo
+                       ; (maquina/extensoes) precisam dele pra achar share/machines,share/extensions
+  EmSetting.s          ; opcional - "-setting <arquivo>" (arquivo de configuracao settings.xml)
+  EmScript.s           ; opcional - "-script <arquivo>" (script Tcl executado no boot)
   EmMachine.s
-  EmExtension.s
+  EmExtensionA.s       ; opcional - "-exta <nome>" (openMSX aceita ate 4 extensoes simultaneas,
+  EmExtensionB.s       ; slots A-D independentes - nao sao so "disco": qualquer hardware de
+  EmExtensionC.s       ; extensao real, share/extensions/*.xml no proprio openMSX)
+  EmExtensionD.s
   EmNoThrottle.b
   EmMonitor.b
   EmVerbose.i         ; -1 = nao definido
-  EmulatorPath.s
 EndStructure
 
 Global BadigCfg.BadigSettings
@@ -100,13 +105,17 @@ Procedure BadigCfg_SetDefaults()
   BadigCfg\TkVerbose = -1
 
   BadigCfg\EmRun = #False
+  BadigCfg\EmulatorPath = ""
   BadigCfg\EmSetting = ""
+  BadigCfg\EmScript = ""
   BadigCfg\EmMachine = ""
-  BadigCfg\EmExtension = ""
+  BadigCfg\EmExtensionA = ""
+  BadigCfg\EmExtensionB = ""
+  BadigCfg\EmExtensionC = ""
+  BadigCfg\EmExtensionD = ""
   BadigCfg\EmNoThrottle = #False
   BadigCfg\EmMonitor = #True
   BadigCfg\EmVerbose = -1
-  BadigCfg\EmulatorPath = ""
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -168,8 +177,31 @@ Procedure BadigCfg_Load(OverridePath.s = "")
 
   M = GetJSONMember(Root, "EmRun")          : If M : BadigCfg\EmRun = GetJSONBoolean(M) : EndIf
   M = GetJSONMember(Root, "EmSetting")      : If M : BadigCfg\EmSetting = GetJSONString(M) : EndIf
+  M = GetJSONMember(Root, "EmScript")       : If M : BadigCfg\EmScript = GetJSONString(M) : EndIf
   M = GetJSONMember(Root, "EmMachine")      : If M : BadigCfg\EmMachine = GetJSONString(M) : EndIf
-  M = GetJSONMember(Root, "EmExtension")    : If M : BadigCfg\EmExtension = GetJSONString(M) : EndIf
+  M = GetJSONMember(Root, "EmExtensionA")   : If M : BadigCfg\EmExtensionA = GetJSONString(M) : EndIf
+  M = GetJSONMember(Root, "EmExtensionB")   : If M : BadigCfg\EmExtensionB = GetJSONString(M) : EndIf
+  M = GetJSONMember(Root, "EmExtensionC")   : If M : BadigCfg\EmExtensionC = GetJSONString(M) : EndIf
+  M = GetJSONMember(Root, "EmExtensionD")   : If M : BadigCfg\EmExtensionD = GetJSONString(M) : EndIf
+  ; Migracao de config antiga (1 extensao so, formato "Nome:slot" opcional) - so aplica se
+  ; nenhum dos 4 slots novos ja tiver sido carregado acima (config nova tem prioridade).
+  If BadigCfg\EmExtensionA = "" And BadigCfg\EmExtensionB = "" And BadigCfg\EmExtensionC = "" And BadigCfg\EmExtensionD = ""
+    M = GetJSONMember(Root, "EmExtension")
+    If M
+      Protected OldExt.s = GetJSONString(M)
+      Protected OldColonPos.i = FindString(OldExt, ":")
+      If OldColonPos > 0
+        Select UCase(Mid(OldExt, OldColonPos + 1))
+          Case "B" : BadigCfg\EmExtensionB = Left(OldExt, OldColonPos - 1)
+          Case "C" : BadigCfg\EmExtensionC = Left(OldExt, OldColonPos - 1)
+          Case "D" : BadigCfg\EmExtensionD = Left(OldExt, OldColonPos - 1)
+          Default  : BadigCfg\EmExtensionA = Left(OldExt, OldColonPos - 1)
+        EndSelect
+      ElseIf OldExt <> ""
+        BadigCfg\EmExtensionA = OldExt
+      EndIf
+    EndIf
+  EndIf
   M = GetJSONMember(Root, "EmNoThrottle")   : If M : BadigCfg\EmNoThrottle = GetJSONBoolean(M) : EndIf
   M = GetJSONMember(Root, "EmMonitor")      : If M : BadigCfg\EmMonitor = GetJSONBoolean(M) : EndIf
   M = GetJSONMember(Root, "EmVerbose")      : If M : BadigCfg\EmVerbose = GetJSONInteger(M) : EndIf
@@ -209,8 +241,12 @@ Procedure BadigCfg_Save(OverridePath.s = "")
 
   SetJSONBoolean(AddJSONMember(Root, "EmRun"), BadigCfg\EmRun)
   SetJSONString(AddJSONMember(Root, "EmSetting"), BadigCfg\EmSetting)
+  SetJSONString(AddJSONMember(Root, "EmScript"), BadigCfg\EmScript)
   SetJSONString(AddJSONMember(Root, "EmMachine"), BadigCfg\EmMachine)
-  SetJSONString(AddJSONMember(Root, "EmExtension"), BadigCfg\EmExtension)
+  SetJSONString(AddJSONMember(Root, "EmExtensionA"), BadigCfg\EmExtensionA)
+  SetJSONString(AddJSONMember(Root, "EmExtensionB"), BadigCfg\EmExtensionB)
+  SetJSONString(AddJSONMember(Root, "EmExtensionC"), BadigCfg\EmExtensionC)
+  SetJSONString(AddJSONMember(Root, "EmExtensionD"), BadigCfg\EmExtensionD)
   SetJSONBoolean(AddJSONMember(Root, "EmNoThrottle"), BadigCfg\EmNoThrottle)
   SetJSONBoolean(AddJSONMember(Root, "EmMonitor"), BadigCfg\EmMonitor)
   SetJSONInteger(AddJSONMember(Root, "EmVerbose"), BadigCfg\EmVerbose)
@@ -575,45 +611,82 @@ Structure BadigCfg_EmuGadgets
   G_EmRun.i
   G_EmMonitor.i
   G_EmNoThrottle.i
-  G_EmSetting.i
-  G_EmSettingBrowse.i
-  G_EmMachine.i
-  G_EmMachineBrowse.i
-  G_EmExtension.i
-  G_EmExtensionBrowse.i
-  G_EmVerbose.i
   G_EmulatorPath.i
   G_EmulatorPathBrowse.i
+  G_EmSetting.i
+  G_EmSettingBrowse.i
+  G_EmScript.i
+  G_EmScriptBrowse.i
+  G_EmMachine.i
+  G_EmMachineBrowse.i
+  G_EmExtensionA.i
+  G_EmExtensionABrowse.i
+  G_EmExtensionB.i
+  G_EmExtensionBBrowse.i
+  G_EmExtensionC.i
+  G_EmExtensionCBrowse.i
+  G_EmExtensionD.i
+  G_EmExtensionDBrowse.i
+  G_EmVerbose.i
 EndStructure
 
 ; Cria os gadgets da pagina "Emulador" com Y deslocado por BaseY (mesmas
 ; coordenadas X de sempre) - funciona tanto dentro de um PanelGadget (chamado
 ; logo apos AddGadgetItem(Panel, -1, "Emulador"), ainda no contexto de
 ; gadget-list dessa pagina, BaseY = 0) quanto numa janela comum (BaseY = 0,
-; mesma margem externa de 24px).
+; mesma margem externa de 24px). Ordem de cima pra baixo escolhida de
+; proposito (bug real reportado pelo usuario, 2026-08-19): o campo do
+; EXECUTAVEL vem PRIMEIRO agora, porque Maquina/Extensoes dependem dele pra
+; achar share/machines,share/extensions (ver BadigCfg_HandleEmulatorGadgetEvent
+; abaixo) - na ordem antiga (Setting/Maquina/Extensao/Verbose/Executavel, o
+; executavel por ULTIMO) o usuario clicava nos campos de cima pra baixo,
+; caindo direto no aviso "informe o executavel primeiro" sem entender por que
+; um campo que parecia nao ter relacao com o executavel pedia isso.
 Procedure BadigCfg_CreateEmulatorGadgets(BaseY.i, *G.BadigCfg_EmuGadgets)
   *G\G_EmRun = CheckBoxGadget(#PB_Any, 24, BaseY + 24, 460, 22, "Abrir o openMSX e rodar o codigo apos gerar")
   *G\G_EmMonitor = CheckBoxGadget(#PB_Any, 24, BaseY + 54, 460, 22, "Monitorar execucao (detectar erros em runtime)")
   *G\G_EmNoThrottle = CheckBoxGadget(#PB_Any, 24, BaseY + 84, 460, 22, "Rodar sem limitador de velocidade (nothrottle)")
 
-  TextGadget(#PB_Any, 24, BaseY + 136, 320, 20, "Arquivo de configuracao (setting)")
-  *G\G_EmSetting = StringGadget(#PB_Any, 24, BaseY + 164, 512, 24, BadigCfg\EmSetting)
-  *G\G_EmSettingBrowse = ThemedButton(544, BaseY + 164, 64, 24, "...", "")
+  TextGadget(#PB_Any, 24, BaseY + 136, 560, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
+  *G\G_EmulatorPath = StringGadget(#PB_Any, 24, BaseY + 164, 512, 24, BadigCfg\EmulatorPath)
+  *G\G_EmulatorPathBrowse = ThemedButton(544, BaseY + 164, 64, 24, "...", "")
 
-  TextGadget(#PB_Any, 24, BaseY + 214, 320, 20, "Maquina (machine)")
-  *G\G_EmMachine = StringGadget(#PB_Any, 24, BaseY + 242, 512, 24, BadigCfg\EmMachine)
-  *G\G_EmMachineBrowse = ThemedButton(544, BaseY + 242, 64, 24, "...", "")
+  TextGadget(#PB_Any, 24, BaseY + 214, 420, 20, "Arquivo de configuracao settings.xml (opcional, -setting)")
+  *G\G_EmSetting = StringGadget(#PB_Any, 24, BaseY + 242, 512, 24, BadigCfg\EmSetting)
+  *G\G_EmSettingBrowse = ThemedButton(544, BaseY + 242, 64, 24, "...", "")
 
-  TextGadget(#PB_Any, 24, BaseY + 292, 420, 20, "Extensao de disco (extension), formato Nome:slot")
-  *G\G_EmExtension = StringGadget(#PB_Any, 24, BaseY + 320, 512, 24, BadigCfg\EmExtension)
-  *G\G_EmExtensionBrowse = ThemedButton(544, BaseY + 320, 64, 24, "...", "")
+  TextGadget(#PB_Any, 24, BaseY + 292, 420, 20, "Script Tcl a executar no boot (opcional, -script)")
+  *G\G_EmScript = StringGadget(#PB_Any, 24, BaseY + 320, 512, 24, BadigCfg\EmScript)
+  *G\G_EmScriptBrowse = ThemedButton(544, BaseY + 320, 64, 24, "...", "")
 
-  TextGadget(#PB_Any, 24, BaseY + 370, 420, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
-  *G\G_EmVerbose = StringGadget(#PB_Any, 24, BaseY + 398, 70, 24, "")
+  TextGadget(#PB_Any, 24, BaseY + 370, 320, 20, "Maquina (machine)")
+  *G\G_EmMachine = StringGadget(#PB_Any, 24, BaseY + 398, 512, 24, BadigCfg\EmMachine)
+  *G\G_EmMachineBrowse = ThemedButton(544, BaseY + 398, 64, 24, "...", "")
 
-  TextGadget(#PB_Any, 24, BaseY + 448, 560, 20, "Caminho do executavel do openMSX (grava no emulator_interface.ini)")
-  *G\G_EmulatorPath = StringGadget(#PB_Any, 24, BaseY + 476, 512, 24, BadigCfg\EmulatorPath)
-  *G\G_EmulatorPathBrowse = ThemedButton(544, BaseY + 476, 64, 24, "...", "")
+  ; 4 slots simultaneos de verdade (-exta/-extb/-extc/-extd), todos opcionais - openMSX aceita
+  ; qualquer hardware de extensao aqui (nao so "disco", apesar do rotulo antigo dizer isso -
+  ; bug real reportado pelo usuario), um por slot fisico independente. Uma linha compacta cada
+  ; (rotulo + campo + "..." lado a lado, nao empilhado como os campos acima) pra caber os 4 sem
+  ; a janela ficar gigante.
+  TextGadget(#PB_Any, 24, BaseY + 448, 560, 20, "Extensoes (opcional, ate 4 simultaneas - qualquer hardware, nao so disco)")
+  *G\G_EmExtensionA = StringGadget(#PB_Any, 100, BaseY + 476, 436, 24, BadigCfg\EmExtensionA)
+  TextGadget(#PB_Any, 24, BaseY + 480, 70, 20, "Slot A:")
+  *G\G_EmExtensionABrowse = ThemedButton(544, BaseY + 476, 64, 24, "...", "")
+
+  *G\G_EmExtensionB = StringGadget(#PB_Any, 100, BaseY + 510, 436, 24, BadigCfg\EmExtensionB)
+  TextGadget(#PB_Any, 24, BaseY + 514, 70, 20, "Slot B:")
+  *G\G_EmExtensionBBrowse = ThemedButton(544, BaseY + 510, 64, 24, "...", "")
+
+  *G\G_EmExtensionC = StringGadget(#PB_Any, 100, BaseY + 544, 436, 24, BadigCfg\EmExtensionC)
+  TextGadget(#PB_Any, 24, BaseY + 548, 70, 20, "Slot C:")
+  *G\G_EmExtensionCBrowse = ThemedButton(544, BaseY + 544, 64, 24, "...", "")
+
+  *G\G_EmExtensionD = StringGadget(#PB_Any, 100, BaseY + 578, 436, 24, BadigCfg\EmExtensionD)
+  TextGadget(#PB_Any, 24, BaseY + 582, 70, 20, "Slot D:")
+  *G\G_EmExtensionDBrowse = ThemedButton(544, BaseY + 578, 64, 24, "...", "")
+
+  TextGadget(#PB_Any, 24, BaseY + 628, 420, 20, "Verbosidade do emulador (0-4, vazio = padrao)")
+  *G\G_EmVerbose = StringGadget(#PB_Any, 24, BaseY + 656, 70, 24, "")
 EndProcedure
 
 ; Preenche os gadgets criados acima com o BadigCfg atual - separado da criacao
@@ -626,20 +699,10 @@ Procedure BadigCfg_ApplyEmulatorDefaults(*G.BadigCfg_EmuGadgets)
   If BadigCfg\EmVerbose >= 0 : SetGadgetText(*G\G_EmVerbose, Str(BadigCfg\EmVerbose)) : EndIf
 EndProcedure
 
-; Trata os 4 botoes "..." (arquivo de configuracao, executavel, maquina,
-; extensao) desta pagina - devolve #True se Ev era um deles (quem chama pode
-; ignorar o retorno se so tiver esses 4 gadgets pra tratar). Mesma logica que
-; ja existia inline em BadigCfg_OpenSettingsWindow().
+; Escolhe um arquivo/maquina/extensao pro campo StringGadget *Field, usando *Browse como
+; disparador - helper comum aos 7 botoes "..." desta pagina (executavel, setting, script,
+; maquina, extensao A-D), evita repetir a mesma checagem de Ev 7 vezes.
 Procedure.b BadigCfg_HandleEmulatorGadgetEvent(Win.i, Ev.i, *G.BadigCfg_EmuGadgets)
-  If Ev = *G\G_EmSettingBrowse
-    Protected PickSetting.s = OpenFileRequester("Selecione o arquivo de configuracao do openMSX",
-                                                GetGadgetText(*G\G_EmSetting), "Todos os arquivos (*.*)|*.*", 0)
-    If PickSetting <> ""
-      SetGadgetText(*G\G_EmSetting, PickSetting)
-    EndIf
-    ProcedureReturn #True
-  EndIf
-
   If Ev = *G\G_EmulatorPathBrowse
     CompilerIf #PB_Compiler_OS = #PB_OS_Windows
       Protected ExeFilter.s = "Executavel (*.exe)|*.exe|Todos os arquivos (*.*)|*.*"
@@ -650,6 +713,24 @@ Procedure.b BadigCfg_HandleEmulatorGadgetEvent(Win.i, Ev.i, *G.BadigCfg_EmuGadge
                                              GetGadgetText(*G\G_EmulatorPath), ExeFilter, 0)
     If PickPath <> ""
       SetGadgetText(*G\G_EmulatorPath, PickPath)
+    EndIf
+    ProcedureReturn #True
+  EndIf
+
+  If Ev = *G\G_EmSettingBrowse
+    Protected PickSetting.s = OpenFileRequester("Selecione o arquivo de configuracao (settings.xml) do openMSX",
+                                                GetGadgetText(*G\G_EmSetting), "Todos os arquivos (*.*)|*.*", 0)
+    If PickSetting <> ""
+      SetGadgetText(*G\G_EmSetting, PickSetting)
+    EndIf
+    ProcedureReturn #True
+  EndIf
+
+  If Ev = *G\G_EmScriptBrowse
+    Protected PickScript.s = OpenFileRequester("Selecione o script Tcl a executar no boot",
+                                               GetGadgetText(*G\G_EmScript), "Scripts Tcl (*.tcl)|*.tcl|Todos os arquivos (*.*)|*.*", 0)
+    If PickScript <> ""
+      SetGadgetText(*G\G_EmScript, PickScript)
     EndIf
     ProcedureReturn #True
   EndIf
@@ -669,27 +750,25 @@ Procedure.b BadigCfg_HandleEmulatorGadgetEvent(Win.i, Ev.i, *G.BadigCfg_EmuGadge
     ProcedureReturn #True
   EndIf
 
-  If Ev = *G\G_EmExtensionBrowse
+  ; 4 slots identicos exceto pelo StringGadget/titulo do dialogo - um bloco So(Ev = ...) por
+  ; slot, mesma logica de sempre, sem mais o parsing de ":slot" (cada campo JA E' um slot).
+  If Ev = *G\G_EmExtensionABrowse Or Ev = *G\G_EmExtensionBBrowse Or Ev = *G\G_EmExtensionCBrowse Or Ev = *G\G_EmExtensionDBrowse
     If Trim(GetGadgetText(*G\G_EmulatorPath)) = ""
       MessageRequester("Extensao", "Informe o caminho do executavel do openMSX acima primeiro.",
                        #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
     Else
+      Protected ExtField.i, ExtSlotLetter.s
+      Select Ev
+        Case *G\G_EmExtensionABrowse : ExtField = *G\G_EmExtensionA : ExtSlotLetter = "A"
+        Case *G\G_EmExtensionBBrowse : ExtField = *G\G_EmExtensionB : ExtSlotLetter = "B"
+        Case *G\G_EmExtensionCBrowse : ExtField = *G\G_EmExtensionC : ExtSlotLetter = "C"
+        Case *G\G_EmExtensionDBrowse : ExtField = *G\G_EmExtensionD : ExtSlotLetter = "D"
+      EndSelect
       Protected ExtensionsDir.s = BadigCfg_OpenMsxShareDir(GetGadgetText(*G\G_EmulatorPath), "extensions")
-      ; preserva ":slot" ja digitado, se houver - so troca o nome da extensao
-      Protected CurExt.s = GetGadgetText(*G\G_EmExtension)
-      Protected CurExtName.s = CurExt
-      Protected ColonPos.i = FindString(CurExt, ":")
-      If ColonPos > 0
-        CurExtName = Left(CurExt, ColonPos - 1)
-      EndIf
-      Protected PickedExt.s = BadigCfg_PickXmlName(Win, "Selecione a extensao",
-                                                   ExtensionsDir, CurExtName)
+      Protected PickedExt.s = BadigCfg_PickXmlName(Win, "Selecione a extensao - Slot " + ExtSlotLetter,
+                                                   ExtensionsDir, GetGadgetText(ExtField))
       If PickedExt <> ""
-        If ColonPos > 0
-          SetGadgetText(*G\G_EmExtension, PickedExt + Mid(CurExt, ColonPos))
-        Else
-          SetGadgetText(*G\G_EmExtension, PickedExt)
-        EndIf
+        SetGadgetText(ExtField, PickedExt)
       EndIf
     EndIf
     ProcedureReturn #True
@@ -704,9 +783,14 @@ EndProcedure
 ; que so tem esta pagina, salva logo em seguida).
 Procedure BadigCfg_ApplyEmulatorGadgetsToConfig(*G.BadigCfg_EmuGadgets)
   BadigCfg\EmRun = GetGadgetState(*G\G_EmRun)
+  BadigCfg\EmulatorPath = GetGadgetText(*G\G_EmulatorPath)
   BadigCfg\EmSetting = GetGadgetText(*G\G_EmSetting)
+  BadigCfg\EmScript = GetGadgetText(*G\G_EmScript)
   BadigCfg\EmMachine = GetGadgetText(*G\G_EmMachine)
-  BadigCfg\EmExtension = GetGadgetText(*G\G_EmExtension)
+  BadigCfg\EmExtensionA = GetGadgetText(*G\G_EmExtensionA)
+  BadigCfg\EmExtensionB = GetGadgetText(*G\G_EmExtensionB)
+  BadigCfg\EmExtensionC = GetGadgetText(*G\G_EmExtensionC)
+  BadigCfg\EmExtensionD = GetGadgetText(*G\G_EmExtensionD)
   BadigCfg\EmNoThrottle = GetGadgetState(*G\G_EmNoThrottle)
   BadigCfg\EmMonitor = GetGadgetState(*G\G_EmMonitor)
   If Trim(GetGadgetText(*G\G_EmVerbose)) = ""
@@ -714,7 +798,6 @@ Procedure BadigCfg_ApplyEmulatorGadgetsToConfig(*G.BadigCfg_EmuGadgets)
   Else
     BadigCfg\EmVerbose = Val(GetGadgetText(*G\G_EmVerbose))
   EndIf
-  BadigCfg\EmulatorPath = GetGadgetText(*G\G_EmulatorPath)
 EndProcedure
 
 ;- ------------------------------------------------------------
@@ -737,14 +820,14 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow, OverridePath.s = "")
   ; Mesma grade de layout de EditorCfg_OpenSettingsWindow() (EditorSettings.pbi):
   ; 24px de margem externa, 24px de altura de campo, 8px entre um rotulo e o
   ; campo logo abaixo dele, ~26-30px entre grupos distintos.
-  Protected WinW = 680, WinH = 744
+  Protected WinW = 680, WinH = 804 ; +60 vs. antes - a pagina "Emulador" cresceu (4 slots de extensao)
   Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configuracoes do Basic Dignified",
                                           #PB_Window_SystemMenu | #PB_Window_ScreenCentered, #True, #False)
   If Not Win
     ProcedureReturn
   EndIf
 
-  Protected Panel = PanelGadget(#PB_Any, 24, 24, WinW - 48, 640)
+  Protected Panel = PanelGadget(#PB_Any, 24, 24, WinW - 48, 700)
 
   ;- Pagina 1: Basic Dignified ------------------------------------------------
   AddGadgetItem(Panel, -1, "Basic Dignified")
@@ -878,15 +961,20 @@ Procedure BadigCfg_OpenSettingsWindow(ParentWindow, OverridePath.s = "")
           Case G_DownloadSuite
             BadigCfg_DownloadSuite(Win, GetGadgetText(G_InstallDir))
 
-          Case EmuG\G_EmSettingBrowse, EmuG\G_EmulatorPathBrowse, EmuG\G_EmMachineBrowse, EmuG\G_EmExtensionBrowse
-            BadigCfg_HandleEmulatorGadgetEvent(Win, EventGadget(), @EmuG)
-
           Case G_Save
             Saved = #True
             Quit = #True
 
           Case G_Cancel
             Quit = #True
+
+          Default
+            ; Qualquer um dos 7 botoes "..." da pagina "Emulador" (executavel, setting, script,
+            ; maquina, extensao A-D) - BadigCfg_HandleEmulatorGadgetEvent() checa Ev contra cada
+            ; um e no-opa (devolve #False) se nao for nenhum deles, entao listar os IDs aqui um
+            ; por um (como antes) so criava mais um lugar pra esquecer de atualizar ao adicionar
+            ; um campo novo - ja aconteceu uma vez (Setting nunca virou "-setting" de verdade).
+            BadigCfg_HandleEmulatorGadgetEvent(Win, EventGadget(), @EmuG)
         EndSelect
 
       Case #PB_Event_CloseWindow

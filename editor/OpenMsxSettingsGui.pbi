@@ -20,7 +20,7 @@ Procedure OpenMsxCfg_OpenSettingsWindow(ParentWindow)
   ; externa). WinW = 680 pra caber os mesmos campos da aba "Emulador"
   ; (512 + 8 + 64 = 584 de conteudo util, mais as margens de 24 dos dois
   ; lados) sem quebrar layout - identico ao WinW de BadigCfg_OpenSettingsWindow().
-  Protected WinW = 680, WinH = 592
+  Protected WinW = 680, WinH = 760 ; +168 vs. antes - a pagina "Emulador" cresceu (4 slots de extensao)
   Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configuracoes do openMSX",
                                           #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -43,15 +43,18 @@ Procedure OpenMsxCfg_OpenSettingsWindow(ParentWindow)
     Select Event
       Case #PB_Event_Gadget
         Select EventGadget()
-          Case EmuG\G_EmSettingBrowse, EmuG\G_EmulatorPathBrowse, EmuG\G_EmMachineBrowse, EmuG\G_EmExtensionBrowse
-            BadigCfg_HandleEmulatorGadgetEvent(Win, EventGadget(), @EmuG)
-
           Case G_Save
             Saved = #True
             Quit = #True
 
           Case G_Cancel
             Quit = #True
+
+          Default
+            ; Qualquer um dos 7 botoes "..." desta janela (executavel, setting, script, maquina,
+            ; extensao A-D) - ver comentario equivalente em BadigCfg_OpenSettingsWindow()
+            ; (BadigSettings.pbi).
+            BadigCfg_HandleEmulatorGadgetEvent(Win, EventGadget(), @EmuG)
         EndSelect
 
       Case #PB_Event_CloseWindow

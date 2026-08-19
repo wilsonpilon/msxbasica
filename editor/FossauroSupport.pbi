@@ -274,7 +274,7 @@ EndProcedure
 ; sem numero e' a forma de UM UNICO USR (equivalente a DEFUSR0 e' DEFUSR, chamado por USR(0) com
 ; o "0" sendo so' o argumento passado pra funcao, nao o indice dela) - as duas formas nao se
 ; misturam. AutoRun (ligado via "Fossauro: executar automaticamente..." em Configurar -> Mamute
-; Assembler..., MamuteFossauroAutoRun, default desligado) digita a chamada ":A=USR0(0)" na MESMA
+; Assembler..., MamuteAutoRunAfterTransfer, default desligado) digita a chamada ":A=USR0(0)" na MESMA
 ; linha do DEFUSR0, executando assim que o Enter e' "digitado" - ainda passa pelo interpretador
 ; BASIC de verdade, so' automatiza o "digitar e apertar Enter" manual. Mesma divisao de
 ; responsabilidade do Fossauro_SendAndRun(): generico, nao sabe nada sobre Mamute/MamuteMem.

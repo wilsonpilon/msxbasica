@@ -1240,7 +1240,7 @@ EndProcedure
 ; precisa transferir pra RAM, nao rodar; RUN cru sequestrava PC/SP de uma
 ; sessao MSX ja viva (modulo 32x), enquanto DEFUSR digitado deixa a
 ; BIOS/BASIC tratar a chamada com o contexto consistente dela. Se
-; MamuteFossauroAutoRun estiver ligado (Configurar -> Mamute Assembler...,
+; MamuteAutoRunAfterTransfer estiver ligado (Configurar -> Mamute Assembler...,
 ; MamuteSupport.pbi, default desligado), digita ":A=USR0(0)" na mesma linha
 ; do DEFUSR0, executando na hora - senao fica so' o DEFUSR0, pronto pro
 ; usuario digitar "A=USR0(0)" manualmente na janela do Fossauro quando
@@ -1267,13 +1267,13 @@ Procedure MamuteGui_CmdFossauro(G_Log, *State.MamuteGui_State)
     PokeA(*Payload + I, Mamute_ReadByte((MamuteAsmLastStartAddr + I) & $FFFF))
   Next I
 
-  Protected ErrMsg.s = Fossauro_SendAndType(MamuteAsmLastStartAddr, *Payload, MamuteAsmLastByteCount, MamuteFossauroAutoRun)
+  Protected ErrMsg.s = Fossauro_SendAndType(MamuteAsmLastStartAddr, *Payload, MamuteAsmLastByteCount, MamuteAutoRunAfterTransfer)
   FreeMemory(*Payload)
 
   If ErrMsg = ""
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
       "OK - CARREGADO NO FOSSAURO EM " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H, DEFUSR0 JA DIGITADO")
-    If MamuteFossauroAutoRun
+    If MamuteAutoRunAfterTransfer
       *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "EXECUTADO (A=USR0(0))")
     Else
       *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
@@ -1281,6 +1281,60 @@ Procedure MamuteGui_CmdFossauro(G_Log, *State.MamuteGui_State)
     EndIf
   Else
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?" + UCase(ErrMsg))
+  EndIf
+EndProcedure
+
+; OPENMSX - mesma ideia do FOSSAURO logo acima, mirando a instancia de openMSX de verdade em
+; vez do Fossauro (pedido explicito do usuario, 2026-08-19: "mesmo processo, mas voltando do
+; compilador a pessoa usa openMSX" - reaproveita o bridge Tcl/XML ja existente,
+; OpenMSXBridge.pbi modulo 12, em vez de reinventar). Mesmo intervalo
+; [MamuteAsmLastStartAddr, MamuteAsmLastByteCount) lido via Mamute_ReadByte(), mas gravado byte
+; a byte na RAM real via "debug write memory" (comando nativo do openMSX,
+; OMSX_FlushMamuteProgram()) em vez de um protocolo proprio - depois digita "DEFUSR0=&H<endereco>"
+; (+ ":A=USR0(0)" se MamuteAutoRunAfterTransfer, MESMA flag que o FOSSAURO usa - e' a mesma
+; decisao "executar ou nao" pro usuario, independente de qual dos dois emuladores) via
+; OMSX_TypeText() - "type" nativo do openMSX, digita no teclado emulado de verdade. Sobe o
+; openMSX sozinho se precisar (OMSX_SendMamuteProgram() -> OMSX_Start(), mesmo botao "Executar
+; -> Abrir o openMSX..." usa). Mesma exigencia de MamuteAsmLastWroteToRam do FOSSAURO.
+Procedure MamuteGui_CmdOpenMSX(G_Log, *State.MamuteGui_State)
+  If Not MamuteAsmHasResult Or Not MamuteAsmLastWroteToRam
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      "?NADA MONTADO COM 'O' AINDA (monte com 'A O' na tela EDIT antes de OPENMSX)")
+    ProcedureReturn
+  EndIf
+  If MamuteAsmLastByteCount <= 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?NADA GERADO (0 BYTES)")
+    ProcedureReturn
+  EndIf
+  If BadigCfg\EmulatorPath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      "?CAMINHO DO OPENMSX NAO CONFIGURADO (Configurar -> openMSX...)")
+    ProcedureReturn
+  EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "OPENMSX: ENVIANDO " + Str(MamuteAsmLastByteCount) + " BYTES PARA " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H...")
+
+  Protected *Payload = AllocateMemory(MamuteAsmLastByteCount)
+  Protected I.i
+  For I = 0 To MamuteAsmLastByteCount - 1
+    PokeA(*Payload + I, Mamute_ReadByte((MamuteAsmLastStartAddr + I) & $FFFF))
+  Next I
+
+  Protected Ok.b = OMSX_SendMamuteProgram(MamuteAsmLastStartAddr, *Payload, MamuteAsmLastByteCount, MamuteAutoRunAfterTransfer)
+  FreeMemory(*Payload)
+
+  If Ok
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      "OK - CARREGADO NO OPENMSX EM " + Mamute_Hex4(MamuteAsmLastStartAddr) + "H, DEFUSR0 JA DIGITADO")
+    If MamuteAutoRunAfterTransfer
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "EXECUTADO (A=USR0(0))")
+    Else
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+        "DIGITE A=USR0(0) NA JANELA DO OPENMSX PRA RODAR")
+    EndIf
+  Else
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?FALHA AO ABRIR O OPENMSX")
   EndIf
 EndProcedure
 
@@ -1627,6 +1681,9 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
 
     Case "FOSSAURO"
       MamuteGui_CmdFossauro(G_Log, *State)
+
+    Case "OPENMSX"
+      MamuteGui_CmdOpenMSX(G_Log, *State)
 
     Case "L"
       MamuteGui_CmdL(G_Log, *State, Args)

@@ -7838,11 +7838,14 @@ Sessão seguinte ao módulo 32y. Dois pedidos do usuário, testando o `FOSSAURO`
    `USR(x)` sem número é a forma de UM ÚNICO `USR` (`DEFUSR` sem número), uma sintaxe totalmente
    separada - as duas não se misturam. Corrigido em `Fossauro_SendAndType()`
    (`editor/FossauroSupport.pbi`): agora monta `"DEFUSR0=&H" + Hex4(Addr)`.
-2. **Flag de auto-execução** (`Configurar → Mamute Assembler...`): novo `CheckBoxGadget` "Fossauro:
-   executar automaticamente após transferir (A=USR0(0))", persistido em `MamuteFossauroAutoRun`
-   (`Global.b`, `MamuteSupport.pbi`, default **desligado** - pedido explícito do usuário, mantém o
-   comportamento padrão só-transferir do módulo 32y) e `mamute_settings.json`
-   (`"FossauroAutoRun"`). Quando ligada, `Fossauro_SendAndType()` recebe um novo parâmetro `AutoRun.b`
+2. **Flag de auto-execução** (`Configurar → Mamute Assembler...`): novo `CheckBoxGadget`
+   "Executar automaticamente após transferir - Fossauro/openMSX (A=USR0(0))", persistido em
+   `MamuteAutoRunAfterTransfer` (`Global.b`, `MamuteSupport.pbi`, default **desligado** - pedido
+   explícito do usuário, mantém o comportamento padrão só-transferir do módulo 32y) e
+   `mamute_settings.json` (`"AutoRunAfterTransfer"` - renomeado do `"FossauroAutoRun"` original
+   desta mesma sessão, antes de qualquer instalação real usar a chave antiga, ver módulo 33: a
+   mesma flag passou a valer pros dois comandos, `FOSSAURO` e `OPENMSX`). Quando ligada,
+   `Fossauro_SendAndType()` recebe um novo parâmetro `AutoRun.b`
    e monta a linha combinada `"DEFUSR0=&H" + Hex4(Addr) + ":A=USR0(0)"` (dois comandos BASIC na mesma
    linha, separados por `:`) em vez de só o `DEFUSR0` - executa assim que o `Chr(13)` final "aperta
    Enter", ainda inteiramente via o buffer de teclado real (`TYPE`, módulo 32y), sem nenhum `RUN` cru
@@ -7854,6 +7857,143 @@ mudou -, `PaleoBasic.exe` recompilado limpo): repetido o mesmo programa de teste
 vezes ao longo de ~2.4s mostra `PC` variando entre regiões diferentes a cada amostra (mesmo padrão de
 sistema vivo/ciclando confirmado no módulo 32y, sem nenhum sinal de travamento), confirmando que a
 sintaxe corrigida define E chama o `USR0` corretamente numa única linha digitada.
+
+### 33. Comando `OPENMSX` no Mamute Assembler - mesmo fluxo do `FOSSAURO`, mirando o openMSX de verdade (2026-08-19, próxima versão)
+
+Sessão seguinte ao módulo 32z. Contexto: o usuário levantou que o Fossauro (emulador próprio,
+escrito do zero em PureBasic) segue achando bugs de correção fundamental (boot, vídeo, disco,
+pilha/teclado) - pediu uma recomendação entre continuar investindo nele até um "mínimo
+funcional" ou passar a integrar com o **openMSX de verdade**, que já tem bridge Tcl/XML madura
+neste projeto (`OpenMSXBridge.pbi`, módulo 12) desde antes do Fossauro existir. Recomendação
+dada e aceita: priorizar a integração via openMSX (base já confiável, motivo original do
+Fossauro - "RAM direta + erro apontando pro editor" - não depende dele terminar primeiro) e
+começar pelo **Assembler** (código-objeto Z80 puro, sem a complicação de religar
+`TXTTAB`/ponteiros de linha do BASIC, pendência grande separada do módulo 32u).
+
+**Implementado**: comando `OPENMSX` novo no `MON>` do Mamute Assembler
+(`MamuteGui_CmdOpenMSX()`, `MamuteAssemblerGui.pbi`), espelhando o `FOSSAURO`
+(`MamuteGui_CmdFossauro()`) mas mirando a instância real de openMSX via `OpenMSXBridge.pbi` em
+vez do protocolo próprio do Fossauro:
+- **Transferência de memória**: `OMSX_FlushMamuteProgram()` (`OpenMSXBridge.pbi`) escreve
+  *Payload* byte a byte via o comando de debug **nativo** do openMSX `debug write memory
+  <endereço> <valor>` - confirmado lendo o código-fonte real vendorizado neste repositório
+  (`openmsx/openmsx/src/debugger/Debugger.cc`, `Cmd::write()`: `checkNumArgs(tokens, 5, ...,
+  "debuggable address value")`) e `openmsx/openmsx/src/cpu/MSXCPUInterface.cc` (o debuggable
+  chamado `"memory"` é literalmente o espaço de 64KB que o Z80 enxerga, registrado como
+  `SimpleDebuggable(motherBoard_, "memory", ...)`), não um palpite.
+- **"Digitação"**: reaproveita `OMSX_TypeText()`, já existente e já usada em produção por outra
+  parte da IDE (mesmo mecanismo do Catapult original - comando Tcl `type` embutido no openMSX,
+  que aciona `type_via_keyboard`/`KeyInserter::execute()`, pressionando/soltando teclas de
+  verdade na matriz emulada). Mesma linha `"DEFUSR0=&H<endereço>"` (+ `":A=USR0(0)"` se
+  `MamuteAutoRunAfterTransfer`) dos módulos 32y/32z - **mesma flag**, compartilhada entre
+  `FOSSAURO` e `OPENMSX` (é a mesma decisão "executar ou não" pro usuário, independente do
+  alvo).
+- **Fila de pendência assíncrona**: diferente do Fossauro (pipe síncrono, cada comando espera a
+  resposta antes do próximo), a conexão do openMSX é **assíncrona** - `OMSX_Start()` retorna
+  assim que o processo é lançado, a conexão de verdade só completa numa thread separada
+  (`OMSX_PipeConnectThread()`). Se o openMSX ainda não tiver subido/conectado quando `OPENMSX` é
+  digitado, `OMSX_SendMamuteProgram()` guarda uma **cópia própria** dos bytes (`AllocateMemory`
+  + `CopyMemory` - o `*Payload` de quem chama é liberado logo depois da chamada retornar, não
+  sobrevive até o flush) em `OMSX_PendingMamuteAddr`/`*OMSX_PendingMamuteBytes`/
+  `OMSX_PendingMamuteByteCount`/`OMSX_PendingMamuteAutoRun` (novos `Global`s), e
+  `OMSX_PipeConnectThread()` manda tudo assim que a conexão completa - mesmo padrão já usado
+  por `OMSX_PendingDiskPath` (carregamento de disco pendente), só que para um programa Z80
+  montado em vez de um caminho de `.dsk`.
+
+**Não verificado ao vivo com openMSX de verdade** - diferente de todo o trabalho anterior desta
+semana (Fossauro), esta máquina de desenvolvimento **não tem o openMSX instalado/configurado**
+(`badig_settings.json` nem existe ainda, `BadigCfg\EmulatorPath` nunca foi setado, nenhum
+`openmsx.exe` encontrado no disco) - só foi possível confirmar que `editor/BadigEditor.pb`
+compila limpo com as mudanças (`pbcompiler.exe`, sem erros) e que a sintaxe dos comandos Tcl
+bate com o código-fonte real do openMSX vendorizado no repo. **Fica pendência explícita para a
+primeira sessão em que o openMSX estiver disponível**: repetir a mesma verificação ao vivo já
+feita pro Fossauro (via a própria janela do openMSX, ou inspecionando memória através do
+console Tcl dele) - `A O` no Mamute → `OPENMSX` → confirmar que os bytes chegaram no endereço
+certo e que `DEFUSR0`/`A=USR0(0)` funcionam de ponta a ponta contra a implementação real.
+
+### 34. Telas de configuração do openMSX (`Configurar → Basic Dignified... → aba Emulador` e `Configurar → openMSX...`) - reordenadas, campo `-setting` corrigido (nunca era usado), `-script` novo, 4 slots de extensão reais (2026-08-19, próxima versão)
+
+Motivado pelo usuário tentar configurar o openMSX pela primeira vez (sessão do módulo 33) e
+travar num fluxo confuso: clicava em "Arquivo de configuração (setting)" (primeiro campo da
+tela, de cima pra baixo) e, ao tentar escolher a Máquina logo depois, esbarrava no aviso
+"informe o caminho do executável primeiro" - um campo que parecia não ter relação nenhuma com o
+executável pedindo isso. Diagnóstico: a ordem dos campos era literalmente ao contrário do que
+suas dependências exigem (Setting/Máquina/Extensão vinham ANTES do campo Executável, que ficava
+no rodapé da tela, quando Máquina/Extensão só conseguem listar os `.xml` disponíveis a partir do
+diretório do executável).
+
+**Achados adicionais, investigando o resto da tela** (usuário também apontou, corretamente):
+- **`EmSetting` (rótulo "Arquivo de configuração (setting)") nunca foi usado pra nada** -
+  existia na `Structure BadigSettings`, na tela, no JSON (carrega/salva), mas
+  `OMSX_BuildParams()` (`OpenMSXBridge.pbi`, o único lugar que monta os parâmetros reais de
+  linha de comando do openMSX) nunca lia esse campo - o usuário podia preencher, salvar, reabrir
+  a tela e ver o valor lá, mas ele nunca virava `-setting <arquivo>` de verdade. Confirmado como
+  flag real do openMSX lendo o código-fonte vendorizado (`openmsx/openmsx/src/CommandLineParser.cc`:
+  `registerOption("-setting", settingOption, BEFORE_SETTINGS)`).
+- **Rótulo "Extensão de disco (extension)" era enganoso** - extensões do openMSX não são "de
+  disco" necessariamente (qualquer hardware real: FM-PAC, MegaFlashROM, impressora, etc., tudo
+  em `share/extensions/*.xml`), e o campo só aceitava UMA extensão por vez (com um sufixo manual
+  opcional `:slot` pra escolher onde encaixar). Confirmado lendo
+  `openmsx/openmsx/src/CliExtension.cc`: o openMSX registra **5** flags de linha de comando pra
+  isso - `-ext` (slot automático) e `-exta`/`-extb`/`-extc`/`-extd` (4 slots nomeados,
+  simultâneos e independentes) - `for (const auto* ext : {"-ext", "-exta", "-extb", "-extc",
+  "-extd"})`.
+- Faltava um campo pra `-script <arquivo>` (também uma flag real, `registerOption("-script",
+  scriptOption, BEFORE_SETTINGS)` no mesmo `CommandLineParser.cc`) - script Tcl executado no
+  boot, pedido explícito do usuário.
+
+**Fix** (`BadigSettings.pbi`, campos compartilhados entre as duas telas via
+`BadigCfg_CreateEmulatorGadgets()`/`BadigCfg_ApplyEmulatorDefaults()`/
+`BadigCfg_HandleEmulatorGadgetEvent()`/`BadigCfg_ApplyEmulatorGadgetsToConfig()` - as duas telas
+usam exatamente o mesmo código, então um fix aqui cobre as duas de uma vez, por construção, sem
+precisar replicar nada manualmente):
+- **Reordenado**: Executável (topo) → Setting (opcional) → Script (opcional, novo) → Máquina →
+  Extensões → Verbosidade.
+- **`EmExtension.s` (1 campo) virou `EmExtensionA/B/C/D.s` (4 campos)**, cada um um `StringGadget`
+  numa linha compacta própria ("Slot A:"/"B:"/"C:"/"D:" + campo + botão "..."), sem mais o
+  parsing manual de sufixo `:slot` (cada campo JÁ é um slot). Migração automática de config
+  antiga (`BadigCfg_Load()`): se nenhum dos 4 slots novos tiver valor, lê o `EmExtension` antigo
+  e decide o slot a partir do sufixo `:slot` que porventura já tivesse (ou Slot A por padrão).
+- **`OMSX_BuildParams()` (`OpenMSXBridge.pbi`) agora monta `-setting`/`-script`/`-exta`/`-extb`/
+  `-extc`/`-extd`** de verdade a partir desses campos - antes só montava `-machine`/uma extensão
+  genérica.
+- `OMSX_LaunchedExtension` (1 `Global`) virou `OMSX_LaunchedExtensionA/B/C/D` (4 `Global`s) -
+  usado pelo aviso de "máquina/extensão mudou, reinicie o openMSX" (`OpenMSXConsoleGui.pbi`),
+  agora compara os 4 slots.
+- Janelas cresceram pra caber os 4 slots novos: `BadigCfg_OpenSettingsWindow()` (painel de
+  680x744 → 680x804) e `OpenMsxCfg_OpenSettingsWindow()` (680x592 → 680x760).
+- **Simplificação incidental** (reduz o risco de o próximo campo novo repetir o mesmo tipo de
+  bug de "esquecido em algum lugar"): os dois `Select EventGadget()` que despachavam os cliques
+  dos botões "..." desta página listavam cada ID manualmente (`Case
+  EmuG\G_EmSettingBrowse, EmuG\G_EmulatorPathBrowse, ...`) - trocado por `Default:
+  BadigCfg_HandleEmulatorGadgetEvent(...)` (que já checa cada ID internamente e no-opa se não
+  for nenhum deles), então adicionar um campo novo no futuro não exige lembrar de atualizar essa
+  lista em duas telas diferentes.
+
+**Verificado ao vivo por screenshot** (`WM_COMMAND` no ID do menu `#Menu_ConfigureOpenMSX`,
+contado no bloco `Enumeration MenuItems` - mesma técnica de sempre): `Configurar → openMSX...`
+renderiza limpo, todos os campos na ordem certa, os 4 slots de extensão visíveis com rótulo e
+botão "..." cada, nada sobreposto/cortado. **Pegadinha de metodologia encontrada nesta sessão,
+vale registrar pra próximas verificações por screenshot neste projeto**: o primeiro screenshot
+saiu com o conteúdo cortado bem no meio da tela (parecia um bug real de layout) - causa raiz era
+o script de captura (`GetWindowRect`+`CopyFromScreen` via PowerShell) não estar marcado
+DPI-aware (`SetProcessDPIAware()`), então `GetWindowRect` devolvia coordenadas 20% menores que o
+tamanho físico real da janela (esta máquina roda a 125% de escala) - a screenshot ficava presa
+num recorte pequeno demais, sem que fosse óbvio que era um bug de captura e não da aplicação.
+Sempre chamar `SetProcessDPIAware()` no início de qualquer script de captura de tela nesta
+máquina antes de confiar em `GetWindowRect`.
+
+**Incidente de metodologia (não repetir)**: numa tentativa de clicar na aba "Emulador" do
+`PanelGadget` (`Configurar → Basic Dignified...`) via clique de mouse real simulado
+(`SetCursorPos`+`mouse_event`), o clique caiu fora da janela alvo e acabou clicando/capturando
+uma janela de mensagens privada do usuário em segundo plano - o arquivo foi apagado
+imediatamente, sem ler/reportar o conteúdo. Reforça exatamente o motivo já documentado no
+`CLAUDE.md` pra preferir automação por mensagem (`WM_COMMAND`/`BM_CLICK` num handle específico)
+em vez de simulação de clique/teclado real: esta última age sobre o que estiver DE VERDADE na
+tela de quem estiver usando a máquina, não necessariamente a janela pretendida. A verificação da
+aba "Emulador" dentro da tela do Basic Dignified foi dada como suficientemente coberta pela
+verificação da tela standalone `Configurar → openMSX...` (código 100% compartilhado, mesma
+`Structure`/mesmas `Procedure`s) em vez de forçar esse clique de novo.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

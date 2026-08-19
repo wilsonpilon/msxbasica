@@ -1010,7 +1010,9 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
             ; Extension, OpenMSXBridge.pbi) - avisa se o que esta configurado
             ; agora diverge do que esta rodando, ja que so "Reiniciar openMSX"
             ; aplica uma mudanca dessas de verdade.
-            If BadigCfg\EmMachine <> OMSX_LaunchedMachine Or BadigCfg\EmExtension <> OMSX_LaunchedExtension
+            If BadigCfg\EmMachine <> OMSX_LaunchedMachine Or BadigCfg\EmExtensionA <> OMSX_LaunchedExtensionA Or
+               BadigCfg\EmExtensionB <> OMSX_LaunchedExtensionB Or BadigCfg\EmExtensionC <> OMSX_LaunchedExtensionC Or
+               BadigCfg\EmExtensionD <> OMSX_LaunchedExtensionD
               SetGadgetText(G_MismatchWarn, "Maquina/extensao mudou em Configurar -> openMSX... - clique " + Chr(34) + "Reiniciar openMSX" + Chr(34) + " pra aplicar.")
             Else
               SetGadgetText(G_MismatchWarn, "")

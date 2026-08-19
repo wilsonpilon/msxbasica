@@ -85,14 +85,17 @@ Global MamuteFontName.s = "Consolas"
 Global MamuteFontSize.i = 16
 Global MamuteFontBold.b = #True
 
-; Comando FOSSAURO (MamuteGui_CmdFossauro(), MamuteAssemblerGui.pbi) - depois do LOAD, sempre
-; digita "DEFUSR0=&H<endereco>" na sessao MSX (ver Fossauro_SendAndType(), FossauroSupport.pbi,
-; e docs/SPEC.md modulo 32y); se esta flag estiver ligada, digita ":A=USR0(0)" junto na MESMA
-; linha, executando na hora que o Enter e' "digitado" - continua passando pelo interpretador
-; BASIC de verdade (nao e' RUN cru), so' automatiza o "digitar A=USR0(0) e apertar Enter"
-; manual. Desligada por padrao de proposito - pedido explicito do usuario (2026-08-19): o
-; comportamento padrao continua so' transferir, executar e' opt-in.
-Global MamuteFossauroAutoRun.b = #False
+; Comandos FOSSAURO e OPENMSX (MamuteGui_CmdFossauro()/MamuteGui_CmdOpenMSX(),
+; MamuteAssemblerGui.pbi) - depois do LOAD, sempre digita "DEFUSR0=&H<endereco>" na sessao MSX
+; (ver Fossauro_SendAndType()/FossauroSupport.pbi ou OMSX_SendMamuteProgram()/
+; OpenMSXBridge.pbi, docs/SPEC.md modulos 32y/32z/33); se esta flag estiver ligada, digita
+; ":A=USR0(0)" junto na MESMA linha, executando na hora que o Enter e' "digitado" - continua
+; passando pelo interpretador BASIC de verdade (nao e' RUN cru nem debug set pc), so' automatiza
+; o "digitar A=USR0(0) e apertar Enter" manual. MESMA flag pros dois comandos (e' a mesma
+; decisao "executar ou nao" pro usuario, independente do alvo). Desligada por padrao de
+; proposito - pedido explicito do usuario (2026-08-19): o comportamento padrao continua so'
+; transferir, executar e' opt-in.
+Global MamuteAutoRunAfterTransfer.b = #False
 
 ; Fonte carregada (HFONT) a partir dos 3 campos acima - Global aqui (nao em
 ; MamuteAssemblerGui.pbi, onde MamuteGui_EnsureFont() de fato a carrega/
@@ -1086,7 +1089,7 @@ Procedure MamuteCfg_Load()
   MamuteFontBold = #True
   Mamute_SKeyMapDefaults()
   MamuteVramSize = 16384
-  MamuteFossauroAutoRun = #False
+  MamuteAutoRunAfterTransfer = #False
 
   Protected FilePath.s = MamuteCfg_FilePath()
   If FileSize(FilePath) <= 0
@@ -1104,7 +1107,7 @@ Procedure MamuteCfg_Load()
   M = GetJSONMember(Root, "FontSize") : If M : MamuteFontSize = GetJSONInteger(M) : EndIf
   M = GetJSONMember(Root, "FontBold") : If M : MamuteFontBold = GetJSONBoolean(M) : EndIf
   M = GetJSONMember(Root, "VramSize") : If M : MamuteVramSize = GetJSONInteger(M) : EndIf
-  M = GetJSONMember(Root, "FossauroAutoRun") : If M : MamuteFossauroAutoRun = GetJSONBoolean(M) : EndIf
+  M = GetJSONMember(Root, "AutoRunAfterTransfer") : If M : MamuteAutoRunAfterTransfer = GetJSONBoolean(M) : EndIf
   If MamuteVramSize <> 16384 And MamuteVramSize <> 131072 And MamuteVramSize <> 196608
     MamuteVramSize = 16384 ; valor invalido/corrompido - volta pro padrao seguro
   EndIf
@@ -1148,7 +1151,7 @@ Procedure MamuteCfg_Save()
   SetJSONInteger(AddJSONMember(Root, "FontSize"), MamuteFontSize)
   SetJSONBoolean(AddJSONMember(Root, "FontBold"), MamuteFontBold)
   SetJSONInteger(AddJSONMember(Root, "VramSize"), MamuteVramSize)
-  SetJSONBoolean(AddJSONMember(Root, "FossauroAutoRun"), MamuteFossauroAutoRun)
+  SetJSONBoolean(AddJSONMember(Root, "AutoRunAfterTransfer"), MamuteAutoRunAfterTransfer)
   Protected CellsElem = SetJSONArray(AddJSONMember(Root, "Cells"))
 
   Protected Slot, Pagina, Elem
@@ -1330,11 +1333,12 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
   EndSelect
   KeysY + 34
 
-  ; Comando FOSSAURO (MamuteAssemblerGui.pbi/FossauroSupport.pbi) - ver comentario do Global
-  ; MamuteFossauroAutoRun acima. Desligado por padrao.
-  Protected G_FossauroAutoRun = CheckBoxGadget(#PB_Any, 24, KeysY + 3, WinW - 48, 22,
-                                               "Fossauro: executar automaticamente apos transferir (A=USR0(0))")
-  SetGadgetState(G_FossauroAutoRun, MamuteFossauroAutoRun)
+  ; Comandos FOSSAURO/OPENMSX (MamuteAssemblerGui.pbi/FossauroSupport.pbi/OpenMSXBridge.pbi) -
+  ; ver comentario do Global MamuteAutoRunAfterTransfer acima. Mesma flag pros dois alvos
+  ; (e' a mesma decisao "executar ou nao" pro usuario). Desligado por padrao.
+  Protected G_AutoRunAfterTransfer = CheckBoxGadget(#PB_Any, 24, KeysY + 3, WinW - 48, 22,
+                                               "Executar automaticamente apos transferir - Fossauro/openMSX (A=USR0(0))")
+  SetGadgetState(G_AutoRunAfterTransfer, MamuteAutoRunAfterTransfer)
   KeysY + 34
 
   Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
@@ -1469,7 +1473,7 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
       Default : MamuteVramSize = 16384
     EndSelect
 
-    MamuteFossauroAutoRun = GetGadgetState(G_FossauroAutoRun)
+    MamuteAutoRunAfterTransfer = GetGadgetState(G_AutoRunAfterTransfer)
 
     MamuteCfg_Save()
   EndIf
