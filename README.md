@@ -587,6 +587,9 @@ Assembler...`), e **`C`** (escolhe o modo de exibição — 4 formatos possívei
 código Z80, não tem editor de fonte próprio nem integra com o resto da IDE além do que já existe aqui;
 cresce comando por comando em sessões futuras. **Ajuda → Mamute Assembler...** sempre reflete só o que
 já foi portado.
+
+![Mamute Assembler — monitor estilo anos 80 (Executar → Mamute Assembler...)](images/msxbasica-21.png)
+
 Detalhes em `docs/SPEC.md`, módulo 31.
 
 ## Changelog resumido
