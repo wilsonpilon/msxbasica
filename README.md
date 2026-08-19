@@ -3099,6 +3099,15 @@ Detalhes em `docs/SPEC.md`, módulo 31.
   e corrigida (os três modelos bootam de ponta a ponta), RAM/VRAM configuráveis via mapeador por bancos
   (fiel ao fMSX real), mappers MegaROM em cartucho (9 tipos + SRAM), e novo padrão de inicialização
   (MSX1/64KB RAM/16KB VRAM). Ver `docs/RELEASE_NOTES.md` pra nota de lançamento formal completa.
+- **2026-08-19 — release `8.1.7` "PILHA EMPRESTADA"**: bug fix pontual do travamento do `RUN` do
+  protocolo de controle remoto do Fossauro reportado na sessão anterior (`docs/SPEC.md` módulo 32w).
+  Causa raiz real, achada reproduzindo o mesmo programa de teste em dois momentos de boot diferentes e
+  amostrando todos os registradores (não só `PC`): não era um laço preso dentro do BIOS, era corrupção
+  de pilha — `RUN` só trocava `PC`, nunca `SP`, então um `RET` do código injetado (direto ou via BIOS
+  mal-balanceada) fazia `POP` na pilha da sessão MSX original, ressurgindo a execução em código alheio
+  de forma imprevisível. Fix: `RUN` agora empurra um endereço de retorno sintético apontando pra um
+  trap detectável antes de saltar. Ver `docs/SPEC.md` módulo 32x e `docs/RELEASE_NOTES.md` pra nota de
+  lançamento formal completa.
 
 ## Ferramentas e ambiente
 

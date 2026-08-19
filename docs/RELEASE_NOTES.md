@@ -6,6 +6,34 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.1.7 — "PILHA EMPRESTADA" (2026-08-19)
+
+**Tema da versão**: release menor, focada num único bug corrigido — o travamento do `RUN` do Fossauro
+ao chamar rotinas de BIOS de verdade (`CHPUT`), reportado na sessão anterior (8.1.6) e diagnosticado
+mas deixado em aberto de propósito. Nome escolhido porque a causa raiz era exatamente essa: o código
+injetado nunca tinha seu próprio endereço de retorno, e acabava "emprestando" — sem pedir — a pilha da
+sessão MSX que já estava rodando quando o comando chegava.
+
+### Correções
+
+- **`RUN <addr>` do protocolo de controle remoto do Fossauro (`\\.\pipe\fossauro`) travava de forma
+  imprevisível ao chamar rotinas de BIOS de verdade**: a causa raiz não era um laço preso dentro do BIOS
+  (a suspeita do módulo 32w) — era corrupção de pilha. `RUN` só trocava `PC`, nunca `SP`; quando o
+  código injetado dava `RET` (direto, ou indiretamente via alguma chamada de BIOS mal-balanceada), o
+  `POP` correspondente lia o topo da pilha da sessão MSX original que estava viva e em andamento no
+  instante em que o `RUN` chegou, e a execução "ressurgia" dentro daquele call-chain alheio de forma
+  imprevisível — confirmado reproduzindo o mesmo programa de teste duas vezes, em momentos de boot
+  diferentes, e vendo o travamento em duas regiões de `PC` completamente sem relação entre si (a
+  assinatura clássica desse tipo de bug, não de um laço determinístico). Fix: `RUN` agora empurra um
+  endereço de retorno sintético — apontando pra um trap de 2 bytes (`JR $`, loop infinito inofensivo e
+  detectável via `REGS`) — numa folga de 1024 bytes abaixo do `SP` herdado, antes de saltar. Qualquer
+  `RET` cai nesse loop conhecido em vez de invadir código alheio. Verificado ao vivo: o mesmo programa
+  de teste do módulo 32w (impressão de texto via `CHPUT`) agora completa a impressão inteira e para de
+  forma estável e detectável; o teste original sem BIOS (módulo 32v) continua passando sem regressão.
+  Ver `docs/SPEC.md` módulo 32x para o diagnóstico completo.
+
+---
+
 ## 8.1.6 — "FÓSSIL NÃO CRESCE, MAS APRENDEU A SE EXPLICAR" (2026-08-18)
 
 **Tema da versão**: o Fossauro se integra de vez ao Paleobasic (Executar/Configurar/Ajuda, tudo num só

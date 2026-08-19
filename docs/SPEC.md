@@ -7699,13 +7699,84 @@ condição (provavelmente ligada ao estado do scan de teclado) que nunca fica sa
 sequestrado. O primeiro repro (módulo 32v, sem chamada de BIOS) nunca bateu nesse caminho, por isso
 passou limpo.
 
-**Não corrigido ainda** - decisão em aberto pro usuário (não uma escolha óbvia): consertar isso direito
-provavelmente significa OU (a) o `RUN` fazer algum tipo de preparo de estado antes de saltar (o quê
-exatamente, não determinado - arriscado/frágil), OU (b) aceitar que `RUN` cru só é seguro pra código
-Z80 que NÃO chama rotinas de BIOS (o caso do módulo 32v), documentando isso como limitação conhecida e
-deixando "rodar código que usa CHPUT/BIOS" pra uma fase futura (talvez ligada à mesma pauta pendente do
-`RUN`/`TXTTAB` de BASIC de verdade, módulo 32u). O comando `REGS` fica no protocolo (útil de qualquer
-forma pra futura depuração), mesmo sem estar listado ainda como "oficial" no módulo 32u.
+**Não corrigido ainda (no momento do módulo 32w)** - decisão em aberto pro usuário (não uma escolha
+óbvia): consertar isso direito provavelmente significa OU (a) o `RUN` fazer algum tipo de preparo de
+estado antes de saltar (o quê exatamente, não determinado - arriscado/frágil), OU (b) aceitar que `RUN`
+cru só é seguro pra código Z80 que NÃO chama rotinas de BIOS (o caso do módulo 32v), documentando isso
+como limitação conhecida e deixando "rodar código que usa CHPUT/BIOS" pra uma fase futura (talvez ligada
+à mesma pauta pendente do `RUN`/`TXTTAB` de BASIC de verdade, módulo 32u). O comando `REGS` fica no
+protocolo (útil de qualquer forma pra futura depuração), mesmo sem estar listado ainda como "oficial" no
+módulo 32u. **Ver módulo 32x abaixo - o usuário escolheu a opção (a) na sessão seguinte, e o diagnóstico
+real acabou sendo mais fundamental do que "preparo de estado" no sentido de inicializar variáveis de
+sistema.**
+
+### 32x. Fossauro — causa raiz real do travamento do módulo 32w: `RUN` não estabelecia um frame de retorno, corrompendo a pilha herdada (2026-08-19, próxima versão)
+
+Sessão seguinte ao módulo 32w. Pedido do usuário: seguir pela opção (a) já colocada na mesa - investigar
+preparo de estado antes do `RUN` saltar. Reproduzido o MESMO programa do módulo 32w (print via `CHPUT`)
+duas vezes, isolado (bytes montados à mão, mesma técnica do módulo 32v), em dois momentos de boot
+diferentes (~3s e ~15s depois do `fossauro.exe` subir) - com `REGS` agora amostrando **todos** os
+registradores (não só `PC`, diferença chave em relação ao módulo 32w) e `PEEK` nas variáveis de sistema
+suspeitas.
+
+**Achado decisivo**: as duas reproduções travaram em regiões de `PC` **totalmente diferentes** - uma na
+faixa `$0D62-$0D88` (a mesma região BREAKX do módulo 32w), a outra em `$0864`/`$FFBB`, essa segunda com
+`HL=$C11A` (exatamente o endereço do byte terminador `0` da string "MEGA ASSEMBLER" injetada, ou seja, o
+laço de impressão **tinha terminado com sucesso** e o travamento aconteceu **depois** de um `RET`). Esse
+perfil - mesmo programa, mesmo bug reportado, dois pontos de trava sem relação nenhuma entre si - não é
+compatível com "preso num laço determinístico dentro do BIOS"; é a assinatura clássica de **corrupção de
+pilha por retorno descontrolado**.
+
+**Causa raiz confirmada por leitura direta da ROM real** (`editor/MSX.ROM`, 32KB, adicionada ao repo no
+commit `4320b82` "ROMs" - permitiu ler os bytes crus da BIOS ao invés de só inferir pelos opcodes
+decodidados ao vivo como no módulo 32w): `$00A2` (vetor `CHPUT`) é `C3 CB 10` (`JP $10CB`), e o corpo
+real de `CHPUT` em `$10CB` faz `CALL $0D6A` (a rotina do módulo 32w, na verdade um vetor de BIOS oficial
+- `$009D` também aponta pra ela, `C3 6A 0D`) dentro de um laço de espera (`$10D9: CALL $0D6A` / `$10DC:
+JR Z,$10D9`) - ou seja, BREAKX/`$0D6A` **sempre retorna** (seu próprio corpo termina em `RET` depois de
+um `CALL`/`POP`/`POP`/`POP` balanceado, confirmado byte a byte), não é ela quem trava. O bug real: `RUN`
+hoje só faz `CPU\PC\W = Addr`, nunca toca `SP` - a sessão MSX que o pipe hospeda estava **viva e em
+andamento** (BASIC/BIOS já rodando, `SP` apontando pra pilha real dela) no instante em que o `RUN`
+chegou. O código injetado nunca foi chamado via `CALL` por nada nosso, então quando ele mesmo dá um
+`RET` (seja o `RET Z` explícito do programa de teste, seja indiretamente via qualquer desbalanceamento
+de `PUSH`/`POP` dentro das rotinas de BIOS chamadas), o `POP` correspondente lê o topo da pilha **da
+sessão original interrompida** - e a execução "resurge" dentro daquele call-chain alheio, em um ponto
+totalmente dependente de onde a sessão estava no instante exato do `RUN`. Isso explica por completo por
+que os dois pontos de trava do módulo 32w eram diferentes: não são dois bugs, são o MESMO bug (retorno
+sem frame) aterrissando em lugares diferentes por acaso, dependendo do timing de boot.
+
+**Fix** (`fossauro.pb`, `Case "RUN"`): antes de trocar `PC`, `RUN` agora empurra um endereço de retorno
+sintético na pilha, apontando pra um "trap" de 2 bytes escrito numa folga de `#FossauroRunStackSlack`
+(1024) bytes abaixo do `SP` herdado - `18 FE` (`JR $`, loop infinito de 2 bytes, inofensivo e
+detectável). `SP` é então ajustado pra apontar pro slot onde esse endereço de retorno foi escrito, e só
+depois `PC` recebe o endereço alvo. Efeito: se o código injetado retornar (de propósito ou por
+desbalanceamento de BIOS), a execução cai nesse loop conhecido - visível via `REGS` (`PC` parado, estável
+entre amostras) - em vez de invadir código alheio de forma imprevisível. 1024 bytes de folga foi uma
+escolha deliberadamente generosa (BIOS real aninha `PUSH`/`CALL` bem menos que isso mesmo em rotinas
+longas) para sobreviver a interrupções de verdade disparando no meio da execução injetada (o contador de
+jiffy - `$FC9E`/`$FC9F` - continuou avançando durante todo o teste, confirmando que interrupções reais
+disparam nesse contexto sequestrado).
+
+**Verificado ao vivo, reconstruindo o `fossauro.exe`** (`pbcompiler.exe fossauro.pb /THREAD /OUTPUT
+fossauro.exe /CONSTANT "App_Version=8.1.6"`, compila limpo):
+1. Reprodução exata do programa do módulo 32w (print de "MEGA ASSEMBLER" via `CHPUT`) - antes do fix,
+   `PC` vagava para regiões arbitrárias e imprevisíveis a cada execução; depois do fix, `PC` estabiliza
+   e permanece fixo (10 amostras de `REGS` ao longo de ~3s, mesmo valor) dentro da janela de folga
+   reservada, com `HL=$C11A` confirmando que o laço de impressão percorreu a string inteira até o
+   terminador antes do `RET` cair no trap - ou seja, `CHPUT` funcionou de ponta a ponta desta vez.
+2. Reprodução do teste original do módulo 32v (`LD A,55H`/`LD (0C100H),A`/`HALT`, sem BIOS) repetida
+   contra o binário corrigido - `PEEK $C100` continua devolvendo `85` (`0x55`) corretamente, sem
+   regressão (esse caso nunca chega a executar um `RET` de verdade, já que termina em `HALT`, então o
+   novo frame de retorno nem chega a ser consumido).
+
+**Ainda em aberto** (não bloqueia o fix, escopo deliberadamente menor que "RUN de BASIC de verdade" -
+módulo 32u): a folga de 1024 bytes é uma escolha empírica, não um limite matematicamente garantido -
+código injetado que aninha chamadas de BIOS MUITO mais profundas que o teste de 14 caracteres usado aqui
+(ex.: laços longos com múltiplas interrupções acumulando push/pop desbalanceado, se é que isso realmente
+acontece - o desvio observado entre o endereço de retorno calculado e o `PC`/`SP` finais foi de ~24
+bytes, dentro da folga com muita margem, mas a causa exata desse desvio de 24 bytes não foi isolada)
+poderia, em tese, ainda estourar a folga e colidir com o próprio trap. Se isso for observado no futuro
+(o trap deixar de ficar em `PC` fixo/estável), aumentar `#FossauroRunStackSlack` é o primeiro lugar pra
+olhar.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

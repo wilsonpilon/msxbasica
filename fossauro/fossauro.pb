@@ -18,6 +18,12 @@ CompilerIf #PB_Compiler_OS = #PB_OS_Windows
   EndImport
 CompilerEndIf
 
+; Folga de pilha (em bytes) reservada abaixo do SP herdado pelo comando RUN do pipe antes de
+; empurrar o retorno sintetico - ver Case "RUN" abaixo pro raciocinio completo. Precisa ser
+; generosa o bastante pra aguentar aninhamento real de chamadas de BIOS (CHPUT/BREAKX e
+; afins ja usam algumas dezenas de bytes so nelas) sem que o codigo injetado pise no trap.
+#FossauroRunStackSlack = 1024
+
 ; --- Emulation Control Globals ---
 Global ThreadExit.l = 0
 Global ThreadPaused.l = 0
@@ -215,6 +221,26 @@ Procedure PipeHandleClient(hPipe.i)
           PipeWriteLine(hPipe, "ERR bad RUN arguments")
         Else
           ThreadPaused = 1
+          ; Ver docs/SPEC.md modulo 32w/32x - RUN cru so trocava PC, deixando o SP herdado de
+          ; qualquer coisa que a sessao MSX estivesse fazendo quando o comando chegou. Assim
+          ; que o codigo injetado desse um RET (direto, ou indireto via alguma call de BIOS
+          ; mal-balanceada), a execucao "voltava" pra dentro daquele call-chain alheio de
+          ; forma imprevisivel - confirmado ao vivo reproduzindo o MESMO programa (print via
+          ; CHPUT) em dois momentos de boot diferentes e vendo o travamento em duas regioes de
+          ; PC totalmente diferentes ($0D6A/BREAKX numa vez, $0864/$FFBB na outra - essa com
+          ; HL ja apontando pro fim da string, ou seja, o RET veio DEPOIS do print terminar).
+          ; Fix: empurra um endereco de retorno sintetico apontando pra um trap de 2 bytes
+          ; (JR $, loop infinito inofensivo) numa folga abaixo do SP atual, generosa o
+          ; bastante pra aguentar chamadas de BIOS aninhadas de verdade sem a folga colidir
+          ; com o trap em si. Se o codigo injetado retornar (de proposito ou por
+          ; desbalanceamento), cai nesse loop conhecido - detectavel via REGS (PC = TrapAddr)
+          ; - em vez de invadir codigo alheio.
+          Protected RunTrapAddr.u = (CPU\SP\W - #FossauroRunStackSlack) & $FFFF
+          MSXWrZ80(RunTrapAddr, $18)                          ; JR
+          MSXWrZ80((RunTrapAddr + 1) & $FFFF, $FE)            ; -2 (loop pro proprio JR)
+          CPU\SP\W = (RunTrapAddr - 2) & $FFFF
+          MSXWrZ80(CPU\SP\W, RunTrapAddr & $FF)               ; retorno sintetico: byte baixo
+          MSXWrZ80((CPU\SP\W + 1) & $FFFF, (RunTrapAddr >> 8) & $FF) ; byte alto
           CPU\PC\W = Val(Rest) & $FFFF
           ThreadPaused = 0
           PipeWriteLine(hPipe, "OK")
