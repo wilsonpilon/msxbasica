@@ -8350,6 +8350,41 @@ versão real ganhou depois; não corrigido nesta sessão (fora do escopo do bug 
 regressão (`DigTestCli.exe` contra `dist/sample/teste.dmx`) verificada limpa depois do fix - 556
 linhas ASCII, sem erro.
 
+### 40. Limite de 255 caracteres por linha gerada (MSX-BASIC) - já existia, mensagem melhorada (2026-08-20)
+
+Continuando a sessão do módulo 39 (mesmo programa "Hyper Copy"): o usuário confirmou que queria mesmo
+juntar várias instruções indentadas numa única linha BASIC via `:` no final de cada linha-fonte (pra
+economizar memória, estilo clássico) e pediu um aviso se a linha gerada passar de 255 caracteres -
+**o máximo real que o MSX-BASIC suporta numa linha tokenizada**. Esse limite **já existia** em
+`Dig_ProcessSource` (`If Len(finalLine) > 255 : Dig_Fail(...)`) - não uma lacuna, um recurso já
+funcional, só a mensagem de erro não informava o tamanho real nem deixava o limite explícito
+("Linha gerada excede 256 caracteres." - o `256` ali era o primeiro tamanho INVÁLIDO, não o limite,
+o que confundia). Melhorada pra `"Linha gerada tem N caracteres - o máximo que o MSX-BASIC suporta é
+255."`, informando o tamanho de verdade. Verificado ao vivo com um caso de teste de 312 caracteres
+(31 `PRINT` encadeados por `:`) - `Dig_Fail` disparou corretamente com a mensagem nova; suíte de
+regressão (`dist/sample/teste.dmx`) continua limpa depois da mudança (só a string da mensagem mudou,
+a condição de disparo é a mesma de antes).
+
+### 41. Auto-indentação (módulo 38) simplificada de propósito: só copia a indentação anterior, sem somar/tirar nível sozinha (2026-08-20)
+
+Pedido explícito do usuário depois de continuar usando a auto-indentação do módulo 38 (que somava um
+nível depois de `FOR`/`IF...THEN`/`FUNC`/rótulo de loop, e tirava ao digitar `NEXT`/`ENDIF`/`RET`/`}`):
+uma linha terminando em `:` sem `FOR`/`IF` nenhum (idioma clássico de instruções encadeadas, ex.
+`color 15,1,1 :`) ainda estava ganhando um `Tab` extra por engano ao pressionar Enter, empurrando o
+próximo comando pra frente. Em vez de caçar mais um caso de borda no detector de "abertura de bloco"
+(já na segunda rodada de correção desde o módulo 38 original), o usuário decidiu que não vale a pena:
+**tirou o pedido de somar/tirar nível inteiramente** - agora `HandleAutoIndentNewline()` só copia a
+indentação (espaços/tabs do início) da linha anterior pra linha nova, sem NENHUMA lógica de
+FOR/IF/FUNC/rótulo/`NEXT`/`ENDIF`/`RET`/`:`. `HandleAutoDedentKeyword()` (a metade "tira um nível ao
+digitar a palavra de fechamento") foi removida por completo, junto com os helpers que só existiam pra
+isso (`TrimIndentChars()`, `StripLeadingLineNumber()` - `SciLeadingWhitespace()` continua, ainda usada
+pra copiar a indentação). Verificado ao vivo (mensagem `WM_CHAR` direcionada, mesma técnica dos módulos
+37/38): sequência de 10 linhas incluindo `cls :`/`key off:`/`color 15,1,1 :`/`gosub {...}:` e um
+`for temp = 1 to 3 :` seguido de `next temp` - nenhuma delas ganhou indentação extra, todas ficaram
+exatamente alinhadas com a linha anterior. Essa é a versão definitiva da funcionalidade a partir de
+agora - qualquer indentação extra por bloco teria que ser um pedido novo e explícito do usuário, não
+assumido de novo.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **`src/editor/tools/OpenMsxBridgeTestCli.pb` não compila** (2026-08-20, em aberto): `Structure field

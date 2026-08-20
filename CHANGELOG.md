@@ -2601,4 +2601,16 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   `XIncludeFile` apontando pro layout antigo de diretórios desde a reorganização `8.2.0` - corrigidos
   15 deles (`OpenMsxBridgeTestCli.pb` continua quebrado por um motivo diferente e pré-existente, ver
   lacunas conhecidas). Suíte de regressão verificada limpa. Ver `docs/SPEC.md` módulo 39.
+- **2026-08-20, mesmo dia**: confirmado que o limite de 255 caracteres por linha gerada (máximo real
+  do MSX-BASIC) já existia em `Dig_ProcessSource` - não era uma lacuna, só a mensagem de erro não
+  informava o tamanho real da linha nem deixava o limite explícito. Melhorada pra informar o tamanho
+  de verdade ("Linha gerada tem N caracteres - o máximo que o MSX-BASIC suporta é 255"). Verificado
+  ao vivo com um caso de 312 caracteres. Ver `docs/SPEC.md` módulo 40.
+- **2026-08-20, mesmo dia**: auto-indentação (módulo 38) simplificada de propósito depois do usuário
+  reportar que uma linha terminando em `:` sem `FOR`/`IF` nenhum ainda ganhava um Tab extra ao
+  pressionar Enter. Em vez de caçar mais um caso de borda, o usuário pediu pra tirar a lógica de somar/
+  tirar nível por completo - agora a auto-indentação só copia a indentação da linha anterior, sem
+  nenhuma detecção de bloco (`HandleAutoDedentKeyword()` e os helpers que só existiam pra isso foram
+  removidos). Verificado ao vivo: `cls :`/`key off:`/`for temp = 1 to 3 :`/`next temp` e outras
+  variações, nenhuma ganhou indentação extra. Ver `docs/SPEC.md` módulo 41.
 

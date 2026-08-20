@@ -2832,8 +2832,13 @@ Procedure.s Dig_Preprocess(SourceText.s, BasePath.s = "", IsMsxBas2Rom.b = #Fals
     Else
       finalLine = Str(finalLines()\LineNumber) + " " + resolved
     EndIf
+    ; Limite real do MSX-BASIC (linha tokenizada, incluindo numero de linha):
+    ; 255 caracteres - pedido explicito do usuario 2026-08-20 pra confirmar
+    ; que isso realmente avisa (ja existia, so a mensagem nao informava o
+    ; tamanho de verdade nem deixava claro qual e o limite exato).
     If Len(finalLine) > 255
-      Dig_Fail(finalLines()\SrcLine, "Linha gerada excede 256 caracteres.")
+      Dig_Fail(finalLines()\SrcLine, "Linha gerada tem " + Str(Len(finalLine)) +
+               " caracteres - o maximo que o MSX-BASIC suporta e 255.")
       ProcedureReturn ""
     EndIf
 

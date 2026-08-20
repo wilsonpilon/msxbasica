@@ -2000,17 +2000,18 @@ EndProcedure
 
 ;- ------------------------------------------------------------
 ;- Auto-indentacao (abas .dmx/.bas) - pedido explicito do usuario 2026-08-20:
-;- manter a indentacao da linha anterior ao pressionar Enter (em vez de
-;- sempre voltar pra coluna 0, forcando Tab manual toda hora), com um nivel
-;- a mais depois de linhas que abrem bloco (FOR/IF...THEN/FUNC/rotulo de loop
-;- "nome{") e um nivel a menos assim que NEXT/ENDIF/RET/"}" e digitado
-;- sozinho no comeco da linha (fecha o bloco correspondente). So DMX/BAS -
-;- ASM/Markdown nao tem esses blocos e ficam de fora de proposito.
+;- manter a indentacao da linha anterior ao pressionar Enter, em vez de
+;- sempre voltar pra coluna 0 (evita ter que pressionar Tab manual toda
+;- hora). Versao SIMPLIFICADA, mesmo dia: a primeira versao tambem tentava
+;- somar/tirar um nivel sozinha (depois de FOR/IF, ao digitar NEXT/ENDIF),
+;- mas uma linha terminada em ":" (idioma classico de instrucoes encadeadas,
+;- sem FOR/IF nenhum) ainda ganhava um Tab extra por engano - o usuario
+;- preferiu tirar a indentacao automatica de blocos por completo em vez de
+;- arriscar mais falsos positivos. Agora so copia a indentacao da linha
+;- anterior, nunca acrescenta nem tira nada por conta propria.
 ;- ------------------------------------------------------------
 
-; Devolve so os espacos/tabs do inicio de Text (a "indentacao" da linha) -
-; usado tanto pra copiar da linha anterior quanto pra medir a linha atual
-; antes de dedentar.
+; Devolve so os espacos/tabs do inicio de Text (a indentacao da linha).
 Procedure.s SciLeadingWhitespace(Text.s)
   Protected Lead.s = ""
   Protected K.i = 1, Ch.s
@@ -2025,57 +2026,12 @@ Procedure.s SciLeadingWhitespace(Text.s)
   ProcedureReturn Lead
 EndProcedure
 
-; Trim() nativo do PureBasic so remove ESPACOS por padrao (precisaria de um
-; segundo argumento explicito pra outros caracteres, um por chamada) - uma
-; linha indentada com Chr(9) sobrava com o tab colado na frente depois de um
-; Trim() simples, fazendo "ENDIF"/"NEXT" nunca baterem contra o texto
-; aparado (bug real encontrado ao vivo, 2026-08-20 - ver docs/SPEC.md modulo
-; 38). Esta versao tira espaco E tab dos dois lados manualmente.
-Procedure.s TrimIndentChars(Text.s)
-  Protected S.i = 1
-  Protected E.i = Len(Text)
-  While S <= E And (Mid(Text, S, 1) = " " Or Mid(Text, S, 1) = Chr(9))
-    S + 1
-  Wend
-  While E >= S And (Mid(Text, E, 1) = " " Or Mid(Text, E, 1) = Chr(9))
-    E - 1
-  Wend
-  If S > E
-    ProcedureReturn ""
-  EndIf
-  ProcedureReturn Mid(Text, S, E - S + 1)
-EndProcedure
-
-; Tira um numero de linha classico opcional (so digitos, seguido de espaco)
-; do INICIO de Text - usado antes de procurar a palavra-chave de bloco
-; (FOR/IF/FUNC/NEXT/ENDIF/RET), ja que documentos ".bas" (ASCII classico)
-; comecam cada linha com o numero ("10 FOR I=1 TO 10"), o que faria
-; FirstWord virar "10" em vez de "FOR" sem isso. Documentos ".dmx" nao usam
-; numero de linha (rotulos "{nome}" no lugar) - a chamada e inofensiva neles,
-; ja que nunca ha digito solto no comeco de uma instrucao de verdade.
-Procedure.s StripLeadingLineNumber(Text.s)
-  Protected K.i = 1
-  While K <= Len(Text) And Mid(Text, K, 1) >= "0" And Mid(Text, K, 1) <= "9"
-    K + 1
-  Wend
-  If K = 1
-    ProcedureReturn Text
-  EndIf
-  While K <= Len(Text) And Mid(Text, K, 1) = " "
-    K + 1
-  Wend
-  ProcedureReturn Mid(Text, K)
-EndProcedure
-
 ; Ao pressionar Enter (ver HandleAutoIndentCharAdded abaixo pra qual CharCode
 ; isso corresponde de verdade): copia a indentacao da linha que acabou de
-; ser fechada pra linha nova, e acrescenta mais um nivel (Chr(9)) se aquela
-; linha abre um
-; bloco - FOR <algo>, IF <algo> THEN (sem instrucao depois, forma de bloco),
-; FUNC <algo> (proto-funcao) ou uma linha terminando em "{" (rotulo de loop
-; do Basic Dignified, "nome{ ... }"). SCI_REPLACESEL nao dispara
-; SCN_CHARADDED de volta (so InsertString/API direta faz SCN_MODIFIED, que ja
-; e tratado normalmente em outro lugar) - sem risco de recursao.
+; ser fechada pra linha nova - so isso, sem tentar abrir/fechar nivel
+; nenhum sozinha. SCI_REPLACESEL nao dispara SCN_CHARADDED de volta (so
+; InsertString/API direta faz SCN_MODIFIED, que ja e tratado normalmente em
+; outro lugar) - sem risco de recursao.
 Procedure HandleAutoIndentNewline(Sci, DocMode.s)
   Protected Pos = ScintillaSendMessage(Sci, #SCI_GETCURRENTPOS)
   Protected CurLine = ScintillaSendMessage(Sci, #SCI_LINEFROMPOSITION, Pos)
@@ -2089,74 +2045,6 @@ Procedure HandleAutoIndentNewline(Sci, DocMode.s)
   Protected PrevText.s = GetSciTextRange(Sci, PrevStart, PrevEnd)
 
   Protected NewIndent.s = SciLeadingWhitespace(PrevText)
-
-  If DocMode = "DMX" Or DocMode = "BAS"
-    Protected Trimmed.s = UCase(StripLeadingLineNumber(TrimIndentChars(PrevText)))
-    Protected IsOpener.b = #False
-
-    If Trimmed <> "" And Right(Trimmed, 1) = "{"
-      IsOpener = #True
-    Else
-      ; A linha pode ter VARIAS instrucoes separadas por ":" (idioma classico
-      ; comum de MSX-BASIC, ex. "PRINT X:FOR I=1 TO 10" ou "FOR I=1 TO
-      ; 10:NEXT" tudo numa linha so) - olhar so a primeira palavra da linha
-      ; inteira erraria os dois casos: um FOR que abre bloco mas NAO e a
-      ; primeira instrucao, e um FOR que abre E fecha (com seu proprio NEXT)
-      ; na mesma linha. Em vez disso, cada trecho entre ":" e checado
-      ; separadamente - FOR/FUNC contam como abertura (+1), NEXT/RET/ENDIF
-      ; como fechamento (-1) - e so indenta se sobrar mais abertura que
-      ; fechamento no total da linha. Simplificacao aceita: um ":"/palavra-
-      ; chave dentro de uma string literal (raro) tambem entraria nessa
-      ; contagem, mesmo caveat de outras varreduras "melhor esforco" desta
-      ; IDE (ver docs/SPEC.md modulo 3h).
-      Protected NetOpen.i = 0
-      Protected SegStart.i = 1, ColonPos.i, Segment.s, SegFirstWord.s, SegSpacePos.i
-      Protected LineLen.i = Len(Trimmed)
-      While SegStart <= LineLen + 1
-        ColonPos = FindString(Trimmed, ":", SegStart)
-        If ColonPos = 0
-          Segment = Mid(Trimmed, SegStart)
-        Else
-          Segment = Mid(Trimmed, SegStart, ColonPos - SegStart)
-        EndIf
-        Segment = TrimIndentChars(Segment)
-
-        If Segment <> ""
-          SegSpacePos = FindString(Segment, " ")
-          If SegSpacePos > 0
-            SegFirstWord = Left(Segment, SegSpacePos - 1)
-          Else
-            SegFirstWord = Segment
-          EndIf
-
-          Select SegFirstWord
-            Case "FOR", "FUNC"
-              NetOpen + 1
-            Case "NEXT", "RET", "ENDIF"
-              NetOpen - 1
-            Case "IF"
-              If Right(Segment, 4) = "THEN"
-                NetOpen + 1
-              EndIf
-          EndSelect
-        EndIf
-
-        If ColonPos = 0
-          Break
-        EndIf
-        SegStart = ColonPos + 1
-      Wend
-
-      If NetOpen > 0
-        IsOpener = #True
-      EndIf
-    EndIf
-
-    If IsOpener
-      NewIndent + Chr(9)
-    EndIf
-  EndIf
-
   If NewIndent <> ""
     Protected *Buffer = UTF8(NewIndent)
     ScintillaSendMessage(Sci, #SCI_REPLACESEL, 0, *Buffer)
@@ -2164,84 +2052,35 @@ Procedure HandleAutoIndentNewline(Sci, DocMode.s)
   EndIf
 EndProcedure
 
-; Chamado a cada caractere digitado (exceto o proprio Enter, tratado por
-; HandleAutoIndentNewline acima): se o texto da linha atual, do inicio ate o
-; cursor, aparado e maiusculizado, virou EXATAMENTE "NEXT"/"ENDIF"/"RET"/"}"
-; (fecha bloco de FOR/IF/FUNC/rotulo de loop respectivamente), tira um nivel
-; de indentacao (um Chr(9) se houver, senao ate 4 espacos - mesma largura de
-; #SCI_SETTABWIDTH configurada) do COMECO da linha, reposicionando o cursor
-; de acordo. So dispara na primeira vez que a palavra fica "completa" -
-; digitar mais depois (ex. "NEXT I") ja nao bate mais a comparacao exata,
-; entao nao ha gatilho duplicado no uso normal.
-Procedure HandleAutoDedentKeyword(Sci, DocMode.s)
-  If DocMode <> "DMX" And DocMode <> "BAS"
-    ProcedureReturn
-  EndIf
-
-  Protected Pos = ScintillaSendMessage(Sci, #SCI_GETCURRENTPOS)
-  Protected CurLine = ScintillaSendMessage(Sci, #SCI_LINEFROMPOSITION, Pos)
-  Protected LineStart = ScintillaSendMessage(Sci, #SCI_POSITIONFROMLINE, CurLine)
-
-  Protected BeforeCaret.s = UCase(StripLeadingLineNumber(TrimIndentChars(GetSciTextRange(Sci, LineStart, Pos))))
-  Select BeforeCaret
-    Case "NEXT", "ENDIF", "RET", "}"
-      ; segue - fecha um nivel
-    Default
-      ProcedureReturn
-  EndSelect
-
-  Protected LineEnd = ScintillaSendMessage(Sci, #SCI_GETLINEENDPOSITION, CurLine)
-  Protected FullLine.s = GetSciTextRange(Sci, LineStart, LineEnd)
-  Protected Lead.s = SciLeadingWhitespace(FullLine)
-  If Lead = ""
-    ProcedureReturn
-  EndIf
-
-  Protected NewLead.s
-  If Right(Lead, 1) = Chr(9)
-    NewLead = Left(Lead, Len(Lead) - 1)
-  Else
-    Protected RemoveCount.i = 4
-    If Len(Lead) < RemoveCount : RemoveCount = Len(Lead) : EndIf
-    NewLead = Left(Lead, Len(Lead) - RemoveCount)
-  EndIf
-
-  ScintillaSendMessage(Sci, #SCI_SETTARGETSTART, LineStart)
-  ScintillaSendMessage(Sci, #SCI_SETTARGETEND, LineStart + Len(Lead))
-  Protected *Buffer = UTF8(NewLead)
-  ScintillaSendMessage(Sci, #SCI_REPLACETARGET, Len(NewLead), *Buffer)
-  FreeMemory(*Buffer)
-
-  Protected Shift.i = Len(Lead) - Len(NewLead)
-  ScintillaSendMessage(Sci, #SCI_GOTOPOS, Pos - Shift)
-EndProcedure
-
 ; Tratador de #Event_AutoComplete (adiado de #SCN_CHARADDED, mesmo evento que
 ; HandleAutoCompleteCharAdded - os dois rodam pro mesmo caractere, um cuida
 ; do popup de sugestoes e este da indentacao). CharCode = 13 ("\r") e o Enter
-; completo, qualquer outro caractere passa pra checagem de dedentacao.
+; completo - qualquer outro caractere nao faz mais nada aqui (a dedentacao
+; automatica ao digitar NEXT/ENDIF/RET/"}" foi removida junto do incremento
+; de nivel, ver comentario do bloco acima).
 Procedure HandleAutoIndentCharAdded(Sci, CharCode)
-  Protected DocPos = FindDocumentByGadget(Sci)
-  If DocPos < 0 Or Not SelectElement(Docs(), DocPos)
-    ProcedureReturn
-  EndIf
-  Protected DocMode.s = Docs()\Mode
-
   ; O Scintilla insere a sequencia de EOL INTEIRA (ex. "\r\n" em modo CRLF)
   ; assim que ve o "\r" chegar, e SCN_CHARADDED reporta o "\r" (13) que
   ; disparou isso - NAO um "\n" (10) separado depois. Confirmado ao vivo
   ; enviando WM_CHAR(13) diretamente pro controle Scintilla (mensagem
   ; direcionada a um HWND especifico - tecnica de teste segura, ver
-  ; docs/SPEC.md modulo 38) e lendo de volta, via um marcador temporario
-  ; escrito no proprio documento, exatamente qual valor chegava em CharCode
-  ; a cada tecla. Ainda assim, aceitar os dois valores (13 e 10) e mais
-  ; robusto contra qualquer modo de EOL diferente sem risco de indentar em
-  ; dobro - so um dos dois chega por Enter, nunca os dois juntos.
-  If CharCode = 13 Or CharCode = 10
-    HandleAutoIndentNewline(Sci, DocMode)
-  Else
-    HandleAutoDedentKeyword(Sci, DocMode)
+  ; docs/SPEC.md modulo 38). Aceitar os dois valores e mais robusto contra
+  ; qualquer modo de EOL diferente, sem risco de indentar em dobro - so um
+  ; dos dois chega por Enter, nunca os dois juntos.
+  If CharCode <> 13 And CharCode <> 10
+    ProcedureReturn
   EndIf
+
+  Protected DocPos = FindDocumentByGadget(Sci)
+  If DocPos < 0 Or Not SelectElement(Docs(), DocPos)
+    ProcedureReturn
+  EndIf
+  Protected DocMode.s = Docs()\Mode
+  If DocMode <> "DMX" And DocMode <> "BAS"
+    ProcedureReturn
+  EndIf
+
+  HandleAutoIndentNewline(Sci, DocMode)
 EndProcedure
 
 ; Acrescenta Word a Cand() se seu prefixo (ate o tamanho do que ja foi
