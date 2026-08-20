@@ -2631,4 +2631,20 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   ferramentas externas, help do fossauro, ROMs) agora acontece incondicionalmente em todo build, sem
   flag nenhum. Verificado rodando `.\build.ps1` do zero: `dist\PaleoBasic.exe` e `dist\fossauro.exe`
   saem os dois, `dist\roms\` com os 8 `.ROM`, sem precisar de nenhum passo manual extra.
+- **2026-08-20, mesmo dia**: bug real reportado pelo usuário com `others/menu.dmx` (arquivo pessoal
+  dele) — `func .message(...)` na linha 161 falhava com `Ja dentro de uma funcao: inputint`, mesmo a
+  função anterior tendo `ret valor` no final (linha 158). Causa: `Dig_JoinLines` funde uma linha
+  terminada em `:` com a próxima (idioma clássico usado o arquivo todo, pra caber várias instruções
+  numa única linha BASIC) ANTES do estágio que despacha `FUNC`/`RET` — depois da junção, `ret valor`
+  deixa de ser a primeira palavra da linha lógica (vira `gosub {clrmsg}:ret valor`), então o despacho
+  de `RET` (que só olhava a primeira palavra da linha inteira) nunca disparava, `Dig_InFunc` nunca
+  voltava a `""`, e a função ficava presa aberta. Confirmado contra `docs/reference/dignified-core.md`
+  que o `badig.py` original resolve `RET`/`FUNC` no nível de TOKEN, não de linha de texto — onde um
+  `RET` cai dentro de um agrupamento de linhas unidas por `:` é irrelevante lá, então tolerar isso
+  aqui é replicar o comportamento certo. **Fix**: `Dig_FindLastTopLevelColon()` novo — o despacho de
+  `RET` agora olha a primeira palavra do trecho DEPOIS do último `:` de nível superior da linha, não
+  da linha inteira; reconstrói como `<prefixo>:RETURN`. Escopo limitado a `RET` (não `FUNC`, que nunca
+  aparece colado depois de outra instrução na prática). Verificado: `menu.dmx` converte limpo agora;
+  suíte de regressão (`dist/sample/teste.dmx`) comparada byte a byte entre pré-fix e pós-fix — idêntica
+  nos dois `.amx`/`.bmx`, ou seja o fix não muda nenhum caso já coberto. Ver `docs/SPEC.md` módulo 42.
 

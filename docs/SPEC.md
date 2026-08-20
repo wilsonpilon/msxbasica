@@ -8385,6 +8385,49 @@ exatamente alinhadas com a linha anterior. Essa é a versão definitiva da funci
 agora - qualquer indentação extra por bloco teria que ser um pedido novo e explícito do usuário, não
 assumido de novo.
 
+### 42. Bug real no pré-processador Dignified: `RET` colado no fim de uma linha unida por `:` não fechava a função (2026-08-20)
+
+Reportado pelo usuário com `others/menu.dmx` (arquivo pessoal dele, não parte do projeto versionado):
+`func .message(mensagem$)` na linha 161 falhava com `Ja dentro de uma funcao: inputint`, mesmo a função
+anterior (`.inputint`, linhas 154-158) tendo um `ret valor` no final. Causa raiz, isolada com um repro
+mínimo: `Dig_JoinLines` (Estágio "juntar linhas", roda ANTES do estágio 5b que despacha `FUNC`/`RET`)
+funde uma linha terminada em `:` com a linha seguinte — idioma clássico intencional que permite escrever
+`gosub {clrmsg}:` numa linha e `ret valor` na próxima, virando UMA linha lógica só `gosub {clrmsg}:ret
+valor` (pra caber várias instruções numa única linha BASIC numerada, exatamente o estilo usado em
+`menu.dmx` do início ao fim). O despacho de `RET` no estágio 5b, porém, só olhava a **primeira palavra
+da linha inteira** (`UCase(StringField(l5(), 1, " "))`) — depois da junção, a primeira palavra vira
+`GOSUB`, não `RET`, então `Dig_HandleFuncRet()` nunca era chamado, `Dig_InFunc` nunca voltava pra `""`,
+e a função ficava "presa aberta" até a próxima declaração `FUNC` estourar o erro. Mesma classe de bug já
+documentada no módulo 38 (auto-indentação do editor não via `FOR` escondido depois de `:` na mesma
+linha) — aqui no motor de conversão em vez do editor.
+
+**O que a documentação confirma** (`docs/reference/dignified-core.md`, seção "Pass 1"): no `badig.py`
+original, `RET`/`FUNC`/`DEFINE`/`DECLARE`/`KEEP` são resolvidos no nível de **token**, não de linha de
+texto — o parser roda sobre uma lista de tokens já lexados (`Lexer` é "maximal munch" sobre o texto
+combinado), então onde exatamente um `RET` aparece dentro de um agrupamento de linhas-fonte unidas por
+`:` é irrelevante pra ele: o token `RET` é reconhecido como início de instrução (depois de um `:` ou de
+um `NEWLINE`) de qualquer forma. O port nativo, sendo baseado em string/linha (não token), precisa
+replicar esse comportamento explicitamente — daí o fix abaixo.
+
+**Fix**: `Dig_FindLastTopLevelColon()` novo (`DignifiedPreprocessor.pbi`) — acha o ÚLTIMO `:` de nível
+superior da linha (fora de literais entre aspas). O despacho de `RET` no estágio 5b agora separa a
+linha nesse último `:` (se houver) e olha a primeira palavra do TRECHO FINAL, não da linha inteira; se
+for `RET`, processa normalmente (`Dig_HandleFuncRet` recebe só o trecho `ret ...`) e reconstrói a linha
+como `<prefixo>:RETURN` (ex.: `gosub 270:RETURN`). Sem `:` na linha, `retPrefix` fica `""` e o
+comportamento é idêntico ao de antes — não muda nada pro caso comum (`RET` sozinho na própria linha).
+Escopo deliberadamente limitado a `RET` (não `FUNC`): `FUNC` sempre inicia uma definição nova, nunca
+aparece colado depois de outra instrução na prática (todo uso real no projeto tem `FUNC` como primeira
+coisa da linha, geralmente precedido de comentário `##`), então não haveria bug real a corrigir ali —
+evitar generalizar sem um caso concreto.
+
+**Verificação**: `others/menu.dmx` converte limpo agora (era `DIGERROR linha 161`); repro mínimo
+isolado antes do fix (`gosub sub1:` numa linha, `ret valor` na próxima, dentro de uma função) confirmado
+quebrado sem o fix e corrigido com ele. Suíte de regressão (`DigTestCli.exe` contra
+`dist/sample/teste.dmx`) comparada BYTE A BYTE entre a versão pré-fix (stash temporário) e pós-fix —
+`.amx` (25070 bytes) e `.bmx` (18241 bytes) idênticos nos dois, ou seja o fix não muda nenhum caso já
+coberto pela suíte existente (que não tinha esse padrão `:RET` colado). Build completo (`build.ps1`,
+`8.3.0`) recompilado limpo depois da mudança.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **`src/editor/tools/OpenMsxBridgeTestCli.pb` não compila** (2026-08-20, em aberto): `Structure field

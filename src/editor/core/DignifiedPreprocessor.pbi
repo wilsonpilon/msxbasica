@@ -1439,6 +1439,31 @@ Procedure.b Dig_HandleFuncDef(Trimmed.s, LineNum.i)
   ProcedureReturn #True
 EndProcedure
 
+; Acha a posicao do ULTIMO ':' de nivel superior em Text (fora de literais
+; entre aspas) - devolve 0 se nao houver nenhum. Usado pra achar "ret ..."
+; colado no final de uma linha logica que Dig_JoinLines ja fundiu com a(s)
+; linha(s) anterior(es) via ':' de continuacao (ex.: "gosub {x}:" seguido de
+; "ret y" no fonte vira uma linha so' "gosub {x}:ret y" antes de chegar aqui -
+; sem isso, "ret" deixa de ser a primeira palavra da linha e a deteccao de
+; RET abaixo nunca dispara, deixando Dig_InFunc preso e estourando "Ja dentro
+; de uma funcao" no proximo FUNC. Ver `others/menu.dmx` linha 161).
+Procedure.i Dig_FindLastTopLevelColon(Text.s)
+  Protected inStr.b = #False, i.i, c.s, lastPos.i = 0
+  For i = 1 To Len(Text)
+    c = Mid(Text, i, 1)
+    If inStr
+      If c = Chr(34) : inStr = #False : EndIf
+    Else
+      If c = Chr(34)
+        inStr = #True
+      ElseIf c = ":"
+        lastPos = i
+      EndIf
+    EndIf
+  Next
+  ProcedureReturn lastPos
+EndProcedure
+
 ; Processa uma linha "ret [e1, e2, ...]". Devolve o texto que substitui a
 ; linha (sempre so a palavra RETURN - as expressoes ficam guardadas para
 ; serem injetadas nos pontos de chamada).
@@ -2465,11 +2490,24 @@ Procedure Dig_ProcessSource(SourceText.s, Prefix.s, OwnBasePath.s, IsMainFile.b,
       Continue
     EndIf
 
-    If firstWordU = "RET"
-      Protected retText.s = Dig_HandleFuncRet(l5(), l5s())
+    ; RET normalmente e a primeira (e unica) palavra da linha, mas pode vir
+    ; colado no final de uma linha ja unida por Dig_JoinLines via ':' de
+    ; continuacao (idioma classico "GOSUB {x}:RETURN" numa linha BASIC so) -
+    ; ver Dig_FindLastTopLevelColon acima. Se nao houver ':' de nivel
+    ; superior, retPrefix fica "" e o comportamento e identico ao de antes.
+    Protected retColonPos.i = Dig_FindLastTopLevelColon(l5())
+    Protected retTail.s = l5()
+    Protected retPrefix.s = ""
+    If retColonPos > 0
+      retPrefix = Left(l5(), retColonPos)
+      retTail = Trim(Mid(l5(), retColonPos + 1))
+    EndIf
+
+    If UCase(StringField(retTail, 1, " ")) = "RET"
+      Protected retText.s = Dig_HandleFuncRet(retTail, l5s())
       If Dig_HasError : ProcedureReturn : EndIf
       AddElement(logLines())
-      logLines()\Text = retText
+      logLines()\Text = retPrefix + retText
       logLines()\IsComment = #False
       logLines()\SrcLine = l5s()
       If pendingLabels <> ""
