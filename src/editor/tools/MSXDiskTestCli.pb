@@ -27,7 +27,7 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\MSXDisk.pbi"
+XIncludeFile "..\core\MSXDisk.pbi"
 
 Define WorkDir.s = ProgramParameter(0)
 If WorkDir = ""

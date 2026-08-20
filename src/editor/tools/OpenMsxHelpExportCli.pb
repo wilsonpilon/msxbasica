@@ -20,7 +20,7 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\OpenMsxHelpData.pbi"
+XIncludeFile "..\help\OpenMsxHelpData.pbi"
 
 Define OutPath.s = ProgramParameter(0)
 If OutPath = ""

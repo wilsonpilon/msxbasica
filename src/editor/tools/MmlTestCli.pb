@@ -19,8 +19,8 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\PsgSynth.pbi"
-XIncludeFile "..\MmlSynth.pbi"
+XIncludeFile "..\visual_editors\PsgSynth.pbi"
+XIncludeFile "..\visual_editors\MmlSynth.pbi"
 
 Define OutDir.s = ProgramParameter(0)
 If OutDir = ""

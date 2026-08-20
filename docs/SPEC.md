@@ -8311,7 +8311,52 @@ indenta), `PRINT 1:FOR I=1 TO 5` (indenta mesmo o `FOR` não sendo a primeira in
 de `FOR` com `IF...THEN` dentro (soma dois níveis, desconta um de cada vez ao fechar `ENDIF` depois
 `NEXT`), e um `:` sozinho no fim da linha sem palavra-chave nenhuma depois (não indenta nada).
 
+### 39. Bug real no pré-processador Dignified: `{ nome }` com espaço falhava com "Label mal formado" (2026-08-20)
+
+Reportado pelo usuário com um programa real de 1988 ("Hyper Copy", Marcelo Fontolan) - a linha
+`gosub { apresentacao }` (com espaço dentro das chaves) falhava com `Label mal formado` na conversão
+Dignified → ASCII/tokenizado. Causa raiz: `Dig_ReadIdent(Piece, pos + 1, @np)` (usado tanto em
+`Dig_ScanLabelRefs_Piece` quanto em `Dig_ExtractLeadingLabel`, `DignifiedPreprocessor.pbi`) lia o
+identificador a partir da posição IMEDIATAMENTE depois de `{` - um espaço ali fazia a leitura parar na
+hora (nome vazio), disparando o erro. O lexer real do `badig.py` original (Python) tokeniza `{`/
+identificador/`}` como tokens SEPARADOS num único regex combinado (scanner "maximal munch", ver módulo
+acima) - espaço entre tokens é insignificante lá, então tolerar espaço aqui é replicar o comportamento
+certo, não uma frescura nova.
+
+**Fix**: `Dig_SkipSpaces()` novo, chamado antes de ler o identificador e antes de checar o fechamento
+`}` - aplicado nos DOIS casos de `{nome}` (referência de jump dentro de instrução, e definição de label
+sozinho na linha) em `Dig_ScanLabelRefs_Piece`/`Dig_ExtractLeadingLabel`.
+
+**Bug real introduzido e revertido na primeira tentativa deste fix**: aplicar a MESMA tolerância de
+espaço no terceiro caso de `Dig_ExtractLeadingLabel` - abertura de rótulo de LOOP (`nome{`, sem
+delimitador do outro lado, diferente de `{nome}`) - quebrou a suíte de regressão
+(`dist/sample/teste.dmx` tem `restore {character_shapes}` E `restore {ml_routines}`, duas linhas
+começando com a palavra-chave clássica `RESTORE` seguida de espaço e `{`): tolerar espaço aí fez as
+DUAS linhas serem lidas como "abrindo um loop chamado restore", disparando `Label duplicado: restore`.
+Revertido - abertura de rótulo de loop continua exigindo `{` colado no nome, sem tolerância de espaço,
+já que esse padrão (qualquer palavra + `{` opcionalmente com espaço) colide fácil com instruções
+clássicas reais que recebem um argumento entre chaves (`RESTORE`, `GOSUB`, `GOTO` etc.) - só os casos
+`{nome}` (delimitado dos dois lados, sem ambiguidade) ganharam a tolerância.
+
+**Achado adicional, não relacionado ao bug acima**: TODOS os harnesses de console em
+`src/editor/tools/*.pb` (`DigTestCli.pb` e os outros 15) ainda tinham `XIncludeFile` apontando pro
+layout ANTIGO de diretórios (ex. `"..\DignifiedPreprocessor.pbi"` em vez de
+`"..\core\DignifiedPreprocessor.pbi"`) desde a reorganização `8.2.0` (módulos 35/36) - nenhum
+recompilava. Corrigidos todos os 16 pra apontar pra subpasta certa (`core`/`assemblers`/
+`visual_editors`/`emulators`/`help` conforme o arquivo real). **`OpenMsxBridgeTestCli.pb` continua
+quebrado** por um motivo DIFERENTE e pré-existente (`Structure field not found: EmSetting` em
+`OpenMSXBridge.pbi`) - sua estrutura `BadigCfg` local está desatualizada, faltando um campo que a
+versão real ganhou depois; não corrigido nesta sessão (fora do escopo do bug reportado). Suíte de
+regressão (`DigTestCli.exe` contra `dist/sample/teste.dmx`) verificada limpa depois do fix - 556
+linhas ASCII, sem erro.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
+
+- **`src/editor/tools/OpenMsxBridgeTestCli.pb` não compila** (2026-08-20, em aberto): `Structure field
+  not found: EmSetting` em `OpenMSXBridge.pbi` - a struct `BadigCfg` local desse harness (uma versão
+  mínima própria, não a real de `BadigSettings.pbi`) está desatualizada, faltando um campo que a real
+  ganhou depois. Achado ao corrigir os `XIncludeFile` de todos os harnesses de `tools/` (módulo 39) -
+  os outros 15 compilam limpo agora, só este continua quebrado por esse motivo separado.
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido
   explícito do usuário): `G <endinic>[,<brkpnt1>[,<brkpnt2>]]` hoje só valida sintaxe e confirma no

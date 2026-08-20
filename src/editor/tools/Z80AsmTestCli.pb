@@ -22,7 +22,7 @@
 
 EnableExplicit
 
-XIncludeFile "..\Z80Asm.pbi"
+XIncludeFile "..\assemblers\Z80Asm.pbi"
 
 ; Modo "--assemble <entrada.asm> <saida.bin>": monta e grava o binario cru
 ; (mesma faixa min..max endereco tocado que N80.exe produz por padrao com a

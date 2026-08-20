@@ -13,8 +13,8 @@
 ; ------------------------------------------------------------
 ;
 
-XIncludeFile "..\Screen2Synth.pbi"
-XIncludeFile "..\GraphosNativeIO.pbi"
+XIncludeFile "..\visual_editors\Screen2Synth.pbi"
+XIncludeFile "..\visual_editors\GraphosNativeIO.pbi"
 
 Global TestCount = 0
 Global FailCount = 0

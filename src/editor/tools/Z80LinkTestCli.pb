@@ -27,8 +27,8 @@
 
 EnableExplicit
 
-XIncludeFile "..\Z80Link.pbi"
-XIncludeFile "..\Z80Lib.pbi"
+XIncludeFile "..\assemblers\Z80Link.pbi"
+XIncludeFile "..\assemblers\Z80Lib.pbi"
 
 If CountProgramParameters() >= 3 And ProgramParameter(0) = "--libcreate"
   OpenConsole()

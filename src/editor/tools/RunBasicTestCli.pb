@@ -19,9 +19,9 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\DignifiedPreprocessor.pbi"
-XIncludeFile "..\MsxTokenizer.pbi"
-XIncludeFile "..\MSXDisk.pbi"
+XIncludeFile "..\core\DignifiedPreprocessor.pbi"
+XIncludeFile "..\core\MsxTokenizer.pbi"
+XIncludeFile "..\core\MSXDisk.pbi"
 
 Define InPath.s = ProgramParameter(0)
 Define WorkDir.s = ProgramParameter(1)

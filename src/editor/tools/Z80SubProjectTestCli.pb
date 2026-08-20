@@ -18,10 +18,10 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\Z80Asm.pbi"
-XIncludeFile "..\Z80Link.pbi"
-XIncludeFile "..\Z80Lib.pbi"
-XIncludeFile "..\Z80SubProject.pbi"
+XIncludeFile "..\assemblers\Z80Asm.pbi"
+XIncludeFile "..\assemblers\Z80Link.pbi"
+XIncludeFile "..\assemblers\Z80Lib.pbi"
+XIncludeFile "..\assemblers\Z80SubProject.pbi"
 
 Z80Asm::InitKeywordMaps()
 

@@ -11,10 +11,10 @@
 
 EnableExplicit
 
-XIncludeFile "..\Z80Asm.pbi"
-XIncludeFile "..\PsgSynth.pbi"
-XIncludeFile "..\SeeTrackerDriverAsm.pbi"
-XIncludeFile "..\SeeTrackerSynth.pbi"
+XIncludeFile "..\assemblers\Z80Asm.pbi"
+XIncludeFile "..\visual_editors\PsgSynth.pbi"
+XIncludeFile "..\visual_editors\SeeTrackerDriverAsm.pbi"
+XIncludeFile "..\visual_editors\SeeTrackerSynth.pbi"
 
 OpenConsole()
 

@@ -2587,4 +2587,18 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   caso especial à parte. Verificado ao vivo com `FOR:NEXT` autofechado, `PRINT 1:FOR...` abrindo
   bloco, aninhamento `FOR`+`IF...THEN`, e um `:` sozinho no fim sem palavra-chave (não indenta). Ver
   `docs/SPEC.md` módulo 38.
+- **2026-08-20, mesmo dia**: bug real reportado pelo usuário com um programa de 1988 ("Hyper Copy",
+  Marcelo Fontolan) - `gosub { apresentacao }` (espaço dentro das chaves) falhava com "Label mal
+  formado" na conversão Dignified. Causa: `Dig_ReadIdent()` lia o identificador colado em `{`, um
+  espaço fazia a leitura parar na hora (nome vazio). Corrigido com `Dig_SkipSpaces()` novo, tolerando
+  espaço nos dois casos de `{nome}` (referência de jump e definição de label sozinho na linha) -
+  replica o comportamento real do lexer Python original (tokens `{`/identificador/`}` separados,
+  espaço insignificante entre eles). **Bug introduzido e revertido na primeira tentativa**: aplicar a
+  mesma tolerância na abertura de rótulo de LOOP (`nome{`) quebrou a suíte de regressão (`restore
+  {character_shapes}`/`restore {ml_routines}` do arquivo de teste viravam "abrir loop chamado
+  restore", duplicado) - revertido, só `{nome}` (delimitado dos dois lados) ganhou a tolerância.
+  **Achado adicional**: todos os 16 harnesses de console em `src/editor/tools/*.pb` tinham
+  `XIncludeFile` apontando pro layout antigo de diretórios desde a reorganização `8.2.0` - corrigidos
+  15 deles (`OpenMsxBridgeTestCli.pb` continua quebrado por um motivo diferente e pré-existente, ver
+  lacunas conhecidas). Suíte de regressão verificada limpa. Ver `docs/SPEC.md` módulo 39.
 

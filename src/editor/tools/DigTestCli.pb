@@ -26,8 +26,8 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\DignifiedPreprocessor.pbi"
-XIncludeFile "..\MsxTokenizer.pbi"
+XIncludeFile "..\core\DignifiedPreprocessor.pbi"
+XIncludeFile "..\core\MsxTokenizer.pbi"
 
 Define InPath.s = ProgramParameter(0)
 Define OutPath.s = ProgramParameter(1)

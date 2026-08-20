@@ -1707,6 +1707,27 @@ Procedure.s Dig_ReadIdent(Text.s, Pos.i, *NewPos.Integer)
   ProcedureReturn Mid(Text, start, i - start)
 EndProcedure
 
+; Devolve a proxima posicao em Text a partir de Pos que nao seja espaco/tab -
+; usado pelos tres pontos que reconhecem sintaxe de label ("{nome}"/"nome{")
+; pra tolerar espaco/tab colado nas chaves (ex. "{ nome }"), ja que fonte real
+; de Basic Dignified (programas dos anos 80 convertidos por usuarios) usa
+; esse estilo com espaco por legibilidade - bug real encontrado 2026-08-20
+; com o programa "Hyper Copy" (Marcelo Fontolan, 1988): "gosub { apresentacao
+; }" falhava com "Label mal formado" porque Dig_ReadIdent(Piece, pos+1, @np)
+; via o espaco logo depois de "{" e devolvia nome vazio na hora. O lexer real
+; do badig.py original (Python) tokeniza "{"/identificador/"}" como tokens
+; SEPARADOS num unico regex combinado (ver docs/reference/dignified-core.md,
+; "scanner por maximal munch") - espaco entre tokens e insignificante la,
+; entao esse é o comportamento certo a replicar, nao uma coincidencia do
+; port ter ficado mais rigido.
+Procedure.i Dig_SkipSpaces(Text.s, Pos.i)
+  Protected p.i = Pos
+  While p <= Len(Text) And (Mid(Text, p, 1) = " " Or Mid(Text, p, 1) = Chr(9))
+    p + 1
+  Wend
+  ProcedureReturn p
+EndProcedure
+
 ; Processa referencias de jump {nome}, fechamento de loop } e EXIT dentro do
 ; trecho de codigo de uma linha (labels de abertura ja foram extraidos antes).
 Procedure.s Dig_ScanLabelRefs_Piece(Piece.s, LineNum.i)
@@ -1718,12 +1739,14 @@ Procedure.s Dig_ScanLabelRefs_Piece(Piece.s, LineNum.i)
     If c = "{"
       Protected np.i
       Protected name.s
-      If Mid(Piece, pos + 1, 1) = "@"
+      Protected innerPos.i = Dig_SkipSpaces(Piece, pos + 1)
+      If Mid(Piece, innerPos, 1) = "@"
         name = "@"
-        np = pos + 2
+        np = innerPos + 1
       Else
-        name = Dig_ReadIdent(Piece, pos + 1, @np)
+        name = Dig_ReadIdent(Piece, innerPos, @np)
       EndIf
+      np = Dig_SkipSpaces(Piece, np)
       If Mid(Piece, np, 1) <> "}" Or name = ""
         Dig_Fail(LineNum, "Label mal formado.")
         ProcedureReturn out
@@ -1777,7 +1800,9 @@ Procedure.s Dig_ExtractLeadingLabel(Line.s, *LabelOut.String)
 
   If Left(Line, 1) = "{"
     Protected np.i
-    Protected name.s = Dig_ReadIdent(Line, 2, @np)
+    Protected innerPos.i = Dig_SkipSpaces(Line, 2)
+    Protected name.s = Dig_ReadIdent(Line, innerPos, @np)
+    np = Dig_SkipSpaces(Line, np)
     If Mid(Line, np, 1) = "}" And name <> "" And Not Dig_IsDigit(Left(name, 1))
       *LabelOut\s = Dig_CurrentPrefix + LCase(name)
       ProcedureReturn Trim(Mid(Line, np + 1))
@@ -1785,6 +1810,18 @@ Procedure.s Dig_ExtractLeadingLabel(Line.s, *LabelOut.String)
   EndIf
 
   If Dig_IsAlpha(Left(Line, 1))
+    ; Diferente de "{nome}" (referencia/definicao, delimitado dos dois lados,
+    ; espaco interno e inofensivo de tolerar - ver Dig_SkipSpaces acima):
+    ; aqui NAO tolera espaco entre o nome e "{" de proposito. Um rotulo de
+    ; loop e "primeira palavra da linha imediatamente seguida de {", sem
+    ; delimitador do outro lado - tolerar espaco faria QUALQUER instrucao
+    ; classica cujo argumento comece com "{" (ex. "restore {label}", RESTORE
+    ; do MSX-BASIC + referencia Dignified, nada a ver com loop) virar uma
+    ; abertura de loop por engano, usando a propria palavra-chave como nome
+    ; do loop - bug real encontrado ao vivo 2026-08-20 rodando a suite de
+    ; regressao (dist/sample/teste.dmx tem "restore {character_shapes}" E
+    ; "restore {ml_routines}", virando "Label duplicado: restore" depois de
+    ; tolerar o espaco aqui por engano numa tentativa anterior deste fix).
     Protected np2.i
     Protected name2.s = Dig_ReadIdent(Line, 1, @np2)
     If Mid(Line, np2, 1) = "{" And name2 <> ""

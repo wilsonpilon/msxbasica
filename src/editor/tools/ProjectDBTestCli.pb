@@ -24,7 +24,7 @@
 EnableExplicit
 OpenConsole()
 
-XIncludeFile "..\ProjectDB.pbi"
+XIncludeFile "..\core\ProjectDB.pbi"
 
 Define WorkDir.s = ProgramParameter(0)
 If WorkDir = ""

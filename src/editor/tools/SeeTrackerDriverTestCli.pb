@@ -18,8 +18,8 @@
 
 EnableExplicit
 
-XIncludeFile "..\Z80Asm.pbi"
-XIncludeFile "..\SeeTrackerDriverAsm.pbi"
+XIncludeFile "..\assemblers\Z80Asm.pbi"
+XIncludeFile "..\visual_editors\SeeTrackerDriverAsm.pbi"
 
 OpenConsole()
 

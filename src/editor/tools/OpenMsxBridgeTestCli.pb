@@ -49,7 +49,7 @@ Structure BadigSettingsStub
 EndStructure
 Global BadigCfg.BadigSettingsStub
 
-XIncludeFile "..\OpenMSXBridge.pbi"
+XIncludeFile "..\emulators\OpenMSXBridge.pbi"
 
 Define LogPath.s  = ProgramParameter(0)
 Define ExePath.s  = ProgramParameter(1)

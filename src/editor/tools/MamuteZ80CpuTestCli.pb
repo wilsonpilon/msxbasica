@@ -80,7 +80,7 @@ Procedure.s Mamute_DisasmOne(Addr.i, *OutLen.Integer)
   ProcedureReturn ""
 EndProcedure
 
-XIncludeFile "..\MamuteZ80Cpu.pbi"
+XIncludeFile "..\assemblers\MamuteZ80Cpu.pbi"
 
 Define Failures = 0
 
