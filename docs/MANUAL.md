@@ -623,9 +623,11 @@ Além de copiar a indentação, a IDE ajusta um nível automaticamente conforme 
 - **Um nível a menos**, na hora, assim que você termina de digitar `NEXT`, `ENDIF`, `RET` ou `}`
   sozinho no começo da linha (fecha o bloco correspondente).
 
-`FOR ... : NEXT` inteiro numa linha só (idioma clássico comum de MSX-BASIC) não conta como bloco
-aberto — a linha seguinte não é indentada por engano. Um número de linha clássico no início
-(`10 FOR I=1 TO 10`, comum em abas `.bas`) não atrapalha a detecção.
+Com várias instruções na mesma linha separadas por `:` (idioma clássico comum de MSX-BASIC), cada
+trecho é considerado separadamente — `PRINT X:FOR I=1 TO 5` indenta a linha seguinte mesmo o `FOR`
+não sendo a primeira instrução da linha, e `FOR I=1 TO 10:NEXT` inteiro numa linha só não conta como
+bloco aberto (abre e fecha na mesma linha). Um número de linha clássico no início (`10 FOR I=1 TO 10`,
+comum em abas `.bas`) não atrapalha a detecção.
 
 ---
 

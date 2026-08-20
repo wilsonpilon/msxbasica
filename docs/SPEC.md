@@ -8260,12 +8260,18 @@ comportamentos, cada um só ativo em documentos `.dmx`/`.bas` (`Docs()\Mode`):
 
 - **Ao completar o Enter** (`HandleAutoIndentNewline()`): copia a indentação (espaços/tabs do início)
   da linha que acabou de ser fechada pra linha nova, e acrescenta mais um `Chr(9)` se aquela linha
-  **abre um bloco** - `FOR <algo>` (exceto se a mesma linha já tiver seu próprio `NEXT`, idioma
-  clássico `FOR I=1 TO 10:PRINT I:NEXT I` tudo numa linha só, comum em MSX-BASIC e confirmado em uso
-  real no arquivo de regressão `dist/sample/teste.dmx`), `IF <algo> THEN` (só a forma de bloco, sem
-  instrução depois do `THEN` na mesma linha), `FUNC <algo>` (proto-função do Basic Dignified) ou uma
-  linha terminando em `{` (rótulo de loop do Basic Dignified, `nome{ ... }`, ver
-  `docs/reference/dignified-core.md`).
+  **abre um bloco** - `FOR <algo>`, `IF <algo> THEN` (só a forma de bloco, sem instrução depois do
+  `THEN` na mesma sub-instrução) ou `FUNC <algo>` (proto-função do Basic Dignified), OU se a linha
+  termina em `{` (rótulo de loop do Basic Dignified, `nome{ ... }`, ver
+  `docs/reference/dignified-core.md`). **Varre cada trecho separado por `:` da linha
+  separadamente** (idioma clássico comum de MSX-BASIC, múltiplas instruções numa linha só -
+  confirmado em uso real no arquivo de regressão `dist/sample/teste.dmx`), não só a primeira palavra
+  da linha inteira - refinamento pedido pelo usuário 2026-08-20 depois de notar que `"PRINT 1:FOR
+  I=1 TO 5"` não indentava (o `FOR` não sendo a primeira instrução da linha escapava do check
+  original). `FOR`/`FUNC` contam +1 (abrem), `NEXT`/`RET`/`ENDIF` contam -1 (fecham) por trecho -
+  só indenta se sobrar mais abertura que fechamento no total da linha, o que também cobre de
+  graça o caso `FOR I=1 TO 10:NEXT` (abre e fecha na mesma linha, net = 0) sem precisar de um
+  caso especial à parte como a primeira versão tinha.
 - **A cada caractere digitado depois disso** (`HandleAutoDedentKeyword()`): se o texto da linha atual,
   do início até o cursor, virou EXATAMENTE `NEXT`/`ENDIF`/`RET`/`}` (ignorando um número de linha
   clássico opcional na frente, ver `StripLeadingLineNumber()` abaixo, e a indentação em si), tira um
@@ -8299,7 +8305,11 @@ temporários (`"<" + Str(CharCode) + ">"`) direto no documento via `SCI_APPENDTE
 confirmado o comportamento certo. Testado com sucesso ao vivo: `FOR`/`NEXT`, `IF...THEN`/`ENDIF`,
 `FUNC`/`RET`, rótulo de loop `nome{`/`}`, o idioma de linha única auto-fechado, e números de linha
 clássicos opcionais - todos indentando/desindentando corretamente numa sequência de teste com 11
-linhas reais.
+linhas reais. **Refinamento do mesmo dia** (varredura por trecho separado por `:`, ver acima) também
+verificado ao vivo com uma sequência de 8 linhas cobrindo: `FOR:NEXT` autofechado na mesma linha (não
+indenta), `PRINT 1:FOR I=1 TO 5` (indenta mesmo o `FOR` não sendo a primeira instrução), aninhamento
+de `FOR` com `IF...THEN` dentro (soma dois níveis, desconta um de cada vez ao fechar `ENDIF` depois
+`NEXT`), e um `:` sozinho no fim da linha sem palavra-chave nenhuma depois (não indenta nada).
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

@@ -2577,4 +2577,14 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   vivo enviando `WM_CHAR` direto pro HWND do Scintilla (mensagem direcionada, não clique/tecla real
   simulados) com `FOR`/`NEXT`, `IF...THEN`/`ENDIF`, `FUNC`/`RET` e rótulo de loop, todos indentando/
   desindentando corretamente. Ver `docs/SPEC.md` módulo 38.
+- **2026-08-20, mesmo dia**: refinamento pedido pelo usuário depois de notar que `"PRINT 1:FOR I=1 TO
+  5"` não indentava a linha seguinte — a detecção original só olhava a primeira palavra da linha
+  inteira, então um `FOR` que não fosse a primeira instrução (várias instruções separadas por `:` na
+  mesma linha, idioma clássico de MSX-BASIC) escapava do check. `HandleAutoIndentNewline()` agora
+  varre cada trecho separado por `:` separadamente (`FOR`/`FUNC` contam como abertura, `NEXT`/`RET`/
+  `ENDIF` como fechamento) e só indenta se sobrar mais abertura que fechamento na linha toda - o que
+  também cobre de graça o caso `FOR I=1 TO 10:NEXT` (abre e fecha na mesma linha) sem precisar de um
+  caso especial à parte. Verificado ao vivo com `FOR:NEXT` autofechado, `PRINT 1:FOR...` abrindo
+  bloco, aninhamento `FOR`+`IF...THEN`, e um `:` sozinho no fim sem palavra-chave (não indenta). Ver
+  `docs/SPEC.md` módulo 38.
 

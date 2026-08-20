@@ -2092,31 +2092,64 @@ Procedure HandleAutoIndentNewline(Sci, DocMode.s)
 
   If DocMode = "DMX" Or DocMode = "BAS"
     Protected Trimmed.s = UCase(StripLeadingLineNumber(TrimIndentChars(PrevText)))
-    Protected FirstWord.s
-    Protected SpacePos.i = FindString(Trimmed, " ")
-    If SpacePos > 0
-      FirstWord = Left(Trimmed, SpacePos - 1)
-    Else
-      FirstWord = Trimmed
-    EndIf
-
-    ; "FOR I=1 TO 10:PRINT I:NEXT I" (tudo numa linha so, idioma classico
-    ; comum de MSX-BASIC) ja fecha o proprio bloco - sem este check, a linha
-    ; seguinte seria indentada por engano achando que o FOR ainda esta
-    ; aberto. Simplificacao aceita: um "NEXT" dentro de uma string literal
-    ; (raro) tambem contaria como fechamento aqui, mesmo caveat de outras
-    ; varreduras "melhor esforco" desta IDE (ver docs/SPEC.md modulo 3h).
-    Protected SelfClosedFor.b = Bool(FirstWord = "FOR" And FindString(Trimmed, "NEXT") > 0)
-
     Protected IsOpener.b = #False
-    If FirstWord = "FOR" And Not SelfClosedFor
+
+    If Trimmed <> "" And Right(Trimmed, 1) = "{"
       IsOpener = #True
-    ElseIf FirstWord = "IF" And Right(Trimmed, 4) = "THEN"
-      IsOpener = #True
-    ElseIf FirstWord = "FUNC"
-      IsOpener = #True
-    ElseIf Trimmed <> "" And Right(Trimmed, 1) = "{"
-      IsOpener = #True
+    Else
+      ; A linha pode ter VARIAS instrucoes separadas por ":" (idioma classico
+      ; comum de MSX-BASIC, ex. "PRINT X:FOR I=1 TO 10" ou "FOR I=1 TO
+      ; 10:NEXT" tudo numa linha so) - olhar so a primeira palavra da linha
+      ; inteira erraria os dois casos: um FOR que abre bloco mas NAO e a
+      ; primeira instrucao, e um FOR que abre E fecha (com seu proprio NEXT)
+      ; na mesma linha. Em vez disso, cada trecho entre ":" e checado
+      ; separadamente - FOR/FUNC contam como abertura (+1), NEXT/RET/ENDIF
+      ; como fechamento (-1) - e so indenta se sobrar mais abertura que
+      ; fechamento no total da linha. Simplificacao aceita: um ":"/palavra-
+      ; chave dentro de uma string literal (raro) tambem entraria nessa
+      ; contagem, mesmo caveat de outras varreduras "melhor esforco" desta
+      ; IDE (ver docs/SPEC.md modulo 3h).
+      Protected NetOpen.i = 0
+      Protected SegStart.i = 1, ColonPos.i, Segment.s, SegFirstWord.s, SegSpacePos.i
+      Protected LineLen.i = Len(Trimmed)
+      While SegStart <= LineLen + 1
+        ColonPos = FindString(Trimmed, ":", SegStart)
+        If ColonPos = 0
+          Segment = Mid(Trimmed, SegStart)
+        Else
+          Segment = Mid(Trimmed, SegStart, ColonPos - SegStart)
+        EndIf
+        Segment = TrimIndentChars(Segment)
+
+        If Segment <> ""
+          SegSpacePos = FindString(Segment, " ")
+          If SegSpacePos > 0
+            SegFirstWord = Left(Segment, SegSpacePos - 1)
+          Else
+            SegFirstWord = Segment
+          EndIf
+
+          Select SegFirstWord
+            Case "FOR", "FUNC"
+              NetOpen + 1
+            Case "NEXT", "RET", "ENDIF"
+              NetOpen - 1
+            Case "IF"
+              If Right(Segment, 4) = "THEN"
+                NetOpen + 1
+              EndIf
+          EndSelect
+        EndIf
+
+        If ColonPos = 0
+          Break
+        EndIf
+        SegStart = ColonPos + 1
+      Wend
+
+      If NetOpen > 0
+        IsOpener = #True
+      EndIf
     EndIf
 
     If IsOpener
