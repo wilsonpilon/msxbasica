@@ -6,6 +6,62 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.3.0 — "TECLA FANTASMA" (2026-08-20)
+
+**Tema da versão**: melhor integração do console do openMSX (`Executar → openMSX...`) com o fluxo de
+editor/montador, motivada por um incômodo relatado ao vivo (a resposta de FPS poluindo os logs de
+comando) e um pedido de teclas especiais na aba "Input Text" — que junto acabaram revelando dois bugs
+reais e silenciosos, um deles vivo desde que os botões de estado dinâmico foram criados: o rótulo de 9
+botões (Power incluso) nunca de fato atualizava na tela, e o botão STOP pressionava TAB. Nome escolhido
+por isso — o rótulo "fantasma" que nunca mudava de "Power: ?" por baixo do capô, e as teclas "fantasmas"
+que a nova aba Input Text agora sabe pressionar sem precisar de um teclado de verdade.
+
+### Novidades
+
+- **Display de FPS + atalho de Power na barra inferior** (sempre visível, qualquer aba): um "quadro"
+  estilo mini-display digital (fundo escuro, texto verde) logo depois do botão "Reiniciar openMSX",
+  atualizado ao vivo, e um botão Power ao lado — mesmo comando de sempre, sem precisar trocar pra aba
+  "Outros comandos".
+- **Teclas especiais na aba "Input Text"** — tags `⟦NOME⟧` (colchetes Unicode reservados, nunca
+  confundidos com `[ESC]` ASCII literal dentro de um `PRINT` de verdade) viram um toque de tecla real
+  (ESC, F1-F5, TAB, setas, GRAPH, CODE, SELECT, STOP, etc.) em vez de texto digitado — uma paleta de 23
+  botões insere a tag no cursor, sem precisar digitar ⟦ ⟧ à mão. Verificado ao vivo contra a tela real
+  do MSX.
+- **Combos de tecla** (`⟦SHIFT+F1⟧`, por exemplo) — pressiona todas as teclas do combo primeiro, espera
+  um instante, só depois solta todas (ao contrário da tag simples, que aperta E solta uma de cada vez).
+  "Modo Combo" na paleta acumula os cliques num combo até "Inserir" escrever a tag combinada de uma vez
+  só.
+- **FPS parou de poluir os logs** — tanto o da aba "Console" quanto o da aba "Status Info": a resposta
+  crua de `openmsx_info fps` (um número solto por segundo) tinha virador o próprio motivo do pedido
+  desta versão, e agora fica de fora dos dois, já que o display dedicado acima cobre essa informação.
+
+### Correções
+
+- **`SetGadgetText()` não fazia NADA em nenhum botão temático da IDE** (`ThemedButton`, imagem
+  desenhada na criação em vez de texto de verdade) — afetava silenciosamente 9 botões de estado
+  dinâmico do console do openMSX (Power/Pause/Firmware/Ren Sha Turbo/VSync/Deinterlace/Limitar
+  sprites/Tela cheia/Desabilitar sprites) desde que foram criados: o comando sempre era enviado certo,
+  só o rótulo de volta nunca refletia a mudança na tela.
+- **Botão STOP pressionava TAB** — a máscara usada (`0x08` na linha 7 da matriz de teclado) citava uma
+  "confirmação" de sessão anterior contra um script real do openMSX que na verdade não existe nos
+  scripts vendorizados. Corrigido pra `0x10` (o valor certo), cruzado desta vez contra duas fontes
+  independentes que batem 100% entre si.
+
+### Bastidores
+
+- Verificado ao vivo em cada etapa (compilação limpa + screenshot real da janela rodando): display de
+  FPS atualizando, botão de Power refletindo o estado corretamente pela primeira vez, paleta de teclas
+  especiais renderizando e quebrando linha automaticamente, tag `⟦ESC⟧` resetando de verdade um prompt
+  real do MSX sem afetar o texto `[ESC]` literal ao lado, combo `⟦SHIFT+F1⟧` montado e enviado sem
+  travar o processo.
+- Achado sobre a própria metodologia de verificação: automação de GUI por clique real de mouse
+  (coordenadas absolutas de tela) é arriscada — um clique acabou atingindo a janela errada quando a
+  janela de teste mudou de posição sem isso ser percebido a tempo. Reforça preferir sempre mensagens
+  direcionadas (`BM_CLICK`/`WM_COMMAND` a um HWND específico) em vez de simulação de entrada real.
+  Detalhamento completo em `docs/SPEC.md`, módulo 37.
+
+---
+
 ## 8.2.0 — "ESQUELETO NOVO" (2026-08-19)
 
 **Tema da versão**: o projeto inteiro trocou de esqueleto — `src/`, `dist/`, `resource/`, `docs/`,

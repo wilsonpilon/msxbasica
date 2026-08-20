@@ -1798,6 +1798,11 @@ sozinho mesmo se o estado mudar por fora, ex. você pausando pela janela do pró
 F5) e um aviso automático se máquina/extensão configuradas divergirem da instância aberta (ver caixa
 acima).
 
+Embaixo, também sempre visível em qualquer aba: **Reiniciar openMSX**, um **display de FPS** dedicado
+(estilo mini-display digital, atualiza ao vivo — o mesmo FPS que já existe na aba Vídeo, aqui sem
+precisar trocar de aba), um atalho de **Power** (mesmo comando do Power da aba Outros comandos),
+**Mostrar janela**, **Ajuda** e **Fechar**.
+
 #### Aba Console
 
 - Grupo **Mídia**: Disco A / Cartucho / Cassete, cada um com campo de caminho + "..." (escolher
@@ -1832,7 +1837,8 @@ acima).
   nativa do openMSX na pasta padrão dele (`screenshots/`).
 - **LEDs** (Power/Caps/Kana/Pause/Turbo/FDD) desenhados como círculos coloridos (verde = ligado, cinza
   = desligado, amarelo = ainda não sabido) + botão **STOP** (simula a tecla física STOP do teclado
-  MSX, usada pra interromper um programa BASIC) + **FPS** ao vivo.
+  MSX, usada pra interromper um programa BASIC) + **FPS** ao vivo (o mesmo valor também aparece no
+  display dedicado da barra inferior, visível em qualquer aba — ver acima).
 
 #### Aba Volume
 
@@ -1859,12 +1865,31 @@ quebra de linha vira Enter, mesmo mecanismo do Catapult) e **Clear** (só esvazi
 openMSX). Útil pra colar um programa inteiro direto na linha de comando do BASIC sem precisar montar
 um disco.
 
+**Paleta de teclas especiais**: 23 botões (ESC, F1-F5, TAB, BS, DEL, INS, HOME, SELECT, STOP, ENTER,
+setas, GRAPH, CODE, CTRL, SHIFT, CAPS) que inserem, na posição do cursor, uma tag `⟦NOME⟧` (colchetes
+duplos especiais, não confundir com `[` `]` do teclado normal) — o botão **Type** reconhece essa tag e
+pressiona a tecla de verdade em vez de digitar o texto dela. Isso resolve um problema real: se você
+escreve `10 PRINT "Pressiona [ESC]"`, os colchetes normais da string continuam saindo como texto puro
+— só a tag especial vira tecla, então não tem risco de confundir uma tecla querida com um texto que só
+por acaso menciona o nome dela.
+
+Cada clique nos botões da paleta insere uma tecla que é **apertada e solta na hora**, uma de cada vez —
+bom pra sequências (ex. `[ESC]` depois `[DOWN]`, cada uma independente). Quando você precisa de um
+**combo de verdade** (mais de uma tecla pressionada AO MESMO TEMPO — ex. Shift+F1, Ctrl+Select), ligue
+o botão **Modo Combo**: os cliques na paleta param de inserir na hora e passam a acumular num combo
+(o rótulo ao lado mostra o que já foi escolhido, tipo "Combo: SHIFT + F1") até você clicar **Inserir**,
+que escreve uma única tag combinada (`⟦SHIFT+F1⟧`) — essa tag segura todas as teclas primeiro e só
+solta todas no final, diferente da tag simples. **Cancelar** descarta o combo acumulado sem inserir
+nada. Desligar o Modo Combo volta a paleta ao comportamento padrão (uma tecla por clique, na hora).
+
 #### Aba Status Info
 
 Log somente-leitura de **tudo** que o openMSX reporta — mudou por um comando seu ou não (ex. você
 apertando uma tecla direto na janela do openMSX, ou um jogo acendendo o LED de disquete). Separado do
 log da aba Console de propósito: lá fica só a sua sessão interativa (o que você digitou + respostas);
-aqui fica o "o que está acontecendo" cru.
+aqui fica o "o que está acontecendo" cru. O valor de FPS (consultado a cada segundo) fica de fora
+deste log e do da aba Console — já tem o display dedicado na barra inferior, não precisa mais poluir
+nenhum dos dois.
 
 A comunicação usa um mecanismo próprio do openMSX (`-control`) espelhado no do Catapult (a GUI
 oficial do projeto), documentado com mais detalhe em `docs/SPEC.md`. Configure o caminho do openMSX em

@@ -96,9 +96,14 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
   (renderer, escala, Modo TV com as 5 opções reais do openMSX, efeitos estilo CRT com reset pro
   padrão, screenshot com numeração sequencial, LEDs visuais + STOP + FPS), **Volume** (mixer com
   **descoberta dinâmica** de dispositivo de som — os nomes reais variam por cartucho/ROM conectado,
-  não são fixos —, Volume/Balance, MIDI in/out), **Input Text** (área grande + Type/Clear) e
-  **Status Info** (log passivo de tudo que o openMSX reporta). Ver
-  [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md) pro detalhe completo desta leva de features.
+  não são fixos —, Volume/Balance, MIDI in/out), **Input Text** (área grande + Type/Clear, mais uma
+  **paleta de 23 teclas especiais** — ESC/F1-F5/setas/GRAPH/CODE/SELECT/STOP/etc. via tags `⟦NOME⟧`
+  que nunca confundem com texto `[ESC]` literal, e **combos de tecla** `⟦SHIFT+F1⟧` que seguram todas
+  antes de soltar, com "Modo Combo" pra montar isso clicando em vez de digitar) e **Status Info** (log
+  passivo de tudo que o openMSX reporta). Barra inferior sempre visível ganhou um **display de FPS**
+  dedicado (estilo mini-display digital) e um atalho de **Power**, pra não precisar mais trocar de aba
+  só pra ver o FPS ou ligar/desligar. Ver [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md) pro detalhe
+  completo desta leva de features.
 - **Telas de configuração nativas**:
   - `Configurar → Basic Dignified...` (`src/editor/core/BadigSettings.pbi`) — três abas: pré-processador/
     tokenizador, opções específicas do MSX, e **Emulador** (caminho do openMSX, máquina/extensão com

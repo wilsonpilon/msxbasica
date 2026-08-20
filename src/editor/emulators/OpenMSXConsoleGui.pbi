@@ -117,6 +117,86 @@ Procedure OMSXGui_DrawTurboButton(G_Turbo, Pressed.b)
   EndIf
 EndProcedure
 
+; Atualiza o ROTULO visivel de um ThemedButton (ButtonImageGadget, ver
+; ThemedButtons.pbi) - SetGadgetText() nao faz NADA visualmente nesse tipo de
+; gadget, porque o que aparece na tela e uma IMAGEM gerada uma vez na
+; criacao (ThemedUI_CreateButtonImage()), nao o "texto" do gadget. Bug real
+; e silencioso (sem erro de compilacao nem crash) encontrado 2026-08-20
+; verificando ao vivo o novo G_BottomPower (Power na barra inferior): o
+; rotulo nunca atualizava apesar do "Estado: Ligado" no topo confirmar que o
+; estado interno estava certo - na verdade ja afetava TODOS os botoes de
+; estado dinamico deste arquivo (G_Power/G_Pause/G_Firmware/G_Rensha/G_VSync/
+; G_Deinterlace/G_LimitSprites/G_Fullscreen/G_DisableSprites): o comando
+; "set X on/off" sempre era enviado certo, so o ROTULO mostrado de volta
+; nunca refletia isso. W/H tem que bater com os passados na criacao do
+; ThemedButton (a imagem e redesenhada do zero nesse tamanho).
+Procedure OMSXGui_SetButtonText(G_Button, W.i, H.i, Text.s)
+  SetGadgetAttribute(G_Button, #PB_Button_Image, ImageID(ThemedUI_CreateButtonImage(W, H, Text, "")))
+EndProcedure
+
+; Desenha o "quadro" de FPS da barra inferior (sempre visivel, qualquer aba)
+; como um mini-display digital - fundo escuro, texto sobrescrito a cada
+; chamada (CanvasGadget redesenhado do zero, nao um TextGadget acumulando
+; nada) em vez de virar mais uma linha de log poluindo a tela (pedido do
+; usuario 2026-08-20 - ver tambem OMSX_LastVerboseChunk/OMSX_Poll() em
+; OpenMSXBridge.pbi, que agora tira a resposta crua do FPS do log conciso da
+; aba "Console").
+Procedure OMSXGui_DrawFpsDisplay(G_Fps, FpsText.s)
+  If Not StartDrawing(CanvasOutput(G_Fps))
+    ProcedureReturn
+  EndIf
+  Box(0, 0, GadgetWidth(G_Fps), GadgetHeight(G_Fps), RGB(15, 15, 15))
+  DrawingMode(#PB_2DDrawing_Outlined)
+  Box(0, 0, GadgetWidth(G_Fps) - 1, GadgetHeight(G_Fps) - 1, RGB(90, 90, 90))
+  DrawingMode(#PB_2DDrawing_Transparent)
+  Protected TxtW = TextWidth(FpsText)
+  Protected TxtH = TextHeight(FpsText)
+  DrawText((GadgetWidth(G_Fps) - TxtW) / 2, (GadgetHeight(G_Fps) - TxtH) / 2, FpsText, RGB(80, 230, 120))
+  StopDrawing()
+EndProcedure
+
+; Insere TagText (ja com as colchetes Unicode ⟦ ⟧, ver OMSX_TypeTextWithTags()
+; em OpenMSXBridge.pbi) na posicao do cursor/selecao de G_Edit, substituindo
+; a selecao se houver uma - mesma tecnica nativa (EM_GETSEL/EM_SETSEL) ja
+; usada por MamuteAssemblerGui.pbi/MamuteEditGui.pbi neste projeto pra
+; posicionar o cursor num EditorGadget, so que lendo a selecao em vez de so
+; escrever nela. Fora do Windows (sem SendMessage_ nativo), cai pra "acrescenta
+; no final" - aproximacao razoavel, ja que EditorGadget nao expoe a posicao do
+; cursor de forma portavel.
+Procedure OMSXGui_InsertTagAtCursor(G_Edit, TagText.s)
+  Protected CurText.s = GetGadgetText(G_Edit)
+  Protected StartPos.i, EndPos.i
+  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+    Protected SelStart.l, SelEnd.l
+    SendMessage_(GadgetID(G_Edit), #EM_GETSEL, @SelStart, @SelEnd)
+    StartPos = SelStart
+    EndPos = SelEnd
+  CompilerElse
+    StartPos = Len(CurText)
+    EndPos = StartPos
+  CompilerEndIf
+  SetGadgetText(G_Edit, Left(CurText, StartPos) + TagText + Mid(CurText, EndPos + 1))
+  CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+    Protected NewCaret.i = StartPos + Len(TagText)
+    SendMessage_(GadgetID(G_Edit), #EM_SETSEL, NewCaret, NewCaret)
+  CompilerEndIf
+  SetActiveGadget(G_Edit)
+EndProcedure
+
+; Junta os itens de uma List.s() com Sep entre eles ("" se a lista estiver
+; vazia) - usado pra montar tanto o texto de preview ("SHIFT + F1") quanto a
+; tag de verdade ("SHIFT+F1") do "Modo Combo" (ver comentario de
+; G_ComboToggle, OMSXGui_OpenWindow()) a partir da MESMA lista de nomes
+; pendentes, sem duas formatacoes divergentes.
+Procedure.s OMSXGui_JoinList(List Names.s(), Sep.s)
+  Protected Result.s = ""
+  ForEach Names()
+    If Result <> "" : Result + Sep : EndIf
+    Result + Names()
+  Next
+  ProcedureReturn Result
+EndProcedure
+
 ; Nome do pluggable do openMSX pra cada item do combo de porta de joystick
 ; (Nada/Mouse/Teclado P1/Teclado P2/Paddle, ver OMSXGui_OpenWindow()) -
 ; "" (indice 0, "Nada") significa "unplug" em vez de "plug". Confirmado
@@ -485,11 +565,67 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   AddGadgetItem(Panel, -1, "Input Text")
 
   TextGadget(#PB_Any, 24, 16, WinW - 96, 18,
-    "Digite ou cole o texto abaixo - " + Chr(34) + "Type" + Chr(34) + " digita no MSX como se fosse teclado de verdade (mesmo mecanismo do Catapult - quebras de linha viram Enter).")
-  Protected G_TypeInput = EditorGadget(#PB_Any, 24, 40, WinW - 96, 480, #PB_Editor_WordWrap)
+    "Digite ou cole o texto abaixo - " + Chr(34) + "Type" + Chr(34) + " digita no MSX como se fosse teclado de verdade (mesmo mecanismo do Catapult - quebras de linha viram Enter). Use os botoes abaixo pra inserir uma tecla especial (ESC, F1-F5, setas...) sem confundir com texto literal.")
+
+  ; Paleta de teclas especiais - array-driven pra nao repetir 20+ vezes o
+  ; mesmo par ThemedButton+tooltip. Cada botao insere, na posicao do cursor
+  ; de G_TypeInput, uma tag ⟦NOME⟧ (colchetes Unicode reservados, ver
+  ; OMSX_TypeTextWithTags() em OpenMSXBridge.pbi pro porque NAO sao os
+  ; colchetes ASCII comuns "[ ]") que o botao "Type" abaixo traduz pra um
+  ; toque de tecla de verdade em vez de digitar como texto - da pra misturar
+  ; livremente com texto normal (inclusive contendo "[ESC]" ASCII literal,
+  ; que nao e afetado) e mandar tudo de uma vez.
+  Protected Dim TypeKeyLabel.s(30)
+  Protected TypeKeyCount.i = 0
+  Macro OMSXAddTypeKey(Lbl)
+    TypeKeyLabel(TypeKeyCount) = Lbl
+    TypeKeyCount + 1
+  EndMacro
+  OMSXAddTypeKey("ESC")    : OMSXAddTypeKey("F1")     : OMSXAddTypeKey("F2")    : OMSXAddTypeKey("F3")
+  OMSXAddTypeKey("F4")     : OMSXAddTypeKey("F5")     : OMSXAddTypeKey("TAB")   : OMSXAddTypeKey("BS")
+  OMSXAddTypeKey("DEL")    : OMSXAddTypeKey("INS")    : OMSXAddTypeKey("HOME")  : OMSXAddTypeKey("SELECT")
+  OMSXAddTypeKey("STOP")   : OMSXAddTypeKey("ENTER")  : OMSXAddTypeKey("LEFT")  : OMSXAddTypeKey("UP")
+  OMSXAddTypeKey("DOWN")   : OMSXAddTypeKey("RIGHT")  : OMSXAddTypeKey("GRAPH") : OMSXAddTypeKey("CODE")
+  OMSXAddTypeKey("CTRL")   : OMSXAddTypeKey("SHIFT")  : OMSXAddTypeKey("CAPS")
+
+  Protected Dim TypeKeyGadget.i(30)
+  Protected TKX.i = 24, TKY.i = 40
+  Protected TKW.i = 70, TKI.i
+  For TKI = 0 To TypeKeyCount - 1
+    If TKX + TKW > WinW - 72 ; mesma margem direita de G_TypeInput/G_Log/G_StatusLog (WinW - 96 de largura a partir de x=24)
+      TKX = 24
+      TKY + 30
+    EndIf
+    TypeKeyGadget(TKI) = ThemedButton(TKX, TKY, TKW, 26, TypeKeyLabel(TKI), "")
+    GadgetToolTip(TypeKeyGadget(TKI), "Insere a tecla especial " + Chr(34) + TypeKeyLabel(TKI) + Chr(34) + " no cursor - nao confunde com texto literal")
+    TKX + TKW + 4
+  Next
+  ; "Modo Combo" - com o modo NORMAL (padrao), cada botao da paleta insere
+  ; sua propria tag ⟦NOME⟧ na hora (pulso independente: aperta E solta, ver
+  ; OMSX_PressMatrixKey() em OpenMSXBridge.pbi) - "[SHIFT][F1]" nesse modo
+  ; aperta/solta SHIFT, depois aperta/solta F1, sequencial. Com o modo COMBO
+  ; ligado, os cliques na paleta NAO inserem mais na hora - acumulam num
+  ; combo (G_ComboLabel mostra o que ja foi clicado) ate "Inserir combo"
+  ; escrever uma UNICA tag ⟦NOME1+NOME2+...⟧ no cursor - essa vira
+  ; OMSX_PressMatrixCombo() (segura todas, so DEPOIS solta) em vez de pulsos
+  ; independentes. Pedido explicito do usuario 2026-08-20: precisava dos dois
+  ; comportamentos ("as vezes sequencial ja resolve, mas as vezes precisa
+  ; segurar Shift/Ctrl/Select junto com outra tecla de verdade").
+  Protected ComboRowY.i = TKY + 34
+  Protected G_ComboToggle = ThemedButton(24, ComboRowY, 160, 28, "Modo Combo: OFF", "")
+  GadgetToolTip(G_ComboToggle, "Ligado: os botoes acima acumulam num combo (todas as teclas pressionadas JUNTAS, soltas so no final) em vez de inserir na hora")
+  Protected G_ComboLabel  = TextGadget(#PB_Any, 194, ComboRowY + 5, 470, 20, "Combo: (vazio)")
+  Protected G_ComboInsert = ThemedButton(674, ComboRowY, 90, 28, "Inserir", "")
+  GadgetToolTip(G_ComboInsert, "Insere o combo acumulado como uma unica tag - todas as teclas pressionadas ao mesmo tempo")
+  Protected G_ComboCancel = ThemedButton(774, ComboRowY, 90, 28, "Cancelar", "")
+  GadgetToolTip(G_ComboCancel, "Descarta o combo acumulado sem inserir nada")
+
+  Protected TypeInputY.i = ComboRowY + 34
+
+  Protected G_TypeInput = EditorGadget(#PB_Any, 24, TypeInputY, WinW - 96, 520 - TypeInputY, #PB_Editor_WordWrap)
   Protected G_TypeGo    = ThemedButton(24, 530, 160, 30, "Type", "")
   Protected G_TypeClear = ThemedButton(194, 530, 100, 30, "Clear", "")
-  GadgetToolTip(G_TypeGo, "Digita o texto acima no MSX (comando " + Chr(34) + "type" + Chr(34) + " do openMSX)")
+  GadgetToolTip(G_TypeGo, "Digita o texto acima no MSX (comando " + Chr(34) + "type" + Chr(34) + " do openMSX) - tags " + Chr(34) + "⟦NOME⟧" + Chr(34) + " viram tecla especial (⟦A+B⟧ = combo, segura todas), o resto vira texto literal")
 
   ;- Aba "Status Info" -----------------------------------------------------------
   AddGadgetItem(Panel, -1, "Status Info")
@@ -499,9 +635,18 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
 
   CloseGadgetList()
 
-  Protected G_Restart    = ThemedButton(24, 712, 160, 30, "Reiniciar openMSX", Chr(#Icon_Refresh))
-  Protected G_ShowWindow = ThemedButton(194, 712, 140, 30, "Mostrar janela", Chr(#Icon_Eye))
-  Protected G_Help       = ThemedButton(344, 712, 90, 30, "Ajuda", "")
+  Protected G_Restart      = ThemedButton(24, 712, 160, 30, "Reiniciar openMSX", Chr(#Icon_Refresh))
+  ; Display de FPS + botao de Power na barra inferior (sempre visivel,
+  ; qualquer aba - pedido do usuario 2026-08-20, "logo depois do botao de
+  ; reset embaixo"): acesso rapido sem precisar trocar pra aba "Outros
+  ; comandos" (que ja tem seu proprio Power/Reset/Pause - este Power aqui e
+  ; so um atalho pro MESMO comando "set power on/off", nao duplica estado).
+  Protected G_FpsDisplayBottom = CanvasGadget(#PB_Any, 194, 712, 110, 30)
+  OMSXGui_DrawFpsDisplay(G_FpsDisplayBottom, "FPS: --")
+  GadgetToolTip(G_FpsDisplayBottom, "FPS atual do openMSX (openmsx_info fps), atualizado ~1x/segundo")
+  Protected G_BottomPower  = ThemedButton(314, 712, 130, 30, "Power: ?", "")
+  Protected G_ShowWindow = ThemedButton(454, 712, 140, 30, "Mostrar janela", Chr(#Icon_Eye))
+  Protected G_Help       = ThemedButton(604, 712, 90, 30, "Ajuda", "")
   Protected G_Close      = ThemedButton(WinW - 109, 712, 85, 30, "Fechar", Chr(#Icon_Close))
   GadgetToolTip(G_Close, "Fechar")
   GadgetToolTip(G_ShowWindow, "Envia " + Chr(34) + "unset renderer" + Chr(34) + " - o openMSX sobe com -control em modo sem janela (renderer none) ate isso ser enviado")
@@ -532,6 +677,12 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
   Protected Event, Quit.b = #False
   Protected PickPath.s
   Protected FpsTick.i = 0
+
+  ; Estado do "Modo Combo" (ver comentario na criacao de G_ComboToggle acima) -
+  ; ComboPendingNames() guarda so os NOMES (ex. "SHIFT","F1"), a tag final
+  ; "⟦SHIFT+F1⟧" so e montada no clique de "Inserir".
+  Protected ComboMode.b = #False
+  Protected NewList ComboPendingNames.s()
   Repeat
     Event = WaitWindowEvent()
     Select Event
@@ -541,6 +692,29 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
         EndIf
 
       Case #PB_Event_Gadget
+        ; Botoes da paleta de teclas especiais (aba "Input Text") sao
+        ; array-driven (ver TypeKeyGadget()/TypeKeyLabel() acima) - checados
+        ; ANTES do Select principal em vez de virar 23 "Case" repetidos.
+        Protected TypeKeyClicked.i = -1, TKCheck.i
+        For TKCheck = 0 To TypeKeyCount - 1
+          If EventGadget() = TypeKeyGadget(TKCheck)
+            TypeKeyClicked = TKCheck
+            Break
+          EndIf
+        Next
+        If TypeKeyClicked >= 0
+          If ComboMode
+            ; Modo Combo ligado - acumula o nome em vez de inserir na hora
+            ; (ver comentario de G_ComboToggle na criacao da aba acima).
+            AddElement(ComboPendingNames())
+            ComboPendingNames() = TypeKeyLabel(TypeKeyClicked)
+            SetGadgetText(G_ComboLabel, "Combo: " + OMSXGui_JoinList(ComboPendingNames(), " + "))
+          Else
+            OMSXGui_InsertTagAtCursor(G_TypeInput, Chr($27E6) + TypeKeyLabel(TypeKeyClicked) + Chr($27E7))
+          EndIf
+          Continue
+        EndIf
+
         Select EventGadget()
           Case G_Send
             LogAccum = OMSXGui_Send(G_Log, G_Input, LogAccum)
@@ -610,7 +784,7 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
                 LogAccum = OMSXGui_SendLogged(G_Log, LogAccum, "set speed 100")
             EndSelect
 
-          Case G_Power
+          Case G_Power, G_BottomPower
             If OMSX_PowerKnown And OMSX_PowerOn
               LogAccum = OMSXGui_SendLogged(G_Log, LogAccum, "set power off")
             Else
@@ -839,11 +1013,36 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
             Protected TypeText.s = GetGadgetText(G_TypeInput)
             If Trim(TypeText) <> ""
               LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, "> [digitando " + Str(Len(TypeText)) + " caracteres no MSX]")
-              OMSX_TypeText(TypeText)
+              OMSX_TypeTextWithTags(TypeText)
             EndIf
 
           Case G_TypeClear
             SetGadgetText(G_TypeInput, "")
+
+          Case G_ComboToggle
+            If ComboMode
+              ComboMode = #False
+            Else
+              ComboMode = #True
+            EndIf
+            If ComboMode
+              OMSXGui_SetButtonText(G_ComboToggle, 160, 28, "Modo Combo: ON")
+            Else
+              OMSXGui_SetButtonText(G_ComboToggle, 160, 28, "Modo Combo: OFF")
+              ClearList(ComboPendingNames())
+              SetGadgetText(G_ComboLabel, "Combo: (vazio)")
+            EndIf
+
+          Case G_ComboInsert
+            If ListSize(ComboPendingNames()) > 0
+              OMSXGui_InsertTagAtCursor(G_TypeInput, Chr($27E6) + OMSXGui_JoinList(ComboPendingNames(), "+") + Chr($27E7))
+              ClearList(ComboPendingNames())
+              SetGadgetText(G_ComboLabel, "Combo: (vazio)")
+            EndIf
+
+          Case G_ComboCancel
+            ClearList(ComboPendingNames())
+            SetGadgetText(G_ComboLabel, "Combo: (vazio)")
 
           Case G_Help
             OpenMsxHelp_OpenWindow(Win)
@@ -857,11 +1056,16 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
           If OMSX_IsRunning()
             Protected PollResult.s = OMSX_Poll()
             LogAccum = OMSXGui_AppendLog(G_Log, LogAccum, PollResult)
-            ; Aba "Status Info" - MESMO stream (todo update/aviso/erro que o
-            ; openMSX manda, mudou por nosso comando ou nao), so que sem os
-            ; ecos "> comando" (esses ficam so no Console, sao especificos
-            ; da sessao interativa, nao "status que aconteceu").
-            StatusLogAccum = OMSXGui_AppendLog(G_StatusLog, StatusLogAccum, PollResult)
+            ; Aba "Status Info" - stream VERBOSO (OMSX_LastVerboseChunk, ver
+            ; OMSX_Poll() em OpenMSXBridge.pbi): tudo que o openMSX manda,
+            ; mudou por nosso comando ou nao, SEM os ecos "> comando" (esses
+            ; ficam so no Console, sao especificos da sessao interativa, nao
+            ; "status que aconteceu"). A resposta crua de "openmsx_info fps"
+            ; fica de fora dos DOIS logs (Console e Status Info) desde
+            ; 2026-08-20 - ja tem o display dedicado da barra inferior
+            ; (G_FpsDisplayBottom), poluia tambem o Status Info em tempo
+            ; real, mesmo depois do display existir.
+            StatusLogAccum = OMSXGui_AppendLog(G_StatusLog, StatusLogAccum, OMSX_LastVerboseChunk)
             SetGadgetText(G_Status, "Estado: " + OMSX_StatusText())
 
             If OMSX_SpeedKnown
@@ -869,16 +1073,22 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
               SetGadgetText(G_SpeedLabel, Str(OMSX_Speed) + "%")
             EndIf
             If OMSX_PowerKnown
-              If OMSX_PowerOn : SetGadgetText(G_Power, "Power: Ligado") : Else : SetGadgetText(G_Power, "Power: Desligado") : EndIf
+              If OMSX_PowerOn
+                OMSXGui_SetButtonText(G_Power, 130, 28, "Power: Ligado")
+                OMSXGui_SetButtonText(G_BottomPower, 130, 30, "Power: Ligado")
+              Else
+                OMSXGui_SetButtonText(G_Power, 130, 28, "Power: Desligado")
+                OMSXGui_SetButtonText(G_BottomPower, 130, 30, "Power: Desligado")
+              EndIf
             EndIf
             If OMSX_PausedKnown
-              If OMSX_Paused : SetGadgetText(G_Pause, "Pause: Pausado") : Else : SetGadgetText(G_Pause, "Pause: Rodando") : EndIf
+              If OMSX_Paused : OMSXGui_SetButtonText(G_Pause, 130, 28, "Pause: Pausado") : Else : OMSXGui_SetButtonText(G_Pause, 130, 28, "Pause: Rodando") : EndIf
             EndIf
             If OMSX_FirmwareKnown
-              If OMSX_FirmwareOn : SetGadgetText(G_Firmware, "Firmware: Ligado") : Else : SetGadgetText(G_Firmware, "Firmware: Desligado") : EndIf
+              If OMSX_FirmwareOn : OMSXGui_SetButtonText(G_Firmware, 220, 28, "Firmware: Ligado") : Else : OMSXGui_SetButtonText(G_Firmware, 220, 28, "Firmware: Desligado") : EndIf
             EndIf
             If OMSX_RenshaKnown
-              If OMSX_RenshaOn : SetGadgetText(G_Rensha, "Ren Sha Turbo: Ligado") : Else : SetGadgetText(G_Rensha, "Ren Sha Turbo: Desligado") : EndIf
+              If OMSX_RenshaOn : OMSXGui_SetButtonText(G_Rensha, 220, 28, "Ren Sha Turbo: Ligado") : Else : OMSXGui_SetButtonText(G_Rensha, 220, 28, "Ren Sha Turbo: Desligado") : EndIf
             EndIf
 
             ; Aba "Video" - mesmo padrao: botao de toggle mostra o estado
@@ -886,7 +1096,7 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
             ; arraste manual, ja que cada posicao nova ja manda "set X val"
             ; e o eco que volta so confirma o mesmo valor).
             If OMSX_VSyncKnown
-              If OMSX_VSyncOn : SetGadgetText(G_VSync, "VSync: Ligado") : Else : SetGadgetText(G_VSync, "VSync: Desligado") : EndIf
+              If OMSX_VSyncOn : OMSXGui_SetButtonText(G_VSync, 100, 26, "VSync: Ligado") : Else : OMSXGui_SetButtonText(G_VSync, 100, 26, "VSync: Desligado") : EndIf
             EndIf
             If OMSX_ScaleAlgorithmKnown
               Select OMSX_ScaleAlgorithm
@@ -898,16 +1108,16 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
               EndSelect
             EndIf
             If OMSX_DeinterlaceKnown
-              If OMSX_DeinterlaceOn : SetGadgetText(G_Deinterlace, "Deinterlace: Ligado") : Else : SetGadgetText(G_Deinterlace, "Deinterlace: Desligado") : EndIf
+              If OMSX_DeinterlaceOn : OMSXGui_SetButtonText(G_Deinterlace, 140, 26, "Deinterlace: Ligado") : Else : OMSXGui_SetButtonText(G_Deinterlace, 140, 26, "Deinterlace: Desligado") : EndIf
             EndIf
             If OMSX_LimitSpritesKnown
-              If OMSX_LimitSpritesOn : SetGadgetText(G_LimitSprites, "Limitar sprites: Ligado") : Else : SetGadgetText(G_LimitSprites, "Limitar sprites: Desligado") : EndIf
+              If OMSX_LimitSpritesOn : OMSXGui_SetButtonText(G_LimitSprites, 150, 26, "Limitar sprites: Ligado") : Else : OMSXGui_SetButtonText(G_LimitSprites, 150, 26, "Limitar sprites: Desligado") : EndIf
             EndIf
             If OMSX_FullscreenKnown
-              If OMSX_FullscreenOn : SetGadgetText(G_Fullscreen, "Tela cheia: Ligado") : Else : SetGadgetText(G_Fullscreen, "Tela cheia: Desligado") : EndIf
+              If OMSX_FullscreenOn : OMSXGui_SetButtonText(G_Fullscreen, 120, 26, "Tela cheia: Ligado") : Else : OMSXGui_SetButtonText(G_Fullscreen, 120, 26, "Tela cheia: Desligado") : EndIf
             EndIf
             If OMSX_DisableSpritesKnown
-              If OMSX_DisableSpritesOn : SetGadgetText(G_DisableSprites, "Desabilitar sprites: Ligado") : Else : SetGadgetText(G_DisableSprites, "Desabilitar sprites: Desligado") : EndIf
+              If OMSX_DisableSpritesOn : OMSXGui_SetButtonText(G_DisableSprites, 170, 26, "Desabilitar sprites: Ligado") : Else : OMSXGui_SetButtonText(G_DisableSprites, 170, 26, "Desabilitar sprites: Desligado") : EndIf
             EndIf
 
             If OMSX_ScanlineKnown
@@ -948,6 +1158,7 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
             EndIf
             If OMSX_FpsKnown
               SetGadgetText(G_FpsLabel, "FPS: " + StrF(ValF(OMSX_Fps), 1))
+              OMSXGui_DrawFpsDisplay(G_FpsDisplayBottom, "FPS: " + StrF(ValF(OMSX_Fps), 1))
             EndIf
 
             ; Aba "Volume" - reconstroi a lista so quando um dispositivo
@@ -1022,6 +1233,9 @@ Procedure OMSXGui_OpenWindow(ParentWindow)
             StatusLogAccum = OMSXGui_AppendLog(G_StatusLog, StatusLogAccum, "--- openMSX foi encerrado ---")
             SetGadgetText(G_Status, "Estado: openMSX encerrado")
             SetGadgetText(G_MismatchWarn, "")
+            OMSXGui_SetButtonText(G_BottomPower, 130, 30, "Power: ?")
+            OMSXGui_DrawFpsDisplay(G_FpsDisplayBottom, "FPS: --")
+            DisableGadget(G_BottomPower, #True)
             DisableGadget(G_Input, #True)
             DisableGadget(G_Send, #True)
             DisableGadget(G_ShowWindow, #True)

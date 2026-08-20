@@ -8161,6 +8161,92 @@ Atualizados os 9 caminhos crus `"fMSX/..."` em `src/fossauro/MSX.pbi`/`basic_ver
 `fossauro_verify.pb` pra `"roms/..."`, `build.ps1`/`build.sh -D` e `.gitignore` junto. Verificado ao
 vivo de novo (mesmo padrão de sempre - `REGS` via pipe, `PC` na faixa saudável de boot).
 
+### 37. Console do openMSX — FPS sem poluir os logs, display de FPS + atalho de Power na barra inferior, teclas especiais com combo, dois bugs reais corrigidos (2026-08-20, `8.3.0`)
+
+Pedido explícito do usuário pra melhorar a integração do console do openMSX (`Executar → openMSX...`)
+com o fluxo de editor/montador, levantado com um sintoma concreto: a resposta de `openmsx_info fps`
+(consultada ~1x/segundo pra alimentar o antigo `G_FpsLabel` da aba "Vídeo") era jogada, crua, tanto no
+log da aba "Console" quanto no da aba "Status Info" - um número solto por linha a cada segundo,
+empurrando pra fora qualquer mensagem de verdade (erro, mudança de estado, eco de comando).
+
+**FPS parou de poluir os dois logs**: `OMSX_Poll()` (`OpenMSXBridge.pbi`) monta dois streams por
+chamada - `Result` (retorno da função, log conciso da aba "Console") e `OMSX_LastVerboseChunk` (global,
+log verboso da aba "Status Info") - e a linha de resposta do FPS (`SkipLog`) fica de fora dos DOIS.
+Primeira rodada só tirou do Console (deixado de propósito no Status Info, que "deveria ser verboso");
+o próprio usuário notou depois que, com o display dedicado (abaixo) já existindo, sobrava só poluição
+também no Status Info - sem consumidor nenhum pra aquele número ali além do olho humano tentando ler
+outra coisa no meio.
+
+**Display de FPS + atalho de Power na barra inferior** (sempre visível, qualquer aba -
+`G_FpsDisplayBottom`/`G_BottomPower`, `OpenMSXConsoleGui.pbi`): um "quadro" estilo display digital
+(fundo escuro, texto verde, `CanvasGadget` redesenhado do zero a cada tick em vez de acumular linha de
+log) logo depois do botão "Reiniciar openMSX", e um botão Power ao lado (mesmo comando
+`set power on/off` do Power já existente na aba "Outros comandos", só que sem precisar trocar de aba).
+
+**Bug real encontrado e corrigido: `SetGadgetText()` não faz NADA num `ButtonImageGadget`**
+(`ThemedButton`, ver `ThemedButtons.pbi`) - o rótulo mostrado é uma IMAGEM gerada uma vez na criação
+(`ThemedUI_CreateButtonImage()`), não o "texto" do gadget; chamar `SetGadgetText()` nele não dá erro
+nem crash, só não muda nada na tela. Isso já afetava, silenciosamente, TODOS os botões de estado
+dinâmico deste arquivo desde que foram criados (`G_Power`, `G_Pause`, `G_Firmware`, `G_Rensha`,
+`G_VSync`, `G_Deinterlace`, `G_LimitSprites`, `G_Fullscreen`, `G_DisableSprites`) - o comando certo
+sempre era enviado, só o RÓTULO de volta nunca refletia (ficava pra sempre com o texto de criação, tipo
+"Power: ?"). Achado testando ao vivo o novo `G_BottomPower` (nunca saía de "Power: ?" apesar do
+indicador de estado do topo confirmar "Ligado"). Fix: `OMSXGui_SetButtonText()` usa
+`SetGadgetAttribute(Gadget, #PB_Button_Image, ImageID(...))` - a API certa pra isso (confirmada por
+tentativa real: `SetGadgetState()` compila mas também não muda nada; só `SetGadgetAttribute`/
+`#PB_Button_Image` de fato redesenha o botão) - substituído nos 9+1 pontos afetados.
+
+**Bug real encontrado e corrigido: o botão STOP pressionava TAB, não STOP** -
+`OMSX_PressStop()` mandava `keymatrixdown 7 0x08`/`keymatrixup 7 0x08`, citando um comentário de sessão
+anterior ("confirmado contra um binding real do openMSX, share/scripts, bind PAGEUP keymatrixdown 7
+0x08") que na verdade **não existe** nos scripts vendorizados
+(`resource/openmsx/openmsx/share/scripts/*.tcl` não tem nenhum bind de PAGEUP pra keymatrix - PAGEUP é
+`go_back_one_step`, sem relação com STOP) - aquela "confirmação" nunca foi verificada de verdade.
+Cruzando DUAS fontes independentes desta vez - a tabela real do openMSX (`getMSXMapping()`,
+`resource/openmsx/openmsx/src/input/Keyboard.cc`, com o comentário `// row/bit 7 6 5 4 3 2 1 0`
+documentando a matriz inteira) e a tabela `KeyboardData` já portada do fMSX real pro próprio simulador
+MSX deste projeto (`src/fossauro/MSX.pbi`) - as duas batem 100% e concordam: STOP é linha 7, máscara
+`0x10` (`0x08` nessa linha é TAB). Corrigido; `OMSX_KeyTagRowMask()` (abaixo) nasceu já com o valor
+certo.
+
+**Teclas especiais na aba "Input Text" - tags `⟦NOME⟧`** (colchetes duplos Unicode U+27E6/U+27E7, de
+propósito NÃO os colchetes ASCII comuns `[ ]`, que aparecem o tempo todo em texto/BASIC de verdade -
+ex. `PRINT "Pressiona [ESC]"` continua saindo literal): `OMSX_TypeTextWithTags()` reconhece a tag e vira
+um pulso `keymatrixdown`/`keymatrixup` (`OMSX_PressMatrixKey()`) em vez de texto digitado, com o texto
+literal ao redor mandado normalmente via `OMSX_TypeText()`. Uma paleta de 23 botões (ESC, F1-F5, TAB,
+BS, DEL, INS, HOME, SELECT, STOP, ENTER, setas, GRAPH, CODE, CTRL, SHIFT, CAPS - array-driven, com
+wrap automático de linha) insere a tag na posição do cursor (`OMSXGui_InsertTagAtCursor()`, via
+EM_GETSEL/EM_SETSEL nativo) sem o usuário precisar digitar ⟦ ⟧ à mão. **Verificado AO VIVO contra a tela
+real do MSX** (não só leitura de código): texto misto (`10 PRINT "Pressiona [ESC]"` + tag ⟦ESC⟧ + tag
+⟦DOWN⟧ + `cd C:\MSX`) mostrou o `[ESC]` ASCII saindo literal dentro da string BASIC, a tag ⟦ESC⟧
+resetando de verdade o prompt "Entre a data" da ROM DDX-DRIVE (que reage à tecla ESC física), e o
+restante do texto literal continuando normalmente depois - sem nenhuma sobra de caractere estranho na
+tela.
+
+**Combos de tecla - tags `⟦NOME1+NOME2+...⟧`** (pedido explícito do usuário, sessão seguinte: "às
+vezes precisa segurar Shift/Ctrl/Select junto com outra tecla de verdade, não só apertar/soltar uma de
+cada vez"): `OMSX_ResolveComboRowMasks()`/`OMSX_PressMatrixCombo()` pressionam TODAS as teclas do combo
+primeiro (na ordem dada), um delay só, depois soltam todas na ordem INVERSA - ao contrário da tag de
+tecla única (aperta E solta antes de ir pra próxima). Tudo ou nada: se qualquer nome do combo não for
+reconhecido, a tag inteira volta como texto literal (mesma regra da tag simples). **"Modo Combo"** na
+paleta (`G_ComboToggle`) muda o comportamento dos cliques: ligado, cada tecla clicada acumula num combo
+(rótulo `G_ComboLabel` mostra "Combo: SHIFT + F1") até "Inserir" escrever a tag combinada de uma vez -
+desligado, a paleta volta a inserir uma tag independente por clique (comportamento original,
+sequencial). Verificado ao vivo (`BM_CLICK` direcionado + screenshot): ligar o modo, clicar SHIFT e F1,
+"Inserir" produziu corretamente `⟦SHIFT+F1⟧`; clicar "Type" com essa tag não travou nem derrubou o
+processo (monitorado por 4+ segundos após o clique).
+
+**Achado sobre risco de automação de GUI nesta sessão**: clique real de mouse (`SetCursorPos`+
+`mouse_event`, coordenadas absolutas de tela) foi usado em alguns pontos pra trocar de aba do
+`PanelGadget` (a alternativa "correta", `TCM_SETCURSEL` + `WM_NOTIFY`/`TCN_SELCHANGE` sintético, não
+reproduziu a troca de página real do gadget nativo do PureBasic) - e um desses cliques acabou atingindo
+a janela ERRADA (o foreground real do usuário, não a janela de teste), quando a janela de teste tinha se
+movido de posição/monitor entre capturas sem isso ser percebido a tempo. Reforça a diretriz já
+registrada no `CLAUDE.md`: preferir automação por mensagem direcionada (`BM_CLICK`/`WM_COMMAND` a um
+HWND específico, como usado pros botões desta sessão) e evitar de vez clique/tecla real simulados -
+o custo de não conseguir verificar 100% ao vivo (a troca de aba especificamente) é bem menor que o
+risco de mexer na sessão real de quem está usando a máquina.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido

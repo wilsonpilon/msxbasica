@@ -104,6 +104,16 @@ Global OMSX_FpsKnown.b = #False
 Global OMSX_Fps.s = ""
 Global OMSX_AwaitingFps.b = #False
 
+; Preenchido por OMSX_Poll() a cada chamada com TUDO que chegou nesse tick,
+; sem nenhum filtro (inclusive a resposta crua de "openmsx_info fps") - ver
+; comentario dentro de OMSX_Poll() pra por que a resposta do FPS e suprimida
+; do valor de RETORNO da funcao (usado pelo log conciso da aba "Console") mas
+; nao deste global (usado pelo log verboso da aba "Status Info"). Global em
+; vez de um out-parameter *Ptr.String de proposito - ver nota sobre o bug de
+; crash de out-parameters .String neste codebase (CLAUDE.md/SPEC.md modulo
+; sobre o disassembler do Mamute).
+Global OMSX_LastVerboseChunk.s = ""
+
 ; Toggles da aba "Video" (OpenMSXConsoleGui.pbi) - mesmo mecanismo de
 ; sempre ("<update type="setting">", ver OMSX_Poll()). OMSX_TvModeOn e
 ; derivado da string de "scale_algorithm" (nao um bool nativo do openMSX):
@@ -736,17 +746,195 @@ Procedure OMSX_QueryFps()
   EndIf
 EndProcedure
 
-; Simula a tecla STOP fisica do teclado MSX (Ctrl+Stop interrompe um
-; programa BASIC em execucao - "break") - linha 7, bit 0x08 da matriz de
-; teclado padrao do MSX, confirmado contra um script real de binding do
-; openMSX (share/scripts, "bind PAGEUP keymatrixdown 7 0x08" /
-; "keymatrixup 7 0x08"). Pulso curto (down seguido de up), como um toque de
-; tecla de verdade - mesmo padrao de delay curto e bloqueante que
-; OMSX_Stop() ja usa pra dar tempo do comando anterior ser processado.
-Procedure OMSX_PressStop()
-  OMSX_SendCommand("keymatrixdown 7 0x08")
+; Tabela real da matriz de teclado MSX (linha/mascara por tecla), usada tanto
+; pra simular teclas especiais (STOP, ESC, F1-F5, setas, etc.) via
+; "keymatrixdown"/"keymatrixup" quanto pelas tags ⟦NOME⟧ da aba "Input Text"
+; (ver OMSX_TypeTextWithTags() abaixo). Devolve Linha*256+Mascara, ou -1 se
+; Name nao for uma tecla especial reconhecida.
+;
+; Verificada CRUZANDO DUAS FONTES INDEPENDENTES (2026-08-20), byte a byte,
+; nao só uma leitura de codigo: a tabela real do openMSX
+; (getMSXMapping()/KeyMatrixPosition, resource/openmsx/openmsx/src/input/
+; Keyboard.cc - "// row/bit 7 6 5 4 3 2 1 0" comentado no proprio arquivo) e a
+; tabela KeyboardData ja portada do fMSX real pro proprio simulador MSX deste
+; projeto (src/fossauro/MSX.pbi, Data.b Row,Mask por tecla) - as duas batem
+; 100% em tudo que interessa aqui (linhas 6/7/8: modificadores, funcao,
+; controle, cursor). Achado um bug real nesse cruzamento: o comentario antigo
+; desta mesma funcao (removido agora) afirmava STOP = linha 7 mascara 0x08,
+; "confirmado" contra um binding real do openMSX que na verdade NAO EXISTE
+; nos scripts vendorizados (share/scripts/*.tcl nao tem nenhum "bind PAGEUP
+; keymatrixdown" - PAGEUP e "go_back_one_step", sem relacao com STOP) - ou
+; seja, essa "confirmacao" de uma sessao anterior nunca foi verificada de
+; verdade. O valor certo e linha 7 mascara 0x10 (0x08 naquela linha e TAB) -
+; corrigido aqui E em OMSX_PressStop() abaixo, que ate agora estava
+; pressionando TAB sempre que o usuario clicava "STOP".
+Procedure.i OMSX_KeyTagRowMask(Name.s)
+  Select UCase(Name)
+    Case "ESC", "ESCAPE"   : ProcedureReturn 7 * 256 + $04
+    Case "F1"              : ProcedureReturn 6 * 256 + $20
+    Case "F2"              : ProcedureReturn 6 * 256 + $40
+    Case "F3"              : ProcedureReturn 6 * 256 + $80
+    Case "F4"              : ProcedureReturn 7 * 256 + $01
+    Case "F5"              : ProcedureReturn 7 * 256 + $02
+    Case "TAB"             : ProcedureReturn 7 * 256 + $08
+    Case "STOP"            : ProcedureReturn 7 * 256 + $10
+    Case "BS", "BACKSPACE" : ProcedureReturn 7 * 256 + $20
+    Case "SELECT"          : ProcedureReturn 7 * 256 + $40
+    Case "ENTER", "RETURN" : ProcedureReturn 7 * 256 + $80
+    Case "HOME"            : ProcedureReturn 8 * 256 + $02
+    Case "INS", "INSERT"   : ProcedureReturn 8 * 256 + $04
+    Case "DEL", "DELETE"   : ProcedureReturn 8 * 256 + $08
+    Case "LEFT"            : ProcedureReturn 8 * 256 + $10
+    Case "UP"              : ProcedureReturn 8 * 256 + $20
+    Case "DOWN"            : ProcedureReturn 8 * 256 + $40
+    Case "RIGHT"           : ProcedureReturn 8 * 256 + $80
+    Case "SHIFT"           : ProcedureReturn 6 * 256 + $01
+    Case "CTRL", "CONTROL" : ProcedureReturn 6 * 256 + $02
+    Case "GRAPH"           : ProcedureReturn 6 * 256 + $04
+    Case "CAPS", "CAPSLOCK": ProcedureReturn 6 * 256 + $08
+    Case "CODE"            : ProcedureReturn 6 * 256 + $10
+  EndSelect
+  ProcedureReturn -1
+EndProcedure
+
+; Pulso curto (down seguido de up) numa posicao Linha*256+Mascara da matriz de
+; teclado (ver OMSX_KeyTagRowMask() acima) - como um toque de tecla de
+; verdade, mesmo padrao de delay curto e bloqueante que OMSX_Stop() ja usa
+; pra dar tempo do comando anterior ser processado.
+Procedure OMSX_PressMatrixKey(RowMask.i)
+  Protected Row.i = RowMask >> 8
+  Protected Mask.i = RowMask & $FF
+  OMSX_SendCommand("keymatrixdown " + Str(Row) + " " + Str(Mask))
   Delay(50)
-  OMSX_SendCommand("keymatrixup 7 0x08")
+  OMSX_SendCommand("keymatrixup " + Str(Row) + " " + Str(Mask))
+EndProcedure
+
+; Pressiona VARIAS posicoes da matriz ao mesmo tempo - todas as
+; "keymatrixdown" primeiro, na ORDEM dada (sem soltar nenhuma no meio), UM SO
+; delay, depois todas as "keymatrixup" na ordem INVERSA (ultima pressionada,
+; primeira solta) - como segurar um modificador de verdade (Shift/Ctrl/Graph)
+; e So DEPOIS tocar a tecla principal, ao contrario de OMSX_PressMatrixKey()
+; (pulso independente, solta antes de ir pra proxima). Pedido explicito do
+; usuario 2026-08-20: "[SHIFT][F1]" sequencial (dois OMSX_PressMatrixKey()) ja
+; cobria o caso "aperta e solta uma, depois a outra", mas fazia falta o caso
+; "segura as duas juntas" (SHIFT+F1 de verdade, por exemplo). RowMasks() e um
+; array de Linha*256+Mascara ja resolvidos (ver OMSX_ResolveComboRowMasks()),
+; Count itens validos a partir do indice 0.
+Procedure OMSX_PressMatrixCombo(Array RowMasks.i(1), Count.i)
+  Protected I.i, Row.i, Mask.i
+  For I = 0 To Count - 1
+    Row = RowMasks(I) >> 8
+    Mask = RowMasks(I) & $FF
+    OMSX_SendCommand("keymatrixdown " + Str(Row) + " " + Str(Mask))
+  Next I
+  Delay(80)
+  For I = Count - 1 To 0 Step -1
+    Row = RowMasks(I) >> 8
+    Mask = RowMasks(I) & $FF
+    OMSX_SendCommand("keymatrixup " + Str(Row) + " " + Str(Mask))
+  Next I
+EndProcedure
+
+; Resolve o conteudo de uma tag de combo "NOME1+NOME2+..." (ver
+; OMSX_TypeTextWithTags() abaixo) pra uma lista de Linha*256+Mascara em
+; RowMasks() - devolve quantos itens resolveu, ou -1 se QUALQUER nome do
+; combo nao for reconhecido (tudo ou nada: nao faz sentido pressionar so
+; metade de "SHIFT+F1" por um typo no segundo nome). Limite de 8 teclas
+; simultaneas - bem mais que qualquer combo real do MSX precisaria.
+Procedure.i OMSX_ResolveComboRowMasks(TagName.s, Array RowMasks.i(1))
+  Protected Count.i = 0
+  Protected Pos.i = 1, NextPlus.i, Part.s, RM.i
+  While Pos <= Len(TagName)
+    If Count > ArraySize(RowMasks())
+      ProcedureReturn -1
+    EndIf
+    NextPlus = FindString(TagName, "+", Pos)
+    If NextPlus = 0
+      Part = Trim(Mid(TagName, Pos))
+      Pos = Len(TagName) + 1
+    Else
+      Part = Trim(Mid(TagName, Pos, NextPlus - Pos))
+      Pos = NextPlus + 1
+    EndIf
+    If Part = ""
+      ProcedureReturn -1
+    EndIf
+    RM = OMSX_KeyTagRowMask(Part)
+    If RM < 0
+      ProcedureReturn -1
+    EndIf
+    RowMasks(Count) = RM
+    Count + 1
+  Wend
+  ProcedureReturn Count
+EndProcedure
+
+; Simula a tecla STOP fisica do teclado MSX (Ctrl+Stop interrompe um
+; programa BASIC em execucao - "break").
+Procedure OMSX_PressStop()
+  OMSX_PressMatrixKey(OMSX_KeyTagRowMask("STOP"))
+EndProcedure
+
+; Digita Text no MSX como OMSX_TypeText() (ver acima), mas reconhecendo tags
+; ⟦NOME⟧ (colchetes duplos Unicode U+27E6/U+27E7 - de proposito NAO os
+; colchetes ASCII "[ ]" comuns, que aparecem o tempo todo em texto/BASIC de
+; verdade, ex. PRINT "Pressiona [ESC]": essa string continua saindo literal,
+; so a tag ⟦ESC⟧ vira tecla) - com DOIS formatos de tag:
+;   - ⟦NOME⟧ (uma tecla so) vira um pulso independente (aperta E solta) via
+;     OMSX_PressMatrixKey() - "[SHIFT][F1]" nesse formato aperta/solta SHIFT,
+;     depois aperta/solta F1, sequencial, uma tecla nunca fica presa
+;     enquanto a outra e tocada.
+;   - ⟦NOME1+NOME2+...⟧ (com "+") vira um COMBO via OMSX_PressMatrixCombo()/
+;     OMSX_ResolveComboRowMasks() - todas apertadas primeiro (SHIFT+F1
+;     segura SHIFT, so DEPOIS toca F1, so DEPOIS solta as duas) - pedido
+;     explicito do usuario 2026-08-20 pra cobrir combos de verdade
+;     (Shift+F1, Ctrl+Select, etc.) que o formato sequencial nao alcança.
+; Em ambos os formatos, o texto literal ao redor e mandado normalmente via
+; OMSX_TypeText() em pedacos. Uma tag com nome (ou algum nome dentro de um
+; combo) nao reconhecido, ou um colchete de abertura sem fechamento, volta
+; como texto literal (colchetes inclusos) em vez de simplesmente sumir sem
+; aviso - no caso do combo e tudo ou nada, nunca aperta so metade. Usada pelo
+; botao "Type" da aba "Input Text" (OpenMSXConsoleGui.pbi) - a paleta de
+; botoes de tecla especial daquela aba insere as tags no cursor (single ou
+; combo, conforme "Modo Combo"), o usuario nao precisa digitar ⟦ ⟧ a mao.
+Procedure OMSX_TypeTextWithTags(Text.s)
+  Protected OpenBr.s = Chr($27E6)
+  Protected CloseBr.s = Chr($27E7)
+  Protected Pos.i = 1
+  Protected TagStart.i, TagEnd.i, TagName.s, RowMask.i, ComboCount.i
+  Protected Dim ComboRowMask.i(7)
+  While Pos <= Len(Text)
+    TagStart = FindString(Text, OpenBr, Pos)
+    If TagStart = 0
+      OMSX_TypeText(Mid(Text, Pos))
+      Break
+    EndIf
+    If TagStart > Pos
+      OMSX_TypeText(Mid(Text, Pos, TagStart - Pos))
+    EndIf
+    TagEnd = FindString(Text, CloseBr, TagStart + 1)
+    If TagEnd = 0
+      OMSX_TypeText(Mid(Text, TagStart))
+      Break
+    EndIf
+    TagName = Mid(Text, TagStart + 1, TagEnd - TagStart - 1)
+    If FindString(TagName, "+") > 0
+      ComboCount = OMSX_ResolveComboRowMasks(TagName, ComboRowMask())
+      If ComboCount > 0
+        OMSX_PressMatrixCombo(ComboRowMask(), ComboCount)
+      Else
+        OMSX_TypeText(Mid(Text, TagStart, TagEnd - TagStart + 1))
+      EndIf
+    Else
+      RowMask = OMSX_KeyTagRowMask(TagName)
+      If RowMask >= 0
+        OMSX_PressMatrixKey(RowMask)
+      Else
+        OMSX_TypeText(Mid(Text, TagStart, TagEnd - TagStart + 1))
+      EndIf
+    EndIf
+    Pos = TagEnd + 1
+  Wend
 EndProcedure
 
 Procedure.s OMSX_CleanLine(Line.s)
@@ -779,8 +967,10 @@ Procedure.s OMSX_Poll()
   EndIf
 
   Protected Result.s = ""
+  Protected Verbose.s = ""
   Protected Line.s
   Protected SettingVal.s
+  Protected SkipLog.b
   While OMSX_Prog And AvailableProgramOutput(OMSX_Prog)
     Line = ReadProgramString(OMSX_Prog)
     If Line = "" : Break : EndIf
@@ -892,13 +1082,22 @@ Procedure.s OMSX_Poll()
     ; Resposta de "openmsx_info fps" (nao e um "<update type=setting>", ver
     ; comentario de OMSX_AwaitingFps/OMSX_QueryFps() no topo do arquivo) -
     ; checado ANTES de OMSX_CleanLine() mutilar a linha, mesmo motivo de
-    ; tudo acima.
+    ; tudo acima. Consultado ~1x/segundo pela GUI so pra alimentar o display
+    ; de FPS (ver OMSXGui_DrawFpsDisplay()) - a linha crua da resposta (so um
+    ; numero) nao interessa como "resultado de comando" em NENHUM dos dois
+    ; logs (nem "Console" nem "Status Info") - poluia os dois a cada segundo
+    ; (relatado pelo usuario 2026-08-20, o log verboso ficou poluido do
+    ; mesmo jeito assim que o display de FPS dedicado passou a existir),
+    ; entao SkipLog tira ela dos dois (Result E Verbose) - so alimenta
+    ; OMSX_Fps/OMSX_FpsKnown mesmo, que e o unico consumidor de verdade.
+    SkipLog = #False
     If OMSX_AwaitingFps
       Protected ReplyContent.s = OMSX_ExtractReplyContent(Line)
       If ReplyContent <> ""
         OMSX_Fps = ReplyContent
         OMSX_FpsKnown = #True
         OMSX_AwaitingFps = #False
+        SkipLog = #True
       EndIf
     EndIf
 
@@ -952,7 +1151,8 @@ Procedure.s OMSX_Poll()
     EndIf
 
     Line = OMSX_CleanLine(Line)
-    If Line <> ""
+    If Line <> "" And Not SkipLog
+      Verbose + Line + Chr(10)
       Result + Line + Chr(10)
     EndIf
   Wend
@@ -967,9 +1167,11 @@ Procedure.s OMSX_Poll()
       Line = ReadProgramError(OMSX_Prog)
       If Line = "" : Break : EndIf
       Result + "[stderr] " + Trim(Line) + Chr(10)
+      Verbose + "[stderr] " + Trim(Line) + Chr(10)
     ForEver
   EndIf
 
+  OMSX_LastVerboseChunk = Verbose
   ProcedureReturn Result
 EndProcedure
 

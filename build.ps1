@@ -77,7 +77,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "8.2.0"
+$Version = "8.3.0"
 $SourceFile = Join-Path $PSScriptRoot "src\editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "dist\PaleoBasic.exe"
 $Distribute = $false

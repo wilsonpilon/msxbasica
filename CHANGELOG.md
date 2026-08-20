@@ -2534,4 +2534,35 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   virou 4 slots reais), comando `OPENMSX` novo no Mamute Assembler (mesmo fluxo do `FOSSAURO`, mirando
   o openMSX de verdade) e correção de sintaxe `DEFUSR0`/`USR0(0)`. Ver `docs/SPEC.md` módulos 33-36 e
   `docs/RELEASE_NOTES.md` pra nota de lançamento formal completa.
+- **2026-08-19, mesmo dia**: limpeza de arquivos — três pacotes `.zip` de release antigos
+  (`paleobasic-v080106.zip`/`v080107.zip`/`v080200.zip`) que tinham ficado rastreados no git por
+  engano removidos do repositório (pedido explícito do usuário — pacotes de release não devem virar
+  parte do histórico do git, ver decisão equivalente registrada mais abaixo na sessão de `8.3.0`).
+  Ícone novo do aplicativo (`resource/branding/paleobasic-new.ico`), `CHANGELOG.md` separado de
+  `README.md` (que tinha passado de 3000 linhas) e ajustes pontuais em `src/fossauro/build.ps1`.
+- **2026-08-20 — release `8.3.0` "TECLA FANTASMA"**: pedido explícito do usuário pra melhorar a
+  integração do console do openMSX (`Executar → openMSX...`) com o fluxo de editor/montador, motivado
+  por um sintoma concreto relatado ao vivo: a resposta de `openmsx_info fps` (consultada ~1x/segundo)
+  poluía, número solto por linha, tanto o log da aba "Console" quanto o da aba "Status Info". **FPS
+  parou de poluir os dois logs** — `OMSX_Poll()` monta um stream conciso (Console) e um verboso
+  (Status Info) por chamada, e a resposta crua do FPS fica de fora dos dois desde que o **display de
+  FPS dedicado na barra inferior** (sempre visível, qualquer aba, estilo mini-display digital) passou
+  a existir. **Botão de Power** também na barra inferior, atalho pro mesmo `set power on/off` de
+  sempre. **Dois bugs reais encontrados e corrigidos**: `SetGadgetText()` não fazia NADA num
+  `ButtonImageGadget` (`ThemedButton`) — afetava silenciosamente 9 botões de estado dinâmico
+  (Power/Pause/Firmware/Ren Sha Turbo/VSync/Deinterlace/Limitar sprites/Tela cheia/Desabilitar
+  sprites) desde que foram criados, o comando sempre funcionava mas o rótulo nunca refletia de volta —
+  corrigido com `SetGadgetAttribute(..., #PB_Button_Image, ...)`; e o botão STOP pressionava TAB (linha
+  7, máscara `0x08`) em vez de STOP (máscara `0x10`), um comentário de sessão anterior citava uma
+  "confirmação" contra um script real do openMSX que na verdade não existe nos scripts vendorizados —
+  cruzado desta vez contra DUAS fontes independentes (tabela real do openMSX e a tabela já portada do
+  fMSX no simulador MSX deste projeto), que batem 100% entre si. **Teclas especiais na aba "Input
+  Text"**: tags `⟦NOME⟧` (colchetes Unicode reservados, não confundem com `[ESC]` ASCII literal em
+  texto/BASIC de verdade) viram um toque de tecla de verdade via `keymatrixdown`/`keymatrixup`, com uma
+  paleta de 23 botões inserindo a tag no cursor — verificado ao vivo contra a tela real do MSX (ROM
+  DDX-DRIVE reagindo à tecla ESC de verdade, texto literal em volta intacto). **Combos de tecla**
+  (pedido explícito do usuário, sessão seguinte): tags `⟦NOME1+NOME2+...⟧` pressionam todas as teclas
+  primeiro e só soltam no final (ao contrário da tag simples, que aperta E solta antes da próxima) —
+  "Modo Combo" na paleta acumula cliques num combo até "Inserir" escrever a tag combinada de uma vez.
+  Ver `docs/SPEC.md` módulo 37 e `docs/RELEASE_NOTES.md` pra nota de lançamento formal completa.
 
