@@ -2613,4 +2613,22 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   nenhuma detecção de bloco (`HandleAutoDedentKeyword()` e os helpers que só existiam pra isso foram
   removidos). Verificado ao vivo: `cls :`/`key off:`/`for temp = 1 to 3 :`/`next temp` e outras
   variações, nenhuma ganhou indentação extra. Ver `docs/SPEC.md` módulo 41.
+- **2026-08-20, mesmo dia**: pedido explícito do usuário — `build.ps1` (raiz do repo) nunca builda o
+  fossauro, sempre foi preciso rodar `src\fossauro\build.ps1` à parte pra `dist\fossauro.exe` existir;
+  o usuário apontou isso ("fossauro é nosso emulador de MSX e faz parte do projeto todo") e pediu um
+  build único que já gere o pacote inteiro. **Causa encadeada, dois problemas**: (1) `build.ps1`
+  deliberadamente nunca chamava o script do fossauro (decisão de `8.2.0`, ligada à licença própria/
+  não-comercial dele); (2) mesmo compilando o `.exe`, ele não teria ROMs pra rodar — `resource\roms\`
+  (origem canônica que a etapa de distribuição copia pra `dist\roms\`) só tinha `CARTS.SHA`/
+  `fMSX.exe`/`fMSX.html`, sem nenhum `.ROM` — os 8 ROMs de sistema reais (`MSX.ROM`/`MSX2*.ROM`/
+  `DISK.ROM`/`FMPAC.ROM`/`PAINTER.ROM`) estavam perdidos nas pastas soltas não-rastreadas `fossauro/`
+  e `fMSX/` da raiz (sobra de antes da reorganização `8.2.0`), nunca movidos pro lugar certo.
+  **Fix**: ROMs copiados pra `resource\roms\` (conferidos byte-a-byte idênticos entre as duas cópias
+  soltas antes de escolher a origem); `build.ps1` agora sempre chama `src\fossauro\build.ps1` logo
+  após compilar o `PaleoBasic.exe` (mesma `$Version` repassada nos dois — o fossauro tinha uma versão
+  fixa em `8.2.0` no próprio script, dessincronizada), e o antigo flag `-D`/`--distribute` foi
+  removido — o que ele fazia (atualizar `dist\` a partir de `resource\`: fontes, imagens de ajuda,
+  ferramentas externas, help do fossauro, ROMs) agora acontece incondicionalmente em todo build, sem
+  flag nenhum. Verificado rodando `.\build.ps1` do zero: `dist\PaleoBasic.exe` e `dist\fossauro.exe`
+  saem os dois, `dist\roms\` com os 8 `.ROM`, sem precisar de nenhum passo manual extra.
 

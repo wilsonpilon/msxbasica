@@ -2,6 +2,14 @@
 # Executa o pbcompiler para gerar dist\fossauro.exe (raiz de dist\, irmao de
 # dist\PaleoBasic.exe - pedido explicito do usuario, 2026-08-19; dist\fossauro\
 # continua existindo, so' com help/config, nao o executavel)
+#
+# Chamado automaticamente por build.ps1 (raiz do repo) a cada build - pedido
+# explicito do usuario (2026-08-20): fossauro e parte do PaleoBasic, um unico
+# build tem que gerar o pacote inteiro (os dois executaveis + dist\ completo),
+# sem precisar rodar dois scripts separados. -Version deixa o build.ps1 raiz
+# repassar a MESMA versao pros dois executaveis (antes ficava fixo em 8.2.0
+# aqui, dessincronizado do resto do app).
+param([string]$Version = "8.3.0")
 
 $ErrorActionPreference = "Stop"
 
@@ -47,7 +55,7 @@ Write-Host "Iniciando compilação do fossauro..." -ForegroundColor Cyan
 Write-Host "Fonte : $SourceFile"
 Write-Host "Saida : $OutputExe"
 
-& $CompilerPath $SourceFile /THREAD /OUTPUT $OutputExe @IconArgs /CONSTANT "App_Version=8.2.0"
+& $CompilerPath $SourceFile /THREAD /OUTPUT $OutputExe @IconArgs /CONSTANT "App_Version=$Version"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "------------------------------------------------------------" -ForegroundColor Green

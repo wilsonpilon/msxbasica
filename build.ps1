@@ -17,6 +17,14 @@
     data/hora UTC do momento da compilacao, convertida para hexadecimal
     (segundos desde a epoch Unix).
 
+    Todo build compila os DOIS executaveis (dist\PaleoBasic.exe e
+    dist\fossauro.exe, via src\fossauro\build.ps1) e atualiza dist\ por
+    inteiro (recursos de resource\, docs, ROMs) - pedido explicito do usuario
+    (2026-08-20): fossauro e parte do PaleoBasic, um build unico tem que
+    deixar o pacote pronto, sem precisar rodar dois scripts nem lembrar de um
+    flag extra (a antiga opcao -D/--distribute foi removida - o que ela fazia
+    agora sempre acontece).
+
     Todas as opcoes (-H/--help, -C/--compiler, -R/--run, -V/--version,
     -i/--sourcefile, -o/--outputexe) sao lidas manualmente de $args abaixo, em vez de um bloco
     param() do PowerShell: PowerShell 7 faz *binding posicional* de qualquer
@@ -35,8 +43,6 @@
     .\build.ps1 -V "5.2.0" -R
 .EXAMPLE
     .\build.ps1 -H
-.EXAMPLE
-    .\build.ps1 -D
 #>
 
 $ErrorActionPreference = "Stop"
@@ -45,31 +51,27 @@ function Show-Help {
     @"
 Uso: build.ps1 [opcoes]
 
-Compila (e opcionalmente executa) o MSX BASIC+Z80 IDE via PureBasic Compiler.
+Compila o MSX BASIC+Z80 IDE (dist\PaleoBasic.exe) e o fossauro
+(dist\fossauro.exe, via src\fossauro\build.ps1), depois atualiza dist\ por
+inteiro (recursos de resource\, docs, ROMs) - sempre, todo build deixa o
+pacote pronto.
 
 Opcoes:
   -C, --compiler <caminho>  Caminho para o pbcompiler.exe. Fica salvo em
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida no executavel (padrao: 8.2.0).
+  -V, --version <versao>    Versao embutida nos dois executaveis (padrao: 8.3.0).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: src\editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
                              (padrao: dist\PaleoBasic.exe).
-  -D, --distribute          Depois de compilar com sucesso, atualiza dist\editor\
-                             com os recursos de resource\ (fontes, imagens de
-                             ajuda, ferramentas externas) e copia README.md/
-                             docs\MANUAL.md/LICENSE/paleobasic.png pra dist\.
-                             NAO apaga dist\sample\ nem dist\projects\ (sao
-                             conteudo versionado, nao gerado).
 
 Exemplos:
   .\build.ps1
   .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"
   .\build.ps1 --compiler "C:\Basic\Compilers\pbcompiler.exe" --run
   .\build.ps1 -V "5.2.0" -R
-  .\build.ps1 -D
 "@ | Write-Host
 }
 
@@ -80,7 +82,6 @@ $Run = $false
 $Version = "8.3.0"
 $SourceFile = Join-Path $PSScriptRoot "src\editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "dist\PaleoBasic.exe"
-$Distribute = $false
 
 # $args e uma variavel automatica por escopo (uma funcao chamada daqui teria
 # o SEU PROPRIO $args, nao o deste script) - por isso o parsing e feito inline
@@ -116,8 +117,6 @@ while ($i -lt $args.Count) {
             if ($i -ge $args.Count) { Write-Error "Falta o caminho depois de $token."; exit 1 }
             $OutputExe = $args[$i]
         }
-
-        '^(-D|--distribute)$' { $Distribute = $true }
 
         default {
             Write-Warning "Parametro desconhecido: $token (use -H ou --help para ver as opcoes)."
@@ -218,70 +217,81 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Build concluido: $OutputExe"
 
-if ($Distribute) {
-    Write-Host ""
-    Write-Host "Atualizando dist\..."
-
-    # dist\ NAO e mais um pacote descartavel (era o caso da antiga distribute\,
-    # sempre apagada e refeita do zero) - agora tem conteudo VERSIONADO junto
-    # (dist\sample\, dist\projects\, dist\res\) que este passo nao pode tocar.
-    # So copia por cima os itens GERADOS/derivados de resource\+src\ (fontes,
-    # imagens de ajuda, ferramentas externas, docs, branding) - Copy-Item -Force
-    # sobrescreve arquivo por arquivo sem remover o resto da arvore.
-    $DistDir = Join-Path $PSScriptRoot "dist"
-    $DistEditorDir = Join-Path $DistDir "editor"
-    New-Item -ItemType Directory -Path $DistEditorDir -Force | Out-Null
-
-    function Copy-DistItem([string]$Path, [string]$Destination, [switch]$Recurse) {
-        if (Test-Path $Path) {
-            # Bug real encontrado rodando -D pela SEGUNDA vez (2026-08-19): quando $Destination ja
-            # existe como pasta (sobrou da execucao anterior), "Copy-Item -Recurse" copia a pasta
-            # ORIGEM PRA DENTRO dela em vez de sobrescrever arquivo por arquivo - resultado
-            # "dist\editor\fonts\fonts\..." aninhado. Apagar o destino primeiro (so quando -Recurse
-            # e' pasta) torna o passo idempotente de verdade.
-            if ($Recurse -and (Test-Path $Destination -PathType Container)) {
-                Remove-Item -Path $Destination -Recurse -Force
-            }
-            Copy-Item -Path $Path -Destination $Destination -Recurse:$Recurse -Force
-            Write-Host "  incluido: $Path -> $Destination"
-        } else {
-            Write-Warning "  nao encontrado, pulando: $Path"
-        }
-    }
-
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "README.md") -Destination $DistDir
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "docs\MANUAL.md") -Destination $DistDir
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE") -Destination $DistDir
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\branding\paleobasic.png") -Destination $DistDir
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fonts") -Destination (Join-Path $DistEditorDir "fonts") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\redbook_images") -Destination (Join-Path $DistEditorDir "redbook_images") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\th2handbook_images") -Destination (Join-Path $DistEditorDir "th2handbook_images") -Recurse
-    $DistToolsDir = Join-Path $DistEditorDir "tools"
-    New-Item -ItemType Directory -Path $DistToolsDir -Force | Out-Null
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\msxbas2rom") -Destination (Join-Path $DistToolsDir "msxbas2rom") -Recurse
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\n80") -Destination (Join-Path $DistToolsDir "n80") -Recurse
-
-    # help do Fossauro - so a pasta help\, NAO o executavel (fossauro.exe tem
-    # licenca propria/nao-comercial, LICENSE-fossauro, e continua so' sendo
-    # buildado por src\fossauro\build.ps1 separadamente, nunca por este script).
-    $DistFossauroDir = Join-Path $DistDir "fossauro"
-    New-Item -ItemType Directory -Path $DistFossauroDir -Force | Out-Null
-    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fossauro_help") -Destination (Join-Path $DistFossauroDir "help") -Recurse
-
-    # ROMs do sistema MSX pro Fossauro (MSX.pbi le "roms/MSX.ROM" e afins, caminho
-    # cru relativo ao diretorio de trabalho no lancamento - dist\fossauro.exe roda
-    # com CWD = dist\, entao a pasta precisa se chamar dist\roms\, nao
-    # dist\fossauro\roms\). Fonte canonica fica em resource\roms\ - copyright
-    # proprio, nunca rastreado no git (ver .gitignore); so' copia se o usuario ja
-    # tiver colocado as ROMs la.
-    if (Test-Path (Join-Path $PSScriptRoot "resource\roms")) {
-        $DistRomsDir = Join-Path $DistDir "roms"
-        New-Item -ItemType Directory -Path $DistRomsDir -Force | Out-Null
-        Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\roms\*.ROM") -Destination $DistRomsDir
-    }
-
-    Write-Host "dist\ atualizado em: $DistDir"
+# fossauro e parte do PaleoBasic (nao um projeto separado) - todo build deste
+# script tambem builda o fossauro, mesma versao, licenca propria/nao-comercial
+# (LICENSE-fossauro) a parte so muda ONDE o codigo mora, nao SE ele e buildado
+# junto. Script proprio porque compila um .pb diferente (src\fossauro\fossauro.pb),
+# mas roda sempre daqui em diante - pedido explicito do usuario (2026-08-20).
+Write-Host ""
+Write-Host "Compilando fossauro..."
+$FossauroBuildScript = Join-Path $PSScriptRoot "src\fossauro\build.ps1"
+& $FossauroBuildScript -Version $Version
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Falha na compilacao do fossauro (codigo $LASTEXITCODE)."
+    exit $LASTEXITCODE
 }
+
+Write-Host ""
+Write-Host "Atualizando dist\..."
+
+# dist\ NAO e um pacote descartavel (era o caso da antiga distribute\, sempre
+# apagada e refeita do zero) - tem conteudo VERSIONADO junto (dist\sample\,
+# dist\projects\, dist\res\) que este passo nao pode tocar. So copia por cima
+# os itens GERADOS/derivados de resource\+src\ (fontes, imagens de ajuda,
+# ferramentas externas, docs, branding, ROMs) - Copy-Item -Force sobrescreve
+# arquivo por arquivo sem remover o resto da arvore.
+$DistDir = Join-Path $PSScriptRoot "dist"
+$DistEditorDir = Join-Path $DistDir "editor"
+New-Item -ItemType Directory -Path $DistEditorDir -Force | Out-Null
+
+function Copy-DistItem([string]$Path, [string]$Destination, [switch]$Recurse) {
+    if (Test-Path $Path) {
+        # Bug real encontrado rodando este passo pela SEGUNDA vez (2026-08-19): quando
+        # $Destination ja existe como pasta (sobrou da execucao anterior), "Copy-Item -Recurse"
+        # copia a pasta ORIGEM PRA DENTRO dela em vez de sobrescrever arquivo por arquivo -
+        # resultado "dist\editor\fonts\fonts\..." aninhado. Apagar o destino primeiro (so
+        # quando -Recurse e' pasta) torna o passo idempotente de verdade.
+        if ($Recurse -and (Test-Path $Destination -PathType Container)) {
+            Remove-Item -Path $Destination -Recurse -Force
+        }
+        Copy-Item -Path $Path -Destination $Destination -Recurse:$Recurse -Force
+        Write-Host "  incluido: $Path -> $Destination"
+    } else {
+        Write-Warning "  nao encontrado, pulando: $Path"
+    }
+}
+
+Copy-DistItem -Path (Join-Path $PSScriptRoot "README.md") -Destination $DistDir
+Copy-DistItem -Path (Join-Path $PSScriptRoot "docs\MANUAL.md") -Destination $DistDir
+Copy-DistItem -Path (Join-Path $PSScriptRoot "LICENSE") -Destination $DistDir
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\branding\paleobasic.png") -Destination $DistDir
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fonts") -Destination (Join-Path $DistEditorDir "fonts") -Recurse
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\redbook_images") -Destination (Join-Path $DistEditorDir "redbook_images") -Recurse
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\th2handbook_images") -Destination (Join-Path $DistEditorDir "th2handbook_images") -Recurse
+$DistToolsDir = Join-Path $DistEditorDir "tools"
+New-Item -ItemType Directory -Path $DistToolsDir -Force | Out-Null
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\msxbas2rom") -Destination (Join-Path $DistToolsDir "msxbas2rom") -Recurse
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\n80") -Destination (Join-Path $DistToolsDir "n80") -Recurse
+
+# help do Fossauro (o executavel em si ja foi compilado acima, direto pra
+# dist\fossauro.exe por src\fossauro\build.ps1).
+$DistFossauroDir = Join-Path $DistDir "fossauro"
+New-Item -ItemType Directory -Path $DistFossauroDir -Force | Out-Null
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fossauro_help") -Destination (Join-Path $DistFossauroDir "help") -Recurse
+
+# ROMs do sistema MSX pro Fossauro (MSX.pbi le "roms/MSX.ROM" e afins, caminho
+# cru relativo ao diretorio de trabalho no lancamento - dist\fossauro.exe roda
+# com CWD = dist\, entao a pasta precisa se chamar dist\roms\, nao
+# dist\fossauro\roms\). Fonte canonica fica em resource\roms\ - copyright
+# proprio, nunca rastreado no git (ver .gitignore); so' copia se o usuario ja
+# tiver colocado as ROMs la.
+if (Test-Path (Join-Path $PSScriptRoot "resource\roms")) {
+    $DistRomsDir = Join-Path $DistDir "roms"
+    New-Item -ItemType Directory -Path $DistRomsDir -Force | Out-Null
+    Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\roms\*.ROM") -Destination $DistRomsDir
+}
+
+Write-Host "dist\ atualizado em: $DistDir"
 
 if ($Run) {
     Write-Host "Executando $OutputExe ..."

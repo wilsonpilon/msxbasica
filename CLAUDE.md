@@ -171,13 +171,18 @@ link with "undefined symbol" specifically on an x86 build, this exact decoration
 to check** — see `docs/SPEC.md` module 32q for the full investigation.
 
 ```powershell
-# Compile src\editor\BadigEditor.pb -> dist\PaleoBasic.exe (finds pbcompiler.exe automatically,
-# or pass -C once and it's remembered in build.config.json, gitignored/machine-local)
+# Compiles BOTH executables every time (dist\PaleoBasic.exe from
+# src\editor\BadigEditor.pb, and dist\fossauro.exe via src\fossauro\build.ps1 -
+# fossauro is part of the project, not a side build, see 2026-08-20 entry
+# below) and refreshes the rest of dist\ from resource\ (fonts/help images/
+# tools/ROMs) unconditionally - there used to be a separate -D/--distribute
+# flag gating that step; removed 2026-08-20, a single build now always
+# produces the full package. Finds pbcompiler.exe automatically, or pass -C
+# once and it's remembered in build.config.json, gitignored/machine-local.
 .\build.ps1
 .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"   # first time on a new machine
 .\build.ps1 -R                                        # build then run
 .\build.ps1 -V "5.4.0" -R                             # stamp a version + run
-.\build.ps1 -D                                        # also refresh dist\ from resource\ (fonts/help images/tools)
 .\build.ps1 -H                                        # list all flags
 ```
 
@@ -235,13 +240,13 @@ rationale/mapping): `src/` (all compiled source — `src/editor/`, `src/fossauro
 the built app needs to run — `dist/PaleoBasic.exe` and `dist/fossauro.exe` both live at the *root* of
 `dist/`, each looking up its own help/config/resources in the matching subfolder, `dist/editor/`/
 `dist/fossauro/`; `dist/res/`, `dist/sample/`, `dist/projects/`, `dist/roms/` (Fossauro's system ROMs,
-copyright — never tracked) sit alongside — versioned alongside the generated pieces `build.ps1 -D`
+copyright — never tracked) sit alongside — versioned alongside the generated pieces `build.ps1`
 refreshes, see Commands above), `resource/` (vendored/non-compiled assets the project owns — bundled
 fonts, help-viewer images, external tool bundles, reference-only vendored trees like
 `resource/openmsx/`, `resource/nestor/`, `resource/roms/` (canonical source for Fossauro's ROMs, also
 never tracked)), `docs/` (all documentation, including `docs/fossauro/`), `others/` (zero-reference
 directories kept only as deletion candidates, not part of the live project). Moving a file: compiled
-source goes in `src/`, anything the running `.exe` reads goes in (or gets copied by `build.ps1 -D` into)
+source goes in `src/`, anything the running `.exe` reads goes in (or gets copied by `build.ps1` into)
 `dist/`, everything else non-compiled that the project still owns goes in `resource/`. **Every runtime
 path is computed relative to `GetPathPart(ProgramFilename())`** (the exe's own directory) — since both
 exes sit at `dist/`'s root, editor-specific resources are looked up via an explicit `"editor\"` prefix
