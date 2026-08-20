@@ -36,6 +36,7 @@
    - [Temas](#temas)
    - [Botões com ícones](#botões-com-ícones)
 6. [Auto completar](#auto-completar)
+   - [Auto-indentação](#auto-indentação)
 7. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
    - [Menu Criar → Disco... (gerenciador gráfico)](#menu-criar--disco-gerenciador-gráfico)
    - [Linha de comando (`--diskmanipulator`)](#linha-de-comando---diskmanipulator)
@@ -606,6 +607,25 @@ em algum lugar do documento, nunca reformatados.
 - **Rótulos** já definidos no documento (`MYLABEL:`, `.local`), pela mesma regra clássica MACRO-80/Z80
   que o destaque de sintaxe já usa: a primeira palavra de uma linha que não é mnemônico/registrador/
   diretiva conhecido é rótulo.
+
+---
+
+## Auto-indentação
+
+Em abas MSX-BASIC/Dignified (`.dmx`/`.bas`), pressionar `Enter` mantém a mesma indentação da linha que
+você acabou de terminar — não precisa mais pressionar `Tab` toda hora pra realinhar o código.
+
+Além de copiar a indentação, a IDE ajusta um nível automaticamente conforme o que você digita:
+
+- **Um nível a mais** depois de uma linha que abre um bloco: `FOR ...`, `IF ... THEN` (só a forma de
+  bloco — sem instrução depois do `THEN` na mesma linha), `FUNC ...` (proto-função do Basic Dignified)
+  ou um rótulo de loop (`nome{`).
+- **Um nível a menos**, na hora, assim que você termina de digitar `NEXT`, `ENDIF`, `RET` ou `}`
+  sozinho no começo da linha (fecha o bloco correspondente).
+
+`FOR ... : NEXT` inteiro numa linha só (idioma clássico comum de MSX-BASIC) não conta como bloco
+aberto — a linha seguinte não é indentada por engano. Um número de linha clássico no início
+(`10 FOR I=1 TO 10`, comum em abas `.bas`) não atrapalha a detecção.
 
 ---
 

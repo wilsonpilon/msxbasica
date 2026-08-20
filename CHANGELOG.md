@@ -2565,4 +2565,16 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   primeiro e só soltam no final (ao contrário da tag simples, que aperta E solta antes da próxima) —
   "Modo Combo" na paleta acumula cliques num combo até "Inserir" escrever a tag combinada de uma vez.
   Ver `docs/SPEC.md` módulo 37 e `docs/RELEASE_NOTES.md` pra nota de lançamento formal completa.
+- **2026-08-20, mesmo dia**: pedido explícito do usuário — auto-indentação nas abas `.dmx`/`.bas` do
+  editor principal. `Enter` mantém a indentação da linha anterior (em vez de sempre voltar pra coluna
+  0), com um nível a mais depois de `FOR`/`IF ... THEN`/`FUNC`/rótulo de loop `nome{` e um nível a
+  menos assim que `NEXT`/`ENDIF`/`RET`/`}` é digitado sozinho no começo da linha. Reaproveita o mesmo
+  evento `#SCN_CHARADDED` já usado pelo auto completar. `FOR ... : NEXT` numa linha só (idioma clássico
+  comum de MSX-BASIC) não conta como bloco aberto; número de linha clássico no início não atrapalha a
+  detecção. **Bug real corrigido durante a verificação ao vivo**: `Trim()` nativo do PureBasic só
+  remove espaços por padrão, não tabs — uma linha já indentada nunca batia contra `"ENDIF"`/`"NEXT"`
+  por causa do tab colado na frente; corrigido com um trim manual (`TrimIndentChars`). Verificado ao
+  vivo enviando `WM_CHAR` direto pro HWND do Scintilla (mensagem direcionada, não clique/tecla real
+  simulados) com `FOR`/`NEXT`, `IF...THEN`/`ENDIF`, `FUNC`/`RET` e rótulo de loop, todos indentando/
+  desindentando corretamente. Ver `docs/SPEC.md` módulo 38.
 

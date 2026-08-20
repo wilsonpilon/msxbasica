@@ -8247,6 +8247,60 @@ HWND específico, como usado pros botões desta sessão) e evitar de vez clique/
 o custo de não conseguir verificar 100% ao vivo (a troca de aba especificamente) é bem menor que o
 risco de mexer na sessão real de quem está usando a máquina.
 
+### 38. Auto-indentação nas abas `.dmx`/`.bas` do editor principal (2026-08-20)
+
+Pedido explícito do usuário: manter a indentação da linha anterior ao pressionar Enter (em vez de
+sempre voltar pra coluna 0, forçando `Tab` manual toda hora pra realinhar), com indentação automática
+extra depois de linhas que abrem bloco (`FOR`, `IF`) e volta automática ao fechar (`NEXT`).
+
+**Mecanismo**: reaproveita o MESMO evento já usado pelo auto completar (`#SCN_CHARADDED` →
+`PostEvent(#Event_AutoComplete, ...)` → despachado no loop principal) - `HandleAutoIndentCharAdded()`
+roda antes de `HandleAutoCompleteCharAdded()` a cada caractere digitado, em `BadigEditor.pb`. Dois
+comportamentos, cada um só ativo em documentos `.dmx`/`.bas` (`Docs()\Mode`):
+
+- **Ao completar o Enter** (`HandleAutoIndentNewline()`): copia a indentação (espaços/tabs do início)
+  da linha que acabou de ser fechada pra linha nova, e acrescenta mais um `Chr(9)` se aquela linha
+  **abre um bloco** - `FOR <algo>` (exceto se a mesma linha já tiver seu próprio `NEXT`, idioma
+  clássico `FOR I=1 TO 10:PRINT I:NEXT I` tudo numa linha só, comum em MSX-BASIC e confirmado em uso
+  real no arquivo de regressão `dist/sample/teste.dmx`), `IF <algo> THEN` (só a forma de bloco, sem
+  instrução depois do `THEN` na mesma linha), `FUNC <algo>` (proto-função do Basic Dignified) ou uma
+  linha terminando em `{` (rótulo de loop do Basic Dignified, `nome{ ... }`, ver
+  `docs/reference/dignified-core.md`).
+- **A cada caractere digitado depois disso** (`HandleAutoDedentKeyword()`): se o texto da linha atual,
+  do início até o cursor, virou EXATAMENTE `NEXT`/`ENDIF`/`RET`/`}` (ignorando um número de linha
+  clássico opcional na frente, ver `StripLeadingLineNumber()` abaixo, e a indentação em si), tira um
+  nível de indentação (`Chr(9)` se houver, senão até 4 espaços - largura de `#SCI_SETTABWIDTH`) do
+  COMEÇO da linha na hora, reposicionando o cursor. Só dispara na primeira vez que a palavra fica
+  "completa" - digitar mais depois (`NEXT I`) já não bate mais a comparação exata, sem gatilho
+  duplicado no uso normal.
+
+**Números de linha clássicos** (`StripLeadingLineNumber()`): documentos `.bas` (ASCII clássico, não
+Dignified) começam cada linha com um número (`"10 FOR I=1 TO 10"`) - sem tirar isso primeiro,
+`FirstWord` viraria `"10"` em vez de `"FOR"` e a detecção nunca bateria. Aplicado incondicionalmente
+(também em `.dmx`, que não usa número de linha - rótulos `{nome}` no lugar, ver módulo do
+pré-processador - então a chamada é inofensiva lá, nunca há dígito solto no início de uma instrução).
+
+**Bug real encontrado e corrigido durante a verificação ao vivo**: `Trim()` nativo do PureBasic só
+remove ESPAÇOS por padrão (precisaria de um segundo argumento explícito pra outro caractere, um por
+chamada) - uma linha indentada com `Chr(9)` sobrava com o tab colado na frente depois de um `Trim()`
+simples, fazendo a comparação com `"ENDIF"`/`"NEXT"`/etc. nunca bater (`FOR`/`NEXT` sem indentação
+prévia funcionava por coincidência; `IF...THEN`/`ENDIF` com uma linha de indentação já aplicada
+revelou o problema). Corrigido com `TrimIndentChars()`, um trim manual que tira espaço E tab dos dois
+lados.
+
+**Metodologia de verificação**: como as notificações `SCN_CHARADDED` só disparam pra CARACTERES DE
+VERDADE sendo digitados (não pra inserção em lote via `SCI_INSERTTEXT`/`SCI_REPLACESEL`), a
+verificação ao vivo precisou simular teclas de verdade - feito enviando `WM_CHAR` diretamente pro
+HWND da classe `Scintilla` do editor (mensagem direcionada a um handle específico, a MESMA técnica seg
+ura já estabelecida no módulo 37, não `SetCursorPos`/`mouse_event`) via um script PowerShell
+descartável. Isolou dois bugs reais (o `Trim()` acima, e a confirmação de que `CharCode` chega como
+`13`/`\r` no Enter, não `10`/`\n` como a suposição inicial) escrevendo marcadores de depuração
+temporários (`"<" + Str(CharCode) + ">"`) direto no documento via `SCI_APPENDTEXT`, removidos depois de
+confirmado o comportamento certo. Testado com sucesso ao vivo: `FOR`/`NEXT`, `IF...THEN`/`ENDIF`,
+`FUNC`/`RET`, rótulo de loop `nome{`/`}`, o idioma de linha única auto-fechado, e números de linha
+clássicos opcionais - todos indentando/desindentando corretamente numa sequência de teste com 11
+linhas reais.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
 - **Execução de programas do Mamute Assembler (comando `G`)** (2026-08-12, em aberto - pedido
