@@ -127,6 +127,10 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
   estreita a lista sozinho) — nenhuma tecla nova pra aprender. Caixa das sugestões configurável
   (maiúsculas/minúsculas/"como digitado") separadamente para BASIC e Assembly; variáveis/rótulos/
   `.NB_*` sempre mantêm a grafia original do documento. Ver [`docs/MANUAL.md`](docs/MANUAL.md#auto-completar).
+- **Auto-indentação** — em abas `.dmx`/`.bas`, `Enter` copia a indentação da linha anterior (sem
+  precisar de `Tab` manual toda hora). De propósito **não** tenta somar/tirar nível sozinha por bloco
+  (`FOR`/`IF`/etc.) — uma versão anterior tentava isso mas gerava falso positivo em linhas terminando
+  em `:` sem bloco nenhum; simplificado a pedido do usuário. Ver [`docs/MANUAL.md`](docs/MANUAL.md#auto-indentação).
 - **CLI de teste de regressão** (`src/editor/tools/DigTestCli.pb`) — roda o pipeline completo
   (Dignified → ASCII → tokenizado) fora do editor, para validar mudanças no pré-processador/tokenizador.
 - **Gerenciador de disco MSX** — `src/editor/core/MSXDisk.pbi` (FAT12, incorporado de vez ao editor — o
