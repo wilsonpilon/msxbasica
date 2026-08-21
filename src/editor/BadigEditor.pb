@@ -239,6 +239,7 @@ XIncludeFile "assemblers/MamuteAssemblerGui.pbi"
 XIncludeFile "assemblers/MamuteZ80Cpu.pbi"
 XIncludeFile "assemblers/MamuteDebuggerGui.pbi"
 XIncludeFile "core/ProjectSettingsGui.pbi"
+XIncludeFile "core/FileAssociationGui.pbi"
 
 ;- ------------------------------------------------------------
 ;- CLI de manipulacao de disco MSX: "PaleoBasic.exe --diskmanipulator
@@ -519,6 +520,7 @@ Enumeration MenuItems
   #Menu_OpenProject
   #Menu_SaveProject
   #Menu_SaveProjectAs
+  #Menu_ProjectIndex
   #Menu_Open
   #Menu_Save
   #Menu_SaveAs
@@ -572,6 +574,7 @@ Enumeration MenuItems
   #Menu_ConfigureMamuteAssembler
   #Menu_ConfigureOpenMSX
   #Menu_ConfigureFossauro
+  #Menu_ConfigureFileAssociations
   #Menu_ConfigureProject
   #Menu_HelpEditor
   #Menu_HelpNestorBasic
@@ -939,6 +942,7 @@ Declare   Editor_Replace()
 Declare   Editor_GotoLine()
 Declare   MdView_OpenSingle(ParentWindow)  ; MdViewerGui.pbi (incluido no fim do arquivo)
 Declare   MdView_OpenSplit(ParentWindow)
+Declare   ProjIndex_OpenWindow(ParentWindow)  ; ProjectIndexGui.pbi (incluido no fim do arquivo)
 Declare.s ComputeTabCaption(Position)
 Declare   RedrawTabBar()
 Declare   RedrawRuler()
@@ -2675,17 +2679,18 @@ Procedure RedrawRuler()
   StopDrawing()
 EndProcedure
 
-Procedure OpenDocumentDialog()
-  Protected Path.s = OpenFileRequester("Abrir arquivo", "", #File_Pattern_Open, 0)
-  If Path = ""
-    ProcedureReturn
-  EndIf
-
+; Abre Path numa aba: se ja estiver aberto, so troca pra ela; senao le do
+; disco e cria a aba (AddDocumentTab detecta o modo pela extensao). Usado por
+; OpenDocumentDialog() (usuario escolhe o arquivo) e por ProjIndex_OpenWindow()
+; (usuario clica um "documento" listado no indice do projeto). #True se a aba
+; ficou pronta (ja existia ou foi aberta agora), #False se o arquivo nao pode
+; ser lido (mensagem de erro ja mostrada aqui).
+Procedure.b OpenFileIntoTab(Path.s)
   Protected Position = 0
   ForEach Docs()
     If Docs()\Path = Path
       SetActiveTab(Position)
-      ProcedureReturn
+      ProcedureReturn #True
     EndIf
     Position + 1
   Next
@@ -2693,7 +2698,7 @@ Procedure OpenDocumentDialog()
   Protected FileNum = ReadFile(#PB_Any, Path, #PB_File_BOM)
   If Not FileNum
     MessageRequester("Erro", "Nao foi possivel abrir o arquivo:" + Chr(10) + Path, #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
-    ProcedureReturn
+    ProcedureReturn #False
   EndIf
 
   Protected Content.s
@@ -2703,6 +2708,16 @@ Procedure OpenDocumentDialog()
   CloseFile(FileNum)
 
   AddDocumentTab(Path, Content)
+  ProcedureReturn #True
+EndProcedure
+
+Procedure OpenDocumentDialog()
+  Protected Path.s = OpenFileRequester("Abrir arquivo", "", #File_Pattern_Open, 0)
+  If Path = ""
+    ProcedureReturn
+  EndIf
+
+  OpenFileIntoTab(Path)
 EndProcedure
 
 Procedure.b SaveDocument(SaveAs.b = #False)
@@ -4475,11 +4490,33 @@ AssemblyOptionsCfg_Load()
 ; Sem nenhum parametro de linha de comando (uso normal, clicando no .exe),
 ; ja abre o projeto implicito "noname.msxproject" de cara, pra qualquer
 ; recurso (por enquanto so Sprites) poder ir sendo gravado nele sem precisar
-; que o usuario crie um projeto primeiro. Se algum parametro foi passado
-; (hoje so --diskmanipulator, que ja terminou o processo antes daqui, mas
-; deixa a porta aberta pra um futuro "abrir projeto X.msxproject direto"),
-; nao forca a criacao do projeto implicito.
-If CountProgramParameters() = 0
+; que o usuario crie um projeto primeiro. Se um .msxproject foi passado como
+; parametro (2 clique no arquivo com a associacao de "Configurar ->
+; Associacoes de arquivo..." ligada, ver FileAssociationGui.pbi), abre esse
+; projeto direto em vez do implicito - ProjectDB::OpenExisting/
+; RestoreMissingDocumentsToDisk() nao dependem de nenhuma janela ainda
+; aberta, entao rodar aqui (antes do OpenWindow do #MainWindow, igual o
+; caminho do projeto implicito ja fazia) e seguro. "--diskmanipulator" ja
+; terminou o processo antes daqui.
+Define StartupProjectPath.s = ""
+If CountProgramParameters() > 0
+  Define FirstParam.s = ProgramParameter(0)
+  If LCase(GetExtensionPart(FirstParam)) = "msxproject" And FileSize(FirstParam) >= 0
+    StartupProjectPath = FirstParam
+  EndIf
+EndIf
+
+If StartupProjectPath <> ""
+  If ProjectDB::OpenExisting(StartupProjectPath)
+    RestoreMissingDocumentsToDisk()
+  Else
+    MessageRequester("Erro ao abrir projeto",
+                      "Nao foi possivel abrir:" + Chr(10) + StartupProjectPath + Chr(10) + ProjectDB::GetLastError(),
+                      #PB_MessageRequester_Ok | #PB_MessageRequester_Error)
+    ProjectDB::EnsureOpen()
+  EndIf
+  App_EnsureDefaultAlphabet()
+ElseIf CountProgramParameters() = 0
   ProjectDB::EnsureOpen()
   App_EnsureDefaultAlphabet()
 EndIf
@@ -4500,10 +4537,6 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_NewNestorBasic, "Novo Nestor Basic...")
     MenuItem(#Menu_NewMsxBas2Rom, "Novo MSXBas2Rom...")
     MenuItem(#Menu_NewMD, "Novo MD...")
-    MenuItem(#Menu_NewProject, "Novo projeto..." + Chr(9) + "Ctrl+Alt+N")
-    MenuItem(#Menu_OpenProject, "Abrir projeto..." + Chr(9) + "Ctrl+Alt+O")
-    MenuItem(#Menu_SaveProject, "Salvar projeto")
-    MenuItem(#Menu_SaveProjectAs, "Salvar projeto como...")
     MenuItem(#Menu_Open,     "Abrir..." + Chr(9) + "Ctrl+O")
     MenuBar()
     MenuItem(#Menu_Save,     "Salvar" + Chr(9) + "Ctrl+S")
@@ -4519,6 +4552,14 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_CloseTab, "Fechar aba" + Chr(9) + "Ctrl+W")
     MenuBar()
     MenuItem(#Menu_Exit,     "Sair" + Chr(9) + "Alt+F4")
+  MenuTitle("Projeto")
+    MenuItem(#Menu_NewProject, "Novo projeto..." + Chr(9) + "Ctrl+Alt+N")
+    MenuItem(#Menu_OpenProject, "Abrir projeto..." + Chr(9) + "Ctrl+Alt+O")
+    MenuItem(#Menu_SaveProject, "Salvar projeto")
+    MenuItem(#Menu_SaveProjectAs, "Salvar projeto como...")
+    MenuBar()
+    MenuItem(#Menu_ProjectIndex, "Indice de recursos..." + Chr(9) + "Ctrl+Alt+R")
+    MenuItem(#Menu_ConfigureProject, "Configuracoes do projeto...")
   MenuTitle("Editar")
     MenuItem(#Menu_Find,     "Buscar..." + Chr(9) + "Ctrl+F")
     MenuItem(#Menu_FindNext, "Buscar proxima" + Chr(9) + "F3")
@@ -4578,7 +4619,7 @@ CreateMenu(#MainMenu, WindowID(#MainWindow))
     MenuItem(#Menu_ConfigureOpenMSX, "openMSX...")
     MenuItem(#Menu_ConfigureFossauro, "Fossauro...")
     MenuBar()
-    MenuItem(#Menu_ConfigureProject, "Projeto...")
+    MenuItem(#Menu_ConfigureFileAssociations, "Associacoes de arquivo...")
   MenuTitle("Ajuda")
     MenuItem(#Menu_HelpEditor, "Editor..." + Chr(9) + "F1")
     MenuItem(#Menu_HelpNestorBasic, "Nestor Basic...")
@@ -4619,6 +4660,7 @@ AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_G, #Menu_Go
 ; cabiam nos atalhos de arquivo/edicao ja ocupados.
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_N, #Menu_NewProject)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_O, #Menu_OpenProject)
+AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_R, #Menu_ProjectIndex)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_I, #Menu_InsertSpecialChar)
 AddKeyboardShortcut(#MainWindow, #PB_Shortcut_Control | #PB_Shortcut_Alt | #PB_Shortcut_E, #Menu_ConfigureEditor)
 
@@ -4723,6 +4765,9 @@ Repeat
 
         Case #Menu_SaveProjectAs
           SaveProject(#True)
+
+        Case #Menu_ProjectIndex
+          ProjIndex_OpenWindow(#MainWindow)
 
         Case #Menu_Open
           OpenDocumentDialog()
@@ -4890,6 +4935,9 @@ Repeat
 
         Case #Menu_ConfigureFossauro
           FossauroSettings_OpenWindow(#MainWindow)
+
+        Case #Menu_ConfigureFileAssociations
+          FileAssoc_OpenWindow(#MainWindow)
 
         Case #Menu_ConfigureProject
           ProjSettings_OpenWindow(#MainWindow)
@@ -5088,6 +5136,12 @@ End
 ; MdView_OpenSingle/MdView_OpenSplit perto do topo para a chamada em
 ; #Menu_ViewMdTxt/#Menu_ViewMdTxtSplit, que vem antes textualmente.
 XIncludeFile "core/MdViewerGui.pbi"
+
+; Mesmo motivo acima: ProjIndex_OpenWindow() precisa de AddDocumentTab()/
+; SetActiveTab()/Docs(), todos definidos ao longo deste arquivo - ver Declare
+; de ProjIndex_OpenWindow perto do topo para a chamada em #Menu_ProjectIndex,
+; que vem antes textualmente.
+XIncludeFile "core/ProjectIndexGui.pbi"
 
 ; Incluido so aqui no fim (nao junto com os demais XIncludeFile no topo) porque
 ; usa ActiveSciGadget(), definido ao longo deste arquivo - ver Declare de

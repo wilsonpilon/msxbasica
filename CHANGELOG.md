@@ -2647,4 +2647,29 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   aparece colado depois de outra instrução na prática). Verificado: `menu.dmx` converte limpo agora;
   suíte de regressão (`dist/sample/teste.dmx`) comparada byte a byte entre pré-fix e pós-fix — idêntica
   nos dois `.amx`/`.bmx`, ou seja o fix não muda nenhum caso já coberto. Ver `docs/SPEC.md` módulo 42.
+- **2026-08-21 — release `8.4.0`**: dois pedidos do usuário sobre o sistema de projeto. Primeiro,
+  **associação de arquivo `.msxproject` com o Windows** (`Configurar → Associações de arquivo...`,
+  `src/editor/core/FileAssociationGui.pbi`) — liga/desliga a associação em
+  `HKEY_CURRENT_USER\Software\Classes` (sem precisar de administrador; nunca mexe numa associação de
+  outro programa ao desmarcar), pra dar 2 cliques num `.msxproject` no Explorer abrir esse projeto
+  direto no Paleobasic. Precisou de `Import` manual de `RegCreateKeyExW`/`RegSetValueExW`/
+  `RegOpenKeyExW`/`RegQueryValueExW`/`RegCloseKey`/`RegDeleteTreeW` (Advapi32.lib) e `SHChangeNotify`
+  (Shell32.lib) — nem os WinAPI crus nem a lib Registry de mais alto nível do PureBasic vêm disponíveis
+  nesta instalação do compilador, confirmado tentando os dois antes de escrever o `Import`. Depois,
+  usuário gostou da ideia e pediu mais: **Índice de recursos do projeto** (`Projeto → Índice de
+  recursos...`, `Ctrl+Alt+R`, `src/editor/core/ProjectIndexGui.pbi`) — catálogo de tudo que o
+  `.msxproject` guarda (documentos por tipo, cada recurso numerado, `.dsk` ao lado do projeto), pensado
+  pra quem empacota programas + artigos explicativos (`.md`) num projeto só, ex. digitando type-ins de
+  revista. A primeira versão ia mostrar a Tag de cada recurso numerado, mas `ProjectDB::Fetch*()`
+  escreve direto no `Array` do tamanho REAL do recurso sem `ReDim` interno — array pequeno demais
+  estoura o limite, mesma família de bug já documentada neste projeto (`CopyMap()` em mapa vazio) —
+  então a lista mostra só Tipo + número desses recursos, sem arriscar um `Fetch` de payload pesado só
+  pra exibir um nome. Novo menu de topo **Projeto** consolida o que estava espalhado entre Arquivo
+  (Novo/Abrir/Salvar projeto) e Configurar (Projeto..., renomeado "Configurações do projeto..."). Tudo
+  verificado ao vivo (build limpo, `.exe` real, `WM_COMMAND`/`BM_CLICK` num HWND específico, screenshot,
+  registro conferido por fora com PowerShell, `.md` salvo de verdade reaparecendo no índice) — exceto o
+  clique duplo dentro do `ListIconGadget` em si, que exigiria `LVM_SETITEMSTATE` (mensagem que este
+  projeto evita por risco de travar o processo alvo, ver módulo 37) ou clique real de mouse na máquina
+  do usuário; ficou verificado por revisão de código + reuso da mesma lógica já testada de
+  `OpenDocumentDialog`. Ver `docs/SPEC.md` módulos 43/44, `docs/RELEASE_NOTES.md` `8.4.0`.
 

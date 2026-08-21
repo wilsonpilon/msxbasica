@@ -24,6 +24,7 @@
    - [Atalhos de teclado](#atalhos-de-teclado)
    - [Buscar / Substituir / Ir para linha](#buscar--substituir--ir-para-linha)
    - [Arquivo](#arquivo)
+   - [Projeto](#projeto)
    - [Desfazer / refazer](#desfazer--refazer)
    - [Executar](#executar)
    - [Criar (editores visuais)](#criar-editores-visuais)
@@ -35,6 +36,7 @@
 5. [Telas de configuração](#telas-de-configuração)
    - [Temas](#temas)
    - [Botões com ícones](#botões-com-ícones)
+   - [Associações de arquivo](#associações-de-arquivo)
 6. [Auto completar](#auto-completar)
    - [Auto-indentação](#auto-indentação)
 7. [Gerenciador de disco MSX](#gerenciador-de-disco-msx)
@@ -42,8 +44,10 @@
    - [Linha de comando (`--diskmanipulator`)](#linha-de-comando---diskmanipulator)
 8. [Sistema de projeto (arquivo `.msxproject`)](#sistema-de-projeto-arquivo-msxproject)
    - [Projeto implícito "noname"](#projeto-implícito-noname)
-   - [Menu Arquivo → Novo projeto... / Abrir projeto...](#menu-arquivo--novo-projeto--abrir-projeto)
-   - [Menu Arquivo → Salvar projeto / Salvar projeto como...](#menu-arquivo--salvar-projeto--salvar-projeto-como)
+   - [Menu Projeto → Novo projeto... / Abrir projeto...](#menu-projeto--novo-projeto--abrir-projeto)
+   - [Menu Projeto → Salvar projeto / Salvar projeto como...](#menu-projeto--salvar-projeto--salvar-projeto-como)
+   - [Menu Projeto → Índice de recursos...](#menu-projeto--índice-de-recursos)
+   - [Abrir um `.msxproject` com duplo clique](#abrir-um-msxproject-com-duplo-clique)
    - [Cópia das abas de texto e diretório de trabalho](#cópia-das-abas-de-texto-e-diretório-de-trabalho)
    - [Ao sair](#ao-sair)
 9. [Editor de sprites](#editor-de-sprites)
@@ -303,12 +307,6 @@ Também disponíveis pelo menu **Editar**.
 | `Ctrl+O` | Abre um arquivo |
 | `Ctrl+W` | Fecha a aba atual (avisa se há alterações não salvas) |
 | `Ctrl+Alt+S` | **Salvar Tudo** — salva todas as abas abertas e o projeto |
-| `Ctrl+Alt+N` | Novo projeto... |
-| `Ctrl+Alt+O` | Abrir projeto... |
-
-Esses comandos também estão disponíveis pelo menu **Arquivo**. `Salvar projeto`/`Salvar projeto
-como...` não têm tecla dedicada — `Ctrl+Alt+S` (Salvar Tudo) já salva o projeto atual junto, que é
-o caso de uso comum (ver [Sistema de projeto](#sistema-de-projeto-arquivo-msxproject)).
 
 **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`) salva todas as abas abertas, uma por uma (na ordem das abas,
 pedindo "Salvar como..." pra qualquer aba ainda sem nome — igual `Ctrl+S` faria com ela individualmente,
@@ -338,6 +336,18 @@ dialeto, mesmo autor do NestorBASIC) e o **asMSX** de terceiro (dialeto próprio
 LibStor80](#n80-linkstor80-e-libstor80) e [asMSX](#asmsx). O asMSX já tem um botão próprio que monta
 chamando o executável de verdade (**Executar → Montar Fonte asMSX...**); o N80/LinkStor80/LibStor80
 ainda não têm — servem só pra uso via linha de comando fora da IDE por enquanto.
+
+### Projeto
+
+| Tecla | Ação |
+|---|---|
+| `Ctrl+Alt+N` | Novo projeto... |
+| `Ctrl+Alt+O` | Abrir projeto... |
+| `Ctrl+Alt+R` | Índice de recursos... |
+
+Esses comandos (mais **Salvar projeto**/**Salvar projeto como...**/**Configurações do
+projeto...**, sem tecla dedicada) ficam no menu **Projeto**, separado do **Arquivo** — ver
+[Sistema de projeto](#sistema-de-projeto-arquivo-msxproject) para o detalhe de cada um.
 
 ### Desfazer / refazer
 
@@ -546,6 +556,17 @@ fontes customizadas).
 - **Ajuda → Sobre...** — versão, build e data de compilação (ver
   [Versão e build](#versão-e-build)).
 
+### Associações de arquivo
+
+**Configurar → Associações de arquivo...** liga/desliga a associação de tipo de arquivo do Windows —
+hoje só `.msxproject`, marcando a caixa correspondente faz o Windows abrir esse tipo de arquivo direto
+no Paleobasic quando você dá 2 cliques nele no Explorer (ver [Abrir um `.msxproject` com duplo
+clique](#abrir-um-msxproject-com-duplo-clique)). Grava em `HKEY_CURRENT_USER\Software\Classes` — não
+precisa rodar como administrador, e não mexe em associações de outros programas: desmarcar só remove a
+associação se ela ainda apontar pro Paleobasic. Se o `.exe` for movido/renomeado depois de associado, a
+tela avisa que a associação ficou "desatualizada" (aponta pra uma cópia antiga) — desmarcar e marcar de
+novo resolve. Só disponível no Windows.
+
 ---
 
 ## Auto completar
@@ -693,7 +714,7 @@ um projeto implícito chamado **`noname.msxproject`** já é criado de cara, num
 é preciso criar ou escolher um projeto antes de usar o editor de sprites/alfabetos — tudo que for
 registrado vai sendo gravado nesse projeto automaticamente.
 
-### Menu Arquivo → Novo projeto... / Abrir projeto...
+### Menu Projeto → Novo projeto... / Abrir projeto...
 
 Atalhos: `Ctrl+Alt+N` (Novo projeto...) e `Ctrl+Alt+O` (Abrir projeto...).
 
@@ -704,7 +725,7 @@ Atalhos: `Ctrl+Alt+N` (Novo projeto...) e `Ctrl+Alt+O` (Abrir projeto...).
 - **Abrir projeto...** — mesma lógica, mas abre um arquivo `.msxproject` já existente em vez de criar
   um novo.
 
-### Menu Arquivo → Salvar projeto / Salvar projeto como...
+### Menu Projeto → Salvar projeto / Salvar projeto como...
 
 - **Salvar projeto** — se o projeto atual já tem um caminho permanente, não faz nada visível (o
   `.msxproject` já grava cada sprite/alfabeto/documento registrado na hora, não existe estado "sujo" em
@@ -712,6 +733,33 @@ Atalhos: `Ctrl+Alt+N` (Novo projeto...) e `Ctrl+Alt+O` (Abrir projeto...).
 - **Salvar projeto como...** — sempre pergunta um caminho novo (sugerindo o atual, se já for
   permanente) e promove/copia o projeto pra lá — é como se salva **uma cópia do projeto com outro
   nome**. Se o nome digitado não tiver extensão, `.msxproject` é acrescentada automaticamente.
+
+### Menu Projeto → Índice de recursos...
+
+Atalho: `Ctrl+Alt+R`. Abre uma janela com **tudo** que o `.msxproject` atual guarda, numa lista só —
+pensada pra quem empacota vários programas/artigos num projeto (ex.: digitando os type-ins de uma
+revista) e quer ver rápido "o que tem aqui dentro" sem precisar decorar nome de arquivo:
+
+- **Documentos** — cada `.dmx`/`.bas`/`.asm`/`.md` já salvo pelo menos uma vez enquanto este projeto
+  estava aberto (rotulados "Programa (...)" ou, no caso de `.md`, "Artigo (Markdown)").
+- **Recursos numerados** — sprites, alfabetos, sons (PSG), SFX (SEE Tracker), músicas (MML), telas
+  (Screen 0/1/2/1+2), Graphos III (Tela/Layout/Shape) e Assembly Sub-Projects, cada um listado como
+  "Tipo — #N".
+- **Discos** — qualquer `.dsk` que esteja na mesma pasta do `.msxproject` (esses não ficam guardados
+  *dentro* do banco do projeto como os demais itens acima — são catalogados escaneando a pasta).
+
+Dois cliques (ou selecionar e clicar **Abrir**) leva pro lugar certo: um documento troca pra aba dele
+(abrindo do disco se ainda não estiver aberta); um disco abre o **Gerenciador de disco** já com o
+arquivo escolhido no seletor; qualquer outro recurso abre o editor daquele tipo — como nenhum editor
+visual ainda aceita "abrir direto no número X", pode ser preciso navegar até o número certo depois de
+aberto. **Atualizar** reconsulta o projeto (útil se você registrou algo novo com a janela já aberta).
+
+### Abrir um `.msxproject` com duplo clique
+
+Em **Configurar → Associações de arquivo...** (ver [Associações de arquivo](#associações-de-arquivo))
+dá pra ligar a associação de `.msxproject` com o Paleobasic no Windows — depois disso, dar 2 cliques
+num `.msxproject` no Explorer abre esse projeto direto (equivalente a **Abrir projeto...**), sem passar
+pelo projeto implícito `noname` primeiro.
 
 ### Cópia das abas de texto e diretório de trabalho
 

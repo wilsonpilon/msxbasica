@@ -56,7 +56,7 @@ servir de especificação byte-a-byte ao port nativo:
 | 10 | Dialeto msxbas2rom / geração de ROM | médio | Definido como back-end opcional (seção 8) — **usuário disse "só se valer a pena"** |
 | 11 | Saída tokenizada (.bas tokenizado) | baixo (bem documentado) | **Implementado e verificado** — `editor/MsxTokenizer.pbi`, ver detalhe abaixo |
 | 12 | Controle do openMSX via socket | médio (alto no item de detecção de erro) | **Parcial (2026-07-16)**: gerar disco + abrir o openMSX já rodando o programa está implementado, mais uma CLI `--diskmanipulator` standalone embutida no `.exe`; controle via socket/XML, input simulado e detecção de erro em runtime ainda não |
-| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio. **2026-08-10**: projeto ganhou resincronização/restauração automática dos fontes BASIC/Assembly entre disco e `.msxproject`, pra poder levar só o arquivo de projeto de uma máquina pra outra — ver seção 13 |
+| 13 | Sistema de projeto (arquivo `.msxproject`, SQLite) | baixo-médio | **Implementado (2026-07-18), estendido (2026-07-19)** — `editor/ProjectDB.pbi`, ver seção 13. Sprites, alfabetos, cópia das abas de texto e diretório de trabalho já ligados; **Salvar projeto/Salvar projeto como...**; "projeto 0" de defaults sempre em memória. Demais tipos de conteúdo entram quando tiverem editor próprio. **2026-08-10**: projeto ganhou resincronização/restauração automática dos fontes BASIC/Assembly entre disco e `.msxproject`, pra poder levar só o arquivo de projeto de uma máquina pra outra — ver seção 13. **2026-08-21**: novo menu de topo **Projeto** (antes espalhado entre Arquivo/Configurar) reúne Novo/Abrir/Salvar/Salvar como + **Índice de recursos...** (catálogo de tudo que o `.msxproject` guarda — documentos, todo recurso numerado, `.dsk` ao lado) + Configurações do projeto; **Configurar → Associações de arquivo...** liga a associação Windows de `.msxproject` (abre direto no Paleobasic com 2 cliques) — ver módulos 43/44 |
 | 14 | Graphos III — edição de telas SCREEN 2 (`Criar → Graphos III Screen 2...`) | alto (várias fases) | **Fase 1: tela + color clash (2026-07-25)** — canvas SCREEN 2 fiel ao hardware (reaproveita `Screen2Synth.pbi`/`Screen2EditorGui.pbi` do módulo 5 sem nenhuma mudança), paleta INK/PAPER, ferramentas TRAÇO (Lápis/Borracha) e LIMPA TELA. **Fase 2: resto do menu DESENHO (2026-07-25, mesma sessão)** — BLOCO/LINHA/RETÂNGULO/RAIO/CÍRCULO/PINTURA/SPRAY/FILL, ver seção 14b. **Fase 3: menu TEXTO (2026-07-25, mesma sessão)** — escreve na tela com um alfabeto do projeto, 6 variações (NORMAL/ITALIC/BOLD/DUPLO/DUPLO BOLD/LARGO), ver seção 14c. **Fase 4: menu TELA + reorganização de layout (2026-07-25, mesma sessão)** — SALVA TELA/Restaurar, INVERTE VIDEO/ATRIBUTOS, RETIRA/REPOE VIDEO/ATRIBUTOS, todos com ícone; coluna direita e faixa abaixo do canvas reequilibradas, ver seção 14d. **Fase 5: persistência no projeto (2026-07-25, mesma sessão)** — Telas/Layouts/Shapes no `.msxproject` via `ProjectDB.pbi`, mesmo padrão número/navegação/tag/Novo/Registrar do editor de sprites/alfabetos, ver seção 14e. **Fase 6: menu AJUSTE (2026-07-25, mesma sessão)** — SCROLL/ROTAÇÃO, 1px e 8x8, 4 direções, ver seção 14f. **Fase 7: menu MISCELÂNEA (2026-07-25, mesma sessão)** — ZOOM (janela à parte), SHAPE (carimbo com 4 modos lógicos), CORTE (Inverter/Espelhar), GRID (overlay não destrutivo), ver seção 14g. **Fase 8 (2026-07-25, mesma sessão): cursor de teclado — tentada e revertida**, ver seção 14h (usuário achou desnecessária com o mouse já disponível). **Fase 9: formatos nativos .ALF/.LAY/.SCR/.SHP (2026-07-25, mesma sessão)** — importar/exportar telas/layouts/shapes no formato binário que o Graphos III de verdade grava em disco (`editor/GraphosNativeIO.pbi`), verificado por round-trip contra arquivos reais (`editor/tools/GraphosNativeIOTestCli.pb`), ver seção 14i. Réplica do **Graphos III** original (`graphos/graphos.txt`, manual completo) — escopo desta IDE cobre só telas/shapes/layout (o editor de alfabetos do Graphos III já existe, módulo 4). **Todos os 5 menus do original (DESENHO/TEXTO/TELA/AJUSTE/MISCELÂNEA) + os formatos de arquivo nativos estão implementados.** Ver seções 14/14b a 14i |
 | 15 | Sistema de Ajuda MSX BASIC (dicionário + manual, MSX1 e MSX2+) | médio | **Implementado (2026-07-27)** — `editor/MsxBasicHelpGui.pbi` (menu **Ajuda → MSX BASIC...**), reaproveitando a infraestrutura de navegação/busca/histórico de `NestorBasicHelpGui.pbi`. MSX1: 141 palavras reservadas (`MsxBasicDictData.pbi`) + prosa/tabelas do livro Gradiente (`MsxBasicManualData.pbi`). MSX2+: 45 verbetes extras/estendidos (`MsxBasic2PlusDictData.pbi`) + 7 tópicos de prosa/apêndices do manual ACVS FM (`MsxBasic2PlusManualData.pbi`). Ver seção 15 |
 | 16 | Ajuda do Basic Dignified (sintaxe + configurações desta IDE) | baixo-médio | **Implementado (2026-07-28)** — `editor/BasicDignifiedHelpData.pbi` (menu **Ajuda → Basic Dignified...**), reaproveitando a mesma infraestrutura de `NestorBasicHelpGui.pbi`. 21 tópicos em 4 grupos, compilados a partir de `basic-dignified/documentation/*.md` (Basic Dignified Suite original) cruzados com o código real desta IDE — diz explicitamente quais campos de `Configurar → Basic Dignified...` afetam a conversão hoje e quais são vestigiais. Ver seção 16 |
@@ -8427,6 +8427,102 @@ quebrado sem o fix e corrigido com ele. Suíte de regressão (`DigTestCli.exe` c
 `.amx` (25070 bytes) e `.bmx` (18241 bytes) idênticos nos dois, ou seja o fix não muda nenhum caso já
 coberto pela suíte existente (que não tinha esse padrão `:RET` colado). Build completo (`build.ps1`,
 `8.3.0`) recompilado limpo depois da mudança.
+
+### 43. Associação de arquivo `.msxproject` com o Windows (`Configurar → Associações de arquivo...`) (2026-08-21, `8.4.0`)
+
+Pedido do usuário: dar 2 cliques num `.msxproject` no Explorer e abrir direto no Paleobasic, sem passar
+pelo projeto implícito `noname` primeiro. Duas metades: a tela nova que liga/desliga a associação no
+registro do Windows (`src/editor/core/FileAssociationGui.pbi`) e a leitura do parâmetro de linha de
+comando que o Windows manda pro `.exe` quando o duplo clique acontece (início de `BadigEditor.pb`,
+seção "Programa principal").
+
+**Registro em `HKEY_CURRENT_USER\Software\Classes`, não `HKEY_CLASSES_ROOT`** — associação só pro
+usuário atual, sem precisar rodar como administrador (técnica padrão do Windows moderno; `HKCU\...\
+Classes` tem precedência sobre `HKCR` pro mesmo usuário). Chaves gravadas: `.msxproject` (valor padrão
+= ProgID `PaleoBasic.Project`), `PaleoBasic.Project` (nome amigável), `PaleoBasic.Project\DefaultIcon`
+(`"<exe>",0`) e `PaleoBasic.Project\shell\open\command` (`"<exe>" "%1"`) — `SHChangeNotify` avisa o
+Explorer pra pegar a mudança sem precisar reiniciar o processo. Desmarcar a caixa só remove a chave
+`.msxproject` se ela ainda apontar pro nosso ProgID (nunca sequestra/derruba a associação de outro
+programa que o usuário possa ter configurado depois). Detecta associação "desatualizada" (ProgID nosso,
+mas comando apontando pra um `.exe` que não é mais este — instalação movida/renomeada) comparando o
+comando gravado contra `ProgramFilename()` atual.
+
+**`RegCreateKeyExW`/`RegSetValueExW`/`RegOpenKeyExW`/`RegQueryValueExW`/`RegCloseKey`/`RegDeleteTreeW`
+(Advapi32.lib) e `SHChangeNotify` (Shell32.lib) não vêm pré-declarados neste `pbcompiler` nem existem
+como comandos da lib Registry do PureBasic** — confirmado tentando as duas formas antes de escrever
+qualquer coisa: `RegCreateKeyExW_()` cru falha com "not a function"; `CreateRegistryKey()`/
+`SetRegistryString()` (API de mais alto nível que o PureBasic normalmente oferece) também não existem
+nesta instalação/edição do compilador. Importados manualmente (`Import "Advapi32.lib"`/`"Shell32.lib"`),
+mesmo idioma já em uso em `App_GetProcAddressOrdinal()` (dark mode, `BadigEditor.pb`) — inclusive o
+mesmo `CompilerSelect #PB_Compiler_Processor` pra decorar o nome do símbolo em builds x86 (stdcall
+decorado, `_Nome@bytes` = args × 4, já que todo parâmetro aqui é ponteiro/DWORD de 4 bytes) vs. x64
+(sem decoração). Só o ramo x64 foi exercido de verdade nesta máquina (`pbcompiler /VERSION` → x64); o
+ramo x86 foi só calculado por aritmética, mesma ressalva que já existe no comentário de
+`App_GetProcAddressOrdinal()`.
+
+**Verificado de ponta a ponta, não só compilado**: escrita de registro testada isolada primeiro (um
+`.pb` descartável em `CreateRegistryKey`-style, depois confirmado que essa API não existe, então o
+`Import` manual, com o resultado conferido por fora via `Get-ItemProperty` do PowerShell antes de
+integrar ao projeto de verdade). Depois, ao vivo no `.exe` real: menu aberto via `WM_COMMAND` num HWND
+específico (técnica preferida deste projeto, ver módulo 37), checkbox marcada via `BM_CLICK`,
+screenshot (`PrintWindow`) confirmando o texto de status mudando de "abrem com o programa padrão" pra
+"abrem no PaleoBasic com 2 cliques", registro real conferido com `Get-ItemProperty` (as 3 chaves
+gravadas certas). Depois, lançamento real de `PaleoBasic.exe "<caminho>\testassoc.msxproject"` (o que o
+Windows faz de verdade ao dar duplo clique) confirmado abrindo ESSE projeto (não o `noname` implícito) —
+verificado pelo nome sugerido no diálogo "Salvar projeto como..." batendo com o arquivo passado. Chaves
+de teste e arquivo `testassoc.msxproject` removidos depois.
+
+### 44. Índice de recursos do projeto (`Projeto → Índice de recursos...`, `Ctrl+Alt+R`) + menu **Projeto** novo (2026-08-21, `8.4.0`)
+
+Pedido do usuário, motivado por um caso de uso concreto: quem digita type-ins de revista/livro quer
+empacotar, dentro de UM `.msxproject`, os programas E os artigos explicando como usá-los (como `.md` —
+ver módulo do editor de Markdown já existente, `MdViewerGui.pbi`) e os discos prontos — e precisa
+conseguir ver rápido "o que tem aqui dentro" sem decorar nome de arquivo. `src/editor/core/
+ProjectIndexGui.pbi` novo: uma janela com `ListIconGadget` de 2 colunas (Tipo/Item) listando tudo que o
+`.msxproject` atual guarda.
+
+**Decisão de segurança que mudou o desenho**: a primeira versão tentava mostrar a Tag de cada recurso
+numerado (sprite/alfabeto/som/etc.) chamando `ProjectDB::Fetch*()`. Lendo a implementação de
+`FetchSprite()` (`ProjectDB.pbi`) ficou claro que essas funções escrevem DIRETO no `Array` parâmetro do
+tamanho REAL do recurso (`grid_size`, número de passos, etc.) **sem nenhum `ReDim` interno** — passar um
+array pré-dimensionado pequeno demais estoura o limite (mesma família de bug já documentada neste
+projeto: `CopyMap()` em mapa vazio, ver `CLAUDE.md`). Descobrir o tamanho certo de cada um dos 12 tipos
+de recurso só pra mostrar uma tag numa lista não valia o risco — **a lista mostra só Tipo + número**
+(`List*Numbers()`, que já garante que o recurso existe), sem chamar nenhum `Fetch*` de payload pesado.
+Documentos (`FetchDocument`) são a exceção segura: essa função só devolve strings via `Global`, sem
+`Array` nenhum.
+
+**O que lista**: documentos (rotulados por `Docs()\Mode`/`ProjectDB::LastDocumentMode()` — Assembly/
+MSX-BASIC/Markdown/Basic Dignified), os 12 tipos de recurso numerado (sprites, alfabetos, sons, SFX SEE
+Tracker, músicas MML, telas Screen 0/1/2/1+2, Graphos III Tela/Layout/Shape, Assembly Sub-Projects) e
+`.dsk` soltos na mesma pasta do `.msxproject` (`ExamineDirectory`, já que discos não ficam guardados
+*dentro* do banco do projeto, ao contrário de tudo o resto — ver `DiskManagerGui.pbi`). "Abrir"
+(duplo clique ou botão): documento troca de aba (`OpenFileIntoTab()`, extraído de `OpenDocumentDialog()`
+pra reuso — mesmo código, sem mudança de comportamento); disco abre `DiskMgr_OpenWindow()` com o
+parâmetro novo `InitialPath` (pré-preenche o seletor "..." — não carrega automaticamente, o usuário
+ainda confirma no requester); qualquer outro tipo abre o editor daquele recurso — nenhum `_OpenWindow()`
+de recurso do projeto aceita "abrir direto no número X" hoje (todos são `Procedure Foo_OpenWindow
+(ParentWindow)`, sem parâmetro de número), então o usuário pode precisar navegar até o item certo depois
+de aberto.
+
+**Menu `Projeto` novo**, consolidando o que estava espalhado entre `Arquivo` (Novo projeto.../Abrir
+projeto.../Salvar projeto/Salvar projeto como...) e `Configurar` (Projeto..., renomeado
+"Configurações do projeto..."), mais o item novo Índice de recursos (`Ctrl+Alt+R` — `Ctrl+Alt+I` já
+era do Caractere Especial). `Configurar → Associações de arquivo...` (módulo 43) ficou em `Configurar`,
+não em `Projeto` — não é uma ação sobre o projeto ATUAL, é uma preferência do Windows que vale pra
+qualquer `.msxproject` futuro.
+
+**Verificado ao vivo**: `build.ps1` limpo; `.exe` real com o menu `Projeto` aberto via `WM_COMMAND`
+(confirmando as 8 posições/textos certos, `GetMenuString` sobre o `HMENU` real); janela do índice aberta
+sobre o projeto implícito real, mostrando o alfabeto `#0` (defaults) corretamente; um `.md` criado
+(**Projeto → Novo MD...**), salvo de verdade (`Salvar como...` real, não simulado) e reaparecendo no
+índice como "Artigo (Markdown)"; aba fechada e reaberta por duplo clique na linha do índice validando
+`OpenFileIntoTab()` no caminho "arquivo não estava aberto, lê do disco". Não foi possível testar o
+duplo clique DENTRO do `ListIconGadget` por automação de mensagem (`LVM_SETITEMSTATE` pra selecionar uma
+linha é justamente a classe de mensagem que este projeto evita, ver `CLAUDE.md`/módulo 37 — risco de
+travar/derrubar o processo alvo) sem recorrer a clique real de mouse na máquina do usuário, então esse
+trecho específico (a chamada `ProjIndex_OpenSelected` a partir do evento de duplo clique) ficou
+verificado só por revisão de código + o fato de reusar a mesma lógica já testada de `OpenDocumentDialog`.
 
 ## Lacunas conhecidas (a preencher em conversas futuras)
 

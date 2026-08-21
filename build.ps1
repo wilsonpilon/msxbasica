@@ -61,7 +61,7 @@ Opcoes:
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida nos dois executaveis (padrao: 8.3.0).
+  -V, --version <versao>    Versao embutida nos dois executaveis (padrao: 8.4.0).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: src\editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
@@ -79,7 +79,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "8.3.0"
+$Version = "8.4.0"
 $SourceFile = Join-Path $PSScriptRoot "src\editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "dist\PaleoBasic.exe"
 

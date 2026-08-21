@@ -146,7 +146,13 @@ EndProcedure
 ;- Janela principal (menu "Criar -> Disco...")
 ;- ------------------------------------------------------------
 
-Procedure DiskMgr_OpenWindow(ParentWindow)
+; InitialPath (opcional): pre-preenche o seletor de disco ("...") com esse
+; caminho, pra quem abre esta janela ja sabendo qual .dsk quer (ex.: clicando
+; um disco listado em Indice de recursos do projeto, ProjectIndexGui.pbi) nao
+; precisar navegar de novo ate a pasta certa - o usuario ainda confirma no
+; requester (abrir de fato so acontece no fluxo normal do botao "...", nao ha
+; carregamento automatico aqui).
+Procedure DiskMgr_OpenWindow(ParentWindow, InitialPath.s = "")
   ; Mesma grade de layout dos demais dialogos (EditorSettings.pbi/BadigSettings.pbi):
   ; 24px de margem externa, ~26-30px entre grupos - janela alargada (900->956)
   ; pra compensar a margem maior sem espremer os dois paineis de lista.
@@ -203,7 +209,7 @@ Procedure DiskMgr_OpenWindow(ParentWindow)
   DiskMgr_FillLocalListIcon(G_LeftList, LeftEntries())
   SetGadgetText(G_LeftPathText, LeftDir)
 
-  Protected TargetPath.s = "", TempPath.s = "", DiskReady.b = #False
+  Protected TargetPath.s = InitialPath, TempPath.s = "", DiskReady.b = #False
   DiskMgr_SetSessionButtonsEnabled(#False, G_AddButton, G_ExtractButton, G_RemoveDiskButton, G_Save, G_SaveAs, G_Duplicate, G_DeleteDisk)
 
   Protected Event, Quit = #False, i, Sel

@@ -9,7 +9,7 @@
 # sem precisar rodar dois scripts separados. -Version deixa o build.ps1 raiz
 # repassar a MESMA versao pros dois executaveis (antes ficava fixo em 8.2.0
 # aqui, dessincronizado do resto do app).
-param([string]$Version = "8.3.0")
+param([string]$Version = "8.4.0")
 
 $ErrorActionPreference = "Stop"
 

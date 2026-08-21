@@ -6,6 +6,55 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.4.0 — "PORTA DUPLA" (2026-08-21)
+
+**Tema da versão**: duas peças novas para o sistema de projeto, as duas nascidas do mesmo pedido do
+usuário — quem digita type-ins de revista/livro quer empacotar, num único `.msxproject`, os programas,
+os artigos explicando como usá-los e os discos prontos, e precisa achar tudo isso de novo sem decorar
+nome de arquivo. Nome escolhido pelas duas "portas" que a versão abre: a porta de verdade do Windows
+(duplo clique num `.msxproject` já abre ele no Paleobasic) e a porta pro conteúdo do próprio projeto
+(o índice cataloga tudo o que tem lá dentro, um clique abre o item certo).
+
+### Novidades
+
+- **Associação de arquivo `.msxproject`** (`Configurar → Associações de arquivo...`) — liga/desliga a
+  associação de `.msxproject` com o Paleobasic no Windows (`HKEY_CURRENT_USER\Software\Classes`, sem
+  precisar de administrador). Marcada, dar 2 cliques num `.msxproject` no Explorer abre esse projeto
+  direto na IDE. Desmarcar só remove a associação se ela ainda apontar pra esta cópia do Paleobasic —
+  nunca mexe numa associação de outro programa.
+- **Índice de recursos do projeto** (`Projeto → Índice de recursos...`, `Ctrl+Alt+R`) — catálogo, numa
+  lista só, de tudo que o `.msxproject` atual guarda: documentos (por tipo — Basic Dignified/MSX-BASIC/
+  Assembly/Markdown), todo recurso numerado (sprites, alfabetos, sons, SFX, músicas, telas, Graphos III,
+  Assembly Sub-Projects) e qualquer `.dsk` ao lado do projeto. Dois cliques leva pro lugar certo:
+  documento troca de aba, disco abre o Gerenciador de disco já com o arquivo escolhido, qualquer outro
+  recurso abre o editor daquele tipo.
+- **Menu de topo `Projeto` novo** — reúne o que estava espalhado entre `Arquivo` (Novo/Abrir/Salvar
+  projeto/Salvar projeto como...) e `Configurar` (Projeto..., renomeado "Configurações do projeto..."),
+  mais o Índice de recursos novo.
+
+### Bastidores
+
+- **Achado de segurança que mudou o desenho do índice**: a primeira versão ia mostrar a Tag de cada
+  recurso numerado, chamando `ProjectDB::Fetch*()`. Essas funções escrevem direto no `Array` parâmetro
+  do tamanho REAL do recurso (grade do sprite, número de passos do som, etc.) sem nenhum `ReDim`
+  interno — um array pré-dimensionado pequeno demais estoura o limite, mesma família de bug já
+  documentada neste projeto (`CopyMap()` em mapa vazio). Decisão: a lista mostra só tipo + número desses
+  recursos, sem arriscar um `Fetch` de payload pesado só pra exibir um nome.
+- `RegCreateKeyExW`/`RegSetValueExW`/`RegOpenKeyExW`/`RegQueryValueExW`/`RegCloseKey`/`RegDeleteTreeW`
+  (Advapi32.lib) e `SHChangeNotify` (Shell32.lib) não vêm disponíveis nem como WinAPI cru nem pela lib
+  Registry do PureBasic nesta instalação do compilador — confirmado tentando as duas formas antes de
+  escrever um `Import` manual (mesmo idioma já usado no dark mode, incluindo a decoração de nome pra
+  builds x86).
+- Verificado ao vivo em cada etapa (compilação limpa, `.exe` real, `WM_COMMAND`/`BM_CLICK` num HWND
+  específico, screenshot, registro do Windows conferido por fora com PowerShell, um `.md` salvo de
+  verdade reaparecendo no índice) — com uma exceção documentada: o clique duplo dentro do
+  `ListIconGadget` do índice não foi testado por automação de mensagem (exigiria `LVM_SETITEMSTATE`,
+  classe de mensagem que este projeto evita por risco de travar o processo alvo) nem por clique real de
+  mouse na máquina do usuário; ficou verificado por revisão de código, reusando a mesma lógica já
+  testada de "Abrir arquivo". Detalhamento completo em `docs/SPEC.md`, módulos 43/44.
+
+---
+
 ## 8.3.0 — "TECLA FANTASMA" (2026-08-20)
 
 **Tema da versão**: melhor integração do console do openMSX (`Executar → openMSX...`) com o fluxo de

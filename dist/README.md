@@ -6,7 +6,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](docs/images/msxbasica-01.png)
 
-**Versão atual: 8.1.3** — versão e build (data/hora UTC de compilação, em
+**Versão atual: 8.4.0** — versão e build (data/hora UTC de compilação, em
 hexadecimal) são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -147,13 +147,23 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
     como...**/**Duplicar...**; **Cancelar** descarta a sessão sem tocar nele.
 
   ![Gerenciador gráfico de disco MSX (Criar → Disco...) com painel local à esquerda e disco à direita](docs/images/msxbasica-03.png)
-- **Sistema de projeto** (`src/editor/core/ProjectDB.pbi`) — um projeto MSX inteiro (por enquanto, Sprites; os
-  demais tipos de conteúdo ganham tabela quando tiverem editor próprio) vive num único arquivo SQLite
+- **Leitor e editor de Markdown (`.md`)** (`src/editor/core/MdViewerGui.pbi`, aba em modo "MD" —
+  **Arquivo → Novo MD...** ou abrindo um `.md` existente) — highlight próprio de Markdown na aba
+  normal, mais duas janelas auxiliares sobre o conteúdo dela: **Ver MD/TXT...** (`F9`) alterna, num
+  popup somente-leitura, entre o texto cru e renderizado (reaproveita o motor de
+  `GenericMdHelpGui.pbi`, os mesmos visualizadores de manual/BIOS/Livro Vermelho); **Ver MD+TXT...**
+  (`Shift+F9`) abre um split editável/renderizado lado a lado, atualizado a cada tecla, que grava de
+  volta na aba real (não numa cópia) — é a edição "ao vivo" de verdade. Pensado pra documentar um
+  programa dentro do próprio `.msxproject` (ver Índice de recursos do projeto, logo abaixo) — ex.: o
+  artigo de uma revista explicando como usar um type-in, lado a lado com o programa em si.
+- **Sistema de projeto** (`src/editor/core/ProjectDB.pbi`, menu **Projeto**) — um projeto MSX inteiro
+  (documentos de texto, sprites, alfabetos, sons PSG, SFX do SEE Tracker, músicas MML, telas nos vários
+  formatos — Screen 0/1/2/1+2, Graphos III —, e Assembly Sub-Projects) vive num único arquivo SQLite
   (`.msxproject`). Ao abrir sem nenhum parâmetro de linha de comando, a IDE já cria/usa de cara um
   projeto implícito **"noname.msxproject"** num arquivo temporário — tudo que for registrado vai
-  sendo gravado nele sem precisar criar um projeto antes. **Arquivo → Novo projeto...** troca para um
+  sendo gravado nele sem precisar criar um projeto antes. **Projeto → Novo projeto...** troca para um
   projeto novo e vazio num local escolhido (oferece salvar o atual primeiro, se tiver conteúdo não
-  salvo); **Arquivo → Abrir projeto...** abre um `.msxproject` já existente. **Arquivo → Salvar
+  salvo); **Projeto → Abrir projeto...** abre um `.msxproject` já existente. **Projeto → Salvar
   projeto**/**Salvar projeto como...** salvam o projeto atual (o primeiro reaproveita o caminho já
   escolhido, sem diálogo; o segundo sempre pergunta um caminho novo, permitindo salvar uma cópia com
   outro nome) — extensão `.msxproject` é acrescentada automaticamente se não digitada. Ao sair, se o
@@ -163,6 +173,23 @@ o time se refere a cada módulo em conversa e nos comentários de cabeçalho:
   trabalho (pasta do último arquivo salvo, ou o diretório corrente enquanto nada foi salvo ainda).
   **Arquivo → Salvar Tudo** (`Ctrl+Alt+S`) salva todas as abas abertas (uma por uma, na ordem, pedindo
   "Salvar como..." pras que ainda não têm nome) e o projeto atual numa ação só.
+- **Índice de recursos do projeto** (`src/editor/core/ProjectIndexGui.pbi`, **Projeto → Índice de
+  recursos...**, `Ctrl+Alt+R`) — catálogo, numa lista só, de tudo que o `.msxproject` atual guarda:
+  documentos (rotulados por tipo — programa Basic Dignified/MSX-BASIC/Assembly, ou artigo Markdown),
+  cada recurso numerado (sprite/alfabeto/som/SFX/música/tela/Graphos/Assembly Sub-Project) e qualquer
+  `.dsk` ao lado do `.msxproject` (esses não ficam guardados dentro do banco, são achados escaneando a
+  pasta). Pensado pra quem empacota vários programas + artigos explicativos num projeto só — ex.:
+  digitando os type-ins de uma revista, um `.msxproject` por edição com os programas, os discos prontos
+  e um `.md` por artigo (ver **Leitor e editor de Markdown**, acima). Dois
+  cliques leva pro lugar certo: documento troca de aba (abre do disco se precisar), disco abre o
+  Gerenciador de disco já com o arquivo escolhido, qualquer outro recurso abre o editor daquele tipo.
+- **Associação de arquivo `.msxproject`** (`src/editor/core/FileAssociationGui.pbi`, **Configurar →
+  Associações de arquivo...**) — liga/desliga, só no Windows, a associação de `.msxproject` com o
+  Paleobasic (`HKEY_CURRENT_USER\Software\Classes`, sem precisar de administrador) — depois de marcada,
+  dar 2 cliques num `.msxproject` no Explorer abre esse projeto direto na IDE (o caminho recebido na
+  linha de comando é lido bem no início de `BadigEditor.pb`, antes de abrir a janela principal).
+  Desmarcar só remove a associação se ela ainda apontar pra esta cópia do Paleobasic — nunca mexe numa
+  associação de outro programa.
 - **Editor de sprites** (`src/editor/visual_editors/SpriteEditorGui.pbi`, menu **Criar → Sprite...**) — grade clicável
   8×8 ou 16×16 com a **palheta original de 16 cores do MSX1** (TMS9918), e radios **MSX1** (sprite
   inteiro com uma única cor) / **MSX2** (uma cor por linha, aplicada automaticamente conforme o
