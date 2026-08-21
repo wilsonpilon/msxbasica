@@ -1,3 +1,9 @@
+# Pacotes .zip de release (paleobasic-vXXXXXX.zip, gerados manualmente pra
+# subir como asset de release do GitHub, nunca fazem parte do repositorio em
+# si) - ja aconteceu de 3 desses ficarem rastreados por engano e precisarem de
+# limpeza depois (ver CHANGELOG.md, 2026-08-19); regra aqui evita repetir.
+/paleobasic-v*.zip
+
 # Copia local do toolchain Basic Dignified Suite - referencia de comportamento
 # a ser portada nativamente (ver docs/SPEC.md), nao dependencia de runtime.
 # Baixavel via Configurar -> Basic Dignified... -> "Baixar Basic Dignified Suite..."
