@@ -860,6 +860,22 @@ Global HoverCloseTabPosition.i = -1
 ; documento como modificado (usado ao carregar conteudo programaticamente).
 Global SuppressModifiedTracking.b = #False
 
+; --- INSTRUMENTACAO TEMPORARIA (investigacao do bug "abas somem") ---------
+; Log de diagnostico gravado ao lado do .exe (tabdebug.log) - WriteStringN +
+; FlushFileBuffers em vez de Debug/PrintN (ver CLAUDE.md: PrintN/Debug nao
+; aparecem de forma confiavel a partir deste processo). REMOVER depois que o
+; bug for identificado.
+Global TabDebugFile.i = 0
+Procedure TabDebugLog(Msg.s)
+  If Not TabDebugFile
+    TabDebugFile = OpenFile(#PB_Any, GetPathPart(ProgramFilename()) + "tabdebug.log", #PB_File_Append)
+  EndIf
+  If TabDebugFile
+    WriteStringN(TabDebugFile, FormatDate("%hh:%ii:%ss.", Date()) + RSet(Str(ElapsedMilliseconds() % 1000), 3, "0") + "  " + Msg)
+    FlushFileBuffers(TabDebugFile)
+  EndIf
+EndProcedure
+
 ; Tabelas de palavras-chave do dialeto MSX-BASIC/Dignified, usadas tanto
 ; pelo realce de sintaxe quanto como base para a futura tokenizacao.
 Global NewMap KwStatement.b()
@@ -2393,7 +2409,9 @@ EndProcedure
 ; Torna a aba em Position a aba visivel/ativa: mostra o ScintillaGadget dela e
 ; esconde todos os outros, atualiza a selecao visual da tab bar e a regua.
 Procedure SetActiveTab(Position)
+  TabDebugLog("SetActiveTab(" + Str(Position) + ")  DocsCount=" + Str(ListSize(Docs())) + "  ActiveBefore=" + Str(ActiveTabPosition))
   If Not SelectElement(Docs(), Position)
+    TabDebugLog("  SetActiveTab: SelectElement FALHOU, abortando")
     ProcedureReturn
   EndIf
 
@@ -2416,6 +2434,8 @@ EndProcedure
 
 Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBase.s = "noname")
   Protected InnerW, InnerH, Sci
+
+  TabDebugLog("AddDocumentTab entrada  Path='" + Path + "'  Mode=" + Mode + "  DocsCountAntes=" + Str(ListSize(Docs())))
 
   InnerW = GadgetWidth(#RulerGadget)
   InnerH = WindowHeight(#MainWindow) - StatusBarHeight(#MainStatusBar) - #TabBar_Height - #Ruler_Height
@@ -2475,6 +2495,7 @@ Procedure AddDocumentTab(Path.s = "", Content.s = "", Mode.s = "DMX", UntitledBa
   Docs()\Modified = #False
 
   Protected NewPosition = ListSize(Docs()) - 1
+  TabDebugLog("AddDocumentTab saida  NewPosition=" + Str(NewPosition) + "  Sci=" + Str(Sci) + "  DocsCountDepois=" + Str(ListSize(Docs())))
   UpdateTabCaption(NewPosition)
   SetActiveTab(NewPosition)
 EndProcedure
@@ -2546,7 +2567,10 @@ EndProcedure
 Procedure RedrawTabBar()
   Protected W = GadgetWidth(#TabBarGadget)
   Protected H = GadgetHeight(#TabBarGadget)
-  If W <= 0 Or H <= 0 Or Not StartDrawing(CanvasOutput(#TabBarGadget))
+  Protected StartOk = StartDrawing(CanvasOutput(#TabBarGadget))
+  TabDebugLog("RedrawTabBar  W=" + Str(W) + " H=" + Str(H) + " StartDrawingOk=" + Str(StartOk) + " DocsCount=" + Str(ListSize(Docs())) + " ActiveTabPosition=" + Str(ActiveTabPosition))
+  If W <= 0 Or H <= 0 Or Not StartOk
+    TabDebugLog("  RedrawTabBar: abortando (W/H invalido ou StartDrawing falhou)")
     ProcedureReturn
   EndIf
 
@@ -4706,6 +4730,7 @@ AddDocumentTab()
 ResizeInterface()
 
 Define Event, Quit, Position, AllSaved, Discard, ChangedGadget, DocPos, AcPos, AcStart
+Define TabDebug_Hit.b
 Define MouseX, MouseY, HitPos, NewHoverTab, NewHoverClose
 
 Repeat
@@ -4716,6 +4741,7 @@ Repeat
     Case #PB_Event_Menu
       Select EventMenu()
         Case #Menu_New
+          TabDebugLog("Menu #Menu_New selecionado")
           AddDocumentTab()
 
         Case #Menu_NewAssembly
@@ -5008,17 +5034,24 @@ Repeat
               MouseX = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseX)
               MouseY = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseY)
               HitPos = 0
+              TabDebug_Hit = #False
               ForEach Docs()
                 If MouseX >= Docs()\TabX1 And MouseX < Docs()\TabX2
+                  TabDebug_Hit = #True
                   If MouseX >= Docs()\CloseX1 - 4 And MouseX <= Docs()\CloseX2 + 4 And MouseY >= 4 And MouseY <= #TabBar_Height - 4
+                    TabDebugLog("TabBar click: fechar aba HitPos=" + Str(HitPos) + " MouseX=" + Str(MouseX) + " MouseY=" + Str(MouseY))
                     CloseTab(HitPos)
                   Else
+                    TabDebugLog("TabBar click: trocar para HitPos=" + Str(HitPos) + " MouseX=" + Str(MouseX) + " MouseY=" + Str(MouseY))
                     SetActiveTab(HitPos)
                   EndIf
                   Break
                 EndIf
                 HitPos + 1
               Next
+              If Not TabDebug_Hit
+                TabDebugLog("TabBar click: NENHUMA aba atingida  MouseX=" + Str(MouseX) + " MouseY=" + Str(MouseY) + " DocsCount=" + Str(ListSize(Docs())))
+              EndIf
 
             Case #PB_EventType_MouseMove
               MouseX = GetGadgetAttribute(#TabBarGadget, #PB_Canvas_MouseX)
@@ -5077,6 +5110,7 @@ Repeat
 
     Case #Event_Rehighlight
       ChangedGadget = EventGadget()
+      TabDebugLog("Event_Rehighlight  ChangedGadget=" + Str(ChangedGadget) + "  ActiveSciGadget=" + Str(ActiveSciGadget()) + "  EventData=" + Str(EventData()))
       If Not EventData()
         DocPos = FindDocumentByGadget(ChangedGadget)
         If DocPos >= 0

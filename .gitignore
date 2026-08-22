@@ -4,6 +4,18 @@
 # limpeza depois (ver CHANGELOG.md, 2026-08-19); regra aqui evita repetir.
 /paleobasic-v*.zip
 
+# Instalador standalone (build-installer.ps1, ver docs/SPEC.md) - artefatos
+# de build, nunca versionados: payload.zip embutido no instalador via
+# IncludeBinary (~100+ MB, seria catastrofico no historico do git), o
+# manifesto que o gera, a ferramenta de empacotamento compilada, e o proprio
+# instalador final (installer\PaleoBasicSetup.exe, tambem grande por embutir
+# o payload) - so o FONTE (src\installer\*.pb) fica rastreado.
+/src/installer/payload.zip
+/src/installer/payload.zip.build.log
+/src/installer/payload_manifest.txt
+/src/installer/tools/BuildPayloadZip.exe
+/installer/
+
 # Copia local do toolchain Basic Dignified Suite - referencia de comportamento
 # a ser portada nativamente (ver docs/SPEC.md), nao dependencia de runtime.
 # Baixavel via Configurar -> Basic Dignified... -> "Baixar Basic Dignified Suite..."
