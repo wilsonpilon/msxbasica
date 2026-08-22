@@ -2018,91 +2018,6 @@ Procedure.s GetSciTextRange(Sci, StartPos, EndPos)
   ProcedureReturn Result
 EndProcedure
 
-;- ------------------------------------------------------------
-;- Auto-indentacao (abas .dmx/.bas) - pedido explicito do usuario 2026-08-20:
-;- manter a indentacao da linha anterior ao pressionar Enter, em vez de
-;- sempre voltar pra coluna 0 (evita ter que pressionar Tab manual toda
-;- hora). Versao SIMPLIFICADA, mesmo dia: a primeira versao tambem tentava
-;- somar/tirar um nivel sozinha (depois de FOR/IF, ao digitar NEXT/ENDIF),
-;- mas uma linha terminada em ":" (idioma classico de instrucoes encadeadas,
-;- sem FOR/IF nenhum) ainda ganhava um Tab extra por engano - o usuario
-;- preferiu tirar a indentacao automatica de blocos por completo em vez de
-;- arriscar mais falsos positivos. Agora so copia a indentacao da linha
-;- anterior, nunca acrescenta nem tira nada por conta propria.
-;- ------------------------------------------------------------
-
-; Devolve so os espacos/tabs do inicio de Text (a indentacao da linha).
-Procedure.s SciLeadingWhitespace(Text.s)
-  Protected Lead.s = ""
-  Protected K.i = 1, Ch.s
-  While K <= Len(Text)
-    Ch = Mid(Text, K, 1)
-    If Ch <> " " And Ch <> Chr(9)
-      Break
-    EndIf
-    Lead + Ch
-    K + 1
-  Wend
-  ProcedureReturn Lead
-EndProcedure
-
-; Ao pressionar Enter (ver HandleAutoIndentCharAdded abaixo pra qual CharCode
-; isso corresponde de verdade): copia a indentacao da linha que acabou de
-; ser fechada pra linha nova - so isso, sem tentar abrir/fechar nivel
-; nenhum sozinha. SCI_REPLACESEL nao dispara SCN_CHARADDED de volta (so
-; InsertString/API direta faz SCN_MODIFIED, que ja e tratado normalmente em
-; outro lugar) - sem risco de recursao.
-Procedure HandleAutoIndentNewline(Sci, DocMode.s)
-  Protected Pos = ScintillaSendMessage(Sci, #SCI_GETCURRENTPOS)
-  Protected CurLine = ScintillaSendMessage(Sci, #SCI_LINEFROMPOSITION, Pos)
-  If CurLine <= 0
-    ProcedureReturn
-  EndIf
-
-  Protected PrevLine = CurLine - 1
-  Protected PrevStart = ScintillaSendMessage(Sci, #SCI_POSITIONFROMLINE, PrevLine)
-  Protected PrevEnd = ScintillaSendMessage(Sci, #SCI_GETLINEENDPOSITION, PrevLine)
-  Protected PrevText.s = GetSciTextRange(Sci, PrevStart, PrevEnd)
-
-  Protected NewIndent.s = SciLeadingWhitespace(PrevText)
-  If NewIndent <> ""
-    Protected *Buffer = UTF8(NewIndent)
-    ScintillaSendMessage(Sci, #SCI_REPLACESEL, 0, *Buffer)
-    FreeMemory(*Buffer)
-  EndIf
-EndProcedure
-
-; Tratador de #Event_AutoComplete (adiado de #SCN_CHARADDED, mesmo evento que
-; HandleAutoCompleteCharAdded - os dois rodam pro mesmo caractere, um cuida
-; do popup de sugestoes e este da indentacao). CharCode = 13 ("\r") e o Enter
-; completo - qualquer outro caractere nao faz mais nada aqui (a dedentacao
-; automatica ao digitar NEXT/ENDIF/RET/"}" foi removida junto do incremento
-; de nivel, ver comentario do bloco acima).
-Procedure HandleAutoIndentCharAdded(Sci, CharCode)
-  ; O Scintilla insere a sequencia de EOL INTEIRA (ex. "\r\n" em modo CRLF)
-  ; assim que ve o "\r" chegar, e SCN_CHARADDED reporta o "\r" (13) que
-  ; disparou isso - NAO um "\n" (10) separado depois. Confirmado ao vivo
-  ; enviando WM_CHAR(13) diretamente pro controle Scintilla (mensagem
-  ; direcionada a um HWND especifico - tecnica de teste segura, ver
-  ; docs/SPEC.md modulo 38). Aceitar os dois valores e mais robusto contra
-  ; qualquer modo de EOL diferente, sem risco de indentar em dobro - so um
-  ; dos dois chega por Enter, nunca os dois juntos.
-  If CharCode <> 13 And CharCode <> 10
-    ProcedureReturn
-  EndIf
-
-  Protected DocPos = FindDocumentByGadget(Sci)
-  If DocPos < 0 Or Not SelectElement(Docs(), DocPos)
-    ProcedureReturn
-  EndIf
-  Protected DocMode.s = Docs()\Mode
-  If DocMode <> "DMX" And DocMode <> "BAS"
-    ProcedureReturn
-  EndIf
-
-  HandleAutoIndentNewline(Sci, DocMode)
-EndProcedure
-
 ; Acrescenta Word a Cand() se seu prefixo (ate o tamanho do que ja foi
 ; digitado) bater com PrefixUpper, ignorando maiusculas/minusculas - a chave
 ; do mapa e o proprio texto exibido no popup, entao duplicatas (mesma
@@ -5125,7 +5040,6 @@ Repeat
       HighlightDocument(ChangedGadget)
 
     Case #Event_AutoComplete
-      HandleAutoIndentCharAdded(EventGadget(), EventData())
       HandleAutoCompleteCharAdded(EventGadget(), EventData())
 
   EndSelect
