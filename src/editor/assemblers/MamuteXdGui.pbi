@@ -52,6 +52,28 @@
 ;  vez de Mamute_ReadByte/WriteByte "puros". Endereco de VRAM pode passar de
 ;  FFFF (ate 192KB) - por isso MamuteXd_CellAddr()/paginacao usam
 ;  Mamute_SxWrapAddr() (modulo certo pro alvo) em vez de "& $FFFF" cru.
+;
+;  Cruz de modos (docs/SPEC.md modulo 45f, pedido explicito do usuario -
+;  "coloque em cruz como no Super-X original") - o SUPER-X real tem 5 modos
+;  de edicao (D/A/H/I/M) compartilhando a mesma "casca" de janela, trocaveis
+;  em tempo real via um menu em cruz (Dump no topo, Ascii/Char/Multi na
+;  linha do meio, Disasm embaixo - layout exato da doc, secao "Basic
+;  commands"). O Mamute ainda NAO tem essa casca compartilhada (cada modo e'
+;  seu proprio arquivo/janela) - decisao explicita do usuario (pergunta
+;  direta antes de codar): colocar a cruz JA, ligando so' o que ja existe -
+;  **Dump** = esta propria grade (ja ativa, botao so' mostra destaque);
+;  **Multi** = fecha esta janela e abre MamuteXm_Open() no MESMO
+;  endereco/alvo (XM ja existe pronto, so' faltava essa ponte); **Char**
+;  continua o UNICO modo ainda nao implementado da cruz inteira - botao
+;  mostra "AINDA NAO IMPLEMENTADO" no rotulo de status em vez de fingir
+;  trocar de tela. **Ascii** (modulo 45h) e **Disasm** (modulo 45i, sessoes
+;  seguintes) fecham esta janela e abrem MamuteXa_Open()/MamuteXi_Open() no
+;  MESMO endereco/alvo - mesma ponte do Multi/XM, so' que precisam de
+;  Declare.i MamuteXa_Open(...)/MamuteXi_Open(...) antecipados em
+;  BadigEditor.pb (sentido INVERSO do Declare do XM: aqui sao os arquivos
+;  incluidos DEPOIS, MamuteXaGui.pbi/MamuteXiGui.pbi, que fornecem as
+;  funcoes reais). Cada modo novo (quando for construido) vira so' mais um
+;  Case aqui, sem mudar o layout da cruz.
 ; ------------------------------------------------------------
 ;
 
@@ -212,6 +234,46 @@ Procedure MamuteXd_DrawButton(Canvas, Label.s, Font)
   StopDrawing()
 EndProcedure
 
+; Botao da cruz de modos - 3 estilos visuais: 0=disponivel (contorno verde
+; normal, mesmo estilo de MamuteXd_DrawButton), 1=ATIVO agora (fundo verde
+; solido, texto preto - mesma paleta de destaque do cursor da grade),
+; 2=ainda nao implementado (contorno cinza escuro, texto cinza - clicavel,
+; mas deixa claro visualmente que nao faz nada de verdade ainda).
+Procedure MamuteXd_DrawModeButton(Canvas, Label.s, Font, Style.b)
+  If Not StartDrawing(CanvasOutput(Canvas))
+    ProcedureReturn
+  EndIf
+  Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
+  Protected ColActive = RGB(60, 220, 90), ColDim = RGB(70, 70, 70), ColDimText = RGB(120, 120, 120)
+  Select Style
+    Case 1 ; ativo agora
+      Box(0, 0, W, H, ColActive)
+      DrawingMode(#PB_2DDrawing_Outlined)
+      Box(0, 0, W, H, ColActive)
+      DrawingMode(#PB_2DDrawing_Transparent)
+      DrawingFont(FontID(Font))
+      Protected TW1 = TextWidth(Label), TH1 = TextHeight(Label)
+      DrawText((W - TW1) / 2, (H - TH1) / 2, Label, RGB(0, 0, 0))
+    Case 2 ; ainda nao implementado
+      Box(0, 0, W, H, RGB(0, 20, 8))
+      DrawingMode(#PB_2DDrawing_Outlined)
+      Box(0, 0, W, H, ColDim)
+      DrawingMode(#PB_2DDrawing_Transparent)
+      DrawingFont(FontID(Font))
+      Protected TW2 = TextWidth(Label), TH2 = TextHeight(Label)
+      DrawText((W - TW2) / 2, (H - TH2) / 2, Label, ColDimText)
+    Default ; disponivel
+      Box(0, 0, W, H, RGB(0, 45, 18))
+      DrawingMode(#PB_2DDrawing_Outlined)
+      Box(0, 0, W, H, ColActive)
+      DrawingMode(#PB_2DDrawing_Transparent)
+      DrawingFont(FontID(Font))
+      Protected TW3 = TextWidth(Label), TH3 = TextHeight(Label)
+      DrawText((W - TW3) / 2, (H - TH3) / 2, Label, ColActive)
+  EndSelect
+  StopDrawing()
+EndProcedure
+
 Procedure MamuteXd_UpdateStatus(G_AddrLabel, G_OffsetLabel, G_ModeLabel, *State.MamuteXdState)
   Protected AddrDigits.i = 4
   If *State\Target\IsVram : AddrDigits = 5 : EndIf
@@ -258,6 +320,9 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
     MFont = LoadFont(#PB_Any, "Consolas", 14, #PB_Font_Bold)
   EndIf
 
+  Protected BtnFont = LoadFont(#PB_Any, "Consolas", 14, #PB_Font_Bold)
+  If Not BtnFont : BtnFont = MFont : EndIf
+
   Protected CharW, CharH, AddrLabelW, GapW
   Protected MeasureImg = CreateImage(#PB_Any, 10, 10)
   If MeasureImg And StartDrawing(ImageOutput(MeasureImg))
@@ -285,7 +350,21 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
   Protected BtnH = 40, BtnGap = 8
   Protected RowW = 56 + BtnGap + BtnH + BtnGap + BtnH + BtnGap + BtnH + BtnGap + BtnH + BtnGap + 56 + BtnGap * 3 + 36 + BtnGap + 36
 
-  Protected WinW = GridW + Margin * 2
+  ; Cruz de modos (Dump/Ascii/Char/Multi/Disasm, ver comentario no topo do
+  ; arquivo) - 3x3 celulas, so as 5 em formato de "+" tem botao de verdade.
+  ; Fica a direita da grade, centralizada verticalmente com ela (a grade e'
+  ; bem mais alta que a cruz - 16 linhas contra 3 - entao cabe do lado sem
+  ; esticar a altura da janela).
+  Protected ModeBtnW = 76, ModeBtnH = 34, ModeBtnGap = 6
+  Protected ModeGapX = 24
+  Protected ModeCrossW = ModeBtnW * 3 + ModeBtnGap * 2
+  Protected ModeCrossH = ModeBtnH * 3 + ModeBtnGap * 2
+  Protected ModeCrossX = Margin + GridW + ModeGapX
+  Protected ModeCrossCol0 = ModeCrossX
+  Protected ModeCrossCol1 = ModeCrossX + ModeBtnW + ModeBtnGap
+  Protected ModeCrossCol2 = ModeCrossX + (ModeBtnW + ModeBtnGap) * 2
+
+  Protected WinW = GridW + ModeGapX + ModeCrossW + Margin * 2
   If RowW + Margin * 2 > WinW
     WinW = RowW + Margin * 2
   EndIf
@@ -315,6 +394,30 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
   Protected G_Grid = CanvasGadget(#PB_Any, Margin, GridY, GridW, GridH, #PB_Canvas_Keyboard)
   CurY + GridH + 12
 
+  ; Cruz de modos - centralizada verticalmente com a grade (16 linhas, bem
+  ; mais alta que os 3 da cruz).
+  Protected ModeCrossY = GridY + (GridH - ModeCrossH) / 2
+  Protected ModeRow0 = ModeCrossY
+  Protected ModeRow1 = ModeCrossY + ModeBtnH + ModeBtnGap
+  Protected ModeRow2 = ModeCrossY + (ModeBtnH + ModeBtnGap) * 2
+
+  Protected G_ModeDump   = CanvasGadget(#PB_Any, ModeCrossCol1, ModeRow0, ModeBtnW, ModeBtnH)
+  Protected G_ModeAscii  = CanvasGadget(#PB_Any, ModeCrossCol0, ModeRow1, ModeBtnW, ModeBtnH)
+  Protected G_ModeChar   = CanvasGadget(#PB_Any, ModeCrossCol1, ModeRow1, ModeBtnW, ModeBtnH)
+  Protected G_ModeMulti  = CanvasGadget(#PB_Any, ModeCrossCol2, ModeRow1, ModeBtnW, ModeBtnH)
+  Protected G_ModeDisasm = CanvasGadget(#PB_Any, ModeCrossCol1, ModeRow2, ModeBtnW, ModeBtnH)
+
+  MamuteXd_DrawModeButton(G_ModeDump, "Dump", BtnFont, 1)   ; ja e' o modo ativo agora
+  MamuteXd_DrawModeButton(G_ModeAscii, "Ascii", BtnFont, 0)  ; ja liga com XA de verdade
+  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 2)    ; placeholder
+  MamuteXd_DrawModeButton(G_ModeMulti, "Multi", BtnFont, 0)  ; ja liga com XM de verdade
+  MamuteXd_DrawModeButton(G_ModeDisasm, "Disasm", BtnFont, 0) ; ja liga com XI de verdade
+  GadgetToolTip(G_ModeDump, "Modo Dump (grade hexa+ASCII) - ja ativo")
+  GadgetToolTip(G_ModeAscii, "Modo Ascii - abre o XA neste mesmo endereco/alvo")
+  GadgetToolTip(G_ModeChar, "Modo Char (sprite/fonte) - ainda nao implementado")
+  GadgetToolTip(G_ModeMulti, "Modo Multi - abre o XM neste mesmo endereco/alvo")
+  GadgetToolTip(G_ModeDisasm, "Modo Disasm - abre o XI neste mesmo endereco/alvo")
+
   Protected G_AddrLabel = TextGadget(#PB_Any, Margin, CurY, 260, StatusH, "")
   SetGadgetColor(G_AddrLabel, #PB_Gadget_FrontColor, ColFront)
   SetGadgetColor(G_AddrLabel, #PB_Gadget_BackColor, ColBack)
@@ -332,9 +435,6 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
   SetGadgetColor(G_ModeLabel, #PB_Gadget_BackColor, ColBack)
   SetGadgetFont(G_ModeLabel, FontID(MFont))
   CurY + StatusH + 12
-
-  Protected BtnFont = LoadFont(#PB_Any, "Consolas", 14, #PB_Font_Bold)
-  If Not BtnFont : BtnFont = MFont : EndIf
 
   Protected NewOff.i
 
@@ -416,6 +516,7 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
   EndMacro
 
   Protected Event, Quit = #False
+  Protected AlreadyClosed.b = #False ; #True quando o botao "Multi" ja fechou a janela na hora (evita fechar 2x no final)
   Repeat
     Event = WaitWindowEvent()
     Select Event
@@ -477,6 +578,42 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
           Case G_PageRight  : If EventType() = #PB_EventType_LeftButtonDown : MamuteXd_DoPage(128) : EndIf
           Case G_MinusBtn   : If EventType() = #PB_EventType_LeftButtonDown : MamuteXd_DoOffset(-1) : EndIf
           Case G_PlusBtn    : If EventType() = #PB_EventType_LeftButtonDown : MamuteXd_DoOffset(1) : EndIf
+
+          ; Cruz de modos (ver comentario no topo do arquivo) - Dump ja e' o
+          ; modo ativo (clique nao faz nada); Ascii/Multi/Disasm trocam de
+          ; verdade pro XA/XM/XI, no MESMO endereco/alvo; Char continua o
+          ; unico placeholder.
+          Case G_ModeDump
+            ; ja e' o modo ativo - nada a fazer
+
+          Case G_ModeMulti
+            If EventType() = #PB_EventType_LeftButtonDown
+              CloseModelessChildWindow(ParentWindow, Win)
+              AlreadyClosed = #True
+              State\BaseAddr = MamuteXm_Open(ParentWindow, State\BaseAddr, @State\Target)
+              Quit = #True
+            EndIf
+
+          Case G_ModeAscii
+            If EventType() = #PB_EventType_LeftButtonDown
+              CloseModelessChildWindow(ParentWindow, Win)
+              AlreadyClosed = #True
+              State\BaseAddr = MamuteXa_Open(ParentWindow, State\BaseAddr, @State\Target)
+              Quit = #True
+            EndIf
+
+          Case G_ModeChar
+            If EventType() = #PB_EventType_LeftButtonDown
+              SetGadgetText(G_ModeLabel, "Modo Char (sprite/fonte): AINDA NAO IMPLEMENTADO")
+            EndIf
+
+          Case G_ModeDisasm
+            If EventType() = #PB_EventType_LeftButtonDown
+              CloseModelessChildWindow(ParentWindow, Win)
+              AlreadyClosed = #True
+              State\BaseAddr = MamuteXi_Open(ParentWindow, State\BaseAddr, @State\Target)
+              Quit = #True
+            EndIf
         EndSelect
 
       Case #PB_Event_Menu
@@ -531,6 +668,8 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
     EndSelect
   Until Quit
 
-  CloseModelessChildWindow(ParentWindow, Win)
+  If Not AlreadyClosed
+    CloseModelessChildWindow(ParentWindow, Win)
+  EndIf
   ProcedureReturn State\BaseAddr
 EndProcedure

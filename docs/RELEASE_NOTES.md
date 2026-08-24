@@ -6,6 +6,84 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.5.0 — "CRUZ MANCA" (2026-08-24)
+
+**Tema da versão**: início da portagem do **SUPER-X**, outro monitor/debugger clássico de MSX (mais
+avançado que o MegaAssembler que o Mamute Assembler já herdava — breakpoint, notas persistentes por
+endereço, exportação de disassembly, mapeador de RAM), pro Mamute Assembler. Quatro comandos batizados
+com prefixo `X` pra não colidir com os já existentes (`XD`/`XA`/`XI`/`XM`, versões de `D`/`A`/`I`/`M`)
+compartilham a mesma sintaxe de endereçamento estendida e a mesma "cruz de modos" — um menu em formato de
+`+` copiado do próprio SUPER-X original que deixa trocar de tela sem digitar outro comando. Nome
+escolhido pela própria cruz: dos 5 modos que ela liga (`Dump`/`Ascii`/`Char`/`Multi`/`Disasm`), 4 já
+puxam pra uma tela de verdade — só **`Char`** (editor de sprite/fonte) ainda não tem nada por trás,
+"AINDA NAO IMPLEMENTADO" no rótulo. Uma cruz de 5 pontas com 1 perna manca: anda, mas não é ainda a coisa
+completa — nem perto do resto do SUPER-X (mais de 40 outros comandos no inventário, ver `docs/SPEC.md`
+módulo 45, ainda intocados).
+
+### Novidades
+
+- **`XD`** — porta o `D` do SUPER-X (hex dump editável). Um endereço abre uma grade interativa 16×8
+  hexa+ASCII (bloco ASCII também editável, tecla `"` pra digitar direto, `@` repete o byte anterior);
+  dois ou três campos (`<inic>[,<fim>[,<arquivo>]]`) despejam texto no log ou gravam os bytes crus num
+  arquivo binário (reaproveita o diálogo do `SAVE` já existente).
+- **`XA`** — porta o `A` do SUPER-X (listagem/edição ASCII). Tela dedicada nova, 16×16 = 256 bytes por
+  tela, só texto (sem coluna hexa) — qualquer caractere digitado escreve direto na memória e avança.
+  Mesma sintaxe de dois/três campos do `XD`.
+- **`XI`** — porta o `I` do SUPER-X (disassembly). Um endereço abre uma tela de VISUALIZAÇÃO (sem edição
+  nem a pilha de navegação jump/call que o original tem — decisão deliberada, fica pra depois); dois/três
+  campos despejam a listagem no log ou gravam a listagem de TEXTO num arquivo (diferente do `XD`/`XA`,
+  que salvam bytes crus).
+- **`XM`** — porta o `M` do SUPER-X (entrada assembler interativa: monta e grava linha a linha direto na
+  memória, ou aceita campos de dado crus).
+- **Endereçamento estendido** — qualquer um dos quatro aceita `<endereço>#<slot>[-<subslot>]` pra mirar
+  um slot/sub-slot físico específico direto (até 1MB via slots expandidos), `#V`/`#4` pra VRAM e `#S`/`#5`
+  pro slot de boot — sem precisar trocar o `PAGE` corrente primeiro.
+- **`<fim>` opcional, default de 256 bytes** — `XD`/`XA`/`XI` aceitam `<inic>,<arquivo>` direto (sem
+  precisar digitar o endereço final) quando o intervalo desejado é só os 256 bytes a partir do início.
+- **Prefixo `?`** — na frente de `XD`/`XA`/`XI` manda a listagem pra um PDF em vez do log ("impressora"
+  do SUPER-X original).
+- **7 variáveis de debugger** (`@0`-`@3` + `@B`/`@E`/`@S`) — `@nome=endereço[#slot]` grava, `@` sozinho
+  lista todas, `@nome` substitui um endereço completo em qualquer um dos quatro comandos.
+- **Notas do `SUPER-X.TNK` traduzidas pro Ajuda** — as 471 notas originais (BIOS/work area/hooks, em
+  japonês no arquivo original) viraram 11 tópicos de Ajuda em português, seção "SUPER-X - Notas". O
+  carregador nativo do formato binário já existe; os comandos `MON>` que os usariam (`iM`/`iC`/`iL`/`iS`)
+  ainda não.
+
+### Correções
+
+- **Sufixo de sub-slot aceitava `"3-"` (hífen sem dígito depois) como válido** — `Mamute_ParseSxSlotSuffix`
+  não verificava se sobrava algo depois do hífen antes de aceitar.
+- **Endereço-salto do `XM` sobrescrevia o alvo ativo mesmo sem sufixo `#`** — contradizia a regra
+  documentada do próprio SUPER-X ("se o slot for omitido, assume o corrente").
+- **`DAA`/`CCF` confundidos com endereço hexa no `XM`** — são os dois únicos mnemônicos Z80 de zero
+  operandos cujo nome também é um hexadecimal válido; corrigido checando `Z80Asm::IsMnemonic()` antes de
+  tentar interpretar o token como salto.
+
+### Bastidores
+
+- **O motor de disassembly (`L`/`LP`, desde o módulo 31) nunca honrava slot/VRAM explícito** — em vez de
+  duplicar as tabelas de opcode Z80 (código historicamente delicado) pra um "XI-aware" separado, toda a
+  cadeia de decodificação ganhou um parâmetro OPCIONAL (`*T.MamuteSxTarget = 0`) — os 7 call sites
+  pré-existentes (inclusive o passo a passo da CPU ao vivo, `MamuteZ80Cpu.pbi`) continuam chamando sem
+  esse parâmetro, comportamento idêntico a antes; confirmado ao vivo comparando `L 4000,4010` contra
+  `XI 4000,4010`, byte a byte idênticos.
+- **Escopo dos comandos-ponte confirmado por pergunta direta antes de codar, três vezes nesta sessão**:
+  se a grade do `XD` seria reaproveitada pro `XA` (não — tela nova), se o `XI` sozinho abriria uma janela
+  editável tipo `XD` (não — só visualização) e o que o terceiro campo do `XI` deveria salvar (listagem de
+  texto, não bytes crus) — todas as três decisões documentadas em `docs/SPEC.md`, módulos 45h/45i.
+- **Uma lacuna de verificação registrada, não escondida**: a digitação de caractere na grade do `XA`
+  não pôde ser testada ao vivo neste ambiente de automação (três técnicas de injeção de teclado
+  sintético falharam, incluindo `SendInput` de hardware devolvendo 0 eventos — cliques de mouse
+  continuaram funcionando normalmente). O mecanismo é cópia literal do bloco ASCII do `XD`, já provado
+  ao vivo antes — mas fica anotado como pendência de verificação, não como certeza.
+- Verificado ao vivo em cada comando novo (compilação limpa a cada passo, `.exe` real, `WM_COMMAND`/
+  `WM_SETTEXT`/`BM_CLICK`/`WM_LBUTTONDOWN` em HWNDs específicos, screenshots) — inclusive as 5 pontes de
+  navegação da cruz de modos nos dois sentidos, o diálogo real de `SAVE`/PDF abrindo e sendo cancelado
+  sem gravar, e os arquivos de teste apagados ao final de cada rodada. Detalhamento completo (todo achado,
+  toda decisão, toda verificação) em `docs/SPEC.md`, módulos 45-45i.
+
+---
+
 ## 8.4.0 — "PORTA DUPLA" (2026-08-21)
 
 **Tema da versão**: duas peças novas para o sistema de projeto, as duas nascidas do mesmo pedido do

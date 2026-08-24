@@ -203,6 +203,8 @@ Structure MamuteGui_State
   ; junto (docs/SPEC.md modulo 45b) - reabrir sem argumento tambem volta pro
   ; MESMO slot/sub-slot/VRAM de antes, nao so o endereco.
   HasLastXd.b : LastXdAddr.i : LastXdTarget.MamuteSxTarget
+  HasLastXa.b : LastXaAddr.i : LastXaTarget.MamuteSxTarget
+  HasLastXi.b : LastXiAddr.i : LastXiTarget.MamuteSxTarget
   HasLastXm.b : LastXmAddr.i : LastXmTarget.MamuteSxTarget
 EndStructure
 
@@ -1637,32 +1639,107 @@ Procedure MamuteGui_CmdCl(G_Log, *State.MamuteGui_State, Args.s)
   *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "DEC+-: " + Str(Signed))
 EndProcedure
 
-; XD [<endereco>] / XD <endinic>,<endfim> - porta do comando D do SUPER-X
-; (docs/SPEC.md modulo 45; nao confundir com o D do proprio Mamute, MODULO
-; 31, que e outra coisa - por isso o prefixo X). UM endereco (ou nenhum,
-; reabre onde ficou) abre a grade interativa hexa+ASCII (MamuteXdGui.pbi,
-; bloco ASCII TAMBEM editavel, "/@ como no original). DOIS enderecos
-; (separados por virgula) NAO abrem grade nenhuma - despejo nao-interativo
-; direto no log, mesmo formato do D/MamuteGui_CmdD (doc do SUPER-X: "Two
-; Addresses: give a non stop list output"). PrinterMode (docs/SPEC.md modulo
-; 45c, MamuteGui_Dispatch detecta o "?" na frente e passa isso aqui) manda
-; essa MESMA listagem pra um PDF em vez do log - so' funciona com dois
-; enderecos (a forma de UM so' abre grade interativa, nao ha o que
-; "imprimir").
+; XD [<endereco>] / XD <inic>[#slot[-subslot]][,<fim>[,<arquivo>]] - porta do
+; comando D do SUPER-X (docs/SPEC.md modulo 45; nao confundir com o D do
+; proprio Mamute, MODULO 31, que e outra coisa - por isso o prefixo X). UM
+; endereco (ou nenhum, reabre onde ficou) abre a grade interativa hexa+ASCII
+; (MamuteXdGui.pbi, bloco ASCII TAMBEM editavel, "/@ como no original). DOIS
+; OU TRES enderecos/campos (separados por virgula) NAO abrem grade nenhuma:
+; - DOIS (<inic>,<fim>) - despejo nao-interativo direto no log, mesmo
+;   formato do D/MamuteGui_CmdD (doc do SUPER-X: "Two Addresses: give a non
+;   stop list output"). <inic> aceita o mesmo sufixo #slot[-subslot]/#V/#S
+;   da forma de UM endereco (modulo 45b) - Mamute_BuildDumpLinesSx() honra o
+;   alvo resolvido em vez de sempre ler a PAGE ativa. <fim> e' sempre um
+;   endereco CPU simples (0000-FFFF), sem sufixo - so' o inicio escolhe
+;   slot/VRAM, igual a sintaxe original do SUPER-X (`<inic>[#slot],<fim>`).
+; - TRES (<inic>,<fim>,<arquivo>) - modulo 45g (docs/SPEC.md): em vez de
+;   listar em texto, GRAVA o intervalo de bytes crus como arquivo binario,
+;   abrindo a MESMA janela do comando SAVE do MON> (MamuteSave_Open(),
+;   MamuteSaveGui.pbi) com "<arquivo>" como nome sugerido - usuario ainda
+;   escolhe/revisa slot(so' informativo aqui, os bytes ja vem prontos)/
+;   formato BIN-ROM/cabecalho antes de gravar de verdade, nada e' salvo so'
+;   por digitar o comando. Le os bytes via Mamute_SxReadByte (honra
+;   slot/sub-slot/VRAM do <inic>) pra um buffer explicito, MESMA tecnica
+;   ja usada pelo "A I" do EDIT (MamuteEditGui.pbi).
+; <fim> OMITIDO (modulo 45h, pedido explicito do usuario "quando nao
+; informar fim, assuma 256 bytes nos comandos") - duas formas aceitas:
+; "XD <inic>,,<arquivo>" (virgula dupla, <fim> explicitamente vazio) OU o
+; atalho "XD <inic>,<arquivo>" (SO' dois campos - se o segundo campo nao
+; parsear como endereco hexa valido, e' tratado como <arquivo> direto, sem
+; precisar da virgula dupla). Nos dois casos <fim> vira StartAddr+255,
+; CLAMPADO no teto do alvo (Mamute_SxMaxAddr - $FFFF normal, MamuteVramSize-1
+; em VRAM) em vez de dar a volta. "XD <inic>," (virgula sobrando, nada depois
+; - nem <fim> nem <arquivo>) tambem usa o default de 256 bytes, despejando no
+; log como se fosse so' "XD <inic>". Uma virgula sobrando DEPOIS de um <fim>
+; explicito e valido, sem nada apos ela (ex.: "XD 4000,4010,") continua erro
+; de sintaxe - "virgula demais" nao e' a mesma coisa que "<fim> omitido".
+; PrinterMode (docs/SPEC.md modulo 45c, MamuteGui_Dispatch detecta o "?" na
+; frente e passa isso aqui) manda a listagem de DOIS enderecos pra um PDF em
+; vez do log - nao se aplica nem a UM endereco (abre grade, nao ha o que
+; "imprimir") nem a TRES (ja vai pro SAVE, nao faz sentido combinar com
+; impressora).
 Procedure MamuteGui_CmdXd(Win, G_Log, *State.MamuteGui_State, Args.s, PrinterMode.b = #False)
   Protected Trimmed.s = Trim(Args)
   Protected CommaPos.i = FindString(Trimmed, ",")
 
   If CommaPos > 0
     Protected StartAddr.i, EndAddr.i
+    Protected DumpTarget.MamuteSxTarget
     Protected StartTok.s = Trim(Left(Trimmed, CommaPos - 1))
-    Protected EndTok.s = Trim(Mid(Trimmed, CommaPos + 1))
-    If Not Mamute_ParseHexAddr(StartTok, @StartAddr) Or Not Mamute_ParseHexAddr(EndTok, @EndAddr) Or EndAddr < StartAddr
+    Protected FieldCount.i = CountString(Trimmed, ",") + 1
+    Protected Field2.s = Trim(StringField(Trimmed, 2, ","))
+    Protected Field3.s = ""
+    If FieldCount >= 3 : Field3 = Trim(StringField(Trimmed, 3, ",")) : EndIf
+    Protected FileTok.s = ""
+    Protected SyntaxOk.b = #True
+
+    If FieldCount > 3 Or Not Mamute_ParseSxAddr(StartTok, @StartAddr, @DumpTarget)
+      SyntaxOk = #False
+    ElseIf Mamute_ParseHexAddr(Field2, @EndAddr)
+      If EndAddr < StartAddr Or (FieldCount = 3 And Field3 = "")
+        SyntaxOk = #False
+      Else
+        FileTok = Field3
+      EndIf
+    ElseIf Field2 = ""
+      EndAddr = StartAddr + 255
+      If EndAddr > Mamute_SxMaxAddr(@DumpTarget) : EndAddr = Mamute_SxMaxAddr(@DumpTarget) : EndIf
+      FileTok = Field3
+    ElseIf FieldCount = 2
+      EndAddr = StartAddr + 255
+      If EndAddr > Mamute_SxMaxAddr(@DumpTarget) : EndAddr = Mamute_SxMaxAddr(@DumpTarget) : EndIf
+      FileTok = Field2
+    Else
+      SyntaxOk = #False
+    EndIf
+
+    If Not SyntaxOk
       *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
       ProcedureReturn
     EndIf
+
+    If FileTok <> ""
+      If PrinterMode
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?IMPRESSAO NAO APLICAVEL A ESTE COMANDO")
+        ProcedureReturn
+      EndIf
+
+      Protected SxLen.i = EndAddr - StartAddr + 1
+      Protected Dim SxBuf.a(SxLen - 1)
+      Protected SxI.i
+      For SxI = 0 To SxLen - 1
+        SxBuf(SxI) = Mamute_SxReadByte((StartAddr + SxI) & $FFFF, @DumpTarget)
+      Next
+
+      Protected SxSaveMsg.s = MamuteSave_Open(Win, FileTok, #True, StartAddr, EndAddr, StartAddr, #True, SxBuf())
+      If SxSaveMsg <> ""
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, SxSaveMsg)
+      EndIf
+      ProcedureReturn
+    EndIf
+
     Protected NewList XdLines.s()
-    Mamute_BuildDumpLines(XdLines(), StartAddr, EndAddr, *State\DisplayMode, #False)
+    Mamute_BuildDumpLinesSx(XdLines(), StartAddr, EndAddr, *State\DisplayMode, @DumpTarget)
 
     If PrinterMode
       ; "?XD" = "impressora" do SUPER-X, que aqui vira PDF - mesma tecnica
@@ -1719,6 +1796,260 @@ Procedure MamuteGui_CmdXd(Win, G_Log, *State.MamuteGui_State, Args.s, PrinterMod
   *State\LastXdAddr = MamuteXd_Open(Win, Addr, 0, @Target)
   CopyStructure(@Target, @*State\LastXdTarget, MamuteSxTarget)
   *State\HasLastXd = #True
+EndProcedure
+
+; XA [<endereco>] / XA <inic>[#slot[-subslot]][,<fim>[,<arquivo>]] - porta do
+; comando A do SUPER-X (docs/SPEC.md modulo 45h, pedido explicito do
+; usuario: "ele e igual ao XD... o processo e o mesmo do anterior"). MESMA
+; sintaxe/mecanismo do XD (modulo 45/45b/45g) - UM endereco abre a tela
+; interativa (MamuteXaGui.pbi, dedicada, SO' ASCII, sem coluna hexa - decisao
+; explicita do usuario via pergunta direta); DOIS/TRES campos despejam texto
+; (ou arquivo binario) sem abrir tela nenhuma. Unica diferenca de verdade
+; contra o XD: o despejo em texto usa Mamute_BuildAsciiDumpLines() (so'
+; ASCII, sem coluna hexa/checksum - nao ha "*State\DisplayMode" aqui, o A do
+; SUPER-X nao tem formato alternativo) e a tela interativa e' MamuteXa_Open()
+; em vez de MamuteXd_Open(). <fim> omitido tambem assume 256 bytes (mesma
+; regra/mesmo texto de comentario do XD, ver ali).
+Procedure MamuteGui_CmdXa(Win, G_Log, *State.MamuteGui_State, Args.s, PrinterMode.b = #False)
+  Protected Trimmed.s = Trim(Args)
+  Protected CommaPos.i = FindString(Trimmed, ",")
+
+  If CommaPos > 0
+    Protected StartAddr.i, EndAddr.i
+    Protected DumpTarget.MamuteSxTarget
+    Protected StartTok.s = Trim(Left(Trimmed, CommaPos - 1))
+    Protected FieldCount.i = CountString(Trimmed, ",") + 1
+    Protected Field2.s = Trim(StringField(Trimmed, 2, ","))
+    Protected Field3.s = ""
+    If FieldCount >= 3 : Field3 = Trim(StringField(Trimmed, 3, ",")) : EndIf
+    Protected FileTok.s = ""
+    Protected SyntaxOk.b = #True
+
+    If FieldCount > 3 Or Not Mamute_ParseSxAddr(StartTok, @StartAddr, @DumpTarget)
+      SyntaxOk = #False
+    ElseIf Mamute_ParseHexAddr(Field2, @EndAddr)
+      If EndAddr < StartAddr Or (FieldCount = 3 And Field3 = "")
+        SyntaxOk = #False
+      Else
+        FileTok = Field3
+      EndIf
+    ElseIf Field2 = ""
+      EndAddr = StartAddr + 255
+      If EndAddr > Mamute_SxMaxAddr(@DumpTarget) : EndAddr = Mamute_SxMaxAddr(@DumpTarget) : EndIf
+      FileTok = Field3
+    ElseIf FieldCount = 2
+      EndAddr = StartAddr + 255
+      If EndAddr > Mamute_SxMaxAddr(@DumpTarget) : EndAddr = Mamute_SxMaxAddr(@DumpTarget) : EndIf
+      FileTok = Field2
+    Else
+      SyntaxOk = #False
+    EndIf
+
+    If Not SyntaxOk
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+
+    If FileTok <> ""
+      If PrinterMode
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?IMPRESSAO NAO APLICAVEL A ESTE COMANDO")
+        ProcedureReturn
+      EndIf
+
+      Protected SxLen.i = EndAddr - StartAddr + 1
+      Protected Dim SxBuf.a(SxLen - 1)
+      Protected SxI.i
+      For SxI = 0 To SxLen - 1
+        SxBuf(SxI) = Mamute_SxReadByte((StartAddr + SxI) & $FFFF, @DumpTarget)
+      Next
+
+      Protected SxSaveMsg.s = MamuteSave_Open(Win, FileTok, #True, StartAddr, EndAddr, StartAddr, #True, SxBuf())
+      If SxSaveMsg <> ""
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, SxSaveMsg)
+      EndIf
+      ProcedureReturn
+    EndIf
+
+    Protected NewList XaLines.s()
+    Mamute_BuildAsciiDumpLines(XaLines(), StartAddr, EndAddr, @DumpTarget)
+
+    If PrinterMode
+      ; "?XA" = "impressora" do SUPER-X, que aqui vira PDF - mesma tecnica
+      ; do XD/P (Mamute_SavePdfListing, modulo 31).
+      Protected FilePath.s = SaveFileRequester("Salvar listagem (?XA) como PDF", "listagem_xa.pdf", "PDF (*.pdf)|*.pdf", 0)
+      If FilePath = ""
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+        ProcedureReturn
+      EndIf
+      If LCase(Right(FilePath, 4)) <> ".pdf"
+        FilePath + ".pdf"
+      EndIf
+      Protected Header.s = "?XA " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr)
+      If Mamute_SavePdfListing(FilePath, XaLines(), Header)
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "PDF GRAVADO: " + FilePath)
+      Else
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR PDF")
+      EndIf
+      ProcedureReturn
+    EndIf
+
+    ForEach XaLines()
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, XaLines())
+    Next
+    ProcedureReturn
+  EndIf
+
+  If PrinterMode
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?IMPRESSAO SO FUNCIONA COM DOIS ENDERECOS (XA <inic>,<fim>)")
+    ProcedureReturn
+  EndIf
+
+  Protected Addr.i
+  Protected Target.MamuteSxTarget
+  If Trimmed = ""
+    If Not *State\HasLastXa
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+    Addr = *State\LastXaAddr
+    CopyStructure(@*State\LastXaTarget, @Target, MamuteSxTarget)
+  Else
+    If Not Mamute_ParseSxAddr(Trimmed, @Addr, @Target)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Mamute_VarStoreBase(Addr, @Target) ; "commands store base address in variable 0", doc do SUPER-X
+  *State\LastXaAddr = MamuteXa_Open(Win, Addr, @Target)
+  CopyStructure(@Target, @*State\LastXaTarget, MamuteSxTarget)
+  *State\HasLastXa = #True
+EndProcedure
+
+; XI [<endereco>] / XI <inic>[#slot[-subslot]][,<fim>[,<arquivo>]] - porta do
+; comando I do SUPER-X (docs/SPEC.md modulo 45i, pedido explicito do usuario:
+; "lista o disassembly do endereco inicial, ate o final (opcional) ou salva
+; com nome (opcional) igual aos outros comandos acima"). MESMA estrutura de
+; campos do XD/XA (modulo 45/45g/45h) - UM endereco abre uma tela de
+; VISUALIZACAO (MamuteXiGui.pbi, decisao explicita do usuario via pergunta
+; direta - sem edicao/pilha de jump-call, isso fica pra depois); DOIS/TRES
+; campos despejam o disassembly em texto sem abrir tela nenhuma. <fim>
+; omitido tambem assume 256 bytes (mesma regra do XD/XA, modulo 45h).
+; Diferenca de verdade contra XD/XA no terceiro campo: o `<arquivo>` do XI
+; NAO abre o dialogo do SAVE (que so' faz sentido pra bytes crus) - grava a
+; LISTAGEM de texto do disassembly direto (Mamute_SaveTextListing(),
+; MamuteSupport.pbi), decisao confirmada com o usuario via pergunta direta.
+Procedure MamuteGui_CmdXi(Win, G_Log, *State.MamuteGui_State, Args.s, PrinterMode.b = #False)
+  Protected Trimmed.s = Trim(Args)
+  Protected CommaPos.i = FindString(Trimmed, ",")
+
+  If CommaPos > 0
+    Protected StartAddr.i, EndAddr.i
+    Protected DumpTarget.MamuteSxTarget
+    Protected StartTok.s = Trim(Left(Trimmed, CommaPos - 1))
+    Protected FieldCount.i = CountString(Trimmed, ",") + 1
+    Protected Field2.s = Trim(StringField(Trimmed, 2, ","))
+    Protected Field3.s = ""
+    If FieldCount >= 3 : Field3 = Trim(StringField(Trimmed, 3, ",")) : EndIf
+    Protected FileTok.s = ""
+    Protected SyntaxOk.b = #True
+
+    If FieldCount > 3 Or Not Mamute_ParseSxAddr(StartTok, @StartAddr, @DumpTarget)
+      SyntaxOk = #False
+    ElseIf Mamute_ParseHexAddr(Field2, @EndAddr)
+      If EndAddr < StartAddr Or (FieldCount = 3 And Field3 = "")
+        SyntaxOk = #False
+      Else
+        FileTok = Field3
+      EndIf
+    ElseIf Field2 = ""
+      EndAddr = StartAddr + 255
+      If EndAddr > Mamute_SxMaxAddr(@DumpTarget) : EndAddr = Mamute_SxMaxAddr(@DumpTarget) : EndIf
+      FileTok = Field3
+    ElseIf FieldCount = 2
+      EndAddr = StartAddr + 255
+      If EndAddr > Mamute_SxMaxAddr(@DumpTarget) : EndAddr = Mamute_SxMaxAddr(@DumpTarget) : EndIf
+      FileTok = Field2
+    Else
+      SyntaxOk = #False
+    EndIf
+
+    If Not SyntaxOk
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+
+    Protected NewList XiLines.s()
+    Protected NextA.i
+    Mamute_DisasmBuildLines(XiLines(), StartAddr, #True, EndAddr, @NextA, @DumpTarget)
+
+    If FileTok <> ""
+      If PrinterMode
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?IMPRESSAO NAO APLICAVEL A ESTE COMANDO")
+        ProcedureReturn
+      EndIf
+
+      Protected Header2.s = "XI " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr)
+      If Mamute_SaveTextListing(FileTok, XiLines(), Header2)
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+          "SALVO " + Chr(34) + FileTok + Chr(34) + " - " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr))
+      Else
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR ARQUIVO")
+      EndIf
+      ProcedureReturn
+    EndIf
+
+    If PrinterMode
+      ; "?XI" = "impressora" do SUPER-X, que aqui vira PDF - mesma tecnica
+      ; do XD/XA/P (Mamute_SavePdfListing, modulo 31).
+      Protected FilePath.s = SaveFileRequester("Salvar listagem (?XI) como PDF", "listagem_xi.pdf", "PDF (*.pdf)|*.pdf", 0)
+      If FilePath = ""
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+        ProcedureReturn
+      EndIf
+      If LCase(Right(FilePath, 4)) <> ".pdf"
+        FilePath + ".pdf"
+      EndIf
+      Protected Header.s = "?XI " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr)
+      If Mamute_SavePdfListing(FilePath, XiLines(), Header)
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "PDF GRAVADO: " + FilePath)
+      Else
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR PDF")
+      EndIf
+      ProcedureReturn
+    EndIf
+
+    ForEach XiLines()
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, XiLines())
+    Next
+    ProcedureReturn
+  EndIf
+
+  If PrinterMode
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?IMPRESSAO SO FUNCIONA COM DOIS ENDERECOS (XI <inic>,<fim>)")
+    ProcedureReturn
+  EndIf
+
+  Protected Addr.i
+  Protected Target.MamuteSxTarget
+  If Trimmed = ""
+    If Not *State\HasLastXi
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+    Addr = *State\LastXiAddr
+    CopyStructure(@*State\LastXiTarget, @Target, MamuteSxTarget)
+  Else
+    If Not Mamute_ParseSxAddr(Trimmed, @Addr, @Target)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Mamute_VarStoreBase(Addr, @Target) ; "commands store base address in variable 0", doc do SUPER-X
+  *State\LastXiAddr = MamuteXi_Open(Win, Addr, @Target)
+  CopyStructure(@Target, @*State\LastXiTarget, MamuteSxTarget)
+  *State\HasLastXi = #True
 EndProcedure
 
 ; XM [<endereco>] - porta do comando M do SUPER-X (docs/SPEC.md modulo 45;
@@ -1834,12 +2165,11 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
     Args = ""
   EndIf
 
-  ; So' o XD entende "?" por enquanto (unico comando do SUPER-X com uma
-  ; forma de listagem estatica de verdade ate agora - XM e' uma sessao
-  ; interativa, nao da pra "imprimir"). Comandos futuros que ganharem
-  ; listagem propria (SD, por exemplo) entram nesta lista quando chegar a
-  ; vez deles.
-  If PrinterMode And Verb <> "XD"
+  ; XD/XA/XI entendem "?" (os tres tem uma forma de listagem estatica de
+  ; verdade - XM e' uma sessao interativa, nao da pra "imprimir"). Comandos
+  ; futuros que ganharem listagem propria (SD, por exemplo) entram nesta
+  ; lista quando chegar a vez deles.
+  If PrinterMode And Verb <> "XD" And Verb <> "XA" And Verb <> "XI"
     *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?IMPRESSAO NAO APLICAVEL A ESTE COMANDO")
     ProcedureReturn
   EndIf
@@ -1922,6 +2252,12 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
 
     Case "XD"
       MamuteGui_CmdXd(Win, G_Log, *State, Args, PrinterMode)
+
+    Case "XA"
+      MamuteGui_CmdXa(Win, G_Log, *State, Args, PrinterMode)
+
+    Case "XI"
+      MamuteGui_CmdXi(Win, G_Log, *State, Args, PrinterMode)
 
     Case "XM"
       MamuteGui_CmdXm(Win, G_Log, *State, Args)

@@ -8714,9 +8714,21 @@ a decidir/priorizar com o usuário, aqui só a avaliação, igual módulo 32):
   como um DOS de verdade. Precisa de decisão de design antes: adotar um diretório corrente novo só pro
   Mamute, ou descartar `CD` por não fazer sentido nesse modelo?
 
-**Próximo passo**: nenhum código foi escrito nesta sessão — só o levantamento acima. Confirmar com o
-usuário a ordem de prioridade das fases A-F (ou pular direto pra alguma) antes de começar a implementação
-de verdade, comando por comando, no mesmo ritmo incremental que o resto do Mamute já segue.
+**Próximo passo (nota original desta sessão de planejamento — status real hoje, ver módulos 45a-45i)**:
+nenhum código tinha sido escrito ainda quando este levantamento foi feito; o usuário confirmou começar
+direto pelo `D`/`M` (rebatizados `XD`/`XM`) em vez de seguir a ordem de fases A-F sugerida aqui. **Status
+em 2026-08-24, fim da sessão que fechou o módulo 45i**: `XD` (dump), `XA` (ASCII), `XM` (entrada
+assembler) e `XI` (disassembly, só visualização) estão implementados e portados, todos compartilhando
+`<inic>[#slot[-subslot]]-[,<fim>[,<arquivo>]]` (endereçamento estendido + default de 256 bytes sem
+`<fim>` + terceiro campo pra salvar) e interligados pela cruz de modos (`Dump`/`Ascii`/`Multi`/`Disasm` —
+só `Char`, sprite/fonte, continua placeholder). Ainda **NADA** das fases B-F foi tocado: `CM`/`FD`/`CS`/
+`TS` (fase B), `SD` (fase C), `S%`/`L%` (fase D), `S#`/`L#` (fase E), `RT`/`iM`/`iC`/`iL`/`iS`/`OF`/`SF`/
+`BL`/`BF`/`TR` (fase F) — nem a pilha de navegação jump/call que o `I` original tinha e o `XI` desta
+sessão deliberadamente deixou de fora (decisão explícita, ver módulo 45i). Nem os comandos "sem colisão,
+nome livre" da tabela (`BL`, `CLS`, `CD`, `RT`, `CM`, `FD`, `CS`, `TS`, `TR`, `CK`, `SF`, `BF`, `PP`,
+`SD`, `FS`, `CI`, `OF`, `CU`, `CO`, `KR`, `KT`, `TP`, `KL`, `SV`, `LD`, `S#`, `L#`, `S%`, `L%`, `iM`,
+`iC`, `iL`, `iS`, `PI`, `PO`, `QT`) receberam nem uma primeira olhada. Ver "Lacunas conhecidas" no fim
+deste documento pro estado real e completo, incluindo a pendência de licença de `others/superx/`.
 
 ### 45a. SUPER-X — primeiros dois comandos portados: `XD`/`XM` (2026-08-24)
 
@@ -8999,7 +9011,269 @@ do SUPER-X) foi implementado; ficam pra uma fase F futura deste módulo.
   completa (`build.ps1`) limpa, sem erros; nenhuma instância pré-existente de `PaleoBasic.exe` foi
   encerrada (verificado com `tasklist` antes de tocar `dist/`).
 
+### 45f. SUPER-X — cruz de modos (Dump/Ascii/Char/Multi/Disasm) no `XD` (2026-08-24)
+
+Pedido explícito do usuário: "coloque os botoes ASCII, Dump, Char, Multi e Disasm, se possivel coloque em
+cruz como no Super-X original, assim o usuario pode dinamicamente mudar o display dos dados pra outro
+formato". O SUPER-X real tem 5 modos de edição (`D`/`A`/`H`/`I`/`M`) compartilhando a mesma "casca" de
+janela, trocáveis via um menu em cruz (doc, seção "Basic commands": Dump no topo, Ascii/Char/Multi na
+linha do meio, Disasm embaixo — layout exato reproduzido aqui).
+
+**Decisão de escopo, confirmada com o usuário antes de codar** (pergunta direta: construir os 3 modos que
+faltam agora, ou só a cruz ligando o que já existe?) — **cruz agora, ligando só o que já existe**:
+- **Dump** = a própria grade do `XD` (já é o modo ativo — botão desenhado com destaque, sem ação no
+  clique).
+- **Multi** = fecha a janela do `XD` e abre `MamuteXm_Open()` no MESMO endereço/alvo (`State\BaseAddr`/
+  `State\Target`) — os dois comandos já existiam prontos (módulos 45a/45b), só faltava essa ponte.
+  Precisou de um `Declare.i MamuteXm_Open(...)` antecipado em `BadigEditor.pb` (mesmo motivo/idioma já
+  documentado ali pros outros `Declare` — `MamuteXdGui.pbi` é incluído ANTES de `MamuteXmGui.pbi`, mas
+  passa a chamar essa função). `AlreadyClosed.b` novo no laço de eventos evita fechar a janela do `XD`
+  duas vezes (uma na hora do clique, outra no fim do `Procedure` como sempre acontecia antes).
+- **Ascii**/**Char**/**Disasm** — ainda NÃO têm modo nenhum implementado (cada um seria um subsistema do
+  tamanho do próprio `XD`, avaliação feita antes de perguntar ao usuário). Desenhados com um estilo
+  visual "esmaecido" (`MamuteXd_DrawModeButton()`, estilo 2 — contorno/texto cinza em vez do verde
+  padrão) e continuam clicáveis, mas só mostram `AINDA NAO IMPLEMENTADO` no rótulo "Modo" em vez de
+  fingir trocar de tela — fica pronto pra virar um `Case` de verdade quando cada modo for construído
+  numa sessão futura, sem mudar o layout da cruz.
+
+**Geometria**: cruz 3×3 (só as 5 células em formato de "+" têm botão), posicionada à DIREITA da grade
+(não abaixo) — a grade tem 16 linhas de altura contra as 3 da cruz, então cabe do lado sem esticar a
+janela verticalmente; `ModeCrossY` centraliza a cruz na altura da grade. `WinW` recalculado pra incluir a
+largura da cruz. `BtnFont` (antes só carregado depois dos rótulos de status) teve que subir pra logo
+depois do `MFont`, já que a cruz agora é desenhada mais cedo no `Procedure` (logo após criar `G_Grid`) do
+que os botões de seta que já usavam essa fonte.
+
+**Verificação ao vivo** contra o `.exe` real (mesma técnica `WM_COMMAND`/`WM_SETTEXT`/clique real via
+`mouse_event` já usada nesta sessão): screenshot confirmando o layout em cruz exato (Dump destacado em
+verde sólido, Multi em contorno verde normal, Ascii/Char/Disasm esmaecidos em cinza); clique real no botão
+Multi confirmado fechando a janela `XD` e abrindo `Mamute Assembler - XM (SUPER-X)` com o prompt `4000>` —
+o MESMO endereço que o `XD` estava mostrando, confirmando a ponte de endereço/alvo funcionando ponta a
+ponta.
+
+### 45g. SUPER-X — `<fim>`/`<arquivo>` opcionais no `XD` (2026-08-24)
+
+Pedido explícito do usuário: completar a sintaxe do `D` do SUPER-X (inventário do módulo 45,
+`<inic>[#slot][,<fim>[,<arq>]]`) no `XD` — "coloque agora os outros parametros,
+<inicio>#<slot>-<subslot>,<fim>,arquivo o fim e o arquivo sao opcionais... se for dado um nome de
+arquivo, abra o dialogo pra salvar a saida do comando como um arquivo binario... use o mesmo dialogo que
+ja existe". A forma de dois enderecos já existia (despejo no log); esta sessão soma um terceiro campo
+opcional e corrige uma lacuna real que o próprio pedido do usuário expôs.
+
+**Achado real corrigido no caminho**: a forma de dois endereços do `XD` (`MamuteGui_CmdXd`,
+`MamuteAssemblerGui.pbi`) nunca honrava o sufixo `#slot[-subslot]`/`#V`/`#S` no endereço inicial — usava
+`Mamute_ParseHexAddr` puro nos dois tokens, e `Mamute_BuildDumpLines()` (a rotina compartilhada com
+`D`/`P`/`V`, herança MegaAssembler) só entende um flag `IsVram`, sem noção de slot explícito. O
+endereçamento estendido do módulo 45b só tinha sido ligado na forma de UM endereço (grade interativa).
+Como o pedido do usuário escreve o `<inicio>` com `#<slot>-<subslot>` explícito na própria sintaxe,
+virou parte do mesmo trabalho: nova `Mamute_BuildDumpLinesSx()` (`MamuteSupport.pbi`, ao lado da original,
+que fica INTOCADA pra não afetar `D`/`P`/`V`) lê byte a byte via `Mamute_SxReadByte()` honrando o
+`MamuteSxTarget` inteiro, e o `<inicio>` da forma de dois/três campos agora passa por
+`Mamute_ParseSxAddr()` em vez de `Mamute_ParseHexAddr()`. `<fim>` continua um endereço CPU simples
+(0000-FFFF, sem sufixo) — só o início escolhe slot/VRAM, igual à sintaxe original do próprio SUPER-X
+(`<inic>[#slot],<fim>`).
+
+**Terceiro campo (`<arquivo>`)**: separado do segundo por outra vírgula (`XD 4000,4010,dump.bin`). Em
+vez de listar texto no log, lê o intervalo `<inicio>..<fim>` byte a byte com `Mamute_SxReadByte()` (honra
+slot/sub-slot/VRAM do `<inicio>`) para um buffer explícito, e abre a MESMA janela do comando `SAVE` do
+`MON>` (`MamuteSave_Open()`, `MamuteSaveGui.pbi`) com `UseExplicitBuffer=#True` e `<arquivo>` como nome
+sugerido — mesma técnica já usada pelo "A I" do `EDIT` (`MamuteEditGui.pbi`, módulo 31/32v). O campo Slot
+da janela fica só informativo/sugestão (os bytes já vêm prontos do buffer, não são relidos de
+`MamuteMem()`); usuário ainda escolhe/revisa endereços, formato BIN/ROM e o checkbox "sem cabeçalho"
+antes de gravar de verdade — nada é salvo só por digitar o comando, mesma garantia que o `SAVE` já dá.
+Cancelar no diálogo é silencioso (sem linha extra no log), mesma convenção do `SAVE`/`A I`. Combinar `?`
+(impressão/PDF) com o terceiro campo não faz sentido (dois destinos de saída ao mesmo tempo) — rejeitado
+com `?IMPRESSAO NAO APLICAVEL A ESTE COMANDO`. Uma vírgula sobrando sem nada depois
+(`XD 4000,4010,`) é erro de sintaxe, não "arquivo vazio silenciosamente ignorado".
+
+**Verificação ao vivo** contra o `.exe` real: `XD 4000,4010` (regressão, ainda bate byte a byte com o
+resultado de antes desta mudança) e `XD 4000#0,4010` (sufixo de slot na forma de dois endereços,
+funcionando pela primeira vez) no log; `XD 4000,4010,dump_teste.bin` abriu
+"Mamute Assembler - SAVE" com Arquivo/Inicial/Final/Execução/Slot/Formato já pré-preenchidos
+(`dump_teste.bin`/`4000`/`4010`/`4000`/`0`/BIN) — confirmado lendo os campos reais da janela via
+`WM_GETTEXT`/`CB_GETCURSEL`, não só visualmente; clique real em "Salvar" (`BM_CLICK`) gravou
+`dist\dump_teste.bin` com exatamente 24 bytes (cabeçalho `FE 00 40 10 40 00 40` + os 17 bytes
+`0011H` do intervalo, byte a byte idênticos ao dump em texto de `XD 4000,4010`), e o log mostrou
+`SALVO "dump_teste.bin" - SLOT 0 - 4000-4010 - TAMANHO 0011`; `XD 4000,4010,` deu `?ERRO DE SINTAXE`;
+`?XD 4000,4010,dump_teste.bin` deu `?IMPRESSAO NAO APLICAVEL A ESTE COMANDO`. Arquivo de teste apagado
+e o `.exe` de teste encerrado ao final. `build.ps1` rodado limpo antes de qualquer teste ao vivo.
+
+### 45h. SUPER-X — comando `XA` (porta do `A`) + default de 256 bytes sem `<fim>` (2026-08-24)
+
+Pedido explícito do usuário: "Vamos implementar o comando A agora, ele e igual ao XD (e vai ser XA
+mesmo) XA <inicio>#slot-subslot,<fim>,arquivo, o processo e o mesmo do anterior, alias quando nao
+informar fim, assuma 256 bytes nos comandos". Porta o comando `A` do SUPER-X (listagem/edição ASCII em
+tela cheia, inventário do módulo 45) com o MESMO mecanismo de endereçamento/`<fim>`/`<arquivo>` recém
+implementado pro `XD` (módulo 45g).
+
+**Decisão de escopo, confirmada com o usuário via pergunta direta antes de codar** (a grade do `XD` já
+deixa o bloco ASCII editável direto, reaproveitá-la seria rápido; construir uma tela nova só ASCII é mais
+fiel ao "A" original, mas é um subsistema novo do tamanho do `XD`, já estimado assim no módulo 45f) — o
+usuário escolheu **construir tela nova só ASCII**: `MamuteXaGui.pbi` (novo), `MamuteXa_Open()`, grade
+**16×16 = 256 bytes por tela** (não 16×8/128 como o `XD` — tamanho escolhido de propósito pra bater
+exatamente com o novo default "sem `<fim>`, assume 256 bytes": uma tela cheia do `XA` é literalmente o
+range default de um `XA`/`XD` sem `<fim>`). Diferenças de verdade contra o `XD`: SEM coluna hexa (só
+ASCII, sempre); QUALQUER caractere imprimível escreve direto e avança — não existe o modo de "digitação
+ASCII" separado do `XD` (tecla `"` pra entrar/sair), porque a tela inteira já é só ASCII o tempo todo; sem
+o atalho `@` (repete byte anterior) do `XD` — lá só fazia sentido no bloco HEXA, aqui `@` é só mais um
+caractere digitável; sem "Offset" (conceito que só faz sentido reinterpretando uma coluna ASCII ao lado
+de uma coluna hexa "crua" — o `XA` já mostra o byte cru direto). Reaproveita `MamuteXd_DrawButton()`/
+`MamuteXd_DrawModeButton()` (genéricas, definidas em `MamuteXdGui.pbi`, incluído antes) em vez de duplicar
+o desenho dos botões.
+
+**`MamuteGui_CmdXa`** (`MamuteAssemblerGui.pbi`) é a mesma estrutura do `MamuteGui_CmdXd`, trocando so' a
+função de despejo (`Mamute_BuildAsciiDumpLines()`, nova em `MamuteSupport.pbi` — 64 bytes/linha, texto
+puro, sem coluna hexa/checksum) e a janela interativa (`MamuteXa_Open()` em vez de `MamuteXd_Open()`).
+`Mamute_VarStoreBase`/`?`/`@`/endereçamento estendido funcionam identicamente (mesmas rotinas
+compartilhadas de `MamuteSupport.pbi`).
+
+**Default de 256 bytes sem `<fim>`** (pedido explícito, "assuma 256 bytes nos comandos" — plural,
+aplicado nos DOIS comandos: `XD` E `XA`): duas formas aceitas — `<inic>,,<arquivo>` (vírgula dupla,
+`<fim>` explicitamente vazio) OU o atalho `<inic>,<arquivo>` (só dois campos — se o segundo campo não
+parsear como endereço hexa válido, é tratado como `<arquivo>` direto, sem precisar da vírgula dupla).
+`<inic>,` (vírgula sobrando, nada depois) também usa o default, despejando no log como se fosse só
+`<inic>`. Nova `Mamute_SxMaxAddr()` (`MamuteSupport.pbi`) devolve o teto do alvo (`$FFFF` normal,
+`MamuteVramSize-1` em VRAM — o tamanho CONFIGURADO agora, não o teto físico de 192KB do array) pra
+CLAMPAR o `StartAddr+255` em vez de dar a volta, nunca produzindo um intervalo inválido perto do topo da
+faixa. Uma vírgula sobrando DEPOIS de um `<fim>` explícito e válido, sem nada após ela (`XD 4000,4010,`)
+continua erro de sintaxe — "vírgula demais" não é a mesma coisa que "`<fim>` omitido" (comportamento já
+documentado no módulo 45g, preservado aqui). Retrofit aplicado a `MamuteGui_CmdXd` também (achado: a
+forma de dois/três campos do `XD` ganhou o mesmo parsing por campos via `StringField`/`CountString` em
+vez do `FindString` duplo anterior).
+
+**Cruz de modos, os dois sentidos** (módulo 45f) — `XA` nasce com **Ascii** como modo ATIVO (destaque
+sólido) e **Dump**/**Multi** já ligados de verdade pro `XD`/`XM` (`MamuteXd_Open()`/`MamuteXm_Open()`,
+os dois já prontos); a cruz do `XD` foi atualizada nesta mesma sessão pra ligar o botão **Ascii** dela de
+volta pro `XA` (antes placeholder "AINDA NAO IMPLEMENTADO") — precisou de mais um `Declare.i
+MamuteXa_Open(...)` antecipado em `BadigEditor.pb`, sentido INVERSO do `Declare` do `XM` (`MamuteXaGui.pbi`
+é incluído DEPOIS de `MamuteXdGui.pbi` na cadeia de `XIncludeFile`, mas é o `XD` que passa a chamar a
+função dele). **Char**/**Disasm** continuam placeholder nas duas cruzes.
+
+**Verificação ao vivo** contra o `.exe` real: `XA 4000,4040` (despejo explícito, 64 chars/linha),
+`XA 4000,` e o atalho `XA 4000,dump_xa_teste.bin` (default de 256 bytes nos dois — a listagem foi
+`4000`-`40FF` em 4 linhas de 64 chars cada, e o SAVE abriu com "Endereco final" pré-preenchido `40FF`
+— confirmado via `WM_GETTEXT`, não só visualmente — clique real em "Salvar" gravou 263 bytes = cabeçalho
+de 7 + exatamente os 256 bytes do intervalo, `SALVO ... TAMANHO 0100` no log); `?XA 4000,4040` abriu o
+diálogo nativo "Salvar listagem (?XA) como PDF" de verdade (cancelado sem gravar, log mostrou
+`CANCELADO`); `XA C000#3-1,C010` (sufixo de slot explícito no despejo de texto) sem erro; `XA 4000,4040,`
+e `XA 4000,garbage,` deram `?ERRO DE SINTAXE` como esperado. Tela interativa `XA 4000` aberta e
+screenshot-confirmada (grade 16×16, cursor destacado, cruz de modos com Ascii ativo/Dump+Multi
+ligados/Char+Disasm placeholder); clique real no botão **Dump** da cruz do `XA` fechou `XA` e abriu `XD`
+no mesmo endereço; clique real no botão **Ascii** da cruz do `XD` fechou `XD` e reabriu `XA`; clique real
+no botão **Multi** da cruz do `XA` fechou `XA` e abriu `XM` — os três caminhos de ponte confirmados
+funcionando nos dois sentidos. **Não verificado ao vivo**: a digitação de caractere na grade do `XA`
+(escrita direta na memória) — três tentativas de injetar tecla sintética (`SendKeys`, `WM_CHAR` direto
+via `SendMessage`, e por fim `SendInput` de nível de hardware, que devolveu 0 eventos processados,
+confirmando que este ambiente de automação bloqueia injeção de teclado sintética) não conseguiram
+simular uma tecla de verdade — cliques de mouse (`WM_LBUTTONDOWN` via `SendMessage`) continuaram
+funcionando normalmente, então o bloqueio é especificamente de teclado, não geral. O mecanismo de
+digitação em si é uma cópia LITERAL do padrão já usado (e já verificado ao vivo em sessão anterior) pelo
+bloco ASCII do `XD` (`CanvasGadget` com `#PB_Canvas_Keyboard`, `#PB_EventType_Input`,
+`GetGadgetAttribute(canvas, #PB_Canvas_Input)`) — mesma rotina, nenhuma lógica nova — mas fica registrado
+como lacuna de verificação ao vivo nesta sessão especificamente, não como incerteza sobre o código.
+`build.ps1` rodado limpo antes de qualquer teste; nenhum arquivo de teste (`dump_xa_teste.bin`) ficou
+pra trás; `.exe` de teste encerrado ao final.
+
+### 45i. SUPER-X — comando `XI` (porta do `I`, visualização de disassembly) (2026-08-24)
+
+Pedido explícito do usuário: "Vamos agora ao comando I, que vai ser XI que lista o disassembly do
+endereco inicial, ate o final (opcional) ou salva com nome (opcional) igual aos outros comandos acima".
+Porta o comando `I` do SUPER-X (disassembly editável em tela cheia, com pilha de jump/call, inventário do
+módulo 45) com o mesmo mecanismo de campos (`<fim>`/`<arquivo>` opcionais, default de 256 bytes) já
+estabelecido pro `XD`/`XA` (módulos 45g/45h).
+
+**Duas decisões de escopo, confirmadas com o usuário via pergunta direta antes de codar**:
+1. **Forma de UM endereço** (`XI 4000`, sem vírgula) — a descrição do usuário só mencionava "lista...
+   ou salva", sem falar de edição/navegação; a alternativa óbvia seria abrir uma janela editável tipo
+   `XD`/`XA` (o que exigiria construir navegação de pilha jump/call do zero, escopo bem maior). Usuário
+   escolheu **janela interativa nova, só VISUALIZAÇÃO** — sem edição de bytes, sem pilha `←`/`→` (isso
+   fica pra uma sessão futura).
+2. **Terceiro campo `<arquivo>`** — no `XD`/`XA` esse campo salva BYTES CRUS via o diálogo do `SAVE`; pro
+   `XI` isso seria redundante com só usar `XD ...,<arquivo>` no mesmo intervalo. Usuário escolheu
+   **salvar a LISTAGEM DE TEXTO** do disassembly (endereço+bytes+mnemônico, as mesmas linhas que iriam
+   pro log) direto num arquivo com o nome dado, sem diálogo nenhum — nova `Mamute_SaveTextListing()`
+   (`MamuteSupport.pbi`, ao lado de `Mamute_SavePdfListing()`).
+
+**Achado real, refactor feito com cuidado pra não arriscar regressão**: o motor de disassembly
+(`Mamute_DisasmOne()`/`Mamute_DisasmBuildLines()` + ~8 procedures auxiliares de decodificação,
+`MamuteSupport.pbi`, módulo 31) sempre leu memória via `Mamute_ReadByte()` puro (PAGE ativa, `&$FFFF`
+cru) — nunca honrou `#slot[-subslot]`/VRAM como o resto do módulo 45 já honra. Esse motor tem **7 outros
+call sites** fora do escopo desta sessão: `L`/`LP` (módulo 31), o disassembler ao vivo do debugger
+(`MamuteDebuggerGui.pbi`) e o log de step da CPU (`MamuteZ80Cpu.pbi`) — todos PAGE-relativos por
+natureza (a CPU só executa contra a memória mapeada ativa, não faz sentido "disassemblar VRAM" nesses
+contextos). Duplicar o motor inteiro (tabelas de opcode Z80, código historicamente delicado - ver
+histórico de bugs do disassembler no `CLAUDE.md`) pra um "XI-aware" separado seria arriscado demais.
+Solução adotada: toda a cadeia (`Mamute_DisasmReg8`/`ReadImm16`/`RelTarget`/`DecodeCB`/`DecodeED`/
+`DecodeBase`/`DisasmOne`/`DisasmBuildLines`) ganhou um parâmetro **opcional** novo,
+`*T.MamuteSxTarget = 0`, threaded através de toda a cadeia de chamadas internas; nova
+`Mamute_DisasmRb(Addr, *T)` decide entre `Mamute_SxReadByte()` (quando `*T<>0`) ou o
+`Mamute_ReadByte()+"&$FFFF"` clássico (quando `*T=0`, o padrão) — **os 7 call sites pré-existentes não
+foram tocados**, continuam chamando sem o parâmetro novo (default automático `0`), comportamento
+IDENTICO a antes. Confirmado ao vivo: `L 4000,4010` e `XI 4000,4010` produziram texto BYTE A BYTE
+idêntico. `Mamute_DisasmBuildLines()` também ganhou suporte a VRAM (`Mamute_SxMaxAddr()` no lugar do
+`$FFFF` fixo no critério de parada do laço, `Mamute_SxWrapAddr()` no lugar do `&$FFFF` cru na formatação
+do endereço).
+
+**`MamuteGui_CmdXi`** segue a MESMA estrutura de campos do `XD`/`XA` (parsing por `StringField`/
+`CountString`, default de 256 bytes quando `<fim>` é omitido). Terceiro campo: em vez de abrir o SAVE,
+chama `Mamute_SaveTextListing()` direto. `?XI` (impressora) continua indo pro PDF como `?XD`/`?XA`
+(`Mamute_SavePdfListing()`, reaproveitado sem mudança).
+
+**`MamuteXiGui.pbi`** (novo) - tela de visualização, SEM grade/cursor: um `EditorGadget` somente-leitura
+(mesmo widget/paleta verde-sobre-preto do próprio log `MON>`) mostrando ~30 instruções a partir de
+`BaseAddr` (`MamuteXi_Fill()` encadeia várias chamadas de `Mamute_DisasmBuildLines()` no modo "sem fim",
+que decodifica só 10 instruções por chamada). Paginação: seta cima/baixo = nudge de ±1 byte
+(ressincronização manual — técnica real de visualizador de disassembly, já que decodificar Z80 "pra
+trás" de forma confiável não é possível, limite conhecido/aceito de qualquer disassembler em fluxo);
+PgDn = EXATO (usa o próprio `NextAddr` que a última passada de `Mamute_DisasmBuildLines()` já devolveu,
+sem heurística); PgUp = heurística (volta pela mesma largura em bytes que o bloco atual ocupou).
+
+**Cruz de modos, todos os sentidos** (módulo 45f/45h) — `XI` nasce com **Disasm** como modo ATIVO e
+**Dump**/**Ascii**/**Multi** já ligados de verdade pro `XD`/`XA`/`XM`; as cruzes do `XD` E do `XA` foram
+atualizadas nesta mesma sessão pra ligar o botão **Disasm** delas (antes placeholder) de volta pro `XI` -
+precisou de mais um `Declare.i MamuteXi_Open(...)` antecipado em `BadigEditor.pb` (mesmo idioma inverso
+já usado pro `XA`). **Com isso, `Char` (sprite/fonte) passa a ser o ÚNICO placeholder restante em toda a
+cruz de 5 modos** - os outros quatro (Dump/Ascii/Multi/Disasm) estão todos genuinamente interligados nos
+dois sentidos.
+
+**Verificação ao vivo** contra o `.exe` real: `L 4000,4010` vs `XI 4000,4010` byte-a-byte idênticos
+(confirma zero regressão no motor compartilhado); `XI 4000#0,4010` (sufixo de slot) sem erro;
+`XI 4000,dump_xi_teste.txt` (atalho de 256 bytes + arquivo) gravou um `.txt` real de 132 linhas com
+cabeçalho `XI 4000-40FF` e o texto idêntico ao log; `XI 4000,4010,` deu `?ERRO DE SINTAXE`; `?XI 4000,4010`
+abriu o diálogo nativo "Salvar listagem (?XI) como PDF" de verdade (confirmado via enumeração de janelas
+de todo o sistema, não so' por PID - a primeira tentativa com filtro `IsWindowVisible` deu falso-negativo
+por timing; cancelado sem gravar, log mostrou `CANCELADO`). Tela `XI 4000` aberta e screenshot-confirmada
+(30 instruções, cruz com Disasm ativo/Dump+Ascii+Multi ligados/Char placeholder); clique real no botão
+PgDn avançou pro endereço EXATO seguinte (`4032`, confirmado contra a última instrução da tela anterior);
+clique real no PgUp voltou pela largura heurística certa; clique real nos botões **Multi**/**Dump**
+(a partir do `XD`)/**Dump**(a partir do `XA`) confirmaram as pontes `XI→XM`, `XD→XI`, `XA→XI` funcionando.
+Arquivo de teste apagado, `.exe` de teste encerrado ao final. `build.ps1` rodado limpo antes de qualquer
+teste ao vivo.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
+
+- **Porta do SUPER-X (módulo 45) longe de completa — só a fase inicial (`XD`/`XA`/`XI`/`XM`) existe**
+  (2026-08-24): das fases B-F do roteiro original (módulo 45) e da lista de comandos "sem colisão, nome
+  livre", NADA foi tocado ainda — `CM`/`FD`/`CS`/`TS` (comparação/busca/checksum), `SD` (super
+  disassembler pra arquivo), `S%`/`L%` (setor de disco cru), `S#`/`L#` (bload/bsave sem cabeçalho), `RT`
+  (realocação com correção de ponteiro), `iM`/`iC`/`iL`/`iS` (notas persistentes — o carregador e a
+  tradução já existem desde o módulo 45e, só os comandos `MON>` que faltam), `OF` (offset global), `SF`
+  (tecla de função programável), `BL`/`BF` (list/busca de BASIC tokenizado), `TR` (trace textual), `CK`,
+  `PP`, `FS`, `CI`, `CU`, `CO`, `KR`/`KT`/`KL`, `TP`, `SV`/`LD`, `PI`/`PO`, `BT`/`FL`/`TK`/`GO`/`RG`
+  (esses cinco últimos já cobertos por equivalentes existentes do Mamute, só falta documentar a
+  equivalência de verdade). O próprio `XI` ficou deliberadamente SEM a pilha de navegação jump/call
+  (`←`/`→`) que o `I` original do SUPER-X tem — decisão de escopo explícita, não esquecimento. `Char`
+  (editor de sprite/fonte) é o único modo da cruz de 5 que ainda não tem NENHUMA implementação, nem
+  parcial. Ver módulo 45 (tabela completa de comandos) pra retomar por onde parar.
+
+- **Digitação de caractere na grade do `XA` nunca foi verificada AO VIVO contra o `.exe` real** (2026-08-24,
+  módulo 45h) — três técnicas de injeção sintética de teclado (`SendKeys`, `WM_CHAR` via `SendMessage`,
+  `SendInput` de hardware) falharam neste ambiente de automação especificamente pra eventos de teclado
+  (cliques de mouse continuaram funcionando normalmente); `SendInput` devolveu 0 eventos processados,
+  confirmando bloqueio do ambiente, não bug de codigo. O mecanismo (`CanvasGadget`/`#PB_Canvas_Keyboard`/
+  `#PB_EventType_Input`) é copia literal do bloco ASCII do `XD`, ja verificado ao vivo numa sessao
+  anterior — mas se uma sessao futura tiver como digitar de verdade (teste manual do usuario, ou um
+  ambiente de automacao sem essa restricao), vale confirmar que escrever um caractere na grade do `XA`
+  realmente grava o byte e avanca o cursor, mesmo comportamento ja provado no `XD`.
 
 - **`others/superx/` está commitado no repositório e já publicado em `origin/main`, contradizendo a
   própria licença de terceiros que o projeto documenta pra esse material** (2026-08-24, em aberto,

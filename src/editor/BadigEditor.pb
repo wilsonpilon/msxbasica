@@ -58,6 +58,25 @@ Declare MamuteDebugger_Open(ParentWindow, *State, StartAddr.u)
 ; (comando XM, docs/SPEC.md modulo 45) precisa chama-la e e' incluido ANTES.
 Declare.s MamuteGui_AppendLog(G_Log, Accum.s, Text.s)
 
+; Mesmo motivo de novo - MamuteXm_Open() so' e' definida "de verdade" dentro
+; de MamuteXmGui.pbi, mas MamuteXdGui.pbi (comando XD, botao "Multi" da cruz
+; de modos, docs/SPEC.md modulo 45f) e' incluido ANTES e precisa chamar ela
+; pra trocar de janela sem fechar/reabrir "por fora". MamuteSxTarget ja
+; existe nesse ponto (MamuteSupport.pbi, incluido bem antes dos dois).
+Declare.i MamuteXm_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
+
+; Mesmo motivo de novo, sentido INVERSO desta vez - MamuteXa_Open() so' e'
+; definida "de verdade" dentro de MamuteXaGui.pbi (comando XA, modulo 45h),
+; mas MamuteXdGui.pbi (comando XD, botao "Ascii" da cruz de modos, agora
+; ligado de verdade pro XA) e' incluido ANTES e precisa chamar ela.
+Declare.i MamuteXa_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
+
+; Mesmo motivo de novo - MamuteXi_Open() so' e' definida "de verdade" dentro
+; de MamuteXiGui.pbi (comando XI, modulo 45i), mas MamuteXdGui.pbi/
+; MamuteXaGui.pbi (botao "Disasm" da cruz de modos, agora ligado de verdade
+; pro XI nos dois) sao incluidos ANTES e precisam chamar ela.
+Declare.i MamuteXi_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
+
 ; Structure EditorSettings/Global EditorCfg (definidos "de verdade" em
 ; EditorSettings.pbi, incluido logo abaixo) e os globais Color_* (tab bar/
 ; regua/sintaxe da area de edicao, preenchidos por ApplyTheme() mais adiante
@@ -241,6 +260,8 @@ XIncludeFile "assemblers/MamuteScrGui.pbi"
 XIncludeFile "assemblers/MamuteSaveGui.pbi"
 XIncludeFile "assemblers/MamuteMGui.pbi"
 XIncludeFile "assemblers/MamuteXdGui.pbi"
+XIncludeFile "assemblers/MamuteXaGui.pbi"
+XIncludeFile "assemblers/MamuteXiGui.pbi"
 XIncludeFile "assemblers/MamuteXmGui.pbi"
 XIncludeFile "assemblers/MamutePdf.pbi"
 XIncludeFile "assemblers/MamuteEditGui.pbi"
