@@ -8524,7 +8524,499 @@ travar/derrubar o processo alvo) sem recorrer a clique real de mouse na máquina
 trecho específico (a chamada `ProjIndex_OpenSelected` a partir do evento de duplo clique) ficou
 verificado só por revisão de código + o fato de reusar a mesma lógica já testada de `OpenDocumentDialog`.
 
+### 45. SUPER-X — inventário e roteiro pra portar comandos ao Mamute Assembler (estudo/planejamento) (2026-08-24)
+
+Pedido explícito do usuário, no mesmo espírito do módulo 31 (que portou um subconjunto do **MegaAssembler**
+do usuário, comando por comando): agora a fonte é o **SUPER-X**, outro monitor/debugger clássico de MSX,
+mais avançado que o MegaAssembler em vários aspectos (execução com breakpoint, editor de sprite/fonte,
+notas persistentes por endereço, exportação de disassembly, mapeador de RAM). Material de referência
+novo em `others/superx/`: `SUPER-X.DOC.pdf` (manual completo em inglês, tradução não-oficial de JP Grobler
+da doc japonesa original, por NYYRIKKI — **fonte primária usada nesta sessão**, lida página a página),
+mais `SUPER-X.DOC` (mesmo texto em formato antigo), `SUPER-X.ASM`/`LOADER.ASM` (fonte Z80 completo,
+~155KB, não lido nesta sessão — fica como referência pra tirar dúvida de comportamento durante a
+implementação de verdade, mesmo papel que `badig/`/`nestor80/` têm pros módulos 1/18) e os binários
+originais (`.BDY`/`.LDR`/`.TNK`/`.FNT`/`.BAT`/`.BAS`). **Achado real, correção de um erro deste mesmo
+módulo** (módulos 45/45a-45d chegaram a dizer "gitignored/específico desta máquina", igual `badig/`/
+`fmsx/` — nunca verificado de verdade até o módulo 45e): `others/` **não tem regra nenhuma** de
+`.gitignore` (só `/badig/`/`/fmsx/` são raiz-ignorados), e os 9 arquivos de `others/superx/` (incluindo o
+`.ASM` completo e os binários `.TNK`/`.BDY`/`.LDR`/`.FNT`) **já estão commitados** desde
+`af9a98a` (2026-08-19, "Reorganização completa de diretórios") — de **antes** desta conversa começar, não
+introduzido por ela — e **já publicados** em `origin/main` (remoto `github-pessoal:wilsonpilon/paleobasic`).
+Isso contradiz a mesma cautela de licença já documentada pra `badig/`/`fmsx/`/o próprio `.ASM` do
+SUPER-X (material de terceiros sem licença permissiva, "estudar e portar, não copiar/distribuir") —
+**pendência real registrada, não resolvida nesta sessão** (decisão de destravar do rastreamento e/ou
+reescrever o histórico é do usuário, ver "Lacunas conhecidas" abaixo).
+
+**Atenção de licença, mesma cautela já registrada pra `fmsx/` (módulo 32)**: `SUPER-X.ASM`/`LOADER.ASM`
+são código-fonte de terceiros — `Copyright 1994 Romi`, versão estendida de `NYYRIKKI (2011)`, sem licença
+permissiva explícita nos arquivos vistos até agora. Tratar como **especificação de comportamento a
+estudar e portar de forma independente** (sintaxe de comando, formato de arquivo, layout de tela), nunca
+como código a copiar — mesma relação já estabelecida com `badig/` (módulo 1), `N80.exe`/Nestor80 (módulo
+18) e `fmsx/` (módulo 32).
+
+**Decisão já tomada, não reabrir**: o comando `CL` do Mamute (calculadora HEX/BIN/DEC+/DEC+-, implementado
+nesta mesma sessão em `editor/MamuteSupport.pbi`/`MamuteAssemblerGui.pbi`) foi pedido pelo usuário citando
+o `CL` do SUPER-X como inspiração, mas **deliberadamente não segue a convenção numérica do SUPER-X**. O
+SUPER-X (ver `SUPER-X.DOC.pdf`, seção "General information") não tem precedência de operador nenhuma
+("calculated from left to right") e usa aspas simples `'AB'` (máx. 2 letras) pra literais ASCII, sem
+sufixo de base explícito documentado. O `CL` do Mamute usa a convenção **já estabelecida no resto do
+Mamute** — hexa por padrão, sufixos `D`/`B`/`H`/`O` — com precedência de operador estilo C E parênteses de
+verdade (pedido explícito do usuário nesta mesma conversa). **Todo comando futuro portado do SUPER-X que
+precise de entrada numérica deve reusar esta MESMA convenção já implementada** (`Mamute_CL_ParseNumber`/
+`Mamute_ParseHexAddr`, `MamuteSupport.pbi`) em vez de tentar replicar o dialeto original do SUPER-X — pra
+manter a entrada numérica uniforme em toda a ferramenta, o mesmo raciocínio que já levou `EDIT` (módulo
+31) a inverter o padrão decimal/hexa do MegaAssembler original.
+
+**Inventário completo dos comandos do SUPER-X** (extraído de `SUPER-X.DOC.pdf`, seções "Basic commands"
+e "Other commands" — todos aceitam endereço com sufixo de slot `#<primário>[-<secundário>]`, `#S`/`#5`
+= slot de boot, `#V`/`#4` = VRAM, herdado do formato `[endereço]#[slot primário]-[slot secundário]` já
+descrito na doc):
+
+| Verbo | Sintaxe (SUPER-X) | Função |
+|---|---|---|
+| `D` | `<inic>[#slot][,<fim>[,<arq>]]` | HexDump editável em tela cheia |
+| `A` | `<inic>[#slot][,<fim>[,<arq>]]` | Listagem/edição ASCII em tela cheia |
+| `I` | `<inic>[#slot][,<fim>[,<arq>]]` | Disassembly editável, com pilha de jump/call (`←`/`→`) |
+| `H` | `<inic>[#slot][,<fim>[,<arq>]]` | Editor de sprite/fonte (bitmap 16×16, bit a bit) |
+| `M` | `<inic>[#slot]` | Entrada assembler interativa (monta e grava direto na memória) |
+| `BL` | `<linha>` | LIST de BASIC a partir da memória crua |
+| `TK` | `<número 1-4>` | Layout do teclado numérico pra dígito hexa (Mamute já tem equivalente, ver abaixo) |
+| `BT` | `<origem>[#slot],<fimorigem>,<destino>[#slot]` | Transferência de bloco |
+| `CLS` | — | Limpa a tela |
+| `CD` | `<diretório>` | Muda diretório (MSX-DOS2) |
+| `RT` | `<origem>[#slot],<fimorigem>,<destino>[#slot]` | Realoca bloco de ML **e corrige ponteiros internos** que apontem pra dentro do bloco movido |
+| `FL` | `<inic>[#slot],<fim>,<valor>` | Preenche bloco com um byte |
+| `CM` | `<inic>[#slot],<fim>,<inic2>[#slot][,S]` | Compara dois blocos (lista diferenças; `S` lista iguais) |
+| `FD` | `<inic>[#slot],<fim>` | Busca dados — pede o padrão depois, lista TODAS as ocorrências |
+| `CS` | — | Alterna o tipo de checksum (soma simples / soma + endereço) |
+| `TS` | `<inic>[#slot],<fim>` | Calcula checksum do bloco |
+| `GO` | `<endereço>[#slot]` | Executa programa (para em breakpoint, ver `RG BP`) |
+| `RG` | `[<reg>,<valor>]` / `RG *` / `RG +` | Mostra/edita registradores; `*` limpa tudo exceto pilha; `+` reseta a pilha |
+| `TR` | `<endereço>` | Trace passo a passo, imprime registradores a cada instrução |
+| `CK` | — | Info da máquina (slot ativo, RAM do sistema, localização de ROMs, mapeador, discos) |
+| `SF` | `[<tecla>,<string>]` | Programa uma tecla de função |
+| `CL` | `<expressão>` | Calculadora HEX/BIN/DEC — **já implementado no Mamute, ver acima** |
+| `BF` | — | Busca string dentro de uma listagem BASIC (`?` = curinga de 1 char) |
+| `PP` | `[<página>,<segmento>]` | Seleciona segmento do mapeador de RAM numa página |
+| `SD` | `<arq>,<inic>[#slot],<fim>[,B\|D\|X]` | "Super disassembler": disassembly pra arquivo texto, ou exporta bytes crus como `DEFB`/`DATA`/inline X-BASIC |
+| `FS` | `<drive>` | Lista arquivos do disco (equivalente a `DIR`) |
+| `CI` | `<drive>` | Uso do disco (clusters usados/total) |
+| `OF` | `[<offset>]` | Offset global — desloca o endereço 0 "lógico" pra todos os comandos, inclusive rotinas de disco |
+| `CU` | `[<número>]` | Troca modo de CPU (MSX turboR: Z80/R800 ROM/DRAM) |
+| `CO` | `[<fg>],[<bg>],[<borda>]` | Cor da tela |
+| `KR` | `<endereço>[#slot]` | Mostra memória como texto usando fonte japonesa |
+| `KT` | `<arquivo>` | Exibe arquivo de texto em japonês |
+| `TP` | `<arquivo>` | Exibe arquivo de texto (paginado, `ENTER`/`ESPAÇO`/`ESC`) |
+| `KL` | `[<drive>]` | (Re)carrega a fonte japonesa (`SUPER-X.FNT`) pra VRAM |
+| `SV` | `<arq>,<inic>[#slot],<fim>,[<execução>[,<offset>]]` | Salva com cabeçalho BSAVE |
+| `LD` | `<arq>[,<offset>[#slot]]` | Carrega com cabeçalho BLOAD |
+| `S#` | `<arq>,<inic>[#slot],<fim>` | Salva bytes crus, sem cabeçalho |
+| `L#` | `<arq>,<endereço>[#slot]` | Carrega bytes crus, sem cabeçalho |
+| `S%` | `[<drive>:]<setorinic>,[<setorfim>],<endereço>[#slot]` | Grava memória direto em setor(es) de disco |
+| `L%` | `[<drive>:]<setorinic>,[<setorfim>],<endereço>[#slot]` | Lê setor(es) de disco direto pra memória |
+| `iM` | `<endereço>,<slot>,<tipo>` | Adiciona uma nota persistente a um endereço |
+| `iC` | `<endereço>` | Consulta se existe nota pra um endereço |
+| `iL` | `<drive>` | Carrega o arquivo de notas (`SUPER-X.TNK`) |
+| `iS` | `<drive>` | Salva o arquivo de notas |
+| `PI` | `<porta>` | Lê byte de uma porta de I/O |
+| `PO` | `<porta>,<valor>` | Escreve byte numa porta de I/O |
+| `QT` | — | Sai pro BASIC |
+
+**Mapeamento de colisão contra o Mamute Assembler hoje** (comandos já existentes, módulos 31/32/32v —
+`BA`/`QUIT`, `PAGE`, `DM`, `ZAP`, `SCR`, `SH`, `MS`, `LOAD`, `SAVE`, `M`, `S`, `C`, `D`, `P`, `V`, `T`,
+`F`, `G`, `X`, `R`, `L`, `LP`, `CL`, `FOSSAURO`, `OPENMSX`, `EDIT`) — **decisão a confirmar com o usuário
+antes de codar qualquer coisa desta lista**, já que os nomes de verbo colidem de propósito com o
+MegaAssembler (módulo 31), não com o SUPER-X:
+
+- **Colisão de letra com significado DIFERENTE** (precisa de nome alternativo, ou decisão explícita de
+  não portar): `D` (SUPER-X = editor tela-cheia; Mamute `D` = despejo formatado pro log, não-interativo —
+  o mais parecido com o `D` do SUPER-X hoje é o `DM`, que já é uma janela gráfica editável), `M` (SUPER-X
+  = entrada assembler interativa direto na memória; Mamute `M` = grade de edição hex+ASCII de 128 bytes —
+  completamente diferente).
+- **Já coberto por um comando existente, com outro nome** (não portar como novo verbo — só documentar a
+  equivalência): `BT`≈`T` (transferência de bloco), `FL`≈`F` (preenchimento), `TK`≈`S` (Mamute já tem
+  teclado numérico configurável pro comando `S`, `Configurar → Mamute Assembler...`), `GO`≈`G` (`G` já
+  abre o **debugger visual** de verdade desde o módulo 32/32a, com breakpoint, não mais o placeholder
+  documentado como pendente — a doc do comando `G` em `MamuteHelpData.pbi` está desatualizada e precisa
+  de revisão nessa mesma leva), `RG`≈`X` (registradores) **+** `G <endereço>,<brk1>,<brk2>` (breakpoint já
+  suportado via parâmetro, não como pseudo-registrador `BP` separado).
+- **Sem colisão de nome, mas sobreposição funcional a decidir** (SH do Mamute já faz busca de
+  bytes/texto com curinga e continuação; `FD` do SUPER-X é uma busca "lista tudo de uma vez" — podem
+  conviver como comandos distintos, ou `FD` pode nascer como um modo do `SH`).
+- **Sem colisão nenhuma, nome livre pra usar exatamente como no SUPER-X**: `BL`, `CLS`, `CD`, `RT`, `CM`,
+  `FD`, `CS`, `TS`, `TR`, `CK`, `SF`, `BF`, `PP`, `SD`, `FS`, `CI`, `OF`, `CU`, `CO`, `KR`, `KT`, `TP`,
+  `KL`, `SV`, `LD`, `S#`, `L#`, `S%`, `L%`, `iM`, `iC`, `iL`, `iS`, `PI`, `PO`, `QT` (redundante com
+  `BA`/`QUIT`, mas pode virar mais um alias trivial).
+
+**Roteiro sugerido, agrupado por reaproveitamento de motor já existente** (do mais barato pro mais caro —
+a decidir/priorizar com o usuário, aqui só a avaliação, igual módulo 32):
+
+1. **Fase A — triviais, sem motor novo**: `CLS` (já existe rotina de limpar o log?, senão trivial),
+   `QT` (alias de `BA`/`QUIT`), `TP` (exibir `.txt` paginado — reusa o mesmo `EditorGadget` de log),
+   `FS`/`CI` (listagem/uso de disco — precisa decidir se mira um `.dsk` montado tipo `ZAP` ou o sistema
+   de arquivos real do Windows, já que `LOAD`/`SAVE` usam `SaveFileRequester`/`OpenFileRequester`, não um
+   diretório corrente).
+2. **Fase B — utilitários de memória, reusam `Mamute_ReadByte`/`Mamute_WriteByte`/`Mamute_ParseHexAddr`
+   já prontos** (mesma fundação de `T`/`F`/`SH` no módulo 31): `CM` (comparação), `FD` (busca com lista
+   completa), `CS`/`TS` (checksum, par de comandos simples).
+3. **Fase C — reusa o disassembler Z80 já validado** (`Mamute_DisasmBuildLines`, módulo 31, mesmo motor
+   de `L`/`LP`): `SD` — essencialmente um `L` que grava num arquivo `.asm`/texto em vez do log/PDF, mais
+   dois modos alternativos (`B`/`D`) que nem precisam do disassembler, só formatam bytes crus como
+   `DEFB`/`DATA`.
+4. **Fase D — reusa a leitura/escrita de setor cru já validada no `ZAP`** (`editor/MamuteZapGui.pbi`,
+   módulo 31): `S%`/`L%`, a versão "um tiro só" via linha de comando do que o `ZAP` já faz
+   interativamente.
+5. **Fase E — reusa o carregamento/gravação com cabeçalho já existente** (`LOAD`/`SAVE`, módulo 31):
+   `S#`/`L#` como as variantes SEM cabeçalho (BSAVE cru) — praticamente o mesmo código menos o parsing/
+   escrita dos bytes de cabeçalho.
+6. **Fase F — motor novo, maior escopo cada um, priorizar com o usuário depois das fases A-E**:
+   - `RT` (relocação com correção de ponteiro) — precisa de heurística real pra achar "o que dentro do
+     bloco parece um endereço apontando pra dentro do próprio bloco" (o SUPER-X real provavelmente exige
+     que o programa siga alguma convenção — checar `SUPER-X.ASM` quando for implementar de verdade).
+   - `iM`/`iC`/`iL`/`iS` (notas persistentes por endereço, formato documentado na doc: 512 notas, 2
+     bytes endereço + 1 slot + 1 tipo + 60 bytes texto = 32770 bytes) — candidato forte a reaproveitar as
+     ~470 notas que o SUPER-X original já trazia pra BIOS/work area/hooks (hoje só em japonês, precisaria
+     de tradução ou de semear com os nomes que a base de conhecimento MSX do projeto já tem, módulo 30 —
+     "BIOS Chamadas"/Red Book). Formato de arquivo próprio do Mamute, não precisa ler `SUPER-X.TNK` de
+     verdade.
+   - `OF` (offset global) — mexe em TODOS os pontos que resolvem endereço hoje (`Mamute_ResolveAddress`/
+     `Mamute_ReadByte`/`Mamute_WriteByte`, módulo 31), incluindo os comandos de disco (`S%`/`L%` da fase
+     D) — maior raio de impacto de toda a lista, fazer só depois que o resto estiver estável.
+   - `SF` (tecla de função programável) — hoje o campo de entrada do `MON>` é um `StringGadget` comum,
+     sem bind de tecla de função nenhum; precisa de `AddKeyboardShortcut` novo por tecla F1-F10 + estado
+     persistido (igual histórico de comando, módulo 31, `MamuteGui_HistoryLoad`/`Save`).
+   - `BL`/`BF` (list/busca de programa BASIC tokenizado direto da memória) — precisa de um decodificador
+     de token BASIC clássico (bytes → texto), que não existe hoje no Mamute (existe tokenizador
+     Dignified→binário, `MsxTokenizer.pbi`, mas não o caminho inverso nem o dialeto clássico sem labels).
+   - `TR` (trace textual passo a passo, registradores impressos no log a cada instrução) — o núcleo de
+     execução já existe (`Mz80_ExecuteOne`, `editor/MamuteZ80Cpu.pbi`, módulo 32), só falta o laço "step +
+     formata registrador (mesmo texto do `X`) + acumula no log" via `MON>`, sem abrir a janela gráfica do
+     debugger. Bom candidato a vir ANTES do resto da fase F, já que reusa 100% do motor existente e não
+     tem escopo novo de verdade.
+
+**Explicitamente fora de escopo, ou precisa de decisão explícita do usuário antes de sequer planejar**:
+- `CU` (troca Z80/R800) — o Mamute não simula MSX turboR, só Z80 puro (`MamuteZ80Cpu.pbi`, módulo 32);
+  não há "R800" nenhum pra trocar. Não portável sem simular turboR inteiro primeiro.
+- `PP` (mapeador de RAM/segmentos) — o Mamute simula só o modelo simples 4 slots × 4 páginas (módulo 31),
+  sem MegaRAM/mapeador de bancos. Portar `PP` de verdade exigiria simular o mapeador primeiro (feature
+  nova, grande, hoje inexistente).
+- `KR`/`KT`/`KL` (fonte/texto em japonês) — o Mamute Assembler é uma ferramenta localizada em português;
+  suporte a fonte japonesa é bem de nicho pro público deste projeto. Recomendação: não portar, a menos
+  que o usuário peça explicitamente.
+- `CO` (cor da tela) — o visual verde-sobre-preto do `MON>` é decisão estética deliberada e documentada
+  (módulo 31: "lembrar um terminal de verdade daquela época, não um diálogo moderno"); dar esse controle
+  ao usuário via comando conflita com essa intenção. Perguntar antes de mexer.
+- `PI`/`PO` (I/O de porta) — não existe nenhuma camada de emulação de porta (VDP/PSG/PPI) no Mamute hoje,
+  só CPU+memória (módulo 32 escolheu deliberadamente "Z80 puro, sem simular o MSX inteiro"). `PI`/`PO`
+  como stub (sempre `FF`/no-op) é possível, mas de utilidade questionável sem hardware de verdade atrás.
+- `CD` (muda diretório) — o modelo de arquivo do Mamute inteiro é baseado em `OpenFileRequester`/
+  `SaveFileRequester` (diálogo nativo do Windows a cada operação), sem conceito de "diretório corrente"
+  como um DOS de verdade. Precisa de decisão de design antes: adotar um diretório corrente novo só pro
+  Mamute, ou descartar `CD` por não fazer sentido nesse modelo?
+
+**Próximo passo**: nenhum código foi escrito nesta sessão — só o levantamento acima. Confirmar com o
+usuário a ordem de prioridade das fases A-F (ou pular direto pra alguma) antes de começar a implementação
+de verdade, comando por comando, no mesmo ritmo incremental que o resto do Mamute já segue.
+
+### 45a. SUPER-X — primeiros dois comandos portados: `XD`/`XM` (2026-08-24)
+
+Pedido explícito do usuário, direto sobre a lista do módulo 45: começar justamente pelos comandos `D`/`M`
+do SUPER-X — mas batizados **`XD`/`XM`** (prefixo `X`), não `D`/`M`, porque esses dois nomes já existem
+no Mamute (módulo 31) com significado diferente (`D` = despejo pro log; `M` = grade rápida de edição) —
+"assim temos o `D` e o `M` na versão do Mamute e o `XD`/`XM` pra versão do SUPER-X", decisão explícita do
+usuário resolvendo de vez a "colisão de letra com significado diferente" já sinalizada no módulo 45.
+
+- **`XD`** (`editor/MamuteXdGui.pbi`, novo) — porta do `D` do SUPER-X ("HexDump editing/Listing"). Um
+  endereço (ou nenhum, reabre onde ficou — `HasLastXd`/`LastXdAddr`, `MamuteGui_State`) abre uma janela
+  com a MESMA grade de 128 bytes hexa+ASCII do `DM`/`M` (`MamuteMGui.pbi`, módulo 31) — arquivo copiado e
+  adaptado deliberadamente, não uma 3ª flag no arquivo compartilhado `M`/`S`, pra não arriscar regressão
+  num comando já testado por causa de um modo bem diferente. Duas diferenças reais do `M`/`S`: **bloco
+  ASCII também editável** (tecla `"` entra em digitação direta, cada caractere grava
+  `(código - deslocamento) & FF` e avança sozinho, mesma fórmula do `DM`) e **`@` repete o byte anterior**
+  no bloco hexa. Dois endereços (`XD <inic>,<fim>`) não abrem grade nenhuma — despejo não-interativo
+  direto no log, delegando pro MESMO `Mamute_BuildDumpLines()` que o `D` já usa (`MamuteGui_CmdXd`,
+  `MamuteAssemblerGui.pbi`), sem duplicar nada — bate com a doc do SUPER-X ("Two Addresses: give a non
+  stop list output").
+  - **Achado real de plataforma**: `"`/`@` não têm constante `#PB_Shortcut_*` no PureBasic (confirmado no
+    help local do compilador, `addkeyboardshortcut.html` — só `0`-`9`/`A`-`Z`/`F1`-`F24`/setas/Pad*/um
+    punhado de teclas nomeadas, nenhuma pontuação). `AddKeyboardShortcut()` (usado pelo `0`-`F` do `M`/`S`
+    desde o módulo 31) não serve pra essas duas teclas. Capturadas em vez disso via
+    `#PB_EventType_Input`/`#PB_Canvas_Input` no próprio `CanvasGadget` (`#PB_Canvas_Keyboard`) — devolve o
+    CARACTERE de verdade digitado, independente de layout de teclado, ao contrário de `#PB_Canvas_Key`
+    (limitado aos mesmos `#PB_Shortcut_*`). Se um comando futuro precisar de outra tecla de pontuação,
+    esse é o mecanismo certo, não `AddKeyboardShortcut`.
+- **`XM`** (`editor/MamuteXmGui.pbi`, novo) — porta do `M` do SUPER-X ("Assembly input"). Janela dedicada
+  nova (mesmo raciocínio do `EDIT`, módulo 31: uma sub-sessão interativa de verdade precisa do próprio
+  laço de eventos, não cabe no fluxo "uma linha, um comando" do `MON>` principal) com um prompt
+  `ENDEREÇO>` que **monta instrução Z80 de verdade a cada linha**, reaproveitando 100% do assembler nativo
+  já existente (`Z80Asm::ParseLine`+`Z80Asm::EncodeInstruction`, o MESMO motor do comando `A` do `EDIT`) —
+  nenhum encoder novo escrito. Gramática por linha (`MamuteXm_ProcessLine`): sinal de tipo (`.`/`:`/`;`/
+  `[`/`"`) grava dado cru; endereço sozinho ou seguido de dado pula o ponteiro; qualquer outra coisa tenta
+  como instrução; `I [<n>]` lista as próximas `<n>` instruções (reaproveita `Mamute_DisasmBuildLines()`,
+  mesmo motor do `L`/`LP`) sem gravar nada.
+  - **Achado real de ambiguidade, resolvido antes de virar bug**: um endereço sozinho na linha (`D000`)
+    deveria pular o ponteiro pra lá — mas `DAA`/`CCF` (os dois ÚNICOS mnemônicos Z80 sem operando cujo
+    nome inteiro também é hexadecimal válido) colidiam: digitar `DAA` batia com "endereço `0DAAh`" ANTES
+    de ser reconhecido como instrução. Resolvido checando `Z80Asm::IsMnemonic()` primeiro — só tenta a
+    interpretação de endereço quando o token NÃO é um mnemônico conhecido — regra geral, não um
+    if-especial pra esses dois nomes, então cobre qualquer colisão futura também.
+  - **Decisão de convenção numérica, já prevista no módulo 45**: cada item de dado (`.`/`:`/`;`/`[`) passa
+    pela MESMA calculadora do `CL` (`Mamute_CL_Eval()`), não o dialeto próprio do SUPER-X original — dado
+    que puxou uma extensão real no `CL`: **literal ASCII entre aspas** (`'A'`/`"AB"`, até 2 caracteres,
+    delimitador dobrado escapa a si mesmo) acrescentado a `Mamute_CL_Tokenize()`
+    (`MamuteSupport.pbi`), espelhando EXATAMENTE a mesma sintaxe que `Z80Asm::EvalExpr` já usa (conferido
+    no próprio código-fonte, não assumido) — o valor computado vira um token marcado com `Chr(1)` na
+    frente (nunca colide com um token normal, que só começa com dígito/letra), reconhecido direto por
+    `Mamute_CL_ParsePrimary()` sem reprocessar como número. **Efeito colateral que vale documentar**: por
+    causa da prioridade de sufixo já existente (`"10D"` = decimal 10, não hexa `10D`h), o próprio exemplo
+    do manual do SUPER-X (`.CD, 4d, 00`) NÃO produz os mesmos bytes aqui — `4d`/`4D` viram decimal `4`
+    (dígito `4` sozinho é decimal válido, sufixo `D` ganha), não hexa `4Dh`; pra hexa de verdade nesse
+    caso específico precisa do `H` explícito (`4DH`) — aviso acrescentado direto na `Ajuda → Mamute
+    Assembler...` do `XM`, não só aqui.
+  - **`*Ptr.String` evitado de propósito** (bug real documentado em `CLAUDE.md`, disassembler Z80 do
+    módulo 31): `MamuteXm_ProcessData()`/`ProcessInstruction()` devolvem o texto gravado/erro via
+    `Global MamuteXm_LastLogText.s`/`MamuteXm_LastError.s` (mesmo idioma já usado por `MamuteCL_LastError`
+    no `CL`), nunca por um parâmetro `*Ptr.String` de saída — só `*Ptr.Integer` (endereço avançando) passa
+    por ponteiro, que é o padrão confirmado seguro.
+- **Verificação**: harness de console isolado descartável (`XmTestCli.pb`, compilando o `Z80Asm.pbi` real
+  + um stub de memória plana 64KB em vez de `Mamute_ReadByte`/`WriteByte` reais) — 16 casos cobrindo
+  instrução simples, instrução inválida, mnemônico desconhecido, a ambiguidade `DAA`/`CCF`, salto de
+  endereço puro e salto+dado (byte gravado no endereço de DESTINO, achado real de um bug do PRÓPRIO
+  harness de teste, não do motor — corrigido antes de reportar sucesso), os 5 sinais de tipo, validação
+  "nada é gravado se um item no meio da lista falhar", e o subcomando `I`. Mais um harness separado pro
+  `CL` confirmando a extensão de literal ASCII (`'A'`, `"AB"`, aspas escapada dobrada, string vazia, erro
+  de mais de 2 caracteres, aspas sem fechar). `build.ps1`/compilação direta limpos — o `.exe` de verdade
+  (`dist/PaleoBasic.exe`) não pôde ser regravado nesta sessão porque duas instâncias dele já estavam
+  rodando na máquina do usuário (arquivo travado) — compilação e testes de lógica confirmados contra um
+  `.exe` temporário fora de `dist/`. Usuário fechou as duas instâncias travando o arquivo, `build.ps1`
+  rodou de verdade contra `dist/PaleoBasic.exe`, e a verificação visual ao vivo aconteceu na sequência —
+  `.exe` real lançado e dirigido via `WM_COMMAND`/`WM_SETTEXT` postados direto nos HWND reais (mesma
+  técnica de mensagem-em-vez-de-clique já recomendada pelo `CLAUDE.md`; clique de mouse simulado
+  (`mouse_event`)/`SendKeys` se mostraram não-confiáveis nesta sessão porque o foco da janela voltava
+  sozinho pro terminal do Claude Code entre uma chamada de ferramenta e outra —achado de plataforma vale
+  registrar para sessões futuras de automação de UI neste projeto). IDs de menu/atalho descobertos em
+  tempo de execução via `GetMenu`/`GetSubMenu`/`GetMenuItemID` (nenhuma suposição sobre o valor numérico
+  dos `#PB_Menu_*`) e os `#MamuteGui_EnterShortcut`/`#MamuteXd_Shortcut_Escape`/`#MamuteXm_EnterShortcut`/
+  etc. lidos direto do código-fonte (constantes literais). Confirmado: `XD 4000` abre janela titulada
+  "Mamute Assembler - XD (SUPER-X)" com a grade de 128 bytes real (memória mapeada de verdade, cursor
+  destacado, rótulo "Modo: navegacao"); `XM 4000` abre "Mamute Assembler" com prompt `4000>`, e digitar
+  `NOP` produz a linha de log `4000  00                  NOP` e avança o prompt pra `4001>` — byte a byte
+  igual ao esperado, sem nenhuma correção de código necessária depois deste teste ao vivo.
+
+### 45b. SUPER-X — endereçamento estendido `#slot[-subslot]`/`#V`/`#4`/`#S`/`#5` no `XD`/`XM` (2026-08-24)
+
+Pedido explícito do usuário, direto sobre o `XD`/`XM` recém-portados: o SUPER-X aceita um sufixo depois
+do endereço pra mirar um slot/sub-slot/VRAM específico, IGNORANDO o `PAGE` corrente — `C000` edita a
+página 3 do slot mapeado agora; `C000#3` edita o endereço `C000` do **slot 3 direto**, mesmo que não
+esteja comutado em nenhuma página; `C000#3-1` mira o **sub-slot 1 do slot 3** (slot expandido). Motivação
+do usuário, registrada porque importa pra prioridade: MSX de verdade suportava até **1MB de RAM** assim
+(4 slots primários × 4 sub-slots × 64KB) — existiu até cartucho comercial de 64KB de RAM que, somado aos
+64KB padrão da máquina, rodava CP/M com 128KB (mesmo usando só 64KB como RAMDISK). Decisão de escopo já
+fechada com o usuário no turno anterior (não reabrir): essa sintaxe vale **só pros comandos portados do
+SUPER-X** (`XD`/`XM`, e os futuros) — os comandos herdados do MegaAssembler (`D`/`M`/`T`/`F`/etc.)
+continuam só `PAGE`-relativos, sem retrofit.
+
+**Motor novo, compartilhado, em `editor/MamuteSupport.pbi`** (não duplicado em `XD`/`XM`):
+- `MamuteMemSub()` — array paralelo só pros sub-slots 1-3 (`[SlotPrimário][SubSlot-1][Página][Offset]`,
+  4×3×4×16KB = 768KB). **`MamuteMem()` continua sendo o sub-slot 0 de cada slot primário, sem realocar
+  nada** — zero risco pra qualquer comando/harness que já lê/escreve nele hoje.
+- `Structure MamuteSxTarget` (`IsVram`/`IsExplicit`/`Slot`/`SubSlot`) — representa "onde" um endereço
+  aponta de verdade: `PAGE` corrente (default), slot/sub-slot explícito, ou VRAM.
+- `Mamute_ParseSxSlotSuffix()`/`Mamute_ParseSxAddr()` — parseiam o sufixo e o endereço completo (largura
+  do endereço já certa pro alvo — `Mamute_ParseHexAddr` pra RAM/slot, `Mamute_ParseVramAddr` — 1-5
+  dígitos, validado contra `MamuteVramSize` — quando o sufixo pede VRAM, mesma largura que `V`/`P` já
+  usam desde o módulo 31, decisão de manter a VRAM consistente em vez de travar em 4 dígitos só por
+  causa do formato original do SUPER-X).
+- `Mamute_SxReadByte()`/`Mamute_SxWriteByte()`/`Mamute_SxWrapAddr()` — equivalentes de
+  `Mamute_ReadByte()`/`Mamute_WriteByte()` mas honrando o alvo resolvido; alvo "default" (sem sufixo, sem
+  VRAM) cai direto pros originais — nenhum comando muda de comportamento sem sufixo digitado.
+  `Mamute_SxWrapAddr()` existe porque VRAM (até 192KB) **não é potência de 2** — precisa de módulo de
+  verdade (`%`, com normalização de negativo), não `& $FFFF`/AND puro como o resto do Mamute usa.
+- **Decisões de simplificação, documentadas no próprio código-fonte**: sub-slot omitido (`#3` sem
+  `-sub`) assume sub-slot 0 — o Mamute ainda não simula um "registrador de sub-slot ativo" por slot
+  primário (isso seria emulação de hardware de verdade, escopo do debugger/`G`/módulo 32, não deste
+  parser de endereço). Sub-slots 1-3 começam **sempre como RAM gravável** (sem Vazio/ROM/BASIC por
+  célula — não existe tela de configuração física por sub-slot ainda, `MamuteCfgCell` só cobre
+  `[Slot][Página]`) — decisão deliberada: é exatamente o caso de uso que motivou o pedido (RAM expandida
+  em sub-slot). `#V`/`#4` (VRAM) precisou da **primeira função de ESCRITA de VRAM do projeto**
+  (`Mamute_SxWriteByte`) — antes só existia leitura (`V`/`P`, módulo 31, pendência registrada lá).
+- **Achado real de fidelidade ao manual, corrigido antes de virar bug**: a doc do SUPER-X diz
+  explicitamente "if the slot number is left out of an address, the CURRENT slot is assumed — the
+  current slot is the slot last selected". Isso significa que um endereço **sem** `#sufixo` no meio de
+  uma sessão do `XM` deve **manter** o alvo explícito já ativo, não resetar pro `PAGE` sozinho — só
+  `#S`/`#5` explícito volta pro `PAGE` de propósito. A primeira versão do `MamuteXm_ProcessLine` fazia
+  isso errado (qualquer salto de endereço, com ou sem `#`, sobrescrevia o alvo pro resultado do parse,
+  que pra um token sem `#` sempre vem "não explícito"). Corrigido checando se o token TINHA um `#` de
+  verdade (`FindString(FirstTok, "#") > 0`) antes de sobrescrever `*T` — só troca o alvo quando o sufixo
+  aparece de verdade na linha.
+- **`XD`**: o alvo fica fixo pela sessão inteira da janela (definido na abertura, `MamuteXd_Open()` ganhou
+  `*StartTarget`); título/rótulo "Endereço:" mostram o sufixo quando não-default. Navegação (páginas
+  ±128, `@`, digitação ASCII) tudo passa por `Mamute_SxReadByte`/`WriteByte`/`WrapAddr`. O despejo não-
+  interativo de DOIS endereços continua só `PAGE`-relativo (reaproveita `Mamute_BuildDumpLines()`,
+  compartilhada com `D`/`P`/`V` — não vale a pena mudar a assinatura dela só por isso).
+- **`XM`**: o alvo agora é MUTÁVEL durante a sessão — qualquer linha `ENDERECO#sufixo` troca o alvo dali
+  em diante (`MamuteXm_ProcessLine` ganhou `*T.MamuteSxTarget` in/out). Prompt/log mostram o sufixo a
+  cada linha (`MamuteXm_FormatAddr()`). `I` (listagem) **recusa** rodar com alvo explícito/VRAM ativo em
+  vez de mostrar bytes errados — `Mamute_DisasmBuildLines()` (módulo 31) só entende `PAGE`, ainda não foi
+  estendida (natural próximo passo quando o `SD` do módulo 45 for implementado, já que ele também
+  precisa de disassembly com slot explícito).
+- **`MamuteGui_State`** ganhou `LastXdTarget`/`LastXmTarget` (`MamuteAssemblerGui.pbi`) — reabrir `XD`/
+  `XM` sem argumento volta pro MESMO alvo de antes, não só o mesmo endereço.
+- **Verificação**: harness de console isolado descartável (27 casos no motor puro — sufixo/parse/leitura/
+  escrita/VRAM/sub-slot/texto de rótulo, incluindo um bug real achado e corrigido: `"3-"` — traço sem
+  nada depois — estava sendo aceito como "sem sub-slot" em vez de rejeitado como malformado) mais 13
+  casos no `XM` (incluindo a semântica "sticky" acima, `DAA`/`CCF` continuando instrução mesmo com alvo
+  explícito ativo, e sub-slots não vazando dados entre si). `build.ps1` limpo, e verificação ao vivo
+  contra o `.exe` real (mesma técnica `WM_COMMAND`/`WM_SETTEXT` via HWND do módulo 45a) confirmando
+  `XD C000#3-1` → título `Mamute Assembler - XD (SUPER-X) #3-1` + rótulo `Endereco: C000#3-1`; sessão
+  `XM 4000#3-1` → `.AA,BB` grava e ecoa `4000#3-1  AA BB  .AA,BB`, depois `D010` (SEM sufixo) pula pra
+  `D010` **mantendo** `#3-1` (`-> D010#3-1`), `.CC` grava lá, prompt final `D011#3-1>` — a semântica
+  "sticky" documentada acima confirmada byte a byte na janela real, não só no harness isolado.
+
+### 45c. SUPER-X — prefixo `?` (saída "impressora" = PDF) no `XD` (2026-08-24)
+
+Pedido explícito do usuário: "Todos os comandos do Super-X se forem precedidos de ? a saída é na
+impressora, que no nosso caso é um PDF" — confirmado na doc original (`others/superx/SUPER-X.DOC.pdf`,
+seção "General information": "Printer output of a command: Place a "?" in front of the command. Example:
+?D0 100 This dumps address 0 to 100h to the screen AND printer"). Escopo decidido: só vale pros comandos
+**portados do SUPER-X** (`XD` agora; `XM`/futuros quando fizer sentido) — os herdados do MegaAssembler já
+têm verbo dedicado pra isso (`D`→`P`, `L`→`LP`), não precisam de prefixo nenhum.
+
+- **`MamuteGui_Dispatch()`** (`MamuteAssemblerGui.pbi`) detecta um `?` líder ANTES de separar verbo/
+  argumentos, remove ele do texto e vira um `PrinterMode.b` passado pro comando. Se `PrinterMode` estiver
+  ligado e o verbo não for um dos que entendem impressão (só `XD` por enquanto), mostra
+  `?IMPRESSAO NAO APLICAVEL A ESTE COMANDO` sem nem chegar no `Select` dos comandos — nenhum comando
+  precisa saber que esse prefixo existe a menos que já opte por suportar.
+- **`XD`** (`MamuteGui_CmdXd`, novo parâmetro `PrinterMode.b = #False`) — `?XD <inic>,<fim>` gera o MESMO
+  PDF que `P` já gera pro `D` (`Mamute_SavePdfListing()`, módulo 31 — código copiado/adaptado do próprio
+  `MamuteGui_CmdP`, mesmo `SaveFileRequester`/cabeçalho/mensagens `PDF GRAVADO`/`?ERRO AO GRAVAR PDF`/
+  `CANCELADO`). `?XD <endereço>` (UM endereço, a forma que abre a grade interativa) não tem listagem
+  nenhuma pra imprimir — mostra `?IMPRESSAO SO FUNCIONA COM DOIS ENDERECOS (XD <inic>,<fim>)` em vez de
+  tentar imprimir uma sessão de edição.
+- **Verificação ao vivo** contra o `.exe` real (mesma técnica `WM_COMMAND`/`WM_SETTEXT`, módulos 45a/45b):
+  `?XD 4000` → `?IMPRESSAO SO FUNCIONA COM DOIS ENDERECOS...`; `?XM 4000` → `?IMPRESSAO NAO APLICAVEL...`;
+  `?FOOBAR` (comando inexistente com `?`) → mesma mensagem de não-aplicável; `?XD 4000,4010` → abre de
+  verdade o diálogo nativo "Salvar listagem (?XD) como PDF" (confirmado via `EnumWindows` pelo título
+  exato), fechado com `WM_CLOSE` (sem gravar arquivo) e o log mostrando `CANCELADO` — confirma a fiação
+  inteira (detecção do `?`, roteamento, diálogo real) sem precisar gravar um PDF de verdade pra validar
+  `Mamute_SavePdfListing()`, que já é código comprovado (mesmo usado por `P`/`LP` desde o módulo 31, sem
+  mudança nenhuma nesta sessão).
+
+### 45d. SUPER-X — variáveis de debugger `@0`-`@3`/`@B`/`@E`/`@S` (2026-08-24)
+
+Pedido explícito do usuário, com uma divergência real em relação ao manual encontrada e corrigida antes
+de codar: o usuário descreveu "7 variáveis, `@0` a `@6`" mais as 3 especiais; reler a página "Debugger
+variables" do manual (`others/superx/SUPER-X.DOC.pdf`) mostrou o contrário — **"7 Addresses... Normal
+variables are numbered from 0 to 3"** — ou seja, 7 no TOTAL = 4 normais (`@0`-`@3`) + 3 especiais
+(`@B`/`@E`/`@S`), não 7 normais + 3 especiais (10 no total). Confirmado com o usuário via pergunta direta
+antes de implementar — foi pra a opção fiel ao manual.
+
+Cada variável guarda um **endereço completo** (número + alvo — slot/sub-slot/VRAM, não só o número cru).
+`@<nome>=<endereço>[#slot]` define; `@` sozinho no prompt mostra as 7; depois de definida, `@<nome>`
+substitui um endereço inteiro (número + alvo) em qualquer comando do SUPER-X — mesma decisão de escopo
+já usada pro `#slot`/`?` (só `XD`/`XM`/futuros, não os herdados do MegaAssembler).
+
+- **`MamuteSupport.pbi`** — `Structure MamuteVarSlot` (`HasValue`/`Addr`/`Target.MamuteSxTarget`);
+  `Global Dim MamuteVarNum.MamuteVarSlot(3)` (`@0`-`@3`) + três `Global` separados
+  (`MamuteVarB`/`MamuteVarE`/`MamuteVarS`) pras especiais — não um array só de 7, porque as especiais têm
+  nome próprio (letra, não número) e semântica diferente (preenchidas por comandos de carga em disco,
+  ainda não implementados — ficam como células vazias até esses comandos existirem, fase F do módulo 45).
+  `Mamute_VarPtr(Name.s)` devolve um ponteiro pra célula certa a partir do nome digitado (0-3/B/E/S,
+  case-insensitive) — usado tanto pelo `Dispatch` quanto pelo parser de endereço.
+- **`Mamute_ParseSxAddr()` estendido** — token começando com `@` vira lookup direto: devolve o
+  `Addr`+`Target` GRAVADOS na variável (ignora qualquer coisa depois do nome — não existe `@0#3` pra
+  sobrescrever o alvo de uma variável já definida, só redefinindo ela de novo). Automaticamente vale em
+  todo lugar que já chamava essa função — abertura do `XD`/`XM` e o salto inline de endereço do `XM`
+  (`MamuteXm_ProcessLine`) ganharam suporte a variável de graça, sem tocar nesses dois arquivos.
+- **`Mamute_CL_Tokenize()` estendido** — `@<nome>` dentro de uma expressão (`CL`, ou os campos de dado
+  `.`/`:`/`;`/`[` do `XM`, que já passam por `Mamute_CL_Eval()`) vira só o NÚMERO gravado (sem alvo — não
+  faz sentido dentro de aritmética) — mesmo truque de marcador `Chr(1)` já usado pro literal ASCII
+  (módulo 45a/CL). Exemplo do próprio manual (`CL @1+1` → `0FF3H`) usado como caso de teste e confirmado
+  ao vivo byte a byte.
+- **`Mamute_VarStoreBase()`** (novo) — "commands store base address in variable 0" (mesma seção do
+  manual) — `XD`/`XM` chamam isso ao abrir com um endereço resolvido, sobrescrevendo `@0` sozinho, sem o
+  usuário precisar setar na mão.
+- **`MamuteGui_Dispatch()`** ganhou dois casos novos, verificados ANTES do split verbo/argumentos (nenhuma
+  das duas formas tem "verbo" separado por espaço do jeito normal): `@` sozinho
+  (`MamuteGui_ShowVars()`, lista as 7, `(vazia)` pras que não foram definidas) e `@<nome>=<endereço>
+  [#slot]` (seta uma, ecoando `@<NOME> = <formatado>` de confirmação).
+- **Verificação**: harness de console isolado descartável (21 casos — `Mamute_VarPtr` pros 7 nomes válidos
+  + inválidos, set/get via `Mamute_ParseSxAddr("@0", ...)`, `@B`/`@E`/`@S`, o exemplo `CL @1+1` do próprio
+  manual, variável indefinida/inválida falhando com erro claro, `Mamute_VarStoreBase()`,
+  `Mamute_SxFormatAddr()`) e `build.ps1` limpo. Verificação ao vivo contra o `.exe` real (mesma técnica
+  `WM_COMMAND`/`WM_SETTEXT`): `@0=8000#3-1` → eco `@0 = 8000#3-1`; `@1=FF2` → `@1 = 0FF2` (bate com o
+  exemplo do manual); `@` sozinho lista as 7 corretamente; `CL @1+1` → `HEX : 0FF3H` (**idêntico** ao
+  exemplo do manual original); `XD @0` → abre `Mamute Assembler - XD (SUPER-X) #3-1`, confirmando a
+  substituição de endereço+alvo completo, não só o número.
+
+### 45e. SUPER-X — carregador do arquivo de notas + ajuda traduzida (2026-08-24)
+
+Pedido explícito do usuário: "Por hora apenas carregue estas notas na memoria, vamos usar elas em outros
+comandos" + "adicione o conteudo destas notas no help do Mamute Assembler na parte modo Super-X" +
+"Traduzir todas as 471 (Recomendado)". Escopo decidido com o usuário: só o **parser/carregador** e a
+**ajuda traduzida** nesta sessão — nenhum comando `MON>` (`iL`/`iM`/`iC`/`iS`, mencionados na doc original
+do SUPER-X) foi implementado; ficam pra uma fase F futura deste módulo.
+
+- **Formato do arquivo** (`SUPER-X.TNK`, doc original seção "Note function"): 2 bytes iniciais = quantidade
+  de notas GRAVADAS (não "notas que sobram", como a frase em inglês da doc sugere — confirmado com o
+  arquivo de exemplo real: campo = 471, exatamente o número de notas com conteúdo) + até 512 registros
+  fixos de 64 bytes (endereço 2 bytes LE, slot 1 byte, tipo 1 byte, texto 60 bytes) = 2 + 512×64 = 32770
+  bytes esperados pela doc. **Achado real**: o `SUPER-X.TNK` de exemplo tem 32896 bytes — 126 bytes A MAIS
+  que o esperado, sobrando depois do último dos 512 registros, sem corresponder a nada descrito no formato
+  — provavelmente lixo/padding do gravador original do pacote. `Mamute_LoadNoteFile()` tolera esse excesso
+  (rejeita só arquivo mais CURTO que o mínimo, não recusa por excesso).
+- **Achado real sobre a codificação do texto**: os 60 bytes de cada nota decodificam corretamente como
+  **Shift-JIS de katakana meia-largura de 1 byte** (faixa 0xA1-0xDF, JIS X0201) — NÃO é um encoding
+  proprietário/só-de-fonte como se suspeitava antes de examinar os bytes reais. Confirmado decodificando o
+  arquivo de verdade fora do projeto. O "slot" (1 byte) é uma classificação PRÓPRIA do SUPER-X
+  (0=Geral 1=MAIN 2=SUB 3=FDC 4=RAM) — não é o mesmo conceito do `#slot`/sub-slot do endereçamento
+  estendido do módulo 45b (`Mamute_SxTarget`), só coincidem de nome.
+- **`MamuteNotesData.pbi`** (novo) — `Structure MamuteNote` (`Addr.u`/`SlotData.a`/`TypeData.a`/`Text.s`) +
+  `Global NewList MamuteNotes.MamuteNote()` + `Procedure.b Mamute_LoadNoteFile(FilePath.s)`. O texto é
+  guardado CRU (`Chr()` byte a byte, sem decodificar Shift-JIS em tempo de execução) — a tradução das 471
+  notas reais vira conteúdo ESTÁTICO da ajuda (próximo item), não decodificação dinâmica. Nenhum comando do
+  `MON>` chama essa função ainda.
+- **`src/editor/tools/MamuteNotesTestCli.pb`** (novo harness, mesmo padrão dos demais em `tools/`) — recebe
+  o caminho do `.TNK` como argumento, imprime contagem total + primeiros/últimos registros + contagem por
+  tipo. Rodado de verdade contra `others/superx/SUPER-X.TNK` (terceiros — já commitado no repositório
+  desde antes desta sessão, ver achado real acima; nunca copiado pra `dist/`/`resource/`/`.exe`, só lido
+  como entrada de teste local): **471 notas carregadas**, contagem por tipo BIOS=130 WORK=224 DATA=5
+  PORT=25 HOOK=87 (GERAL/MATH/KEY = 0 no arquivo de exemplo), batendo exatamente com a exploração feita
+  fora do projeto antes de escrever o parser em PureBasic.
+- **`MamuteSuperXNotesHelpData.pbi`** (novo) — tradução japonês→português técnico das 471 notas reais,
+  escrita à mão como conteúdo estático (não depende de `Mamute_LoadNoteFile()` ter rodado). Notação de
+  registrador (`I/`, `O/`, `R/ALL` etc., quando presente no original) preservada sem tradução, por ser
+  notação técnica padrão de referência de BIOS Z80/MSX. Organizado em 11 tópicos de Ajuda no grupo
+  `"SUPER-X - Notas"`: 1 introdutório (formato/origem/contagens) + BIOS (2 partes) + WORK (4 partes) + DATA
+  (1) + PORT (1) + HOOK (2 partes) — divisão em partes por tipo respeita o limite de ~8192 caracteres por
+  literal composto do `pbcompiler.exe` (mesma técnica já usada pelos tópicos `EDIT`/`EDIT - Montar`, módulo
+  31); maior chunk gerado ficou em ~6539 caracteres, com folga. `MamuteHelp_BuildSuperXNotes()` é chamado a
+  partir de `MamuteHelpGui.pbi` logo depois de `MamuteHelp_BuildData()` (não de dentro dela — `MamuteHelp_Add()`
+  só existe a partir de `MamuteHelpData.pbi`, que por sua vez precisa vir ANTES de
+  `MamuteSuperXNotesHelpData.pbi` na ordem de `XIncludeFile`, então a chamada não pode ficar dentro do
+  `Procedure MamuteHelp_BuildData()` sem inverter essa dependência).
+- **Verificação**: harness rodado contra o arquivo real (471/471, contagens por tipo batendo); compilação
+  completa (`build.ps1`) limpa, sem erros; nenhuma instância pré-existente de `PaleoBasic.exe` foi
+  encerrada (verificado com `tasklist` antes de tocar `dist/`).
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
+
+- **`others/superx/` está commitado no repositório e já publicado em `origin/main`, contradizendo a
+  própria licença de terceiros que o projeto documenta pra esse material** (2026-08-24, em aberto,
+  achado real — ver módulo 45e): `others/` não tem regra de `.gitignore` nenhuma (só `/badig/`/`/fmsx/`
+  são raiz-ignorados); os 9 arquivos de `others/superx/` — incluindo `SUPER-X.ASM`/`LOADER.ASM`
+  completos (~155KB de fonte Z80) e os binários `.TNK`/`.BDY`/`.LDR`/`.FNT` — foram commitados em
+  `af9a98a` (2026-08-19, "Reorganização completa de diretórios"), antes da sessão que portou os
+  comandos do SUPER-X (módulo 45) começar, e já estão em `origin/main` (remoto
+  `github-pessoal:wilsonpilon/paleobasic`). Módulos 45/45a-45d chegaram a documentar esse material como
+  "gitignored/específico desta máquina" (mesmo tratamento de `badig/`/`fmsx/`) sem nunca checar de
+  verdade com `git status`/`git ls-files` — corrigido no módulo 45e depois de descobrir o contrário por
+  acidente (o harness `MamuteNotesTestCli.pb` apontando pro arquivo real). **Decisão de remediação é do
+  usuário, não tomada nem sugerida como ação automática aqui**: as opções vão de simples (`git rm
+  --cached` + entrada no `.gitignore`, pára de rastrear DAQUI PRA FRENTE, não mexe no histórico nem no
+  que já foi publicado) até reescrita de histórico (`git filter-repo`/BFG + force-push, remove dos
+  commits antigos também, mas é destrutivo e afeta qualquer clone existente) - perguntar antes de
+  qualquer uma das duas.
 
 - **`src/editor/tools/OpenMsxBridgeTestCli.pb` não compila** (2026-08-20, em aberto): `Structure field
   not found: EmSetting` em `OpenMSXBridge.pbi` - a struct `BadigCfg` local desse harness (uma versão

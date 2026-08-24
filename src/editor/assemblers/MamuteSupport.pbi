@@ -349,6 +349,729 @@ Procedure.b Mamute_ParseVramAddr(Token.s, *OutValue.Integer)
   ProcedureReturn #True
 EndProcedure
 
+;- ------------------------------------------------------------
+;- Enderecamento estendido do SUPER-X (docs/SPEC.md modulo 45/45b) -
+;- "<endereco>[#<slot 0-3>[-<subslot 0-3>]]" ou "<endereco>#V"/"#4" (VRAM) ou
+;- "#S"/"#5" (mapeamento PAGE corrente, mesmo efeito de nao informar sufixo
+;- nenhum). Usado so' pelos comandos PORTADOS do SUPER-X (XD/XM e futuros -
+;- MamuteXdGui.pbi/MamuteXmGui.pbi) - decisao explicita do usuario de NAO
+;- retrofitar isso nos comandos herdados do MegaAssembler (D/M/T/F/etc.),
+;- que continuam so PAGE-relativos como sempre foram.
+;-
+;- Sub-slot expandido - pedido explicito do usuario, MSX de verdade
+;- suportava ate 1MB de RAM assim (4 slots primarios x 4 sub-slots x 64KB,
+;- caso real: cartucho de RAM de 64KB somado aos 64KB padrao rodando CP/M
+;- com RAMDISK). MamuteMem() (0-3,0-3,16383) CONTINUA sendo o sub-slot 0 de
+;- cada slot primario, sem realocar/duplicar nada - MamuteMemSub() (novo)
+;- guarda so os sub-slots 1-3. Ainda NAO existe registrador de "sub-slot
+;- ATIVO" por slot primario (isso seria emulacao de hardware de verdade,
+;- escopo do debugger/execucao - modulo 32/Mz80Cpu - nao deste parser de
+;- endereco) - "<endereco>#<slot>" sem sub-slot informado assume sub-slot 0,
+;- sempre, de proposito, decisao simples e documentada.
+;-
+;- Sub-slots 1-3 comecam SEMPRE como RAM gravavel (sem Vazio/ROM/BASIC por
+;- celula - ainda nao existe tela de configuracao fisica por sub-slot,
+;- MamuteCfgCell so' cobre [Slot][Pagina]) - decisao deliberada: e exatamente
+;- o caso de uso que motivou o pedido (RAM expandida em sub-slot).
+;- ------------------------------------------------------------
+
+; [SlotPrimario 0-3][SubSlot-1 0-2 (=sub-slot 1,2,3)][Pagina 0-3][Offset] -
+; 4x3x4x16KB = 768KB. Global Dim zera sozinho, mesmo idioma do MamuteMem().
+Global Dim MamuteMemSub.a(3, 2, 3, 16383)
+
+Structure MamuteSxTarget
+  IsVram.b     ; #True = mira MamuteVRAM(), Addr e' offset plano ali (nao passa por slot/pagina)
+  IsExplicit.b ; #True = slot primario explicito informado (#slot ou #slot-subslot) - NAO usa PAGE
+  Slot.b       ; slot primario 0-3, valido so quando IsExplicit
+  SubSlot.b    ; sub-slot 0-3, valido so quando IsExplicit (0 quando nao informado = sub-slot 0)
+EndStructure
+
+; Parseia so a PARTE DEPOIS do "#" (token sem o "#" - ex.: "3-1", "V", "4",
+; "S", "5", "3"). #False = sufixo invalido (nem V/4/S/5 nem slot 0-3 valido).
+Procedure.b Mamute_ParseSxSlotSuffix(Suffix.s, *OutTarget.MamuteSxTarget)
+  Protected U.s = UCase(Suffix)
+  If U = "V" Or U = "4"
+    *OutTarget\IsVram = #True
+    ProcedureReturn #True
+  EndIf
+  If U = "S" Or U = "5"
+    *OutTarget\IsExplicit = #False
+    ProcedureReturn #True
+  EndIf
+
+  Protected DashPos.i = FindString(U, "-")
+  Protected HasDash.b = Bool(DashPos > 0)
+  Protected SlotTok.s, SubTok.s
+  If HasDash
+    SlotTok = Left(U, DashPos - 1)
+    SubTok = Mid(U, DashPos + 1)
+    If SubTok = "" ; "3-" (traco sem nada depois) - malformado, nao "sem sub-slot"
+      ProcedureReturn #False
+    EndIf
+  Else
+    SlotTok = U
+    SubTok = ""
+  EndIf
+
+  If Len(SlotTok) <> 1 Or FindString("0123", SlotTok) = 0
+    ProcedureReturn #False
+  EndIf
+  *OutTarget\IsExplicit = #True
+  *OutTarget\Slot = Val(SlotTok)
+
+  If SubTok <> ""
+    If Len(SubTok) <> 1 Or FindString("0123", SubTok) = 0
+      ProcedureReturn #False
+    EndIf
+    *OutTarget\SubSlot = Val(SubTok)
+  Else
+    *OutTarget\SubSlot = 0
+  EndIf
+  ProcedureReturn #True
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Variaveis de debugger do SUPER-X (docs/SPEC.md modulo 45d,
+;- others/superx/SUPER-X.DOC.pdf, secao "Debugger variables") - 7 no total:
+;- @0-@3 (normais) + @B/@E/@S (especiais - Begin/End/Start-ou-Size,
+;- preenchidas automaticamente por comandos de carga em disco quando esses
+;- existirem - ainda nao implementados, ver docs/SPEC.md modulo 45 fase F).
+;- Cada variavel guarda um ENDERECO COMPLETO (endereco + alvo/slot/sub-
+;- slot/VRAM, nao so' o numero cru) - "@0=8000#3-1" grava os dois juntos, e
+;- usar "@0" no lugar de um endereco (`Mamute_ParseSxAddr`, ver abaixo)
+;- devolve os dois de volta. So' os comandos PORTADOS do SUPER-X entendem
+;- variavel (mesma decisao de escopo do resto do modulo 45).
+;- ------------------------------------------------------------
+
+Structure MamuteVarSlot
+  HasValue.b            ; #True depois de setada pelo menos uma vez
+  Addr.i
+  Target.MamuteSxTarget
+EndStructure
+
+Global Dim MamuteVarNum.MamuteVarSlot(3) ; @0-@3
+Global MamuteVarB.MamuteVarSlot          ; @B - Begin address
+Global MamuteVarE.MamuteVarSlot          ; @E - End address
+Global MamuteVarS.MamuteVarSlot          ; @S - Start address / Size
+
+; Devolve um PONTEIRO pra celula certa (Dim numerado ou um dos 3 Globals
+; especiais) a partir do NOME digitado ("0".."3","B","E","S", sem o "@" na
+; frente - quem chama ja tira) - 0 (nulo) se o nome nao bater com nenhuma
+; das 7 variaveis.
+Procedure.i Mamute_VarPtr(Name.s)
+  Protected U.s = UCase(Name)
+  If Len(U) <> 1
+    ProcedureReturn 0
+  EndIf
+  If U >= "0" And U <= "3"
+    ProcedureReturn @MamuteVarNum(Val(U))
+  ElseIf U = "B"
+    ProcedureReturn @MamuteVarB
+  ElseIf U = "E"
+    ProcedureReturn @MamuteVarE
+  ElseIf U = "S"
+    ProcedureReturn @MamuteVarS
+  EndIf
+  ProcedureReturn 0
+EndProcedure
+
+; "Commands store base address in variable 0" (doc do SUPER-X, mesma secao
+; "Debugger variables") - XD/XM chamam isso ao abrir com um endereco
+; resolvido (MamuteGui_CmdXd/CmdXm, MamuteAssemblerGui.pbi), sobrescrevendo
+; @0 sozinho, sem o usuario precisar setar na mao.
+Procedure Mamute_VarStoreBase(Addr.i, *T.MamuteSxTarget)
+  MamuteVarNum(0)\HasValue = #True
+  MamuteVarNum(0)\Addr = Addr
+  CopyStructure(*T, @MamuteVarNum(0)\Target, MamuteSxTarget)
+EndProcedure
+
+; Declare antecipado - Mamute_SxTargetSuffixText() so' e' definida mais
+; abaixo (perto de Mamute_SxWrapAddr()), mesmo motivo/idioma ja documentado
+; no topo do projeto pra "declaration order e' load-bearing".
+Declare.s Mamute_SxTargetSuffixText(*T.MamuteSxTarget)
+
+; Formata endereco+alvo pro log/rotulo - mesma logica de MamuteXm_FormatAddr
+; (MamuteXmGui.pbi), reescrita aqui como utilitario compartilhado (usado
+; tambem pela exibicao de variaveis, MamuteAssemblerGui.pbi) - digitos 4 ou
+; 5 (VRAM) + sufixo de alvo (Mamute_SxTargetSuffixText, "" quando e' so o
+; PAGE corrente).
+Procedure.s Mamute_SxFormatAddr(Addr.i, *T.MamuteSxTarget)
+  Protected Digits.i = 4
+  If *T\IsVram : Digits = 5 : EndIf
+  ProcedureReturn Mamute_HexPad(Addr, Digits) + Mamute_SxTargetSuffixText(*T)
+EndProcedure
+
+; Parseia "<endereco>[#<sufixo>]" completo, OU "@<nome>" (variavel de
+; debugger - devolve o endereco+alvo GRAVADOS na variavel, ignorando
+; qualquer coisa depois - nao existe "@0#3" pra sobrescrever o alvo de uma
+; variavel, so' redefinindo ela de novo). *OutTarget sempre inicializado
+; (mesmo em caso de erro, pra nunca deixar lixo). Addr resolvido pela regra
+; certa pro alvo - Mamute_ParseHexAddr (0000-FFFF) pra RAM/ROM/sub-slot;
+; Mamute_ParseVramAddr (1-5 digitos, validado contra MamuteVramSize) quando
+; o sufixo pedir VRAM - mesma largura que os comandos V/P ja usam, decisao
+; de manter a VRAM consistente em vez de travar em 4 digitos so por causa do
+; formato original do SUPER-X.
+Procedure.b Mamute_ParseSxAddr(Token.s, *OutAddr.Integer, *OutTarget.MamuteSxTarget)
+  *OutTarget\IsVram = #False
+  *OutTarget\IsExplicit = #False
+  *OutTarget\Slot = 0
+  *OutTarget\SubSlot = 0
+
+  If Left(Token, 1) = "@"
+    Protected *VS.MamuteVarSlot = Mamute_VarPtr(Mid(Token, 2))
+    If Not *VS Or Not *VS\HasValue
+      ProcedureReturn #False
+    EndIf
+    *OutAddr\i = *VS\Addr
+    CopyStructure(@*VS\Target, *OutTarget, MamuteSxTarget)
+    ProcedureReturn #True
+  EndIf
+
+  Protected HashPos.i = FindString(Token, "#")
+  Protected AddrTok.s, SuffixTok.s
+  If HashPos > 0
+    AddrTok = Left(Token, HashPos - 1)
+    SuffixTok = Mid(Token, HashPos + 1)
+    If SuffixTok = "" Or Not Mamute_ParseSxSlotSuffix(SuffixTok, *OutTarget)
+      ProcedureReturn #False
+    EndIf
+  Else
+    AddrTok = Token
+  EndIf
+
+  If *OutTarget\IsVram
+    ProcedureReturn Mamute_ParseVramAddr(AddrTok, *OutAddr)
+  EndIf
+  ProcedureReturn Mamute_ParseHexAddr(AddrTok, *OutAddr)
+EndProcedure
+
+; Le/escreve um byte no ALVO ja resolvido (*T) - equivalente a
+; Mamute_ReadByte()/Mamute_WriteByte() (que continuam existindo e em uso por
+; todo o resto do Mamute), mas honrando slot/sub-slot explicito ou VRAM em
+; vez de sempre passar pelo mapeamento PAGE corrente. *T\IsExplicit=#False e
+; IsVram=#False cai direto pro Mamute_ReadByte/WriteByte normal (mesmo
+; resultado de sempre) - nenhum comando que use isso muda de comportamento
+; quando nenhum sufixo e digitado.
+Procedure.a Mamute_SxReadByte(Addr.i, *T.MamuteSxTarget)
+  If *T\IsVram
+    ProcedureReturn MamuteVRAM(Addr)
+  EndIf
+  If Not *T\IsExplicit
+    ProcedureReturn Mamute_ReadByte(Addr)
+  EndIf
+  Protected Pagina.i = (Addr >> 14) & 3
+  Protected Offset.i = Addr & (#Mamute_PageSize - 1)
+  If *T\SubSlot = 0
+    ProcedureReturn MamuteMem(*T\Slot, Pagina, Offset)
+  EndIf
+  ProcedureReturn MamuteMemSub(*T\Slot, *T\SubSlot - 1, Pagina, Offset)
+EndProcedure
+
+; #True se escreveu de verdade. Sub-slot 0 respeita a configuracao fisica da
+; celula (MamuteCfgCell, so RAM aceita escrita - mesma regra do
+; Mamute_WriteByte comum, so que consultando o Slot EXPLICITO em vez do
+; MamutePageMap). Sub-slots 1-3 sao sempre RAM gravavel (ver comentario no
+; topo da secao - ainda nao ha config fisica por sub-slot).
+Procedure.b Mamute_SxWriteByte(Addr.i, Value.a, *T.MamuteSxTarget)
+  If *T\IsVram
+    MamuteVRAM(Addr) = Value
+    ProcedureReturn #True
+  EndIf
+  If Not *T\IsExplicit
+    ProcedureReturn Mamute_WriteByte(Addr, Value)
+  EndIf
+  Protected Pagina.i = (Addr >> 14) & 3
+  Protected Offset.i = Addr & (#Mamute_PageSize - 1)
+  If *T\SubSlot = 0
+    If MamuteCfgCell(*T\Slot, Pagina)\Tipo <> #MamuteMem_RAM
+      ProcedureReturn #False
+    EndIf
+    MamuteMem(*T\Slot, Pagina, Offset) = Value
+    ProcedureReturn #True
+  EndIf
+  MamuteMemSub(*T\Slot, *T\SubSlot - 1, Pagina, Offset) = Value
+  ProcedureReturn #True
+EndProcedure
+
+; Descreve o alvo pro rotulo de status/titulo de janela (XD/XM) - "" quando
+; e' so o PAGE corrente (nada de especial pra mostrar).
+Procedure.s Mamute_SxTargetSuffixText(*T.MamuteSxTarget)
+  If *T\IsVram
+    ProcedureReturn "#V"
+  EndIf
+  If Not *T\IsExplicit
+    ProcedureReturn ""
+  EndIf
+  If *T\SubSlot = 0
+    ProcedureReturn "#" + Str(*T\Slot)
+  EndIf
+  ProcedureReturn "#" + Str(*T\Slot) + "-" + Str(*T\SubSlot)
+EndProcedure
+
+; Envelopa um endereco pro alvo - 0000-FFFF (16 bits, AND) pra RAM/ROM/
+; sub-slot; MODULO #Mamute_VramMaxSize pra VRAM (tem que ser modulo de
+; verdade, nao AND - 192KB nao e potencia de 2). Usado pela navegacao da
+; grade do XD (paginacao +-128 bytes escapa da faixa facil).
+Procedure.i Mamute_SxWrapAddr(Addr.i, *T.MamuteSxTarget)
+  If *T\IsVram
+    Protected M.i = Addr % #Mamute_VramMaxSize
+    If M < 0 : M + #Mamute_VramMaxSize : EndIf
+    ProcedureReturn M
+  EndIf
+  ProcedureReturn Addr & $FFFF
+EndProcedure
+
+;- ------------------------------------------------------------
+;- Calculadora do comando CL (MamuteGui_CmdCl, MamuteAssemblerGui.pbi) -
+;- avaliador de expressao independente do Z80Asm::EvalExpr (que existe pra
+;- outro proposito - fonte-assembly, com simbolos/segmentos e DEFAULT
+;- DECIMAL classico M80) porque o CL segue a convencao inversa, ja
+;- estabelecida no resto do Mamute: hexa por padrao, sem sufixo nenhum (ver
+;- Mamute_ParseHexAddr acima). Tudo em 16 bits sem sinal, com wraparound em
+;- toda operacao (mesma convencao de endereco do resto do Mamute) - nao ha
+;- overflow de verdade, um resultado "grande demais" so' da a volta.
+;- ------------------------------------------------------------
+
+; Digitos validos em cada base, sem limite de tamanho (Mamute_IsHexString
+; acima exige um MaxLen porque foi feita pra enderecos de largura fixa).
+Procedure.b Mamute_IsOctalDigits(s.s)
+  If Len(s) < 1
+    ProcedureReturn #False
+  EndIf
+  Protected i.i
+  For i = 1 To Len(s)
+    If FindString("01234567", Mid(s, i, 1)) = 0
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_IsDecimalDigits(s.s)
+  If Len(s) < 1
+    ProcedureReturn #False
+  EndIf
+  Protected i.i
+  For i = 1 To Len(s)
+    If FindString("0123456789", Mid(s, i, 1)) = 0
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_IsBinaryDigits(s.s)
+  If Len(s) < 1
+    ProcedureReturn #False
+  EndIf
+  Protected i.i
+  For i = 1 To Len(s)
+    If Mid(s, i, 1) <> "0" And Mid(s, i, 1) <> "1"
+      ProcedureReturn #False
+    EndIf
+  Next
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.i Mamute_OctalToInt(s.s)
+  Protected i.i, V.i = 0
+  For i = 1 To Len(s)
+    V = (V << 3) | Val(Mid(s, i, 1))
+  Next
+  ProcedureReturn V
+EndProcedure
+
+; Numero da calculadora CL - mesma convencao hexa-por-padrao do resto do
+; Mamute, estendida com sufixos D/d (decimal), B/b (binario), H/h (hexa,
+; redundante com o padrao) e O/o (octal), pedido explicito do usuario. O
+; sufixo tem prioridade sobre o hexa-padrao SE os digitos antes dele forem
+; validos naquela base (mesma regra classica M80/Nestor80 de Z80Asm.pbi, so
+; com o padrao trocado de decimal pra hexa) - por isso "10D" vira decimal
+; 10, nao hexa 10D; pra hexa de verdade nesse caso especifico, use o
+; sufixo H explicito ("10DH").
+Procedure.b Mamute_CL_ParseNumber(Token.s, *OutValue.Integer)
+  Protected Raw.s = UCase(Token)
+  If Raw = ""
+    ProcedureReturn #False
+  EndIf
+  Protected C2.s = Right(Raw, 1)
+  Protected Digits.s, Value.i, Ok.b = #False
+
+  If C2 = "H"
+    Digits = Left(Raw, Len(Raw) - 1)
+    If Digits <> "" And Mamute_IsHexString(Digits, Len(Digits))
+      Value = Val("$" + Digits) : Ok = #True
+    EndIf
+  ElseIf C2 = "O"
+    Digits = Left(Raw, Len(Raw) - 1)
+    If Digits <> "" And Mamute_IsOctalDigits(Digits)
+      Value = Mamute_OctalToInt(Digits) : Ok = #True
+    EndIf
+  ElseIf C2 = "D"
+    Digits = Left(Raw, Len(Raw) - 1)
+    If Digits <> "" And Mamute_IsDecimalDigits(Digits)
+      Value = Val(Digits) : Ok = #True
+    EndIf
+  ElseIf C2 = "B"
+    Digits = Left(Raw, Len(Raw) - 1)
+    If Digits <> "" And Mamute_IsBinaryDigits(Digits)
+      Value = Val("%" + Digits) : Ok = #True
+    EndIf
+  EndIf
+
+  If Not Ok And Mamute_IsHexString(Raw, Len(Raw))
+    Value = Val("$" + Raw) : Ok = #True
+  EndIf
+
+  If Not Ok
+    ProcedureReturn #False
+  EndIf
+
+  *OutValue\i = Value & $FFFF
+  ProcedureReturn #True
+EndProcedure
+
+; Tokens crus da ultima chamada a Mamute_CL_Tokenize()/tabuleiro do parser -
+; Global de proposito (mesmo idioma de MamuteAsmLastStartAddr etc. no resto
+; do arquivo): o comando CL roda um de cada vez, sincrono, sem reentrancia,
+; entao nao precisa de contexto passado por ponteiro entre os niveis de
+; precedencia abaixo.
+Global Dim MamuteCL_Tok.s(255)
+Global MamuteCL_NTok.i
+Global MamuteCL_Pos.i
+Global MamuteCL_LastError.s
+
+Procedure.b Mamute_CL_Tokenize(Expr.s)
+  MamuteCL_NTok = 0
+  Protected TextLen.i = Len(Expr)
+  Protected I.i = 1
+  Protected C.s, U.s
+  While I <= TextLen
+    C = Mid(Expr, I, 1)
+    U = UCase(C)
+    If C = " " Or C = Chr(9)
+      I + 1
+      Continue
+    EndIf
+
+    If (C >= "0" And C <= "9") Or (U >= "A" And U <= "Z")
+      Protected Start.i = I
+      While I <= TextLen And ((Mid(Expr, I, 1) >= "0" And Mid(Expr, I, 1) <= "9") Or
+                               (UCase(Mid(Expr, I, 1)) >= "A" And UCase(Mid(Expr, I, 1)) <= "Z"))
+        I + 1
+      Wend
+      If MamuteCL_NTok >= ArraySize(MamuteCL_Tok())
+        MamuteCL_LastError = "ERRO DE SINTAXE"
+        ProcedureReturn #False
+      EndIf
+      MamuteCL_Tok(MamuteCL_NTok) = Mid(Expr, Start, I - Start)
+      MamuteCL_NTok + 1
+      Continue
+    EndIf
+
+    If FindString("+-*/%|&^!()", C)
+      If MamuteCL_NTok >= ArraySize(MamuteCL_Tok())
+        MamuteCL_LastError = "ERRO DE SINTAXE"
+        ProcedureReturn #False
+      EndIf
+      MamuteCL_Tok(MamuteCL_NTok) = C
+      MamuteCL_NTok + 1
+      I + 1
+      Continue
+    EndIf
+
+    ; "@<nome>" - variavel de debugger do SUPER-X (docs/SPEC.md modulo 45d) -
+    ; vira o ENDERECO cru gravado nela (so' o numero, sem slot/alvo - nao faz
+    ; sentido dentro de uma expressao aritmetica) - exemplo do proprio manual
+    ; original: "CL @1+1". Mesmo truque de marcador Chr(1) do literal ASCII
+    ; acima - ParsePrimary ja sabe pular Mamute_CL_ParseNumber() pra esses.
+    If C = "@"
+      Protected VStart.i = I
+      I + 1
+      While I <= TextLen And ((Mid(Expr, I, 1) >= "0" And Mid(Expr, I, 1) <= "9") Or
+                               (UCase(Mid(Expr, I, 1)) >= "A" And UCase(Mid(Expr, I, 1)) <= "Z"))
+        I + 1
+      Wend
+      Protected VarName.s = Mid(Expr, VStart + 1, I - VStart - 1)
+      Protected *VS2.MamuteVarSlot = Mamute_VarPtr(VarName)
+      If Not *VS2 Or Not *VS2\HasValue
+        MamuteCL_LastError = "VARIAVEL INVALIDA OU NAO DEFINIDA: @" + VarName
+        ProcedureReturn #False
+      EndIf
+      If MamuteCL_NTok >= ArraySize(MamuteCL_Tok())
+        MamuteCL_LastError = "ERRO DE SINTAXE"
+        ProcedureReturn #False
+      EndIf
+      MamuteCL_Tok(MamuteCL_NTok) = Chr(1) + Str(*VS2\Addr)
+      MamuteCL_NTok + 1
+      Continue
+    EndIf
+
+    ; Literal ASCII entre aspas simples OU duplas, 0-2 caracteres, delimitador
+    ; dobrado escapa a si mesmo ("" ou '') - mesma convencao ja usada pelo
+    ; tokenizador de expressao do Z80Asm.pbi (Z80Asm::EvalExpr), reaproveitada
+    ; aqui pra bater com o pedido do usuario (numeros da calculadora do
+    ; SUPER-X aceitam ASCII entre aspas, "max 2 letters"). 1 char = o codigo
+    ; dele; 2 chars = byte alto (1o) + byte baixo (2o), igual Z80Asm. O valor
+    ; ja calculado vira token marcado com Chr(1) na frente - nunca colide com
+    ; um token normal (so' digito/letra vem da rotina acima) - ParsePrimary
+    ; reconhece o marcador e pula Mamute_CL_ParseNumber() direto pro Val().
+    If C = "'" Or C = Chr(34)
+      Protected Delim.s = C
+      Protected Body.s = ""
+      Protected Closed.b = #False
+      I + 1
+      While I <= TextLen
+        Protected C2.s = Mid(Expr, I, 1)
+        If C2 = Delim
+          If I < TextLen And Mid(Expr, I + 1, 1) = Delim
+            Body + Delim : I + 2 : Continue
+          EndIf
+          I + 1
+          Closed = #True
+          Break
+        EndIf
+        Body + C2 : I + 1
+      Wend
+      If Not Closed
+        MamuteCL_LastError = "ASPAS SEM FECHAR"
+        ProcedureReturn #False
+      EndIf
+      Protected LitVal.i
+      Select Len(Body)
+        Case 0 : LitVal = 0
+        Case 1 : LitVal = Asc(Body)
+        Case 2 : LitVal = (Asc(Left(Body, 1)) << 8) | Asc(Mid(Body, 2, 1))
+        Default
+          MamuteCL_LastError = "STRING COM MAIS DE 2 CARACTERES: " + Body
+          ProcedureReturn #False
+      EndSelect
+      If MamuteCL_NTok >= ArraySize(MamuteCL_Tok())
+        MamuteCL_LastError = "ERRO DE SINTAXE"
+        ProcedureReturn #False
+      EndIf
+      MamuteCL_Tok(MamuteCL_NTok) = Chr(1) + Str(LitVal & $FFFF)
+      MamuteCL_NTok + 1
+      Continue
+    EndIf
+
+    MamuteCL_LastError = "ERRO DE SINTAXE"
+    ProcedureReturn #False
+  Wend
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.s Mamute_CL_Peek()
+  If MamuteCL_Pos < MamuteCL_NTok
+    ProcedureReturn MamuteCL_Tok(MamuteCL_Pos)
+  EndIf
+  ProcedureReturn ""
+EndProcedure
+
+; Descida recursiva classica, precedencia estilo C (do mais apertado pro
+; mais frouxo): unario (- ! +) > * / % > + - > & (and) > ^ (xor) > | (or).
+; So' Mamute_CL_ParsePrimary() referencia Mamute_CL_ParseOr() de volta (pros
+; parenteses) - Declare width antecipado por seguranca, mesmo idioma ja
+; usado em BadigEditor.pb pra procedures referenciadas fora de ordem (ver
+; nota de "declaration order e load-bearing" no topo do projeto).
+Declare.b Mamute_CL_ParseOr(*OutValue.Integer)
+
+Procedure.b Mamute_CL_ParsePrimary(*OutValue.Integer)
+  Protected Tok.s = Mamute_CL_Peek()
+  If Tok = ""
+    MamuteCL_LastError = "ERRO DE SINTAXE"
+    ProcedureReturn #False
+  EndIf
+
+  If Tok = "("
+    MamuteCL_Pos + 1
+    Protected Inner.i
+    If Not Mamute_CL_ParseOr(@Inner)
+      ProcedureReturn #False
+    EndIf
+    If Mamute_CL_Peek() <> ")"
+      MamuteCL_LastError = "ERRO DE SINTAXE"
+      ProcedureReturn #False
+    EndIf
+    MamuteCL_Pos + 1
+    *OutValue\i = Inner
+    ProcedureReturn #True
+  EndIf
+
+  Protected Value.i
+  If Left(Tok, 1) = Chr(1) ; literal ASCII ja calculado no tokenizador, ver Mamute_CL_Tokenize
+    Value = Val(Mid(Tok, 2))
+    MamuteCL_Pos + 1
+    *OutValue\i = Value
+    ProcedureReturn #True
+  EndIf
+  If Not Mamute_CL_ParseNumber(Tok, @Value)
+    MamuteCL_LastError = "NUMERO INVALIDO: " + Tok
+    ProcedureReturn #False
+  EndIf
+  MamuteCL_Pos + 1
+  *OutValue\i = Value
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_CL_ParseUnary(*OutValue.Integer)
+  Protected Tok.s = Mamute_CL_Peek()
+  If Tok = "-"
+    MamuteCL_Pos + 1
+    Protected V.i
+    If Not Mamute_CL_ParseUnary(@V)
+      ProcedureReturn #False
+    EndIf
+    *OutValue\i = (-V) & $FFFF
+    ProcedureReturn #True
+  ElseIf Tok = "!"
+    MamuteCL_Pos + 1
+    Protected V2.i
+    If Not Mamute_CL_ParseUnary(@V2)
+      ProcedureReturn #False
+    EndIf
+    *OutValue\i = (~V2) & $FFFF ; "!" do CL = NOT bit a bit ("~" do PureBasic - o "!" do PB e' XOR, nao serve aqui)
+    ProcedureReturn #True
+  ElseIf Tok = "+"
+    MamuteCL_Pos + 1
+    ProcedureReturn Mamute_CL_ParseUnary(*OutValue)
+  EndIf
+  ProcedureReturn Mamute_CL_ParsePrimary(*OutValue)
+EndProcedure
+
+Procedure.b Mamute_CL_ParseMul(*OutValue.Integer)
+  Protected L.i
+  If Not Mamute_CL_ParseUnary(@L)
+    ProcedureReturn #False
+  EndIf
+  Protected Tok.s = Mamute_CL_Peek()
+  While Tok = "*" Or Tok = "/" Or Tok = "%"
+    MamuteCL_Pos + 1
+    Protected R.i
+    If Not Mamute_CL_ParseUnary(@R)
+      ProcedureReturn #False
+    EndIf
+    Select Tok
+      Case "*"
+        L = (L * R) & $FFFF
+      Case "/"
+        If R = 0
+          MamuteCL_LastError = "DIVISAO POR ZERO"
+          ProcedureReturn #False
+        EndIf
+        L = (L / R) & $FFFF
+      Case "%"
+        If R = 0
+          MamuteCL_LastError = "DIVISAO POR ZERO"
+          ProcedureReturn #False
+        EndIf
+        L = (L % R) & $FFFF
+    EndSelect
+    Tok = Mamute_CL_Peek()
+  Wend
+  *OutValue\i = L
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_CL_ParseAdd(*OutValue.Integer)
+  Protected L.i
+  If Not Mamute_CL_ParseMul(@L)
+    ProcedureReturn #False
+  EndIf
+  Protected Tok.s = Mamute_CL_Peek()
+  While Tok = "+" Or Tok = "-"
+    MamuteCL_Pos + 1
+    Protected R.i
+    If Not Mamute_CL_ParseMul(@R)
+      ProcedureReturn #False
+    EndIf
+    If Tok = "+"
+      L = (L + R) & $FFFF
+    Else
+      L = (L - R) & $FFFF
+    EndIf
+    Tok = Mamute_CL_Peek()
+  Wend
+  *OutValue\i = L
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_CL_ParseAnd(*OutValue.Integer)
+  Protected L.i
+  If Not Mamute_CL_ParseAdd(@L)
+    ProcedureReturn #False
+  EndIf
+  While Mamute_CL_Peek() = "&"
+    MamuteCL_Pos + 1
+    Protected R.i
+    If Not Mamute_CL_ParseAdd(@R)
+      ProcedureReturn #False
+    EndIf
+    L = (L & R) & $FFFF
+  Wend
+  *OutValue\i = L
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_CL_ParseXor(*OutValue.Integer)
+  Protected L.i
+  If Not Mamute_CL_ParseAnd(@L)
+    ProcedureReturn #False
+  EndIf
+  While Mamute_CL_Peek() = "^"
+    MamuteCL_Pos + 1
+    Protected R.i
+    If Not Mamute_CL_ParseAnd(@R)
+      ProcedureReturn #False
+    EndIf
+    L = (L ! R) & $FFFF ; "^" do CL = XOR ("!" do PureBasic)
+  Wend
+  *OutValue\i = L
+  ProcedureReturn #True
+EndProcedure
+
+Procedure.b Mamute_CL_ParseOr(*OutValue.Integer)
+  Protected L.i
+  If Not Mamute_CL_ParseXor(@L)
+    ProcedureReturn #False
+  EndIf
+  While Mamute_CL_Peek() = "|"
+    MamuteCL_Pos + 1
+    Protected R.i
+    If Not Mamute_CL_ParseXor(@R)
+      ProcedureReturn #False
+    EndIf
+    L = (L | R) & $FFFF
+  Wend
+  *OutValue\i = L
+  ProcedureReturn #True
+EndProcedure
+
+; Ponto de entrada - tokeniza e avalia Expr inteira (1 numero ou uma
+; expressao com operadores/parenteses), sempre em 16 bits sem sinal com
+; wraparound. #False + Mamute_CL_LastError preenchido em qualquer erro
+; (sintaxe, numero invalido, divisao/modulo por zero, parenteses sobrando).
+Procedure.b Mamute_CL_Eval(Expr.s, *OutValue.Integer)
+  MamuteCL_LastError = "ERRO DE SINTAXE"
+  If Not Mamute_CL_Tokenize(Expr)
+    ProcedureReturn #False
+  EndIf
+  If MamuteCL_NTok = 0
+    ProcedureReturn #False
+  EndIf
+  MamuteCL_Pos = 0
+  Protected Result.i
+  If Not Mamute_CL_ParseOr(@Result)
+    ProcedureReturn #False
+  EndIf
+  If MamuteCL_Pos < MamuteCL_NTok
+    MamuteCL_LastError = "ERRO DE SINTAXE"
+    ProcedureReturn #False
+  EndIf
+  *OutValue\i = Result & $FFFF
+  ProcedureReturn #True
+EndProcedure
+
 ; Monta as linhas formatadas de um dump de memoria (StartAddr..EndAddr,
 ; inclusive) conforme o Mode do comando C - usado pelo D (manda pro log),
 ; P e V (manda pro PDF). IsVram=#True le de MamuteVRAM() (endereco plano,

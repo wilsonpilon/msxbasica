@@ -44,7 +44,8 @@ Procedure MamuteHelp_BuildData()
     "ferramenta a parte, com seu proprio pequeno conjunto de comandos, que vai crescer aos " +
     "poucos, sessao a sessao. Comandos disponiveis ate agora: **BA / QUIT**, **PAGE**, **DM**, " +
     "**ZAP**, **SCR**, **SH**, **MS**, **LOAD**, **SAVE**, **M**, **S**, **C**, **D**, **P**, " +
-    "**V**, **T**, **F**, **G**, **X**, **R**, **L** e **LP**, ver ao lado (**G** e **R** ainda so " +
+    "**V**, **T**, **F**, **G**, **X**, **R**, **L**, **LP**, **CL**, **XD** e **XM**, ver ao lado " +
+    "(**G** e **R** ainda so " +
     "validam a sintaxe e confirmam no log - a execucao de programas e o carregamento de assemblados " +
     "ficam pra uma fase futura). **Os enderecos/setores digitados em qualquer " +
     "comando sao sempre em hexadecimal** - o padrao de entrada do Mamute Assembler inteiro. **Setas " +
@@ -52,6 +53,23 @@ Procedure MamuteHelp_BuildData()
     "no campo `MON>` navegam pelo historico de comandos ja digitados (Cima = mais recente, Baixo = " +
     "volta pro presente) - esse historico e salvo no arquivo de projeto atual (ou num projeto padrao, " +
     "se nenhum estiver aberto) e continua disponivel na proxima vez que o Mamute Assembler abrir." + #CRLF$ + #CRLF$ +
+    "**`?` na frente de um comando do SUPER-X manda a saida pra " + Chr(34) + "impressora" + Chr(34) +
+    "** (`?XD 4000,4010` em vez de `XD 4000,4010`) - convencao do SUPER-X original (colocar `?` na " +
+    "frente do comando), que aqui vira **PDF** em vez de impressora de verdade (mesma ideia do `P`/" +
+    "`LP` do MegaAssembler). So' vale pros comandos PORTADOS do SUPER-X (`XD`, ver ao lado - `XM` nao " +
+    "tem listagem estatica pra imprimir, e' uma sessao interativa) - os herdados do MegaAssembler ja " +
+    "tem seu proprio verbo dedicado pra isso (`D`->`P`, `L`->`LP`), sem precisar de prefixo." + #CRLF$ + #CRLF$ +
+    "**7 variaveis de debugger do SUPER-X** guardam um endereco (com slot/sub-slot/VRAM junto) pra " +
+    "reusar depois: `@0`-`@3` (normais) e `@B`/`@E`/`@S` (Begin/End/Start-ou-Size, especiais - " +
+    "preenchidas automaticamente por comandos de carga em disco quando esses existirem numa sessao " +
+    "futura). `@` sozinho no prompt mostra as 7; `@<numero ou letra>=<endereco>[#<slot>[-<sub>]|#V|" +
+    "#S]` define uma (ex.: `@0=8000#3-1`). Depois de definida, `@<nome>` substitui um endereco " +
+    "INTEIRO (numero + slot) em qualquer comando do SUPER-X (`XD @0` em vez de `XD 8000#3-1`) - " +
+    "**so' pros comandos PORTADOS do SUPER-X**, mesma decisao de escopo do `#slot`/`?`. Dentro de " +
+    "expressoes da calculadora (`CL`, e os campos de dado do `XM`), `@<nome>` vira so' o NUMERO " +
+    "gravado, sem o slot (`CL @1+1` soma 1 ao endereco de `@1`). Comandos que abrem `XD`/`XM` " +
+    "gravam o endereco usado automaticamente em `@0` (mesmo comportamento do manual original: " +
+    "" + Chr(34) + "commands store base address in variable 0" + Chr(34) + ")." + #CRLF$ + #CRLF$ +
     "O Mamute Assembler simula o **sistema de slots do MSX de verdade**: 4 slots (0-3), cada um " +
     "com 4 paginas de 16KB (`Pagina 0` = `0000-3FFF`, `Pagina 1` = `4000-7FFF`, `Pagina 2` = " +
     "`8000-BFFF`, `Pagina 3` = `C000-FFFF`) - 16 blocos de memoria ao todo. `Configurar -> " +
@@ -634,6 +652,175 @@ Procedure MamuteHelp_BuildData()
     "Mesmas regras de `<endinic>`/`<endfim>` do `L` (inclusive continuar de onde o `L`/`LP` mais " +
     "recente parou, se nenhum endereco for passado). Cancelar a janela " + Chr(34) + "Salvar como" +
     Chr(34) + " nao gera arquivo nenhum - so mostra `CANCELADO`.")
+
+  MamuteHelp_Add("CL", "Comandos",
+    "**Calculadora** - converte um numero (ou avalia uma expressao matematica inteira) e mostra o " +
+    "resultado em quatro formatos de uma vez: **HEX**, **BIN** (16 bits), **DEC+** (decimal sem " +
+    "sinal, 0-65535) e **DEC+-** (decimal com sinal, -32768 a 32767) - tudo sempre em **16 bits**, " +
+    "com wraparound (mesma convencao de endereco do resto do Mamute: um resultado " + Chr(34) +
+    "grande demais" + Chr(34) + " so' da a volta, nunca da erro por estourar)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>CL <expressao>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "**Numeros** seguem a mesma convencao de sempre - **hexa por padrao**, sem precisar de sufixo " +
+    "nenhum - mas o `CL`, diferente do resto do Mamute, tambem aceita sufixos opcionais no final " +
+    "de cada numero pra escolher outra base: **`D`/`d`** (decimal), **`B`/`b`** (binario), " +
+    "**`H`/`h`** (hexa, redundante com o padrao) e **`O`/`o`** (octal). O sufixo so' vale se os " +
+    "digitos antes dele forem validos naquela base - `10D` vira decimal 10 (nao hexa `10D`), " +
+    "porque `10` e' decimal valido; pra hexa de verdade nesse caso especifico, use o sufixo `H` " +
+    "explicito (`10DH`)." + #CRLF$ + #CRLF$ +
+    "**Alem de um numero isolado, aceita expressoes matematicas completas**, com a precedencia " +
+    "classica (do mais apertado pro mais frouxo: unarios primeiro, depois `*`/`/`/`%`, depois " +
+    "`+`/`-`, depois `&`, depois `^`, depois `|`) e **parenteses** pra mudar a ordem:" + #CRLF$ + #CRLF$ +
+    "- **`+`** soma, **`-`** subtracao (binaria) ou troca de sinal (unaria)." + #CRLF$ +
+    "- **`*`** multiplicacao, **`/`** divisao inteira, **`%`** modulo (resto da divisao)." + #CRLF$ +
+    "- **`|`** OR bit a bit, **`&`** AND bit a bit, **`^`** XOR bit a bit." + #CRLF$ +
+    "- **`!`** NOT bit a bit (unario - complemento de todos os 16 bits)." + #CRLF$ +
+    "- **`( )`** agrupam sub-expressoes, mudando a ordem normal de avaliacao." + #CRLF$ + #CRLF$ +
+    "Divisao ou modulo por zero mostram `?DIVISAO POR ZERO`; qualquer outro erro (numero invalido, " +
+    "parenteses sobrando, caractere desconhecido) mostra `?ERRO DE SINTAXE` (ou `?NUMERO INVALIDO: " +
+    "<token>` quando da pra apontar exatamente qual pedaco falhou)." + #CRLF$ + #CRLF$ +
+    "**`@<nome>`** (`@0`-`@3`/`@B`/`@E`/`@S`) - uma das 7 variaveis de debugger do SUPER-X ja " +
+    "definidas (ver Introducao) tambem pode entrar numa expressao, virando o NUMERO gravado nela " +
+    "(sem slot) - `CL @1+1` soma 1 ao endereco de `@1`, exemplo direto do manual original." + #CRLF$ + #CRLF$ +
+    "Exemplos:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>CL 4000" + #CRLF$ +
+    "HEX  : 4000H" + #CRLF$ +
+    "BIN  : 0100000000000000" + #CRLF$ +
+    "DEC+ : 16384" + #CRLF$ +
+    "DEC+-: 16384" + #CRLF$ + #CRLF$ +
+    "MON>CL (100H+2ADH)*3-1" + #CRLF$ +
+    "HEX  : 0B06H" + #CRLF$ +
+    "BIN  : 0000101100000110" + #CRLF$ +
+    "DEC+ : 2822" + #CRLF$ +
+    "DEC+-: 2822" + #CRLF$ +
+    "```")
+
+  MamuteHelp_Add("XD", "Comandos",
+    "**Porta do comando `D` do monitor SUPER-X** (`docs/SPEC.md`, modulo 45) - batizado `XD` (nao " +
+    "`D`) porque o Mamute ja tem seu proprio `D` (despejo formatado pro log, ao lado), com significado " +
+    "diferente. Igual ao SUPER-X original, o comportamento muda conforme quantos enderecos sao " +
+    "informados." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XD [<endereco>|@<var>]" + #CRLF$ +
+    "MON>XD <endinic>,<endfim>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "*`<endereco>` aceita o sufixo `[#<slot>[-<subslot>]|#V|#4|#S|#5]` (ver abaixo), OU `@<nome>` " +
+    "(`@0`-`@3`/`@B`/`@E`/`@S`) - uma das 7 variaveis de debugger do SUPER-X ja definidas (ver " +
+    "Introducao) substitui o endereco INTEIRO (numero + slot/sub-slot/VRAM juntos).*" + #CRLF$ + #CRLF$ +
+    "**Um endereco (ou nenhum)** - abre uma janela separada com a mesma grade de 128 bytes " +
+    "(hexa+ASCII) do `DM`/`M`, navegacao identica (setas/`PgUp`/`PgDn`/`TAB`/botoes/`+`/`-`). Sem " +
+    "endereco, reabre onde a janela do `XD` ficou da ultima vez, **incluindo o mesmo alvo** (slot/" +
+    "sub-slot/VRAM - so funciona depois que o `XD` ja abriu ao menos uma vez nesta sessao)." + #CRLF$ + #CRLF$ +
+    "**Enderecamento estendido do SUPER-X** - um sufixo opcional depois do endereco escolhe ONDE " +
+    "ler/gravar, ignorando o `PAGE` corrente pelo resto da sessao dessa janela:" + #CRLF$ +
+    "- **`#<slot>`** (0-3) - le/edita o slot PRIMARIO informado direto, mesmo que ele nao esteja " +
+    "comutado em nenhuma pagina agora (ex.: `XD C000#3`)." + #CRLF$ +
+    "- **`#<slot>-<subslot>`** (subslot 0-3) - slot EXPANDIDO: MSX de verdade suportava ate 1MB de " +
+    "RAM assim (4 slots primarios x 4 sub-slots x 64KB - existiu ate cartucho comercial de RAM de " +
+    "64KB pra rodar CP/M com RAMDISK). Sub-slot omitido assume sub-slot 0 (o Mamute ainda nao " +
+    "simula um " + Chr(34) + "registrador de sub-slot ativo" + Chr(34) + " por slot - isso e' " +
+    "emulacao de hardware de verdade, escopo do debugger/`G`, nao deste parser de endereco). Sub-" +
+    "slots 1-3 comecam **sempre como RAM gravavel** (sem Vazio/ROM/BASIC por celula ainda - nao " +
+    "existe tela de configuracao fisica por sub-slot)." + #CRLF$ +
+    "- **`#V`/`#4`** - mira a VRAM simulada (mesma do `V`/`P`) em vez da RAM/ROM - endereco pode ir " +
+    "ate 5 digitos (o teto configurado em `Configurar -> Mamute Assembler...`), e' a **primeira " +
+    "forma de ESCREVER na VRAM** do Mamute (antes so' V/P liam)." + #CRLF$ +
+    "- **`#S`/`#5`** - " + Chr(34) + "estado de slot normal (de boot)" + Chr(34) + " - como o Mamute " +
+    "nao guarda um estado de boot separado, e' so' sinonimo explicito de nao informar sufixo " +
+    "nenhum (usa o `PAGE` corrente)." + #CRLF$ + #CRLF$ +
+    "**Diferencas do `M`/`S`:**" + #CRLF$ +
+    "- **O bloco ASCII tambem e editavel** (no `M`/`S` ele e so leitura). Pressione `" + Chr(34) +
+    "` (aspas) pra entrar em digitacao ASCII direta - a partir dai, cada tecla impressa (inclusive " +
+    "`" + Chr(34) + "`/`@` literais) grava um byte cru no cursor e avanca sozinho, sem precisar de " +
+    "`ENTER` a cada caractere (mesma formula do bloco de texto do `DM`: `(codigo do char - " +
+    "deslocamento) & FF`). `ESC` sai da digitacao ASCII (um segundo `ESC`, fora dela, fecha a " +
+    "janela)." + #CRLF$ +
+    "- **`@` repete o byte anterior** - com o cursor no bloco hexa (fora da digitacao ASCII), `@` le " +
+    "o byte em `endereco-1` e grava no cursor, avancando - util pra preencher sequencias repetidas " +
+    "rapido." + #CRLF$ +
+    "- `SHIFT`+Cima/Baixo funcionam como sinonimo de `PgUp`/`PgDn` (a doc do SUPER-X lista os dois)." + #CRLF$ + #CRLF$ +
+    "**Dois enderecos** - NAO abre grade nenhuma, so despejo direto no log do `MON>`, no formato " +
+    "escolhido em `C` - exatamente o mesmo comportamento do comando `D` (doc do SUPER-X: " + Chr(34) +
+    "Two Addresses: give a non stop list output" + Chr(34) + "). `<endfim>` nao pode ser menor que " +
+    "`<endinic>`. *Esse modo continua so' PAGE-relativo* - o sufixo `#slot`/`#V` so vale pro modo de " +
+    "UM endereco (a grade interativa acima)." + #CRLF$ + #CRLF$ +
+    "**`?XD <endinic>,<endfim>`** - " + Chr(34) + "impressora" + Chr(34) + " do SUPER-X (`?` na frente " +
+    "do comando, ver Introducao ao lado) - em vez de mandar a mesma listagem pro log, gera um PDF A4 " +
+    "(fonte Courier, igual `P`/`LP`) e abre " + Chr(34) + "Salvar como" + Chr(34) + " no final. So' " +
+    "funciona com DOIS enderecos (uma listagem estatica faz sentido pra imprimir; a grade interativa " +
+    "de UM endereco, nao) - `?XD <endereco>` sozinho mostra `?IMPRESSAO SO FUNCIONA COM DOIS " +
+    "ENDERECOS`. Cancelar a janela " + Chr(34) + "Salvar como" + Chr(34) + " nao gera arquivo nenhum - " +
+    "so mostra `CANCELADO`." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas mapeadas como RAM agora** - slot/sub-slot 0 respeitam a " +
+    "configuracao fisica de `Configurar -> Mamute Assembler...` (mesma regra do `DM`/`M`); sub-slots " +
+    "1-3 sao sempre RAM gravavel (ver acima); VRAM (`#V`) sempre aceita escrita.")
+
+  MamuteHelp_Add("XM", "Comandos",
+    "**Porta do comando `M` do monitor SUPER-X** (`docs/SPEC.md`, modulo 45) - batizado `XM` (nao " +
+    "`M`) porque o Mamute ja tem seu proprio `M` (grade de edicao rapida, ao lado), com significado " +
+    "diferente. Abre uma janela separada com um prompt " + Chr(34) + "endereco>" + Chr(34) + " (estilo " +
+    "`MON>`, mesma paleta verde-sobre-preto) que **monta instrucoes Z80 de verdade direto na memoria** " +
+    "conforme voce digita - o assembler nativo do projeto por baixo (`Z80Asm.pbi`, o mesmo motor do " +
+    "comando `A` do `EDIT`), sem precisar montar um programa inteiro." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XM [<endereco>|@<var>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "*`<endereco>` aceita o sufixo `[#<slot>[-<subslot>]|#V|#4|#S|#5]` (ver `XD`) OU `@<nome>` " +
+    "(uma das 7 variaveis de debugger do SUPER-X, ver Introducao) - vale tanto na abertura quanto em " +
+    "qualquer linha `ENDERECO...` dentro da sessao.*" + #CRLF$ + #CRLF$ +
+    "Sem endereco, reabre onde a janela do `XM` ficou da ultima vez (mesmo endereco E mesmo alvo). A " +
+    "cada linha aceita, o endereco **avanca sozinho** pelo tamanho do que foi gravado - digite a " +
+    "proxima instrucao/dado direto, sem repetir o endereco." + #CRLF$ + #CRLF$ +
+    "**Enderecamento estendido do SUPER-X** - o sufixo `#slot[-subslot]`/`#V`/`#4`/`#S`/`#5` funciona " +
+    "exatamente como no `XD` (ver ao lado pro detalhe completo de cada um: slot primario, slot " +
+    "expandido/sub-slot ate 1MB de RAM simulada, VRAM, ou o `PAGE` corrente) - a diferenca e' que " +
+    "aqui o sufixo pode aparecer em QUALQUER linha que comece com endereco, nao so' na abertura, " +
+    "TROCANDO o alvo da sessao inteira dali em diante (ex.: digitar `D000#3-1` no meio de uma sessao " +
+    "redireciona escrita/leitura pro slot 3 sub-slot 1). **Um endereco digitado SEM sufixo mantem o " +
+    "alvo atual** (nao volta pro `PAGE` sozinho - mesma regra do manual original do SUPER-X: " +
+    Chr(34) + "if the slot number is left out, the CURRENT slot is assumed" + Chr(34) + "); usar `#S`/" +
+    "`#5` explicito e' a unica forma de voltar pro `PAGE` corrente de proposito." + #CRLF$ + #CRLF$ +
+    "**Cada linha digitada pode ser:**" + #CRLF$ + #CRLF$ +
+    "- **Uma instrucao Z80** (`LD HL,1234H`, `LDIR`, `CALL 5000H`...) - monta e grava os bytes, " +
+    "ecoando `ENDERECO  bytes-hexa  instrucao` no log, igual uma linha de listagem do `L`. Erros de " +
+    "sintaxe do assembler (operando invalido, mnemonico desconhecido) mostram `?` + a mensagem do " +
+    "assembler." + #CRLF$ +
+    "- **Dados crus**, com um sinal de tipo na frente e itens separados por virgula:" + #CRLF$ +
+    "  - **`.`** - 1 byte cada item (ex.: `.CD, 4DH, 00`)" + #CRLF$ +
+    "  - **`:`** - 2 bytes cada item, little-endian (ex.: `:1234, ABCD`)" + #CRLF$ +
+    "  - **`;`** - numerico, 2 bytes, little-endian (ex.: `;'A'*100, 18200|11b`)" + #CRLF$ +
+    "  - **`[`** - numerico, 1 byte (ex.: `[100, '#'`)" + #CRLF$ +
+    "  - **`" + Chr(34) + "`** - string literal crua, o resto da linha inteiro vira bytes ASCII " +
+    "(ex.: `" + Chr(34) + "OLA MUNDO`, sem precisar fechar as aspas)" + #CRLF$ + #CRLF$ +
+    "  Cada item de `.`/`:`/`;`/`[` passa pela **mesma calculadora do comando `CL`** " +
+    "(`Mamute_CL_Eval()`) - aceita um numero simples (hexa por padrao, sufixos `D`/`B`/`H`/`O`), uma " +
+    "expressao matematica completa (`+ - * / % | & ^ !`, parenteses) OU um literal ASCII entre aspas " +
+    "simples/duplas (`'A'`, `" + Chr(34) + "AB" + Chr(34) + "`, ate 2 caracteres - 1 char vira o " +
+    "codigo dele, 2 chars viram byte alto+byte baixo). *Cuidado com ambiguidade:* um numero como `4D` " +
+    "vira **decimal 4** (sufixo `D` tem prioridade quando os digitos antes dele - aqui so `4` - sao " +
+    "decimal valido), nao hexa `4Dh`; pra hexa de verdade nesse caso, use o `H` explicito (`4DH`)." + #CRLF$ +
+    "- **Um endereco[#sufixo], sozinho ou seguido de um dos itens acima** (`D000` pula pra `D000` " +
+    "sem gravar nada, mantendo o alvo atual; `D000#3-1 .1,2,3` pula pra `D000` NO slot 3 sub-slot 1 " +
+    "e ja grava os 3 bytes ali) - so reconhecido quando o primeiro token bate como endereco[#sufixo] " +
+    "valido E NAO for um mnemonico Z80 valido (evita ambiguidade real com `DAA`/`CCF`, os unicos dois " +
+    "mnemonicos sem operando que tambem sao hexa valido - digitar `DAA` sozinho monta a instrucao, " +
+    "nao pula pro endereco `0DAAh`)." + #CRLF$ +
+    "- **`I [<n>]`** - lista as proximas `<n>` instrucoes (padrao 20, aceita expressao da " +
+    "calculadora) a partir do endereco atual, so leitura, nao grava nem avanca nada - mesmo " +
+    "disassembler do `L`/`LP`. *So funciona com o alvo `PAGE` corrente (sem `#slot`/`#V` ativo)* - o " +
+    "disassembler ainda so' le pelo mapeamento `PAGE`, nao entende slot/sub-slot/VRAM explicito " +
+    "ainda; usando um alvo explicito, `I` mostra um erro em vez de bytes errados." + #CRLF$ + #CRLF$ +
+    "**Navegacao no campo de entrada:** Cima/Baixo percorrem as linhas ja digitadas nesta sessao da " +
+    "janela (mesmo espirito do historico do `MON>`, mas so' dentro do `XM` - nao persiste entre " +
+    "aberturas). `ESC` fecha a janela." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas mapeadas como RAM agora** - slot/sub-slot 0 respeitam a " +
+    "configuracao fisica (`Configurar -> Mamute Assembler...`); sub-slots 1-3 sao sempre RAM " +
+    "gravavel; VRAM (`#V`) sempre aceita escrita - mesmas regras do `XD`.")
 
   MamuteHelp_Add("EDIT", "Comandos",
     "**Abre uma janela separada** com um editor de linhas pro **programa-fonte Z80**, modelado no " +

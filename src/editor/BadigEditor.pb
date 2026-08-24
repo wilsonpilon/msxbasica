@@ -53,6 +53,11 @@ Declare RunBasicFromActiveTab()
 ; tipo real e resolvido na definicao completa, em MamuteDebuggerGui.pbi).
 Declare MamuteDebugger_Open(ParentWindow, *State, StartAddr.u)
 
+; Mesmo motivo do Declare acima - MamuteGui_AppendLog() so' e' definida "de
+; verdade" dentro de MamuteAssemblerGui.pbi (mais abaixo), mas MamuteXmGui.pbi
+; (comando XM, docs/SPEC.md modulo 45) precisa chama-la e e' incluido ANTES.
+Declare.s MamuteGui_AppendLog(G_Log, Accum.s, Text.s)
+
 ; Structure EditorSettings/Global EditorCfg (definidos "de verdade" em
 ; EditorSettings.pbi, incluido logo abaixo) e os globais Color_* (tab bar/
 ; regua/sintaxe da area de edicao, preenchidos por ApplyTheme() mais adiante
@@ -226,13 +231,17 @@ XIncludeFile "assemblers/AsmsxHelpData.pbi"
 XIncludeFile "assemblers/AsmsxHelpGui.pbi"
 XIncludeFile "emulators/FossauroSupport.pbi"
 XIncludeFile "assemblers/MamuteSupport.pbi"
+XIncludeFile "assemblers/MamuteNotesData.pbi"
 XIncludeFile "assemblers/MamuteHelpData.pbi"
+XIncludeFile "assemblers/MamuteSuperXNotesHelpData.pbi"
 XIncludeFile "assemblers/MamuteHelpGui.pbi"
 XIncludeFile "assemblers/MamuteDumpGui.pbi"
 XIncludeFile "assemblers/MamuteZapGui.pbi"
 XIncludeFile "assemblers/MamuteScrGui.pbi"
 XIncludeFile "assemblers/MamuteSaveGui.pbi"
 XIncludeFile "assemblers/MamuteMGui.pbi"
+XIncludeFile "assemblers/MamuteXdGui.pbi"
+XIncludeFile "assemblers/MamuteXmGui.pbi"
 XIncludeFile "assemblers/MamutePdf.pbi"
 XIncludeFile "assemblers/MamuteEditGui.pbi"
 XIncludeFile "assemblers/MamuteAssemblerGui.pbi"

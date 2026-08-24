@@ -61,6 +61,7 @@ Procedure MamuteHelp_OpenWindow(ParentWindow)
   EndIf
 
   MamuteHelp_BuildData()
+  MamuteHelp_BuildSuperXNotes()
 
   Protected WinW = 940, WinH = 620
   Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Ajuda - Mamute Assembler",
