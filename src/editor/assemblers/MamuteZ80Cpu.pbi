@@ -658,7 +658,7 @@ Procedure Mz80_CPD(*S.MamuteGui_State)
 EndProcedure
 
 Procedure Mz80_INI(*S.MamuteGui_State)
-  Protected V.a = $FF ; sem dispositivo real (Fase 1)
+  Protected V.a = Mamute_IOPort_GetSaida(*S\RegC) ; porta C - "Saida" do Painel de Portas I/O
   Mamute_WriteByte(Mz80_GetHL(*S), V)
   Mz80_SetHL(*S, (Mz80_GetHL(*S) + 1) & $FFFF)
   *S\RegB = (*S\RegB - 1) & $FF
@@ -670,7 +670,7 @@ Procedure Mz80_INI(*S.MamuteGui_State)
 EndProcedure
 
 Procedure Mz80_IND(*S.MamuteGui_State)
-  Protected V.a = $FF
+  Protected V.a = Mamute_IOPort_GetSaida(*S\RegC) ; porta C - "Saida" do Painel de Portas I/O
   Mamute_WriteByte(Mz80_GetHL(*S), V)
   Mz80_SetHL(*S, (Mz80_GetHL(*S) - 1) & $FFFF)
   *S\RegB = (*S\RegB - 1) & $FF
@@ -682,7 +682,7 @@ Procedure Mz80_IND(*S.MamuteGui_State)
 EndProcedure
 
 Procedure Mz80_OUTI(*S.MamuteGui_State)
-  Mamute_ReadByte(Mz80_GetHL(*S)) ; lido, sem dispositivo real pra receber (Fase 1)
+  Mamute_IOPort_SetEntrada(*S\RegC, Mamute_ReadByte(Mz80_GetHL(*S))) ; porta C - "Entrada" do Painel de Portas I/O
   Mz80_SetHL(*S, (Mz80_GetHL(*S) + 1) & $FFFF)
   *S\RegB = (*S\RegB - 1) & $FF
   Protected F.a = #Mz80_FN
@@ -693,7 +693,7 @@ Procedure Mz80_OUTI(*S.MamuteGui_State)
 EndProcedure
 
 Procedure Mz80_OUTD(*S.MamuteGui_State)
-  Mamute_ReadByte(Mz80_GetHL(*S))
+  Mamute_IOPort_SetEntrada(*S\RegC, Mamute_ReadByte(Mz80_GetHL(*S))) ; porta C - "Entrada" do Painel de Portas I/O
   Mz80_SetHL(*S, (Mz80_GetHL(*S) - 1) & $FFFF)
   *S\RegB = (*S\RegB - 1) & $FF
   Protected F.a = #Mz80_FN
@@ -771,7 +771,7 @@ Procedure Mz80_ExecuteED(*S.MamuteGui_State)
   Select Opcode
     Case $40, $48, $50, $58, $60, $68, $70, $78 ; IN r,(C) - $70 = IN F,(C) indocumentado
       Protected InIdx.a = (Opcode >> 3) & 7
-      Protected InVal.a = $FF ; sem dispositivo real (Fase 1) - porta sempre le $FF
+      Protected InVal.a = Mamute_IOPort_GetSaida(*S\RegC) ; porta C - "Saida" do Painel de Portas I/O
       Protected FIn.a = *S\RegF & #Mz80_FC
       If InVal = 0 : FIn = FIn | #Mz80_FZ : EndIf
       FIn = FIn | (InVal & #Mz80_FS)
@@ -780,8 +780,11 @@ Procedure Mz80_ExecuteED(*S.MamuteGui_State)
       *S\RegF = FIn
       If InIdx <> 6 : Mz80_SetR8(*S, InIdx, 0, InVal, #False, 0) : EndIf
 
-    Case $41, $49, $51, $59, $61, $69, $71, $79 ; OUT (C),r - $71 = OUT (C),0 indocumentado
-      ; Sem dispositivo real (Fase 1) - so descarta
+    Case $41, $49, $51, $59, $61, $69, $71, $79 ; OUT (C),r - $71 = OUT (C),0 indocumentado (envia a constante 0, nao um registrador)
+      Protected OutIdxE.a = (Opcode >> 3) & 7
+      Protected OutValE.a = 0
+      If OutIdxE <> 6 : OutValE = Mz80_GetR8(*S, OutIdxE, 0, #False, 0) : EndIf
+      Mamute_IOPort_SetEntrada(*S\RegC, OutValE) ; porta C - "Entrada" do Painel de Portas I/O
 
     Case $42, $52, $62, $72 ; SBC HL,rr
       Protected SbcPair.a = (Opcode >> 4) & 3
@@ -1091,12 +1094,13 @@ Procedure Mz80_ExecuteBase(*S.MamuteGui_State, Opcode.a, IndexMode.a)
       Mz80_Push16(*S, *S\RegPC)
       *S\RegPC = CallAddr
 
-    Case $D3 ; OUT (n),A - sem dispositivo real (Fase 1), so descarta a porta
-      Mz80_Fetch8(*S)
+    Case $D3 ; OUT (n),A - grava "Entrada" da porta no Painel de Portas I/O (Mamute_IOPort_SetEntrada, MamuteIoGui.pbi)
+      Protected OutPortImm.a = Mz80_Fetch8(*S)
+      Mamute_IOPort_SetEntrada(OutPortImm, *S\RegA)
 
-    Case $DB ; IN A,(n) - sem dispositivo real (Fase 1), sempre $FF
-      Mz80_Fetch8(*S)
-      *S\RegA = $FF
+    Case $DB ; IN A,(n) - le "Saida" da porta no Painel de Portas I/O (Mamute_IOPort_GetSaida)
+      Protected InPortImm.a = Mz80_Fetch8(*S)
+      *S\RegA = Mamute_IOPort_GetSaida(InPortImm)
 
     Case $D9 ; EXX
       Protected TB.a = *S\RegB : Protected TC.a = *S\RegC

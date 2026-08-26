@@ -44,7 +44,7 @@
 #>
 
 param(
-    [string]$Version = "8.6.0",
+    [string]$Version = "8.7.5",
     [switch]$Run,
     [switch]$SkipAppBuild
 )

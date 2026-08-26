@@ -1001,6 +1001,294 @@ Procedure MamuteHelp_BuildData()
     "fechar e reabrir o proprio Mamute Assembler). Fica salvo em `mamute_settings.json` - sobrevive " +
     "entre sessoes, diferente do `XCS`/`C` (esses continuam volateis de proposito).*")
 
+  MamuteHelp_Add("XQT", "Comandos",
+    "**Encerra o Mamute Assembler** - porta do `QT` do SUPER-X (inventario do modulo 45: " +
+    Chr(34) + "Sai pro BASIC" + Chr(34) + "), pedido explicito do usuario (" + Chr(34) +
+    "apenas encerra o mamute assembler" + Chr(34) + "). Comportamento IDENTICO ao `BA`/`QUIT` " +
+    "nativo (fecha a janela na hora, sem mensagem nenhuma no log antes) - so' mais um nome pro " +
+    "mesmo efeito." + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XQT" + #CRLF$ +
+    "```")
+
+  MamuteHelp_Add("XDK", "Comandos",
+    "**Escolhe/troca o disco corrente** - UNICO comando de disco que TROCA o disco corrente (os " +
+    "outros - `XFS`/`XCI`/`XTP`/`XL%`/`XS%` - so' USAM o que ja esta carregado) - pedido explicito do " +
+    "usuario, junto com uma mudanca drastica de design: nenhum comando de disco aceita mais nome/" +
+    "sufixo de troca - " + Chr(34) + "vamos padronizar todos sem nome, o nome e' o corrente" + Chr(34) +
+    "." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XDK" + #CRLF$ +
+    "MON>XDK <nome>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "SEMPRE abre o dialogo " + Chr(34) + "Selecione a imagem de disco (DSK)" + Chr(34) + ", mesmo ja " +
+    "tendo um disco corrente - `<nome>` (opcional) e' so' a SUGESTAO inicial do campo, nao um caminho " +
+    "usado direto sem confirmar. O disco escolhido vira o novo corrente, mostrado na barra de status " +
+    "(topo) como " + Chr(34) + "DISCO: <nome>" + Chr(34) + ". Cancelar preserva o disco corrente " +
+    "anterior (se havia) e mostra `CANCELADO`." + #CRLF$ + #CRLF$ +
+    "*Os outros comandos de disco abrem esse MESMO dialogo automaticamente, so' na PRIMEIRA vez, se " +
+    "ainda nao houver disco corrente nenhum - `XDK` e' so' pra TROCAR de disco no meio de uma sessao.*")
+
+  MamuteHelp_Add("XFS", "Comandos",
+    "**Lista o diretorio do disco corrente** (equivalente ao `DIR`) - porta do `FS` do SUPER-X, " +
+    "PRIMEIRO comando de disco do Mamute Assembler - pedido explicito do usuario. Usa o conceito de " +
+    "**disco corrente**: um caminho de imagem `.dsk` guardado nesta sessao da janela, mostrado na " +
+    "barra de status (topo) como " + Chr(34) + "DISCO: <nome>" + Chr(34) + " - compartilhado por " +
+    "TODOS os comandos de disco (`XFS`/`XCI`/`XTP`/`XL%`/`XS%`)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XFS" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Sem argumento nenhum (nenhum comando de disco aceita mais nome/troca de disco - so' o `XDK`, ao " +
+    "lado). Se AINDA NAO houver disco corrente, abre o dialogo " + Chr(34) +
+    "Selecione a imagem de disco (DSK)" + Chr(34) + " pra escolher um antes de listar; se JA houver, " +
+    "lista o diretorio dele direto, sem dialogo nenhum." + #CRLF$ + #CRLF$ +
+    "*Pra trocar de disco corrente, use `XDK` primeiro.*")
+
+  MamuteHelp_Add("XCI", "Comandos",
+    "**Uso do disco corrente** - clusters livres / total de clusters - porta do `CI` do SUPER-X, " +
+    "pedido explicito do usuario. Sem argumento nenhum, mesma logica de disco corrente do `XFS` (ao " +
+    "lado) - sem disco corrente, abre o dialogo de escolha primeiro." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XCI" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Mostra:" + #CRLF$ +
+    "```" + #CRLF$ +
+    "DISCO.DSK: 342 / 714 CLUSTERS LIVRES" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "*Pra trocar de disco corrente, use `XDK` primeiro.*")
+
+  MamuteHelp_Add("XTP", "Comandos",
+    "**Visualizador de texto simples** - abre uma janela separada mostrando o conteudo de um arquivo " +
+    "**dentro do disco corrente** (mesmo disco corrente do `XFS`/`XCI`, ao lado) - porta do `TP` do " +
+    "SUPER-X, pedido explicito do usuario." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XTP <arquivo>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<arquivo>` e' o nome do arquivo DENTRO do disco corrente (o mesmo nome que o `XFS` lista), NAO " +
+    "um caminho do computador - UNICO argumento (sem disco corrente, abre o dialogo de escolha " +
+    "primeiro, mesmo idioma do `XFS`/`XCI`)." + #CRLF$ + #CRLF$ +
+    "**8 botoes de navegacao**, mesmo layout do `XH`:" + #CRLF$ +
+    "- **`|<`/`>|`** - INICIO/FIM do arquivo inteiro." + #CRLF$ +
+    "- **`<<`/`>>`** - pagina anterior/proxima (rola 30 linhas de uma vez)." + #CRLF$ +
+    "- **`^`/`v`** - linha anterior/proxima." + #CRLF$ +
+    "- **`<`/`>`** - rola pros lados (colunas) - pra linhas mais compridas que a tela." + #CRLF$ + #CRLF$ +
+    "Setas do teclado (cima/baixo/esquerda/direita), `PgUp`/`PgDn` e `Home`/`End` fazem o mesmo que os " +
+    "botoes (desligados enquanto o campo de busca esta em foco, pra nao competir com a edicao de texto " +
+    "nele); `RETURN`/`ESC` fecha a janela." + #CRLF$ + #CRLF$ +
+    "**Campo de busca** - `Buscar:`, com 2 caixinhas: `Case` (marcada = diferencia maiusculas/" +
+    "minusculas) e `Regex` (marcada = o texto digitado e' uma expressao regular, sintaxe padrao do " +
+    "PureBasic/PCRE). Botao `BUSCAR` (ou `RETURN` com o campo em foco) acha a PROXIMA ocorrencia a " +
+    "partir de onde a ultima busca parou (ou da tela atual, na primeira vez) - com wraparound pro " +
+    "inicio do arquivo se chegar ao fim sem achar nada. Sem ocorrencia nenhuma, mostra " +
+    Chr(34) + "NAO ENCONTRADO" + Chr(34) + "; expressao regular invalida mostra " + Chr(34) +
+    "?EXPRESSAO REGULAR INVALIDA" + Chr(34) + "." + #CRLF$ + #CRLF$ +
+    "*So' leitura - nao altera o arquivo no disco. Extrai pra um temporario, mostra, apaga o " +
+    "temporario ao fechar.*")
+
+  MamuteHelp_Add("XSV", "Comandos",
+    "**Salva com cabecalho BSAVE** - funciona exatamente como o `BSAVE` do MSX BASIC (cabecalho real " +
+    "de 7 bytes: `$FE` + inicio/fim/execucao, 2 bytes cada) - porta do `SV` do SUPER-X, pedido " +
+    "explicito do usuario. Abre o dialogo " + Chr(34) + "Salvar como" + Chr(34) + " sugerindo `<nome>` " +
+    "como nome de arquivo." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XSV <nome>,<inicio>[#slot[-sub]|#S],<fim>[,<execucao>[,<offset>]]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<inicio>` aceita sufixo de slot/sub-slot (igual `XD`) **exceto VRAM** (`#V`) - `BSAVE` de " +
+    "verdade nunca salva de VRAM. `<fim>` e' sempre um endereco puro, no MESMO alvo. `<execucao>` " +
+    "vazio = igual a `<inicio>` (mesma regra do `BSAVE` original)." + #CRLF$ + #CRLF$ +
+    "**`<offset>`** (opcional, so' faz sentido com `<execucao>` tambem informado) desloca so' os " +
+    "ENDERECOS GRAVADOS NO CABECALHO - os bytes continuam lidos do intervalo `[<inicio>,<fim>]` de " +
+    "verdade aqui no simulador. Util pra montar/testar num endereco de trabalho e gerar um `.bin` que " +
+    "declara um endereco de carga DIFERENTE (o destino real), pra carregar de volta depois com o " +
+    "`XLD` (ou `BLOAD` de verdade) no lugar certo." + #CRLF$ + #CRLF$ +
+    "*Ao contrario do `SAVE` nativo (janela rica com Slot/Formato editaveis), o `XSV` e' direto: so' " +
+    "pede o nome do arquivo, sem tela de confirmacao extra.*")
+
+  MamuteHelp_Add("XLD", "Comandos",
+    "**Carrega com cabecalho BLOAD** - le um arquivo gravado no formato `BSAVE` (mesmo cabecalho do " +
+    "`XSV`, ao lado) e escreve os bytes na memoria - porta do `LD` do SUPER-X, pedido explicito do " +
+    "usuario. Abre o dialogo " + Chr(34) + "Selecione o arquivo" + Chr(34) + " sugerindo `<nome>`." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XLD <nome>[,<offset>[#slot[-sub]|#S]]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`?ARQUIVO INVALIDO` se o 1o byte do arquivo nao for `$FE` (mesma exigencia do `BLOAD` de " +
+    "verdade)." + #CRLF$ + #CRLF$ +
+    "- **Sem `<offset>`** - carrega no MESMO endereco que o cabecalho ja diz, `PAGE`-relativo comum." + #CRLF$ +
+    "- **Com `<offset>`** - ignora o endereco do cabecalho pra fins de escrita, carrega a partir de " +
+    "`<offset>` (aceita o mesmo sufixo de slot do `XSV`, tambem sem VRAM)." + #CRLF$ + #CRLF$ +
+    "*O endereco de execucao do cabecalho so' e' MOSTRADO no log - `XLD` nunca executa nada sozinho " +
+    "(equivalente ao `BLOAD` sem `,R`) - rode depois com `XGO` se quiser.*")
+
+  MamuteHelp_Add("XS#", "Comandos",
+    "**Salva bytes CRUS, sem cabecalho** - porta do `S#` do SUPER-X, pedido explicito do usuario. " +
+    "Diferente do `XSV` (que grava o cabecalho `BSAVE` real), o `XS#` grava SO' os bytes do intervalo, " +
+    "nada mais - nem `$FE`, nem enderecos, nada." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XS# <nome>,<inicio>[#slot[-sub]|#V|#S],<fim>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Abre o dialogo " + Chr(34) + "Salvar como" + Chr(34) + " sugerindo `<nome>`. `<inicio>` aceita o " +
+    "sufixo de alvo completo (igual `XD`) **incluindo VRAM** (`#V`) - diferente do `XSV`/`XLD` (que " +
+    "rejeitam VRAM pra ficar fiel ao `BSAVE`/`BLOAD` reais), o `XS#`/`XL#` sao um dump/restore cru " +
+    "generico, sem pretensao de imitar nenhum formato de arquivo do MSX de verdade. `<fim>` e' sempre " +
+    "um endereco puro, no MESMO alvo.")
+
+  MamuteHelp_Add("XL#", "Comandos",
+    "**Carrega bytes CRUS, sem cabecalho** - analogo ao `XS#` (ao lado), porta do `L#` do SUPER-X, " +
+    "pedido explicito do usuario. Sem `<fim>` (mesma sintaxe do `L#` original) - o tamanho vem do " +
+    "PROPRIO arquivo, carrega ele inteiro a partir de `<inicio>`." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XL# <nome>,<inicio>[#slot[-sub]|#V|#S]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Abre o dialogo " + Chr(34) + "Selecione o arquivo" + Chr(34) + " sugerindo `<nome>`. Se o arquivo " +
+    "nao couber inteiro a partir de `<inicio>` (estouraria o teto do alvo), `?ERRO DE SINTAXE` - nunca " +
+    "" + Chr(34) + "da a volta" + Chr(34) + " silenciosamente (mesma convencao do `XBT`/`XRT`/`XFL`).")
+
+  MamuteHelp_Add("XL%", "Comandos",
+    "**Le setor(es) do disco corrente DIRETO pra memoria** (bruto, sem passar pelo sistema de " +
+    "arquivos - abaixo do nivel de `XFS`/`XTP`) - porta do `L%` do SUPER-X, pedido explicito do " +
+    "usuario. Sem disco corrente, abre o dialogo de escolha primeiro (mesmo idioma do `XFS`)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XL% <setorinic>[,<setorfim>],<endereco>[#slot[-sub]|#V|#S]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<setorinic>`/`<setorfim>` sao numeros de SETOR (512 bytes cada), em HEXA (mesma convencao " +
+    "numerica do resto do monitor) - setor 0 e' o setor de boot. `<setorfim>` AUSENTE = carrega " +
+    "apenas UM UNICO setor. `<endereco>` aceita o sufixo de alvo completo, INCLUSIVE VRAM (`#V`) - " +
+    "carregar um setor cru direto na VRAM e' uma operacao real do MSX." + #CRLF$ + #CRLF$ +
+    "`?ERRO DE SINTAXE` se `<setorfim>` for alem do tamanho real do disco corrente, ou se os bytes " +
+    "nao couberem a partir de `<endereco>` (mesma convencao " + Chr(34) + "nunca da a volta" + Chr(34) +
+    " do `XBT`/`XRT`/`XFL`/`XL#`).")
+
+  MamuteHelp_Add("XS%", "Comandos",
+    "**Grava memoria DIRETO em setor(es) do disco corrente** - o reverso do `XL%` (ao lado), porta do " +
+    "`S%` do SUPER-X, pedido explicito do usuario. MESMA sintaxe/validacao do `XL%` - so' a direcao " +
+    "da copia inverte." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XS% <setorinic>[,<setorfim>],<endereco>[#slot[-sub]|#V|#S]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<setorfim>` AUSENTE = grava apenas UM UNICO setor." + #CRLF$ + #CRLF$ +
+    "*Grava DIRETO em cima do disco corrente, sem confirmacao extra - mesmo espirito " + Chr(34) +
+    "MON> executa na hora" + Chr(34) + " de todo o resto do monitor (`M`/`S`/`F`/`XFL`/`XS#` ja " +
+    "escrevem sem perguntar).*")
+
+  MamuteHelp_Add("XIM", "Comandos",
+    "**Adiciona uma nota nova em memoria** - porta do `iM` (Input Memo) do SUPER-X, pedido explicito " +
+    "do usuario apos perguntar se ja dava pra " + Chr(34) + "consultar um endereco" + Chr(34) + " a " +
+    "partir de um arquivo de notas. So' fica em memoria ate' o fim da sessao, a nao ser que grave com " +
+    "`XIS` depois." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XIM <endereco>,<slot>,<tipo>,<texto>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<slot>` (0-4: Geral/MAIN/SUB/FDC/RAM) e `<tipo>` (0-7: Geral/BIOS/WORK/DATA/PORT/MATH/KEY/HOOK) " +
+    "sao os codigos NUMERICOS PROPRIOS do SUPER-X (classificacao da doc original do arquivo de notas) - " +
+    "**nao** tem nada a ver com o `#slot-subslot` do enderecamento estendido usado pelo resto do modulo " +
+    "45, so' coincidem de nome. `<texto>` e' tudo que sobrar depois da 3a virgula (pode ter espacos e " +
+    "quase qualquer pontuacao)." + #CRLF$ + #CRLF$ +
+    "*Mais de uma nota pode existir no mesmo `<endereco>` - `XIC` mostra todas.*")
+
+  MamuteHelp_Add("XIC", "Comandos",
+    "**Consulta nota(s) de um endereco** - porta do `iC` (Input Check) do SUPER-X, o comando que " +
+    "responde a pergunta original do usuario (" + Chr(34) + "ja posso consultar um endereco?" + Chr(34) +
+    ")." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XIC <endereco>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Mostra TODAS as notas gravadas nesse `<endereco>` (podem existir mais de uma - confirmado em 17 " +
+    "casos reais entre as 471 notas originais traduzidas, coincidencias numericas entre BIOS/PORT ou " +
+    "SUB-ROM vs ROM principal). `?NOTA NAO ENCONTRADA` se nenhuma nota bater." + #CRLF$ + #CRLF$ +
+    "*Precisa de `XIL` primeiro pra carregar notas - a lista comeca vazia.*")
+
+  MamuteHelp_Add("XIL", "Comandos",
+    "**Carrega um arquivo de notas** - porta do `iL` (Input Load) do SUPER-X. Abre o dialogo " +
+    Chr(34) + "Selecione o arquivo" + Chr(34) + ", sugerindo `<nome>` (ou, sem argumento nenhum, o " +
+    "arquivo de notas TRADUZIDO que o proprio Paleobasic ja traz pronto - **nunca** o `SUPER-X.TNK` " +
+    "original em japones, pedido explicito do usuario: " + Chr(34) + "assegure-se de ler o arquivo ja " +
+    "traduzido de notas e nao o original em japones" + Chr(34) + ")." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XIL [<nome>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Substitui TODAS as notas em memoria pelas do arquivo (`ClearList` antes de carregar) - qualquer " +
+    "nota adicionada com `XIM` e nao gravada com `XIS` se perde." + #CRLF$ + #CRLF$ +
+    "*Formato proprio deste porte (texto, uma nota por linha) - diferente do binario Shift-JIS do " +
+    "`SUPER-X.TNK` original, que fica só' de referencia estatica na Ajuda.*")
+
+  MamuteHelp_Add("XIS", "Comandos",
+    "**Grava as notas em memoria num arquivo** - porta do `iS` (Input Save) do SUPER-X, o reverso do " +
+    "`XIL` (ao lado). Util pra guardar notas adicionadas com `XIM` durante a sessao." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XIS <nome>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Abre o dialogo " + Chr(34) + "Salvar como" + Chr(34) + ", sugerindo `<nome>` (mesmo formato texto " +
+    "do `XIL` - nao o binario do `SUPER-X.TNK`).")
+
+  MamuteHelp_Add("XIR", "Comandos",
+    "**Visualizador interativo das notas em memoria** - abre uma janela mostrando as notas " +
+    "(`MamuteNotes()`, carregadas via `XIL`/adicionadas via `XIM`) uma de cada vez, com botoes de " +
+    "navegacao e um campo de busca - pedido explicito do usuario." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XIR [<endereco>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endereco>`, se informado, abre ja' na primeira nota daquele endereco (senao abre na primeira " +
+    "nota da lista)." + #CRLF$ + #CRLF$ +
+    "**Navegacao:** botoes `|<`/`<`/`>`/`>|` (primeira/anterior/proxima/ultima) - tambem Setas Cima/" +
+    "Baixo, PgUp/PgDn (pula 10 notas), Home/End." + #CRLF$ + #CRLF$ +
+    "**Busca:** mesmo campo do `XTP` - `Case` (diferencia maiusculas/minusculas) e `Regex` (expressao " +
+    "regular), independentes um do outro (cobre busca com case, sem case, e com expressao regular, nas " +
+    "combinacoes que fizerem sentido). Busca contra `ENDERECO SLOT TIPO TEXTO` de cada nota - da pra " +
+    "buscar por endereco hexa (ex. `00B4`), por categoria (ex. `PORT`), ou por texto livre. Sempre a " +
+    "partir da PROXIMA nota, com wraparound completo pela lista.")
+
+  MamuteHelp_Add("XPP", "Comandos",
+    "**Painel de Portas I/O** - abre uma janela mostrando as portas monitoradas (0-255), com colunas " +
+    "`Entrada` (ultimo byte que o programa mandou pra' porta via `OUT`) e `Saida` (byte que uma `IN` vai " +
+    "ler dessa porta) - pedido explicito do usuario." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XPP" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Botoes `Adicionar`/`Remover` incluem/excluem uma porta (digitada no campo `Porta:`) do painel; " +
+    "`Definir` (Entrada/Saida) edita manualmente os dois valores - **por enquanto NAO existe nenhuma " +
+    "rotina de simulacao de hardware de verdade**, entao e' o usuario quem digita o que `Saida` deve " +
+    "valer ANTES de rodar o programa com `XGO`/`XTR`, se quiser controlar o que uma `IN` vai ler. " +
+    "`Limpar Marcas` tira o destaque (fundo amarelo) das portas que sofreram alguma alteracao - `XPI`/`XPO` " +
+    "e as instrucoes `IN`/`OUT` de verdade do programa simulado marcam a porta assim que ESCREVEM nela " +
+    "(ler nunca marca). Lista sempre em ordem crescente de porta.")
+
+  MamuteHelp_Add("XPI", "Comandos",
+    "**Le uma porta e mostra o valor no prompt** - simula manualmente a instrucao `IN` do Z80, lendo " +
+    "`Saida` da porta no Painel de Portas I/O (`XPP`, ao lado)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XPI <porta>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<porta>` e' hexa (0-FF). Cria a porta no painel se ainda nao existir (com `Saida` = `FF`, " +
+    "barramento flutuante, ate' o usuario definir algo diferente pelo `XPP`). So' LE - nunca marca a " +
+    "porta como alterada.")
+
+  MamuteHelp_Add("XPO", "Comandos",
+    "**Escreve um byte numa porta** - simula manualmente a instrucao `OUT` do Z80, gravando `Entrada` " +
+    "da porta no Painel de Portas I/O (`XPP`, ao lado)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XPO <porta>,<byte>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<porta>` e `<byte>` sao hexa (0-FF cada). Cria a porta no painel se ainda nao existir, e marca a " +
+    "porta como alterada (mesmo efeito visual de uma `OUT` de verdade rodada via `XGO`/`XTR`).")
+
   MamuteHelp_Add("XCS", "Comandos",
     "**Alterna o tipo de checksum** do despejo do `XD` (`XD <endinic>,<endfim>`, ver ao lado) - pedido " +
     "explicito do usuario." + #CRLF$ + #CRLF$ +

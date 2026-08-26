@@ -241,7 +241,7 @@ Procedure MamuteZap_DrawButton(Canvas, Label.s, Font, AccentColor.l = -1)
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
   Protected Fg = Mamute_CurrentFrontColor()
   If AccentColor <> -1 : Fg = AccentColor : EndIf
-  Box(0, 0, W, H, RGB(0, 45, 18))
+  Box(0, 0, W, H, Mamute_CurrentBackColor())
   DrawingMode(#PB_2DDrawing_Outlined)
   Box(0, 0, W, H, Fg)
   DrawingMode(#PB_2DDrawing_Transparent)

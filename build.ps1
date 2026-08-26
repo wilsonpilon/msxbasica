@@ -94,7 +94,7 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "8.6.0"
+$Version = "8.7.5"
 $SourceFile = Join-Path $PSScriptRoot "src\editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "dist\PaleoBasic.exe"
 $SkipZip = $false
@@ -289,6 +289,7 @@ Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\branding\paleobasic.png")
 Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\fonts") -Destination (Join-Path $DistEditorDir "fonts") -Recurse
 Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\redbook_images") -Destination (Join-Path $DistEditorDir "redbook_images") -Recurse
 Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\th2handbook_images") -Destination (Join-Path $DistEditorDir "th2handbook_images") -Recurse
+Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\superx\SUPER-X-PT.notas") -Destination (Join-Path $DistEditorDir "SUPER-X-PT.notas")
 $DistToolsDir = Join-Path $DistEditorDir "tools"
 New-Item -ItemType Directory -Path $DistToolsDir -Force | Out-Null
 Copy-DistItem -Path (Join-Path $PSScriptRoot "resource\tools\msxbas2rom") -Destination (Join-Path $DistToolsDir "msxbas2rom") -Recurse

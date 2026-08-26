@@ -6,6 +6,64 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.7.5 — "NOTA NA PORTA" (2026-08-26)
+
+**Tema da versão**: dois recursos novos e independentes chegam ao Mamute Assembler no mesmo dia — um
+sistema de **notas por endereço** (comandos `XIM`/`XIC`/`XIL`/`XIS`/`XIR`, mais um campo de carga
+automática em `Configurar → Mamute Assembler...`) e um **painel de portas I/O** (`XPP`/`XPI`/`XPO`),
+que finalmente dá vida às 6 instruções de I/O do Z80 simulado — antes disso, todo `OUT` era descartado e
+todo `IN` sempre lia `$FF`, "Fase 1, sem dispositivo real" desde que a CPU foi escrita. O nome da versão
+é um trocadilho com as duas metades: uma "nota" física (post-it) colada numa "porta" (física OU de
+I/O) — literalmente o que as duas features fazem juntas.
+
+### Novidades
+
+- **`XIM`/`XIC`/`XIL`/`XIS`** — porta o "note function" do SUPER-X: `XIM <endereço>,<slot>,<tipo>,<texto>`
+  adiciona uma nota em memória; `XIC <endereço>` consulta todas as notas daquele endereço direto no
+  `MON>` (podem existir mais de uma — 17 coincidências reais confirmadas nas 471 notas originais);
+  `XIL`/`XIS` carregam/salvam um arquivo de notas num formato texto novo (UTF-8, `ENDEREÇO;SLOT;TIPO;
+  TEXTO`), criado especificamente pra não truncar traduções mais longas que os 60 bytes por nota do
+  formato binário original do SUPER-X.
+- **As 471 notas do arquivo de exemplo original, já traduzidas pro português, viram um arquivo pronto
+  pro uso** (`SUPER-X-PT.notas`, extraído da Ajuda existente via um script descartável) — `XIL` já
+  sugere ele por padrão. Escolher justamente esse arquivo no campo novo "Notas SUPER-X padrão"
+  (`Configurar → Mamute Assembler...`) marca ele como somente-leitura e cria automaticamente uma cópia
+  editável (`SUPER-X-SHADOW.notas`), pra nunca sobrescrever o original sem querer.
+- **`XIR`** — visualizador dedicado das notas em memória: uma nota por tela, botões `|<`/`<`/`>`/`>|`
+  pra navegar, e o mesmo campo de busca (texto simples ou expressão regular, com ou sem diferenciar
+  maiúsculas/minúsculas) já usado pelo `XTP`.
+- **`XPP`** — painel de portas I/O: monitora até 256 portas, mostrando "Entrada" (o que o programa
+  mandou por `OUT` por último) e "Saída" (o que uma `IN` vai ler) — botões pra incluir/excluir portas,
+  edição manual dos dois valores, e destaque visual nas portas que sofreram alguma alteração.
+- **`XPI <porta>`**/**`XPO <porta>,<byte>`** — leem/escrevem uma porta manualmente sem abrir o painel,
+  criando a porta automaticamente se ainda não estiver lá.
+- **As 6 instruções de I/O da CPU Z80 simulada passam a usar o painel de verdade** — `OUT (n),A`,
+  `IN A,(n)`, `IN r,(C)`/`OUT (C),r` (ED-prefixadas) e os blocos `INI`/`IND`/`OUTI`/`OUTD` — em vez dos
+  stubs "sempre `$FF`"/"descarta" que existiam desde que a CPU foi escrita.
+
+### Bastidores
+
+- **36 comandos com prefixo `X` ao todo** até esta versão (17 até a 8.6.0 + 19 novos nesta sessão,
+  incluindo os 8 comandos de disco/`XDK` que tinham ficado de fora do resumo anterior por já existirem
+  antes deste registro formal).
+- `PI`/`PO` do inventário original do SUPER-X (módulo 45) estavam marcados "fora de escopo, utilidade
+  questionável sem hardware de verdade atrás" numa nota de planejamento antiga — resolvido por pedido
+  explícito do usuário, dando ao usuário controle manual sobre "Saída" em vez de esperar por uma
+  simulação de hardware completa que ainda não existe.
+- `XPP` (o comando que abre o painel) não tem equivalente no SUPER-X original — inventado nesta sessão;
+  **não confundir com o `PP` do inventário antigo** (mapeador de RAM/segmentos, ainda não portado, e
+  provavelmente não portável sem simular o MegaRAM primeiro).
+- Toda a lógica de dados nova (inserção ordenada da lista de portas, arquivo de notas texto) foi
+  verificada com testes isolados fora do projeto antes de confiar nela dentro do Mamute — incluindo os
+  dois casos de fronteira do espaço de portas (porta `0` e porta `255`) e um ciclo completo de
+  grava→recarrega do arquivo de notas.
+- Sem verificação ao vivo das janelas novas (`XIR`, `XPP`) nem de um programa real rodando `OUT`/`IN`
+  via `XGO` — mesmo bloqueio de teclado sintético neste ambiente de automação já documentado em sessões
+  anteriores (módulo 45h do `docs/SPEC.md`).
+- Ver `docs/SPEC.md`, módulos 45x-45z e 46, para o relato completo de cada decisão de design.
+
+---
+
 ## 8.6.0 — "CRUZ CURADA" (2026-08-26)
 
 **Tema da versão**: fecha o arco aberto pela 8.5.0. Naquela versão, a "cruz de modos" do SUPER-X nascia

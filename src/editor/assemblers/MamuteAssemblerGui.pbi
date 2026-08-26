@@ -238,6 +238,18 @@ Structure MamuteGui_State
   LastCmdText.s
   HasLastCmdAddr.b
   LastCmdAddr.i
+  ; "Disco corrente" (comandos de disco do SUPER-X, docs/SPEC.md modulo 45,
+  ; a partir do XFS) - pedido explicito do usuario: um unico caminho de
+  ; imagem .dsk compartilhado por QUALQUER comando de disco futuro, nao um
+  ; campo por comando (idioma diferente do HasLastXd/etc. acima, que sao
+  ; por-comando de proposito). So' o CAMINHO fica guardado aqui - o
+  ; MSXDisk::OpenDisk()/CloseDisk() (unico DeclareModule real do projeto,
+  ; MSXDisk.pbi) e' aberto e fechado a CADA comando que precisa ler o
+  ; disco, nunca fica aberto entre comandos MON> (mesmo idioma do CLI
+  ; --diskmanipulator/Gerenciador de Disco - evita segurar o arquivo
+  ; travado). Mostrado na barra fixa de status (MamuteGui_RefreshStatusBar).
+  HasCurrentDisk.b
+  CurrentDiskPath.s
 EndStructure
 
 ; Persistencia do historico - pedido explicito do usuario ("guarde inclusive
@@ -390,10 +402,16 @@ EndProcedure
 ; escrita por M/S/T/F/etc.
 Procedure MamuteGui_RefreshStatusBar(G_StatusText, G_MemView, *State.MamuteGui_State, ColBack.i)
   Protected StatusText.s
-  If *State\LastCmdText = ""
-    StatusText = "ULTIMO: (nenhum)"
+  If *State\HasCurrentDisk
+    StatusText = "DISCO: " + GetFilePart(*State\CurrentDiskPath)
   Else
-    StatusText = "ULTIMO: " + *State\LastCmdText
+    StatusText = "DISCO: (nenhum)"
+  EndIf
+  StatusText + Chr(13) + Chr(10)
+  If *State\LastCmdText = ""
+    StatusText + "ULTIMO: (nenhum)"
+  Else
+    StatusText + "ULTIMO: " + *State\LastCmdText
   EndIf
   If *State\HasLastCmdAddr
     Protected Slot.i, Pagina.i, Offset.i
@@ -2205,6 +2223,1076 @@ Procedure MamuteGui_CmdXsd(G_Log, *State.MamuteGui_State, Args.s)
   EndIf
 EndProcedure
 
+; Deslocamento com sinal de ate 4 digitos hexa (+-0000..FFFF) - usado so'
+; pelo <offset> do XSV/XLD abaixo. NAO reaproveita Mamute_ParseHexOffset()
+; (MamuteSupport.pbi, comando XI) de proposito: aquela funcao e' limitada a
+; -7Fh..80h (deslocamento de 1 BYTE, pensado pra "nudge" de disassembler) -
+; deslocar um ENDERECO de 16 bits (relocar 8000H pra C000H, por exemplo)
+; precisa de alcance bem maior.
+Procedure.b Mamute_ParseAddrOffset(Token.s, *OutValue.Integer)
+  If Token = ""
+    ProcedureReturn #False
+  EndIf
+  Protected Sign.i = 1
+  Protected Digits.s = Token
+  If Left(Token, 1) = "+"
+    Digits = Mid(Token, 2)
+  ElseIf Left(Token, 1) = "-"
+    Sign = -1
+    Digits = Mid(Token, 2)
+  EndIf
+  If Not Mamute_IsHexString(Digits, 4)
+    ProcedureReturn #False
+  EndIf
+  *OutValue\i = Sign * Val("$" + Digits)
+  ProcedureReturn #True
+EndProcedure
+
+; XSV <nome>,<inicio>[#slot[-subslot]|#S|#5],<fim>[,<execucao>[,<offset>]]
+; - porta do SV do SUPER-X (inventario do modulo 45: "Salva com cabecalho
+; BSAVE") - pedido explicito do usuario: "funciona exatamente igual ao
+; BSAVE do BASIC, abrindo o dialogo para o usuario informar o nome do
+; arquivo (sugerido por <nome>)". Cabecalho BSAVE real do MSX (7 bytes:
+; $FE + inicio/fim/execucao, cada um 2 bytes little-endian) - MESMO formato
+; que o "BIN" do SAVE nativo (MamuteSaveGui.pbi) ja grava, mas NAO
+; reaproveita aquela janela (rica, com Slot/Formato/sem-cabecalho editaveis
+; - pra outro caso de uso, "grava o que estiver mapeado agora"): aqui e'
+; so' um SaveFileRequester direto sugerindo <nome> (mesmo idioma do XSD,
+; modulo 45m - "abrindo o dialogo" pro usuario e' o FILE PICKER, nao uma
+; janela de edicao inteira) - decisao de manter os dois caminhos
+; separados, sem risco de mexer no SAVE/"A I" ja funcionando.
+;
+; <inicio> aceita o sufixo de alvo completo (slot/sub-slot/#S/#5) EXCETO
+; VRAM (#V/#4) - ?ERRO DE SINTAXE se vier: BSAVE de verdade no MSX NUNCA
+; salva de VRAM (precisaria de VPEEK, formato/uso completamente diferente),
+; entao aceitar VRAM aqui quebraria a promessa de "exatamente igual ao
+; BSAVE do BASIC". <fim> e' sempre um endereco puro, no MESMO alvo -
+; mesma convencao do XBT/XRT/XFL/XCM/XFD/XTS.
+;
+; <execucao> vazio = igual a <inicio> (MESMA regra do BSAVE original e do
+; SAVE nativo). <offset>, quando informado, desloca so' os 3 ENDERECOS
+; GRAVADOS NO CABECALHO (inicio/fim/execucao) - os BYTES continuam lidos
+; do intervalo [<inicio>,<fim>] de verdade no simulador. **Decisao pra uma
+; ambiguidade real do pedido do usuario, documentada em docs/SPEC.md
+; modulo 45u**: util pra montar/testar codigo num endereco de trabalho
+; aqui no monitor e gerar um arquivo .bin que declara um endereco de
+; carga DIFERENTE (o endereco real de destino), pra depois carregar de
+; volta com XLD (ou BLOAD de verdade) no lugar certo.
+Procedure MamuteGui_CmdXsv(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected NameToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+  If NameToken = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected StartToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected Rest2.s = Mid(Rest1, CommaPos2 + 1)
+
+  Protected EndToken.s, ExecToken.s = "", OffsetToken.s = ""
+  Protected CommaPos3.i = FindString(Rest2, ",")
+  If CommaPos3 = 0
+    EndToken = Trim(Rest2)
+  Else
+    EndToken = Trim(Left(Rest2, CommaPos3 - 1))
+    Protected Rest3.s = Mid(Rest2, CommaPos3 + 1)
+    Protected CommaPos4.i = FindString(Rest3, ",")
+    If CommaPos4 = 0
+      ExecToken = Trim(Rest3)
+    Else
+      ExecToken = Trim(Left(Rest3, CommaPos4 - 1))
+      OffsetToken = Trim(Mid(Rest3, CommaPos4 + 1))
+      If FindString(OffsetToken, ",") > 0
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+        ProcedureReturn
+      EndIf
+    EndIf
+  EndIf
+
+  Protected StartAddr.i, EndAddr.i, ExecAddr.i, OffsetVal.i = 0
+  Protected Target.MamuteSxTarget
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target) Or Target\IsVram
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If Not Mamute_ParseHexAddr(EndToken, @EndAddr) Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If ExecToken = ""
+    ExecAddr = StartAddr
+  ElseIf Not Mamute_ParseHexAddr(ExecToken, @ExecAddr)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If OffsetToken <> "" And Not Mamute_ParseAddrOffset(OffsetToken, @OffsetVal)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected FilePath.s = SaveFileRequester("Salvar como BSAVE (XSV)", NameToken,
+    "Binario BSAVE (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+  If GetExtensionPart(FilePath) = "" : FilePath + ".bin" : EndIf
+
+  Protected DataLen.i = EndAddr - StartAddr + 1
+  Protected Dim Buf.a(6 + DataLen - 1)
+  Protected HStart.u = (StartAddr + OffsetVal) & $FFFF
+  Protected HEndAddr.u = (EndAddr + OffsetVal) & $FFFF
+  Protected HExec.u = (ExecAddr + OffsetVal) & $FFFF
+  Buf(0) = $FE
+  Buf(1) = HStart & $FF    : Buf(2) = (HStart >> 8) & $FF
+  Buf(3) = HEndAddr & $FF  : Buf(4) = (HEndAddr >> 8) & $FF
+  Buf(5) = HExec & $FF     : Buf(6) = (HExec >> 8) & $FF
+
+  Protected i.i
+  For i = 0 To DataLen - 1
+    Buf(7 + i) = Mamute_SxReadByte(StartAddr + i, @Target)
+  Next
+
+  Protected Fh = CreateFile(#PB_Any, FilePath)
+  If Not Fh
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR ARQUIVO")
+    ProcedureReturn
+  EndIf
+  WriteData(Fh, @Buf(0), 7 + DataLen)
+  CloseFile(Fh)
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "GRAVADO: " + GetFilePart(FilePath) + " (" + Mamute_Hex4(HStart) + "-" + Mamute_Hex4(HEndAddr) +
+    " EXEC " + Mamute_Hex4(HExec) + ")")
+EndProcedure
+
+; XLD <nome>[,<offset>[#slot[-subslot]|#S|#5]] - porta do LD do SUPER-X
+; (inventario do modulo 45: "Carrega com cabecalho BLOAD") - pedido
+; explicito do usuario: "cria o XLD <name>[,<offset>#<slot>-<subslot>], que
+; abre o dialogo para buscar um arquivo, sugerido pelo nome, e com um
+; offset opcional". Le o cabecalho BSAVE real (7 bytes: $FE + inicio/fim/
+; execucao, little-endian) - ?ARQUIVO INVALIDO se o 1o byte nao for $FE
+; (mesma exigencia do BLOAD de verdade do MSX).
+;
+; <offset> ausente - carrega no MESMO endereco que o cabecalho ja diz
+; (<inicio> gravado no arquivo), PAGE-relativo comum (mesmo comportamento
+; "sem sufixo cai no PAGE ativo" de todo o resto do modulo 45). <offset>
+; presente - ignora o endereco do cabecalho pra fins de ESCRITA, carrega
+; a partir de <offset> (aceita o MESMO sufixo de alvo do XSV, tambem
+; rejeitando VRAM - BLOAD de verdade tambem nunca escreve em VRAM direto).
+; Endereco de execucao do cabecalho so' e' MOSTRADO no log - XLD nunca
+; executa nada sozinho (equivalente ao BLOAD SEM ",R"; rodar fica por conta
+; de XGO depois, se o usuario quiser).
+Procedure MamuteGui_CmdXld(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+  If Trimmed = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected CommaPos.i = FindString(Trimmed, ",")
+  Protected NameToken.s, OffsetToken.s = ""
+  If CommaPos = 0
+    NameToken = Trimmed
+  Else
+    NameToken = Trim(Left(Trimmed, CommaPos - 1))
+    OffsetToken = Trim(Mid(Trimmed, CommaPos + 1))
+    If FindString(OffsetToken, ",") > 0
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+  If NameToken = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected HasOffset.b = Bool(OffsetToken <> "")
+  Protected OffsetAddr.i
+  Protected OffsetTarget.MamuteSxTarget
+  If HasOffset
+    If Not Mamute_ParseSxAddr(OffsetToken, @OffsetAddr, @OffsetTarget) Or OffsetTarget\IsVram
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Protected FilePath.s = OpenFileRequester("Selecione o arquivo BSAVE (XLD)", NameToken,
+    "Binario BSAVE (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+
+  Protected Fh = ReadFile(#PB_Any, FilePath)
+  If Not Fh
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ARQUIVO INVALIDO")
+    ProcedureReturn
+  EndIf
+  Protected FileLen.q = Lof(Fh)
+  If FileLen < 7
+    CloseFile(Fh)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ARQUIVO INVALIDO")
+    ProcedureReturn
+  EndIf
+
+  Protected Dim Hdr.a(6)
+  ReadData(Fh, @Hdr(0), 7)
+  If Hdr(0) <> $FE
+    CloseFile(Fh)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ARQUIVO INVALIDO")
+    ProcedureReturn
+  EndIf
+  Protected HStart.u = Hdr(1) | (Hdr(2) << 8)
+  Protected HEndAddr.u = Hdr(3) | (Hdr(4) << 8)
+  Protected HExec.u = Hdr(5) | (Hdr(6) << 8)
+
+  Protected DataLen.i = HEndAddr - HStart + 1
+  If DataLen < 0 : DataLen = 0 : EndIf
+  Protected AvailBytes.q = FileLen - 7
+  If DataLen > AvailBytes : DataLen = AvailBytes : EndIf
+
+  Protected Dim DataBuf.a(DataLen)
+  If DataLen > 0 : ReadData(Fh, @DataBuf(0), DataLen) : EndIf
+  CloseFile(Fh)
+
+  Protected WriteAddr.i
+  Protected Target.MamuteSxTarget
+  If HasOffset
+    WriteAddr = OffsetAddr
+    CopyStructure(@OffsetTarget, @Target, MamuteSxTarget)
+  Else
+    WriteAddr = HStart
+  EndIf
+
+  Protected i.i
+  For i = 0 To DataLen - 1
+    Mamute_SxWriteByte((WriteAddr + i) & $FFFF, DataBuf(i), @Target)
+  Next
+
+  Protected EndWriteAddr.u = (WriteAddr + DataLen - 1) & $FFFF
+  If DataLen = 0 : EndWriteAddr = WriteAddr & $FFFF : EndIf
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "CARREGADO: " + GetFilePart(FilePath) + " EM " + Mamute_Hex4(WriteAddr & $FFFF) + "-" +
+    Mamute_Hex4(EndWriteAddr) + " (EXEC " + Mamute_Hex4(HExec) + ")")
+EndProcedure
+
+; XIM <endereco>,<slot>,<tipo>,<texto> - porta do iM (Input Memo) do
+; SUPER-X (funcao "Note" da doc original) - adiciona uma nota nova em
+; MamuteNotes(), em memoria (so' persiste em disco via XIS depois). Pedido
+; explicito do usuario: "porte estes comandos" (iM/iC/iL/iS), respondendo
+; ao pedido anterior de poder "consultar um endereco" a partir de um
+; arquivo de notas (docs/SPEC.md modulo 45x).
+;
+; <endereco> hexa 1-4 digitos. <slot>/<tipo> sao os codigos NUMERICOS
+; PROPRIOS do SUPER-X (0-4 e 0-7, ver cabecalho de MamuteNotesData.pbi) -
+; nao o #slot-subslot do enderecamento estendido do resto do modulo 45,
+; essas duas coisas so' coincidem de nome (mesma ressalva ja documentada
+; no parser do .TNK original). <texto> e' TUDO que sobra depois da 3a
+; virgula (pode conter espacos e qualquer pontuacao, exceto ";" que a
+; gravacao do XIS troca por "," se aparecer - mesma sanitizacao do
+; Mamute_SaveTranslatedNotes()).
+Procedure MamuteGui_CmdXim(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected AddrToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected SlotToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected Rest2.s = Mid(Rest1, CommaPos2 + 1)
+
+  Protected CommaPos3.i = FindString(Rest2, ",")
+  If CommaPos3 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected TypeToken.s = Trim(Left(Rest2, CommaPos3 - 1))
+  Protected TextToken.s = Trim(Mid(Rest2, CommaPos3 + 1))
+
+  Protected Addr.i
+  If Not Mamute_ParseHexAddr(AddrToken, @Addr)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  If Not Mamute_IsDecimalString(SlotToken) Or Val(SlotToken) < 0 Or Val(SlotToken) > 4
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  If Not Mamute_IsDecimalString(TypeToken) Or Val(TypeToken) < 0 Or Val(TypeToken) > 7
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  If TextToken = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  AddElement(MamuteNotes())
+  MamuteNotes()\Addr = Addr
+  MamuteNotes()\SlotData = Val(SlotToken)
+  MamuteNotes()\TypeData = Val(TypeToken)
+  MamuteNotes()\Text = TextToken
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "NOTA ADICIONADA EM " + Mamute_Hex4(Addr) + " (" + Str(ListSize(MamuteNotes())) + " NA MEMORIA)")
+EndProcedure
+
+; XIC <endereco> - porta do iC (Input Check/Consult) do SUPER-X - consulta
+; nota(s) gravada(s) pra um endereco em MamuteNotes(). Pode haver MAIS DE
+; UMA nota no mesmo endereco (17 casos reais confirmados nas 471 notas
+; originais - coincidencias numericas entre BIOS/PORT, ou SUB-ROM vs
+; ROM principal, ver docs/SPEC.md modulo 45x) - XIC mostra TODAS, uma
+; linha de log por nota, em vez de só a primeira.
+Procedure MamuteGui_CmdXic(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+  Protected Addr.i
+  If Not Mamute_ParseHexAddr(Trimmed, @Addr)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Found.b = #False
+  ForEach MamuteNotes()
+    If MamuteNotes()\Addr = Addr
+      Found = #True
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+        Mamute_Hex4(Addr) + " [" + Mamute_NoteSlotName(MamuteNotes()\SlotData) + "/" +
+        Mamute_NoteTypeName(MamuteNotes()\TypeData) + "] " + MamuteNotes()\Text)
+    EndIf
+  Next
+  If Not Found
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?NOTA NAO ENCONTRADA")
+  EndIf
+EndProcedure
+
+; XIL [<nome>] - porta do iL (Input Load) do SUPER-X - carrega um arquivo
+; de notas pra MamuteNotes() (ClearList antes, substitui o que tinha).
+; Abre SEMPRE o dialogo "Selecione o arquivo" (mesmo idioma do resto do
+; modulo 45) - <nome>, se informado, so' entra como sugestao inicial do
+; dialogo, exatamente como o <nome> do XLD/XL#.
+;
+; A sugestao PADRAO (sem <nome>) e' o arquivo TRADUZIDO que o Paleobasic ja
+; traz pronto (Mamute_TranslatedNotesFilePath(), resource/superx/
+; SUPER-X-PT.notas) - NUNCA o SUPER-X.TNK original em japones (que nem
+; segue este formato de texto, so' o binario Shift-JIS de 64 bytes/registro
+; lido por Mamute_LoadNoteFile(), dormant). Pedido explicito do usuario:
+; "assegure-se de ler o arquivo ja traduzido de notas e nao o original em
+; japones" - por isso XIL usa Mamute_LoadTranslatedNotes() e nunca
+; Mamute_LoadNoteFile() (docs/SPEC.md modulo 45x).
+Procedure MamuteGui_CmdXil(G_Log, *State.MamuteGui_State, Args.s)
+  Protected NameToken.s = Trim(Args)
+  If NameToken = ""
+    NameToken = Mamute_TranslatedNotesFilePath()
+  EndIf
+
+  Protected FilePath.s = OpenFileRequester("Selecione o arquivo de notas (XIL)", NameToken,
+    "Notas traduzidas (*.notas)|*.notas|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+
+  If Not Mamute_LoadTranslatedNotes(FilePath)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ARQUIVO INVALIDO")
+    ProcedureReturn
+  EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "CARREGADO: " + GetFilePart(FilePath) + " (" + Str(ListSize(MamuteNotes())) + " NOTAS)")
+EndProcedure
+
+; XIS <nome> - porta do iS (Input Save) do SUPER-X - grava MamuteNotes()
+; (o que estiver em memoria agora - carregado via XIL + o que foi
+; adicionado via XIM) no mesmo formato texto traduzido do XIL. <nome> e'
+; so' a sugestao inicial do dialogo "Salvar como" (mesmo idioma do XSV).
+Procedure MamuteGui_CmdXis(G_Log, *State.MamuteGui_State, Args.s)
+  Protected NameToken.s = Trim(Args)
+  If NameToken = ""
+    NameToken = Mamute_TranslatedNotesFilePath()
+  EndIf
+
+  Protected FilePath.s = SaveFileRequester("Salvar arquivo de notas (XIS)", NameToken,
+    "Notas traduzidas (*.notas)|*.notas|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+  If GetExtensionPart(FilePath) = "" : FilePath + ".notas" : EndIf
+
+  If Not Mamute_SaveTranslatedNotes(FilePath)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR ARQUIVO")
+    ProcedureReturn
+  EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "GRAVADO: " + GetFilePart(FilePath) + " (" + Str(ListSize(MamuteNotes())) + " NOTAS)")
+EndProcedure
+
+; XIR [<endereco>] - visualizador interativo das notas em memoria
+; (MamuteXirGui.pbi) - pedido explicito do usuario: "faca um comando XIR
+; que abre uma janela e mostra o conteudo das notas, uma por uma, permite
+; rolar com botoes, e permite busca com case, sem case e expressao
+; regular" (docs/SPEC.md modulo 45z). <endereco>, se informado, abre ja'
+; na primeira nota daquele endereco (sem exigir que exista - cai na
+; primeira nota da lista se nao encontrar); sem argumento, sempre abre na
+; primeira nota. <endereco> e' hexa simples (Mamute_ParseHexAddr, mesma
+; validacao do XIC) - notas nao tem conceito de slot/sub-slot/VRAM, entao
+; nao usa Mamute_ParseSxAddr como XM/XH/etc.
+Procedure MamuteGui_CmdXir(Win, G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+  Protected InitialAddr.i = -1
+  If Trimmed <> ""
+    Protected Addr.i
+    If Not Mamute_ParseHexAddr(Trimmed, @Addr)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+    InitialAddr = Addr
+  EndIf
+  MamuteXir_Open(Win, InitialAddr)
+EndProcedure
+
+; XPP - abre o Painel de Portas I/O (MamuteIoGui.pbi) - pedido explicito do
+; usuario: "um painel onde colocamos algumas portas que desejamos
+; monitorar... com botoes o usuario pode incluir ou excluir portas... as
+; portas que sofrem alteracao podem mudar de cor" (docs/SPEC.md modulo
+; 46). Nome escolhido pra ABRIR o painel - o usuario so' pediu XPI/XPO
+; explicitamente (os comandos de ler/escrever uma porta), o comando de
+; abrir a janela do painel em si precisava de algum nome; "PP" = Painel de
+; Portas, mesmo prefixo X e mesma dupla de letras de contexto I/O das
+; outras duas.
+Procedure MamuteGui_CmdXpp(Win, G_Log, *State.MamuteGui_State, Args.s)
+  MamuteIoPanel_Open(Win)
+EndProcedure
+
+; XPI <porta> - porta do "leia um byte da porta e mostre no prompt"
+; pedido explicito do usuario: "XPI <port> que le um dado da porta <port>
+; e mostra no prompt". Simula manualmente a instrucao IN do Z80: le
+; "Saida" da porta no Painel de Portas I/O (Mamute_IOPort_GetSaida,
+; MamuteIoGui.pbi - mesma funcao que as instrucoes IN de verdade
+; MamuteZ80Cpu.pbi usam durante XGO/XTR), criando a porta no painel se
+; ainda nao existir (pedido explicito: "se a porta ainda nao aparece no
+; painel de portas, crie a mesma"). Nao marca a porta como alterada -
+; ler nao e' "sofrer modificacao".
+Procedure MamuteGui_CmdXpi(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+  If Not Mamute_IsHexString(Trimmed, 2)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected PortVal.i = Val("$" + Trimmed)
+  Protected ValueRead.a = Mamute_IOPort_GetSaida(PortVal)
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "PORTA " + Mamute_Hex2(PortVal) + " = " + Mamute_Hex2(ValueRead))
+EndProcedure
+
+; XPO <porta>,<byte> - "escreva um byte na porta especificada" pedido
+; explicito do usuario: "XPO <porta><byte> que permite escrever o <byte>
+; na <porta> especificada" (virgula entre os dois argumentos - mesma
+; convencao de 2 argumentos do resto do modulo 45, ex. XRG <reg>,<valor>).
+; Simula manualmente a instrucao OUT do Z80: grava "Entrada" da porta no
+; Painel de Portas I/O (Mamute_IOPort_SetEntrada - mesma funcao que as
+; instrucoes OUT de verdade usam), criando a porta no painel se ainda nao
+; existir e marcando-a como alterada (mesmo efeito que uma OUT de verdade
+; do programa simulado teria).
+Procedure MamuteGui_CmdXpo(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos.i = FindString(Args, ",")
+  If CommaPos = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected PortToken.s = Trim(Left(Args, CommaPos - 1))
+  Protected ByteToken.s = Trim(Mid(Args, CommaPos + 1))
+  If Not Mamute_IsHexString(PortToken, 2) Or Not Mamute_IsHexString(ByteToken, 2)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected PortVal.i = Val("$" + PortToken)
+  Protected ByteVal.a = Val("$" + ByteToken)
+  Mamute_IOPort_SetEntrada(PortVal, ByteVal)
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "PORTA " + Mamute_Hex2(PortVal) + " <- " + Mamute_Hex2(ByteVal))
+EndProcedure
+
+; XS# <nome>,<inicio>[#slot[-sub]|#V|#S],<fim> - porta do S# do SUPER-X
+; (inventario do modulo 45: "Salva bytes crus, sem cabecalho") - pedido
+; explicito do usuario: "salva um bloco bruto de dados no disco, abre o
+; dialogo sugerindo o <nome>... salva os dados brutos do <inicio> ao <fim>
+; sem header binario ou de outro tipo". Batizado XS# (nao S#) - decisao
+; explicita do usuario apos pergunta direta, mesma consistencia de prefixo
+; de todo o resto dos comandos portados do SUPER-X nesta sessao (mesmo
+; raciocinio do CO->XCO, modulo 45n).
+;
+; Ao contrario do XSV/XLD (BSAVE/BLOAD DE VERDADE, que rejeitam VRAM pra
+; ficar fiel ao hardware real - modulo 45u), XS#/XL# sao um dump/restore
+; CRU generico sem pretensao de imitar nenhum formato de arquivo do MSX de
+; verdade - aceitam VRAM tambem (`#V`/`#4`), mesmo escopo de alvo completo
+; que o XSD (modulo 45m) ja usa. Zero cabecalho, literalmente so' os bytes
+; do intervalo, byte a byte - mais simples que o XSV de proposito.
+Procedure MamuteGui_CmdXsRaw(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected NameToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+  If NameToken = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected StartToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected EndToken.s = Trim(Mid(Rest1, CommaPos2 + 1))
+  If FindString(EndToken, ",") > 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartAddr.i, EndAddr.i
+  Protected Target.MamuteSxTarget
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If Target\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected FilePath.s = SaveFileRequester("Salvar bytes crus (XS#)", NameToken,
+    "Binario cru (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+  If GetExtensionPart(FilePath) = "" : FilePath + ".bin" : EndIf
+
+  Protected DataLen.i = EndAddr - StartAddr + 1
+  Protected Dim Buf.a(DataLen - 1)
+  Protected i.i
+  For i = 0 To DataLen - 1
+    Buf(i) = Mamute_SxReadByte(StartAddr + i, @Target)
+  Next
+
+  Protected Fh = CreateFile(#PB_Any, FilePath)
+  If Not Fh
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR ARQUIVO")
+    ProcedureReturn
+  EndIf
+  WriteData(Fh, @Buf(0), DataLen)
+  CloseFile(Fh)
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "GRAVADO: " + GetFilePart(FilePath) + " (" + Mamute_HexPad(StartAddr, 4) + Mamute_SxTargetSuffixText(@Target) +
+    "-" + Mamute_HexPad(EndAddr, 4) + " - " + Str(DataLen) + " BYTE(S))")
+EndProcedure
+
+; XL# <nome>,<inicio>[#slot[-sub]|#V|#S] - porta do L# do SUPER-X
+; (inventario do modulo 45: "Carrega bytes crus, sem cabecalho") - analogo
+; do XS# acima, pedido explicito do usuario ("crie tambem o analogo L# que
+; carrega dados brutos do disco"). Sem <fim> (mesma sintaxe do L# original)
+; - o tamanho vem do proprio arquivo (Lof()), carrega ele INTEIRO a partir
+; de <inicio>. Rejeita overflow do alvo (StartAddr+tamanho-1 > Mamute_
+; SxMaxAddr()) como ?ERRO DE SINTAXE em vez de dar a volta - mesma
+; convencao do XBT/XRT/XFL (nunca "enrola" no destino silenciosamente).
+Procedure MamuteGui_CmdXlRaw(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos.i = FindString(Args, ",")
+  If CommaPos = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected NameToken.s = Trim(Left(Args, CommaPos - 1))
+  Protected StartToken.s = Trim(Mid(Args, CommaPos + 1))
+  If NameToken = "" Or FindString(StartToken, ",") > 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartAddr.i
+  Protected Target.MamuteSxTarget
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected FilePath.s = OpenFileRequester("Selecione o arquivo de bytes crus (XL#)", NameToken,
+    "Binario cru (*.bin)|*.bin|Todos os arquivos (*.*)|*.*", 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+
+  Protected Fh = ReadFile(#PB_Any, FilePath)
+  If Not Fh
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ARQUIVO INVALIDO")
+    ProcedureReturn
+  EndIf
+  Protected DataLen.q = Lof(Fh)
+
+  If StartAddr + DataLen - 1 > Mamute_SxMaxAddr(@Target)
+    CloseFile(Fh)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Dim Buf.a(DataLen)
+  If DataLen > 0 : ReadData(Fh, @Buf(0), DataLen) : EndIf
+  CloseFile(Fh)
+
+  Protected i.i
+  For i = 0 To DataLen - 1
+    Mamute_SxWriteByte(StartAddr + i, Buf(i), @Target)
+  Next
+
+  Protected EndAddr.i = StartAddr + DataLen - 1
+  If DataLen = 0 : EndAddr = StartAddr : EndIf
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "CARREGADO: " + GetFilePart(FilePath) + " EM " + Mamute_HexPad(StartAddr, 4) + Mamute_SxTargetSuffixText(@Target) +
+    "-" + Mamute_HexPad(EndAddr, 4) + " - " + Str(DataLen) + " BYTE(S))")
+EndProcedure
+
+; Abre o dialogo de imagem de disco (#File_Pattern_Disk, DiskManagerGui.pbi -
+; mesmo filtro que o ZAP/Gerenciador de Disco ja usam) sugerindo
+; SuggestedName - usado pelo XFS e por QUALQUER comando de disco futuro
+; (docs/SPEC.md modulo 45). #True + *State\CurrentDiskPath/HasCurrentDisk
+; atualizados se o usuario escolheu um arquivo; #False (estado ANTERIOR
+; preservado, nunca limpo) se cancelou.
+Procedure.b MamuteGui_PickDisk(*State.MamuteGui_State, SuggestedName.s)
+  Protected Picked.s = OpenFileRequester("Selecione a imagem de disco (DSK)", SuggestedName, #File_Pattern_Disk, 0)
+  If Picked = ""
+    ProcedureReturn #False
+  EndIf
+  *State\CurrentDiskPath = Picked
+  *State\HasCurrentDisk = #True
+  ProcedureReturn #True
+EndProcedure
+
+; Garante que ha' um disco corrente pronto pra uso - **mudanca drastica de
+; design, pedido explicito do usuario** (substitui o antigo esquema
+; "[,<nome>]" por comando, que so' existiu por 1 sessao): "todos os
+; comandos de disco... vamos eliminar o nome deles, o nome vai ser sempre o
+; nome corrente... para cada comando de disco, caso nao exista um disco
+; previamente carregado por XDK, ai sim abra o dialogo". Ou seja: NENHUM
+; comando de disco (XFS/XCI/XTP/XL%/XS%) aceita mais um argumento de nome/
+; troca de disco - so' o XDK (abaixo) TROCA o disco corrente; os outros so'
+; USAM o que ja esta carregado, abrindo o dialogo (MamuteGui_PickDisk, sem
+; sugestao de nome nenhuma) so' na PRIMEIRA vez, se ainda nao houver disco
+; corrente. #True quando *State\CurrentDiskPath esta pronto pra uso; #False
+; quando o usuario cancelou o dialogo (CANCELADO ja LOGADO aqui) - o
+; chamador so' precisa dar ProcedureReturn nesse caso.
+Procedure.b MamuteGui_EnsureCurrentDisk(G_Log, *State.MamuteGui_State)
+  If *State\HasCurrentDisk
+    ProcedureReturn #True
+  EndIf
+  If Not MamuteGui_PickDisk(*State, "")
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn #False
+  EndIf
+  ProcedureReturn #True
+EndProcedure
+
+; XDK [<nome>] - pedido explicito do usuario, junto com a mudanca drastica
+; documentada em MamuteGui_EnsureCurrentDisk acima: "vamos criar um comando
+; novo XDK [<nome>] que vai abrir o dialogo para buscar uma imagem de disco
+; de MSX (DSK), sugerindo o nome (opcional)". Nome nao existe no SUPER-X
+; original (nenhum verbo "DK" no inventario do modulo 45) - inventado pra
+; esta sessao especificamente como o UNICO comando que TROCA o disco
+; corrente (SEMPRE abre o dialogo, mesmo ja tendo um disco carregado -
+; diferente do MamuteGui_EnsureCurrentDisk, que so' abre se NAO houver
+; nenhum ainda). <nome>, se dado, e' so' a SUGESTAO inicial do campo do
+; dialogo (mesmo idioma "sugerindo o nome" de XSD/XSV/etc), nunca um
+; caminho usado direto sem confirmar. Cancelar preserva o disco corrente
+; anterior (se havia) - CANCELADO, sem trocar nada.
+Procedure MamuteGui_CmdXdk(G_Log, *State.MamuteGui_State, Args.s)
+  Protected SuggestedName.s = Trim(Args)
+  If Not MamuteGui_PickDisk(*State, SuggestedName)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "DISCO: " + GetFilePart(*State\CurrentDiskPath))
+EndProcedure
+
+; XFS - porta do FS do SUPER-X (inventario do modulo 45: "Lista arquivos do
+; disco (equivalente a DIR)") - PRIMEIRO comando de disco do Mamute
+; Assembler. Sem argumento nenhum (mudanca de design, ver comentario do
+; MamuteGui_EnsureCurrentDisk acima - a antiga sintaxe "XFS[,<nome>]" desta
+; mesma sessao foi ELIMINADA por pedido explicito do usuario: "vamos
+; padronizar todos sem nome, o nome e' o corrente"). Lista o disco corrente
+; direto; se ainda nao houver nenhum, abre o dialogo de escolha primeiro
+; (MamuteGui_EnsureCurrentDisk).
+;
+; Usa o MSXDisk:: existente (unico DeclareModule real do projeto, ja usado
+; pelo Gerenciador de Disco/CLI --diskmanipulator/montagem do disco de
+; execucao do openMSX) - MSXDisk::OpenDisk()/ListFiles()/CloseDisk(), NADA
+; de rotina nova de FAT12 (pedido explicito do usuario: "use o sistema de
+; DSK que o PaleoBasic ja tem pra poder trabalhar com discos"). Abre/fecha
+; o disco a CADA chamada, nunca fica aberto entre comandos MON> - mesmo
+; idioma do CLI/Gerenciador (evita segurar o arquivo travado enquanto o
+; usuario digita outros comandos no meio tempo).
+Procedure MamuteGui_CmdXfs(G_Log, *State.MamuteGui_State, Args.s)
+  If Trim(Args) <> ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  If Not MamuteGui_EnsureCurrentDisk(G_Log, *State)
+    ProcedureReturn
+  EndIf
+
+  If Not MSXDisk::OpenDisk(*State\CurrentDiskPath)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO ABRIR O DISCO: " + MSXDisk::GetLastErrorMessage())
+    ProcedureReturn
+  EndIf
+
+  NewList Files.MSXDisk::FileInfo()
+  If MSXDisk::ListFiles(Files())
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, GetFilePart(*State\CurrentDiskPath) + ":")
+    If ListSize(Files()) = 0
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "(DISCO VAZIO)")
+    Else
+      ForEach Files()
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+          LSet(Files()\FileName, 12) + " " + RSet(Str(Files()\Size), 7))
+      Next
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, Str(ListSize(Files())) + " ARQUIVO(S)")
+    EndIf
+  Else
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO LISTAR: " + MSXDisk::GetLastErrorMessage())
+  EndIf
+
+  MSXDisk::CloseDisk()
+EndProcedure
+
+; XCI - porta do CI do SUPER-X (inventario do modulo 45: "Uso do disco
+; (clusters usados/total)") - pedido explicito do usuario: "mostra a
+; quantidade de clusters livres do disco / quantidade total de clusters".
+; Sem argumento nenhum, mesma logica de disco corrente do XFS (ver
+; comentario la e de MamuteGui_EnsureCurrentDisk acima) - so' o que faz
+; DEPOIS de abrir o disco muda. Nova MSXDisk::GetClusterInfo() (MSXDisk.pbi)
+; varre a FAT em memoria com o MESMO criterio que MSXDisk::AddFile() ja usa
+; internamente pra achar um cluster livre (ReadFAT(c,*FAT)=0) - nenhuma
+; logica nova de FAT12, so' leitura; unica adicao nova NO MODULO MSXDisk
+; nesta sessao (pedido explicito do usuario: "use o sistema de DSK que o
+; PaleoBasic ja tem... se nao for possivel, crie rotinas diferentes" - foi
+; possivel, so' precisou de UMA funcao nova, publica, ao lado de ListFiles).
+Procedure MamuteGui_CmdXci(G_Log, *State.MamuteGui_State, Args.s)
+  If Trim(Args) <> ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  If Not MamuteGui_EnsureCurrentDisk(G_Log, *State)
+    ProcedureReturn
+  EndIf
+
+  If Not MSXDisk::OpenDisk(*State\CurrentDiskPath)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO ABRIR O DISCO: " + MSXDisk::GetLastErrorMessage())
+    ProcedureReturn
+  EndIf
+
+  Protected Free.l, Total.l
+  If MSXDisk::GetClusterInfo(@Free, @Total)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      GetFilePart(*State\CurrentDiskPath) + ": " + Str(Free) + " / " + Str(Total) + " CLUSTERS LIVRES")
+  Else
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO: " + MSXDisk::GetLastErrorMessage())
+  EndIf
+
+  MSXDisk::CloseDisk()
+EndProcedure
+
+; XTP <arquivo> - porta do TP do SUPER-X (inventario do modulo 45: "Exibe
+; arquivo de texto (paginado, ENTER/ESPACO/ESC)") - pedido explicito do
+; usuario: "mostra o conteudo de um arquivo na tela, crie um read simples,
+; com botoes pra rolar a tela pros lados, linha a linha, pagina a pagina,
+; como outros visualizadores do programa". <arquivo> e' o nome de um
+; arquivo DENTRO do disco corrente (mesmo "disco corrente" do XFS/XCI,
+; modulos 45p/45q/comentario da Structure) - NAO um caminho do sistema de
+; arquivos do host. **Achado real, corrigido ainda na sessao anterior**: a
+; primeira versao lia <arquivo> como caminho do host, o que dava
+; ?ARQUIVO INVALIDO pra qualquer nome listado pelo XFS (o usuario reportou
+; exatamente isso) - TP esta agrupado com FS/CI/CD/BL/SV/LD no inventario
+; do modulo 45, e' um comando de DISCO, nao um visualizador de arquivo
+; qualquer do host. NAO tem mais `[,<nome>]` (mudanca drastica de design,
+; ver comentario de MamuteGui_EnsureCurrentDisk acima) - `<arquivo>` e' o
+; UNICO argumento agora; sem disco corrente, abre o dialogo primeiro.
+;
+; Extrai o arquivo do disco pra um temporario (MSXDisk::ExtractFile(),
+; GetTemporaryDirectory()) - MSXDisk:: nao tem "ler pra memoria" direto, so'
+; "extrair pra um caminho real" (mesma API que o Gerenciador de Disco/CLI
+; --diskmanipulator ja usam) - le DAQUELE temporario, apaga na sequencia.
+; MamuteXtp_Open() (MamuteXtpGui.pbi) nunca sabe a diferenca; so' recebe um
+; DisplayName separado (o nome de VERDADE dentro do disco) pro titulo da
+; janela, nao o caminho temporario. Janela de verdade em MamuteXtpGui.pbi -
+; ver comentario no topo daquele arquivo pro design completo (janela SEM
+; cruz de modos, EditorGadget recortado manualmente nos dois eixos, 6
+; botoes no MESMO layout do XH).
+Procedure MamuteGui_CmdXtp(Win, G_Log, *State.MamuteGui_State, Args.s)
+  Protected FileToken.s = Trim(Args)
+  If FileToken = "" Or FindString(FileToken, ",") > 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If Not MamuteGui_EnsureCurrentDisk(G_Log, *State)
+    ProcedureReturn
+  EndIf
+
+  If Not MSXDisk::OpenDisk(*State\CurrentDiskPath)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO ABRIR O DISCO: " + MSXDisk::GetLastErrorMessage())
+    ProcedureReturn
+  EndIf
+
+  Protected TempPath.s = GetTemporaryDirectory() + "mamute_xtp_view.tmp"
+  Protected ExtractOk.b = MSXDisk::ExtractFile(FileToken, TempPath)
+  Protected ExtractErr.s = MSXDisk::GetLastErrorMessage()
+  MSXDisk::CloseDisk()
+
+  If Not ExtractOk
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ARQUIVO INVALIDO: " + ExtractErr)
+    ProcedureReturn
+  EndIf
+
+  Protected ErrMsg.s = MamuteXtp_Open(Win, TempPath, FileToken)
+  DeleteFile(TempPath)
+  If ErrMsg <> ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, ErrMsg)
+  EndIf
+EndProcedure
+
+#Mamute_DiskSectorSize = 512
+
+; Le UM setor FISICO (512 bytes) do arquivo de imagem de disco corrente
+; pro buffer *Buf - I/O bruto DIRETO NO ARQUIVO, sem passar pelo MSXDisk::
+; (aquele modulo so' entende arquivos/diretorio via FAT12 - um "setor N"
+; isolado esta ABAIXO desse nivel, mais perto do hardware de verdade -
+; decisao direta do pedido do usuario: "use o sistema que ja tem, se nao
+; for possivel, crie rotinas diferentes" - aqui nao foi possivel, o
+; MSXDisk:: nao expoe leitura por setor). #True se leu os 512 bytes
+; certinho.
+Procedure.b Mamute_ReadDiskSector(DiskPath.s, SectorNum.i, *Buf)
+  Protected Fh = ReadFile(#PB_Any, DiskPath)
+  If Not Fh
+    ProcedureReturn #False
+  EndIf
+  FileSeek(Fh, SectorNum * #Mamute_DiskSectorSize)
+  Protected Got.i = ReadData(Fh, *Buf, #Mamute_DiskSectorSize)
+  CloseFile(Fh)
+  ProcedureReturn Bool(Got = #Mamute_DiskSectorSize)
+EndProcedure
+
+; Grava UM setor (512 bytes) no arquivo de imagem de disco corrente, EM
+; CIMA do que ja estava la' - OpenFile(), NAO CreateFile(): CreateFile()
+; TRUNCARIA o disco inteiro (apagando tudo); OpenFile() so' abre um
+; arquivo JA EXISTENTE pra edicao, sem mexer no resto do conteudo.
+Procedure.b Mamute_WriteDiskSector(DiskPath.s, SectorNum.i, *Buf)
+  Protected Fh = OpenFile(#PB_Any, DiskPath)
+  If Not Fh
+    ProcedureReturn #False
+  EndIf
+  FileSeek(Fh, SectorNum * #Mamute_DiskSectorSize)
+  WriteData(Fh, *Buf, #Mamute_DiskSectorSize)
+  CloseFile(Fh)
+  ProcedureReturn #True
+EndProcedure
+
+; Parseia "<setorinic>[,<setorfim>],<endereco>[#slot[-sub]|#V|#S]" -
+; compartilhado por XL%/XS% (identico nos dois, so' a DIRECAO da copia
+; depois muda). <setorinic>/<setorfim> sao HEXA (mesma convencao numerica
+; de todo o resto do monitor) - <setorfim> ausente = "carregue/grave
+; apenas um unico setor" (pedido explicito do usuario, os dois comandos).
+; Valida a faixa de setor contra o TAMANHO REAL do disco corrente
+; (FileSize()) e overflow do alvo de memoria (Mamute_SxMaxAddr() - mesma
+; convencao "nunca da a volta silenciosamente" do XL#/XBT/XRT/XFL). #True
+; com *OutSecStart/*OutSecEnd/*OutAddr/*OutTarget prontos; #False ja deixou
+; ?ERRO DE SINTAXE logado, o chamador so' precisa dar ProcedureReturn.
+Procedure.b MamuteGui_ParseSectorArgs(G_Log, *State.MamuteGui_State, Args.s,
+                                       *OutSecStart.Integer, *OutSecEnd.Integer,
+                                       *OutAddr.Integer, *OutTarget.MamuteSxTarget)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn #False
+  EndIf
+  Protected SecStartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+
+  Protected SecEndToken.s = "", AddrToken.s
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    AddrToken = Trim(Rest1)
+  Else
+    SecEndToken = Trim(Left(Rest1, CommaPos2 - 1))
+    AddrToken = Trim(Mid(Rest1, CommaPos2 + 1))
+    If FindString(AddrToken, ",") > 0
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn #False
+    EndIf
+  EndIf
+
+  Protected SecStart.i, SecEnd.i
+  If Not Mamute_IsHexString(SecStartToken, 4)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn #False
+  EndIf
+  SecStart = Val("$" + SecStartToken)
+
+  If SecEndToken = ""
+    SecEnd = SecStart
+  Else
+    If Not Mamute_IsHexString(SecEndToken, 4)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn #False
+    EndIf
+    SecEnd = Val("$" + SecEndToken)
+  EndIf
+  If SecEnd < SecStart
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn #False
+  EndIf
+
+  Protected Addr.i
+  If Not Mamute_ParseSxAddr(AddrToken, @Addr, *OutTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn #False
+  EndIf
+
+  Protected DiskSize.q = FileSize(*State\CurrentDiskPath)
+  Protected TotalSectors.q = DiskSize / #Mamute_DiskSectorSize
+  If SecEnd >= TotalSectors
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn #False
+  EndIf
+
+  Protected TotalBytes.i = (SecEnd - SecStart + 1) * #Mamute_DiskSectorSize
+  If Addr + TotalBytes - 1 > Mamute_SxMaxAddr(*OutTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn #False
+  EndIf
+
+  *OutSecStart\i = SecStart
+  *OutSecEnd\i = SecEnd
+  *OutAddr\i = Addr
+  ProcedureReturn #True
+EndProcedure
+
+; XL% <setorinic>[,<setorfim>],<endereco>[#slot[-sub]|#V|#S] - porta do L%
+; do SUPER-X (inventario do modulo 45: "Le setor(es) de disco direto pra
+; memoria") - pedido explicito do usuario: "pega do arquivo de imagem de
+; disco corrente, o <setor inicial>... carrega no <endereco>, ate chegar
+; ao <setor final>, se o setor final nao for informado, carregue apenas um
+; unico setor". Usa o disco CORRENTE (MamuteGui_EnsureCurrentDisk - mesma
+; mudanca de design do XFS/XCI/XTP, sem nome nenhum no comando).
+; <endereco> aceita VRAM - mesmo escopo do XS#/XL# (modulo 45v): setor cru
+; pra VRAM e' uma operacao real do MSX (o proprio NestorBASIC tem
+; .NB_ReadSectorsToVram equivalente, visto no .dmx do usuario testado no
+; XTP).
+Procedure MamuteGui_CmdXlPct(G_Log, *State.MamuteGui_State, Args.s)
+  If Not MamuteGui_EnsureCurrentDisk(G_Log, *State)
+    ProcedureReturn
+  EndIf
+
+  Protected SecStart.i, SecEnd.i, Addr.i
+  Protected Target.MamuteSxTarget
+  If Not MamuteGui_ParseSectorArgs(G_Log, *State, Args, @SecStart, @SecEnd, @Addr, @Target)
+    ProcedureReturn
+  EndIf
+
+  Protected Dim SecBuf.a(#Mamute_DiskSectorSize - 1)
+  Protected s.i, b.i
+  For s = 0 To SecEnd - SecStart
+    If Not Mamute_ReadDiskSector(*State\CurrentDiskPath, SecStart + s, @SecBuf(0))
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO LER O SETOR " + Mamute_Hex4(SecStart + s))
+      ProcedureReturn
+    EndIf
+    For b = 0 To #Mamute_DiskSectorSize - 1
+      Mamute_SxWriteByte(Addr + s * #Mamute_DiskSectorSize + b, SecBuf(b), @Target)
+    Next
+  Next
+
+  Protected TotalBytes.i = (SecEnd - SecStart + 1) * #Mamute_DiskSectorSize
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "CARREGADO: SETOR(ES) " + Mamute_Hex4(SecStart) + "-" + Mamute_Hex4(SecEnd) + " EM " +
+    Mamute_HexPad(Addr, 4) + Mamute_SxTargetSuffixText(@Target) + "-" +
+    Mamute_HexPad(Addr + TotalBytes - 1, 4) + " (" + Str(TotalBytes) + " BYTE(S))")
+EndProcedure
+
+; XS% <setorinic>[,<setorfim>],<endereco>[#slot[-sub]|#V|#S] - porta do S%
+; do SUPER-X (inventario do modulo 45: "Grava memoria direto em setor(es)
+; de disco") - pedido explicito do usuario: "faz o reverso [do XL%], salva
+; um endereco de memoria em setor de disco, se nao for informado o setor
+; final, grava apenas um unico setor". MESMA sintaxe/validacao do XL%
+; (MamuteGui_ParseSectorArgs) - so' a direcao da copia inverte.
+;
+; Grava DIRETO EM CIMA do disco corrente (Mamute_WriteDiskSector() -
+; OpenFile(), nunca CreateFile(), pra nao truncar o resto do disco) - sem
+; confirmacao extra, mesmo espirito "MON> executa na hora" de todo o resto
+; do monitor (M/S/F/XFL/XS# ja escrevem sem perguntar) - o SUPER-X original
+; tambem nao pede confirmacao nenhuma pro S%.
+Procedure MamuteGui_CmdXsPct(G_Log, *State.MamuteGui_State, Args.s)
+  If Not MamuteGui_EnsureCurrentDisk(G_Log, *State)
+    ProcedureReturn
+  EndIf
+
+  Protected SecStart.i, SecEnd.i, Addr.i
+  Protected Target.MamuteSxTarget
+  If Not MamuteGui_ParseSectorArgs(G_Log, *State, Args, @SecStart, @SecEnd, @Addr, @Target)
+    ProcedureReturn
+  EndIf
+
+  Protected Dim SecBuf.a(#Mamute_DiskSectorSize - 1)
+  Protected s.i, b.i
+  For s = 0 To SecEnd - SecStart
+    For b = 0 To #Mamute_DiskSectorSize - 1
+      SecBuf(b) = Mamute_SxReadByte(Addr + s * #Mamute_DiskSectorSize + b, @Target)
+    Next
+    If Not Mamute_WriteDiskSector(*State\CurrentDiskPath, SecStart + s, @SecBuf(0))
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR O SETOR " + Mamute_Hex4(SecStart + s))
+      ProcedureReturn
+    EndIf
+  Next
+
+  Protected TotalBytes.i = (SecEnd - SecStart + 1) * #Mamute_DiskSectorSize
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "GRAVADO: SETOR(ES) " + Mamute_Hex4(SecStart) + "-" + Mamute_Hex4(SecEnd) + " DE " +
+    Mamute_HexPad(Addr, 4) + Mamute_SxTargetSuffixText(@Target) + "-" +
+    Mamute_HexPad(Addr + TotalBytes - 1, 4) + " (" + Str(TotalBytes) + " BYTE(S))")
+EndProcedure
+
 ; X [<reg>] - sem argumento, mostra os 7 pares de registrador (AF/BC/DE/HL/
 ; IX/IY/SP). Com argumento, entra no modo de edicao a partir de <reg> -
 ; aceita tanto um PAR (AF/BC/DE/HL/IX/IY/SP, editado como um valor de 16
@@ -3711,11 +4799,29 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
     Trimmed = Trim(Mid(Trimmed, 2))
   EndIf
 
+  ; Verbo termina no primeiro ESPACO ou VIRGULA, o que vier primeiro -
+  ; achado real do modulo 45t: na sessao do XFS/XCI, o pedido original do
+  ; usuario mostrava a forma GRUDADA ("XFS,arquivo", sem espaco nenhum
+  ; antes da virgula) pro entao-existente "[,<nome>]" desses comandos - o
+  ; split so' por espaco rejeitava isso (o "XFS,arquivo" inteiro virava um
+  ; "verbo" desconhecido, ?COMANDO INVALIDO). Fix mantido mesmo depois que
+  ; o "[,<nome>]" foi ELIMINADO (modulo 45w - "todos os comandos de disco
+  ; vamos eliminar o nome deles, o nome vai ser sempre o corrente", XDK
+  ; virou o unico jeito de trocar disco) - nenhum comando usa mais virgula
+  ; logo apos o verbo hoje, entao o ramo "virgula primeiro" abaixo fica
+  ; inerte na pratica, mas nao faz mal nenhum deixar (backward-compatible,
+  ; sem custo). Quando o espaco vem ANTES de qualquer virgula (o caso
+  ; comum - "XRG BP1,4000", "XTS 4000,4010" etc.), nada muda: continua
+  ; cortando so' no espaco, virgula nenhuma e' tocada.
   Protected SpacePos.i = FindString(Trimmed, " ")
+  Protected CommaPos.i = FindString(Trimmed, ",")
   Protected Verb.s, Args.s
-  If SpacePos > 0
+  If SpacePos > 0 And (CommaPos = 0 Or SpacePos < CommaPos)
     Verb = UCase(Left(Trimmed, SpacePos - 1))
     Args = Trim(Mid(Trimmed, SpacePos + 1))
+  ElseIf CommaPos > 0
+    Verb = UCase(Left(Trimmed, CommaPos - 1))
+    Args = Mid(Trimmed, CommaPos)
   Else
     Verb = UCase(Trimmed)
     Args = ""
@@ -3732,6 +4838,15 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
 
   Select Verb
     Case "BA", "QUIT"
+      *State\ShouldQuit = #True
+
+    ; XQT - porta do QT do SUPER-X (inventario do modulo 45: "Sai pro BASIC")
+    ; - pedido explicito do usuario: "so encerra o Mamute Assembler", mesmo
+    ; comportamento exato do BA/QUIT nativo (fecha a janela, sem mensagem
+    ; nenhuma no log antes) - so' um segundo nome pro mesmo efeito, mesma
+    ; razao de existir do resto dos comandos com prefixo X (nome livre,
+    ; sem colisao, mas sem comportamento novo pra inventar aqui).
+    Case "XQT"
       *State\ShouldQuit = #True
 
     Case "CLS"
@@ -3861,6 +4976,60 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
     Case "XSD"
       MamuteGui_CmdXsd(G_Log, *State, Args)
 
+    Case "XFS"
+      MamuteGui_CmdXfs(G_Log, *State, Args)
+
+    Case "XCI"
+      MamuteGui_CmdXci(G_Log, *State, Args)
+
+    Case "XTP"
+      MamuteGui_CmdXtp(Win, G_Log, *State, Args)
+
+    Case "XSV"
+      MamuteGui_CmdXsv(G_Log, *State, Args)
+
+    Case "XLD"
+      MamuteGui_CmdXld(G_Log, *State, Args)
+
+    Case "XS#"
+      MamuteGui_CmdXsRaw(G_Log, *State, Args)
+
+    Case "XL#"
+      MamuteGui_CmdXlRaw(G_Log, *State, Args)
+
+    Case "XDK"
+      MamuteGui_CmdXdk(G_Log, *State, Args)
+
+    Case "XL%"
+      MamuteGui_CmdXlPct(G_Log, *State, Args)
+
+    Case "XS%"
+      MamuteGui_CmdXsPct(G_Log, *State, Args)
+
+    Case "XIM"
+      MamuteGui_CmdXim(G_Log, *State, Args)
+
+    Case "XIC"
+      MamuteGui_CmdXic(G_Log, *State, Args)
+
+    Case "XIL"
+      MamuteGui_CmdXil(G_Log, *State, Args)
+
+    Case "XIS"
+      MamuteGui_CmdXis(G_Log, *State, Args)
+
+    Case "XIR"
+      MamuteGui_CmdXir(Win, G_Log, *State, Args)
+
+    Case "XPP"
+      MamuteGui_CmdXpp(Win, G_Log, *State, Args)
+
+    Case "XPI"
+      MamuteGui_CmdXpi(G_Log, *State, Args)
+
+    Case "XPO"
+      MamuteGui_CmdXpo(G_Log, *State, Args)
+
     Case "EDIT"
       MamuteEdit_Open(Win)
 
@@ -3888,13 +5057,16 @@ Procedure MamuteAssembler_OpenWindow(ParentWindow)
   SetWindowColor(Win, ColBorder)
 
   ; Barra fixa de status (topo, FORA do log que rola) - pedido explicito do
-  ; usuario: ultimo comando digitado, endereco/offset e slot de trabalho
-  ; atual, e uma miniatura 16x16 (um pixel por byte) da memoria a partir
-  ; dali. G_Status e' texto de 2 linhas; G_MemView e' o CanvasGadget da
-  ; miniatura, ao lado (StatusSize x StatusSize = grade 16x16 a
-  ; StatusSize/16 px por byte). Atualizada por MamuteGui_RefreshStatusBar()
-  ; abaixo, tanto na abertura quanto apos cada comando despachado.
-  Protected StatusSize = 64
+  ; usuario: disco corrente (docs/SPEC.md modulo 45, XFS em diante), ultimo
+  ; comando digitado, endereco/offset e slot de trabalho atual, e uma
+  ; miniatura 16x16 (um pixel por byte) da memoria a partir dali. G_Status
+  ; e' texto de 3 linhas agora (era 2 antes do disco corrente - StatusSize
+  ; aumentado de 64 pra 84 pra caber a linha nova sem cortar); G_MemView e'
+  ; o CanvasGadget da miniatura, ao lado (StatusSize x StatusSize = grade
+  ; 16x16 a StatusSize/16 px por byte). Atualizada por
+  ; MamuteGui_RefreshStatusBar() abaixo, tanto na abertura quanto apos cada
+  ; comando despachado.
+  Protected StatusSize = 84
   Protected G_Status = TextGadget(#PB_Any, 16, 16, WinW - 32 - StatusSize - 16, StatusSize, "")
   SetGadgetColor(G_Status, #PB_Gadget_FrontColor, ColFront)
   SetGadgetColor(G_Status, #PB_Gadget_BackColor, ColBack)
@@ -3945,6 +5117,24 @@ Procedure MamuteAssembler_OpenWindow(ParentWindow)
   State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "")
   State\LogAccum = MamuteGui_ShowPageMap(G_Log, State\LogAccum)
   State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "")
+
+  ; Carga automatica do arquivo de notas padrao (campo "Notas SUPER-X
+  ; padrao", Configurar -> Mamute Assembler..., MamuteSupport.pbi) -
+  ; pedido explicito do usuario: "para ser carregado sempre que o Mamute
+  ; iniciar" (docs/SPEC.md modulo 45y). "" (padrao) = nao tenta carregar
+  ; nada, sem log nenhum sobre isso - so' aparece linha no log quando o
+  ; usuario de fato configurou um arquivo.
+  If MamuteDefaultNotesFile <> ""
+    If Mamute_LoadTranslatedNotes(MamuteDefaultNotesFile)
+      State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum,
+        "NOTAS PADRAO CARREGADAS: " + GetFilePart(MamuteDefaultNotesFile) + " (" +
+        Str(ListSize(MamuteNotes())) + " NOTAS)")
+    Else
+      State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum,
+        "?NAO FOI POSSIVEL CARREGAR AS NOTAS PADRAO: " + GetFilePart(MamuteDefaultNotesFile))
+    EndIf
+    State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "")
+  EndIf
 
   MamuteGui_RefreshStatusBar(G_Status, G_MemView, @State, ColBack)
 

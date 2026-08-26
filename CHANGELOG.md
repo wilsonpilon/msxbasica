@@ -2925,4 +2925,35 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
     incidental (a cor de RAM no minimapa do debugger gráfico coincidia por acaso com a cor de tema) foi
     protegida em vez de trocada, pra não acoplar a codificação visual RAM/ROM/BASIC ao tema. Persistido
     em `mamute_settings.json`, vale a partir da próxima janela aberta.
-
+- **2026-08-26 — release 8.7.5 "NOTA NA PORTA": notas por endereço + painel de portas I/O** — dois
+  recursos novos e independentes no mesmo dia. Sistema de **notas por endereço** (`XIM`/`XIC`/`XIL`/
+  `XIS`/`XIR` no Mamute Assembler, docs/SPEC.md módulos 45x-45z): `XIM` adiciona uma nota
+  `<endereço>,<slot>,<tipo>,<texto>`; `XIC <endereço>` consulta todas as notas daquele endereço (17
+  coincidências reais confirmadas entre as 471 notas originais); `XIL`/`XIS` carregam/salvam um
+  arquivo de notas num formato texto novo (UTF-8, `ENDEREÇO;SLOT;TIPO;TEXTO`, criado porque o binário
+  original de 60 bytes/nota truncaria traduções mais longas); `XIR` abre um visualizador dedicado
+  (uma nota por tela, botões de navegação, busca texto/regex reaproveitando o campo já existente do
+  `XTP`). As 471 notas do arquivo de exemplo original, já traduzidas, viraram `SUPER-X-PT.notas`
+  (extraído da Ajuda via script Python descartável, dois bugs reais de parsing corrigidos — texto com
+  `+` literal dentro de aspas confundindo um split ingênuo com a concatenação do PureBasic). Novo campo
+  "Notas SUPER-X padrão" em `Configurar → Mamute Assembler...` carrega um arquivo automaticamente na
+  abertura; escolher justamente o `SUPER-X-PT.notas` original marca ele como somente-leitura e cria uma
+  cópia editável (`SUPER-X-SHADOW.notas`) automaticamente, pra nunca sobrescrever o original.
+  - **Painel de Portas I/O** (`XPP`/`XPI`/`XPO`, docs/SPEC.md módulo 46) — achado real que motivou tudo:
+    `MamuteZ80Cpu.pbi` já tinha as 6 instruções de I/O do Z80 decodificadas (`OUT (n),A`/`IN A,(n)`/
+    `IN r,(C)`/`OUT (C),r`/`INI`/`IND`/`OUTI`/`OUTD`), mas todas eram stubs "Fase 1, sem dispositivo
+    real" — todo `OUT` descartava o byte, todo `IN` sempre devolvia `$FF`. `XPP` abre um painel que
+    monitora até 256 portas (`Entrada` = último byte que o programa mandou via `OUT`; `Saída` = o que
+    uma `IN` vai ler, digitado manualmente pelo usuário já que ainda não existe simulação de hardware de
+    verdade), com botões incluir/excluir porta e destaque visual nas portas alteradas. `XPI <porta>`/
+    `XPO <porta>,<byte>` leem/escrevem uma porta manualmente. As 6 instruções da CPU foram religadas
+    pra usar o painel de verdade em vez dos stubs antigos — `PI`/`PO` do inventário original do SUPER-X
+    (módulo 45), antes marcados "fora de escopo, utilidade questionável sem hardware real atrás", saem
+    da lista de pendências; `XPP` em si não tem equivalente no SUPER-X original (não confundir com o
+    `PP` do inventário antigo, mapeador de RAM/segmentos, ainda não portado).
+  - Lógica de dados nova (lista de portas em ordem crescente, parser/gravador do arquivo de notas)
+    verificada com testes isolados fora do projeto antes de confiar — incluindo os 2 casos de fronteira
+    do espaço de portas (porta `0` e `255`) e um ciclo completo grava→recarrega do arquivo de notas.
+    36 comandos com prefixo `X` ao todo nesta versão. Compilado limpo a cada bloco de mudança; sem
+    verificação ao vivo das janelas novas nem de um programa real executando `OUT`/`IN` (mesmo bloqueio
+    de teclado sintético neste ambiente de automação, já documentado no módulo 45h).

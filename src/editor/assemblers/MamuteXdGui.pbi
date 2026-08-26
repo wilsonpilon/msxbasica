@@ -222,7 +222,7 @@ Procedure MamuteXd_DrawButton(Canvas, Label.s, Font)
     ProcedureReturn
   EndIf
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
-  Box(0, 0, W, H, RGB(0, 45, 18))
+  Box(0, 0, W, H, Mamute_CurrentBackColor())
   DrawingMode(#PB_2DDrawing_Outlined)
   Box(0, 0, W, H, Mamute_CurrentFrontColor())
   DrawingMode(#PB_2DDrawing_Transparent)
@@ -261,7 +261,7 @@ Procedure MamuteXd_DrawModeButton(Canvas, Label.s, Font, Style.b)
       Protected TW2 = TextWidth(Label), TH2 = TextHeight(Label)
       DrawText((W - TW2) / 2, (H - TH2) / 2, Label, ColDimText)
     Default ; disponivel
-      Box(0, 0, W, H, RGB(0, 45, 18))
+      Box(0, 0, W, H, Mamute_CurrentBackColor())
       DrawingMode(#PB_2DDrawing_Outlined)
       Box(0, 0, W, H, ColActive)
       DrawingMode(#PB_2DDrawing_Transparent)

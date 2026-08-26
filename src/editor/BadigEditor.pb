@@ -60,6 +60,14 @@ Declare MamuteDebugger_Open(ParentWindow, *State, StartAddr.u)
 ; incluido ANTES e precisa chama-la em loop pra rodar o programa.
 Declare Mz80_ExecuteOne(*S)
 
+; Mesmo motivo dos Declare acima - Mamute_TranslatedNotesFilePath()/
+; Mamute_ProtectTranslatedNotesIfPicked() so' sao definidas "de verdade" em
+; MamuteNotesData.pbi, mas MamuteSettings_OpenWindow() (MamuteSupport.pbi,
+; "Configurar -> Mamute Assembler...", docs/SPEC.md modulo 45y) e' incluida
+; ANTES e precisa chama-las pro campo "Notas SUPER-X padrao".
+Declare.s Mamute_TranslatedNotesFilePath()
+Declare.s Mamute_ProtectTranslatedNotesIfPicked(PickedPath.s)
+
 ; Mesmo motivo do Declare acima - MamuteGui_AppendLog() so' e' definida "de
 ; verdade" dentro de MamuteAssemblerGui.pbi (mais abaixo), mas MamuteXmGui.pbi
 ; (comando XM, docs/SPEC.md modulo 45) precisa chama-la e e' incluido ANTES.
@@ -278,6 +286,9 @@ XIncludeFile "assemblers/MamuteXaGui.pbi"
 XIncludeFile "assemblers/MamuteXiGui.pbi"
 XIncludeFile "assemblers/MamuteXmGui.pbi"
 XIncludeFile "assemblers/MamuteXhGui.pbi"
+XIncludeFile "assemblers/MamuteXtpGui.pbi"
+XIncludeFile "assemblers/MamuteXirGui.pbi"
+XIncludeFile "assemblers/MamuteIoGui.pbi"
 XIncludeFile "assemblers/MamutePdf.pbi"
 XIncludeFile "assemblers/MamuteEditGui.pbi"
 XIncludeFile "assemblers/MamuteAssemblerGui.pbi"

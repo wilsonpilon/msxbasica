@@ -174,6 +174,7 @@
     - [R, L e LP - referência de fita e disassembler](#r-l-e-lp---referência-de-fita-e-disassembler)
     - [EDIT - editor do programa-fonte Z80](#edit---editor-do-programa-fonte-z80)
     - [A - montar o programa](#a---montar-o-programa)
+    - [Comandos do SUPER-X (prefixo X)](#comandos-do-super-x-prefixo-x)
 32. [Fossauro (emulador MSX nativo)](#fossauro-emulador-msx-nativo)
     - [O que já funciona hoje](#o-que-já-funciona-hoje)
     - [Linha de comando](#linha-de-comando)
@@ -2544,6 +2545,14 @@ Assembler...`) — combo com as fontes monoespaçadas instaladas (mesma lista de
 Editor...`), campo de tamanho e checkbox **Negrito**. Só tem efeito na próxima vez que o monitor for
 aberto.
 
+**"Notas SUPER-X padrão"** — caminho de um arquivo de notas (comandos `XIM`/`XIC`/`XIL`/`XIS`/`XIR`,
+abaixo) que é carregado automaticamente toda vez que o Mamute Assembler abre, sem precisar digitar `XIL`
+manualmente. Vazio (padrão) = não carrega nada. O botão **"..."** abre um diálogo já sugerindo o arquivo
+traduzido (`SUPER-X-PT.notas`) que o próprio Paleobasic já traz pronto com as 471 notas do arquivo de
+exemplo original do SUPER-X, traduzidas — **se você escolher justamente esse arquivo, ele é
+automaticamente marcado como somente-leitura** e uma cópia editável (`SUPER-X-SHADOW.notas`) é criada e
+usada como padrão no lugar, pra nunca sobrescrever o original sem querer.
+
 ### Comandos disponíveis
 
 **Todo endereço/setor digitado em qualquer comando do Mamute Assembler é hexadecimal** — o padrão de
@@ -3135,6 +3144,51 @@ A opção `U` do manual original (não lista o programa) ainda não foi implemen
 **`MAP`** (fora do `A`, comando próprio) — mostra o endereço inicial e final do código-objeto da última
 montagem bem-sucedida (`A` sozinho já basta, não precisa de `A O`). Se nada foi montado com sucesso
 ainda, pede pra rodar `A` primeiro; `NEW` invalida esse resultado guardado.
+
+### Comandos do SUPER-X (prefixo `X`)
+
+O Mamute Assembler também porta comandos do **SUPER-X**, outro monitor/debugger clássico de MSX mais
+avançado que o MegaAssembler original — todos com prefixo `X`, pra nunca colidir com os comandos acima
+(`XD`/`XA`/`XI`/`XM` são versões "com endereçamento estendido" de `D`/`A`/`I`/`M`, por exemplo). Como a
+porta continua em andamento e cada comando tem opções próprias, a referência completa e sempre
+atualizada — sintaxe exata, exemplos, decisões de design — fica em **Ajuda → Mamute Assembler...**
+(dentro do próprio programa) e em `docs/SPEC.md`, módulo 45 em diante; aqui vai só um mapa de onde
+achar cada coisa, por categoria (36 comandos até a versão 8.7.5):
+
+- **Cruz de modos** (`XD`/`XA`/`XI`/`XM`/`XH`) — hex dump editável, bloco ASCII, disassembler, editor de
+  variáveis/memória e editor de caractere/sprite, todos aceitando o mesmo sufixo de endereço estendido
+  (`#slot[-subslot]`, `#V` pra VRAM, `#S` pro slot de boot) e ligados entre si por um menu em `+` que
+  troca de tela sem digitar outro comando.
+- **Registradores e execução** (`X`, `XRG`, `XGO`, `XTR`) — `X` mostra os registradores simulados;
+  `XRG` edita em pares (incluindo o par alternado `AF'`/`BC'`/`DE'`/`HL'`) e 5 breakpoints nomeados;
+  `XGO` executa o programa simulado de verdade até um breakpoint, `ESC` ou um teto de segurança; `XTR`
+  faz o mesmo passo a passo, uma instrução por `ENTER`.
+- **Memória intra-slots** (`XBT`/`XRT`/`XFL`/`XCM`/`XFD`) — transferir bloco, transferir e realocar
+  ponteiros internos, preencher, comparar e buscar por padrão de instrução decodificada — origem e
+  destino podem ser slot/sub-slot/VRAM completamente diferentes.
+- **Checksum** (`XCS`/`XTS`) — alterna o tipo usado pelo despejo do `XD`, ou calcula um checksum
+  agregado de 16 bits de um bloco inteiro.
+- **Tela e saída** (`XCO`, `XSD`, `XQT`) — `XCO` muda a cor do terminal pra qualquer uma das 16 cores
+  reais do MSX1; `XSD` exporta um disassembly como listagem reassemblável ou como dados crus
+  (`DEFB`/`DATA` de BASIC/X-BASIC); `XQT` sai do monitor (igual `BA`/`QUIT`).
+- **Disco corrente** (`XDK`, `XFS`, `XCI`, `XTP`, `XSV`/`XLD`, `XS#`/`XL#`, `XL%`/`XS%`) — `XDK`
+  escolhe qual `.dsk` é o disco corrente (as outras nunca pedem nome de arquivo — perguntam o disco na
+  primeira vez que precisarem, se `XDK` ainda não tiver sido usado); `XFS` lista os arquivos, `XCI`
+  mostra o uso do disco, `XTP` é um visualizador de texto paginado com busca; `XSV`/`XLD` gravam/carregam
+  no formato real de BSAVE/BLOAD (com cabeçalho); `XS#`/`XL#` fazem o mesmo mas crus, sem cabeçalho;
+  `XL%`/`XS%` leem/gravam setor físico direto, abaixo do sistema de arquivos.
+- **Notas por endereço** (`XIM`, `XIC`, `XIL`, `XIS`, `XIR`) — um sistema de anotações associadas a
+  endereços de memória (porta do "note function" do SUPER-X): `XIM` adiciona uma nota, `XIC` consulta
+  as notas de um endereço direto no `MON>`, `XIL`/`XIS` carregam/salvam um arquivo de notas (ver o campo
+  "Notas SUPER-X padrão" em [Configurar → Mamute Assembler...](#configurar--mamute-assembler) acima
+  pra carregar automaticamente), e `XIR` abre uma janela dedicada pra folhear as notas uma a uma com
+  busca (texto simples, sem diferenciar maiúsculas/minúsculas, ou expressão regular).
+- **Painel de Portas I/O** (`XPP`, `XPI`, `XPO`) — `XPP` abre um painel que monitora até 256 portas de
+  I/O, mostrando o último byte que o programa mandou por `OUT` ("Entrada") e o que uma `IN` vai ler de
+  volta ("Saída") — como ainda não existe nenhuma simulação de hardware de verdade atrás, é o usuário
+  quem digita o valor de "Saída" antes de rodar o programa (`XGO`/`XTR`), se quiser controlar o que o
+  programa vai ler. `XPI`/`XPO`, no `MON>`, leem/escrevem uma porta manualmente sem precisar abrir o
+  painel — os dois criam a porta no painel automaticamente se ela ainda não estiver lá.
 
 ## Fossauro (emulador MSX nativo)
 

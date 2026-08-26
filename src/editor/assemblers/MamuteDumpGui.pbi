@@ -161,7 +161,7 @@ Procedure MamuteDump_DrawButton(Canvas, Label.s, Font)
     ProcedureReturn
   EndIf
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
-  Box(0, 0, W, H, RGB(0, 45, 18))
+  Box(0, 0, W, H, Mamute_CurrentBackColor())
   DrawingMode(#PB_2DDrawing_Outlined)
   Box(0, 0, W, H, Mamute_CurrentFrontColor())
   DrawingMode(#PB_2DDrawing_Transparent)

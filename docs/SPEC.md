@@ -8706,9 +8706,15 @@ a decidir/priorizar com o usuário, aqui só a avaliação, igual módulo 32):
 - `CO` (cor da tela) — o visual verde-sobre-preto do `MON>` é decisão estética deliberada e documentada
   (módulo 31: "lembrar um terminal de verdade daquela época, não um diálogo moderno"); dar esse controle
   ao usuário via comando conflita com essa intenção. Perguntar antes de mexer.
-- `PI`/`PO` (I/O de porta) — não existe nenhuma camada de emulação de porta (VDP/PSG/PPI) no Mamute hoje,
-  só CPU+memória (módulo 32 escolheu deliberadamente "Z80 puro, sem simular o MSX inteiro"). `PI`/`PO`
-  como stub (sempre `FF`/no-op) é possível, mas de utilidade questionável sem hardware de verdade atrás.
+- ~~`PI`/`PO` (I/O de porta)~~ **PORTADO na 8.7.5** como `XPI`/`XPO` (módulo 46), junto com um painel
+  novo (`XPP`, SEM equivalente no SUPER-X original — não confundir com o `PP` acima, mapeador de
+  RAM/segmentos, esse sim ainda não portado) onde o usuário monitora até 256 portas e digita manualmente
+  o que uma `IN` deve ler de volta. A preocupação original abaixo ("utilidade questionável sem hardware
+  de verdade atrás") foi resolvida por pedido explícito do usuário: sem nenhuma camada de emulação de
+  VDP/PSG/PPI ainda (módulo 32 continua "Z80 puro"), mas as 6 instruções de I/O da CPU simulada
+  (`$D3`/`$DB`/`ED IN r,(C)`/`ED OUT (C),r`/`INI`/`IND`/`OUTI`/`OUTD`) já saíram do estado
+  "sempre `FF`/descarta" e passaram a ler/escrever de verdade no painel — texto original da nota
+  preservado abaixo pra contexto histórico.
 - `CD` (muda diretório) — o modelo de arquivo do Mamute inteiro é baseado em `OpenFileRequester`/
   `SaveFileRequester` (diálogo nativo do Windows a cada operação), sem conceito de "diretório corrente"
   como um DOS de verdade. Precisa de decisão de design antes: adotar um diretório corrente novo só pro
@@ -9529,17 +9535,707 @@ arquivos + o comando, incluindo depois do rename) — sem verificação visual a
 bloqueio de `dist\PaleoBasic.exe`, módulos 45j-45m) comparando o visual ANTES/DEPOIS ou testando `XCO`
 com índices diferentes de verdade numa janela aberta.
 
+### 45o. SUPER-X — comando `XQT` (porta do `QT`, sair) (2026-08-26)
+
+Pedido explícito do usuário: "vamos fazer o comando XQT que apenas encerra o mamute assembler" — porta
+do `QT` do SUPER-X (inventário do módulo 45: "Sai pro BASIC"). Comportamento IDÊNTICO ao `BA`/`QUIT`
+nativo já existente (`*State\ShouldQuit = #True`, sem nenhuma mensagem no log antes de fechar) — `XQT`
+é literalmente mais um `Case` na mesma linha do `Case "BA", "QUIT"`, nenhuma lógica nova. Existe só
+como mais um nome reconhecível pra quem já usou o SUPER-X original, mesma razão de ser de todo o resto
+dos comandos com prefixo `X` (nome livre, sem colisão com nada do Mamute nativo). Compilado limpo
+(`pbcompiler.exe` direto pra um `.exe` de scratch).
+
+### 45p. SUPER-X — comando `XFS` + conceito de "disco corrente" (2026-08-26)
+
+Pedido explícito do usuário: primeiro comando de MANIPULAÇÃO DE IMAGEM DE DISCO do Mamute Assembler,
+junto com um design GENÉRICO pra toda a família futura ("qualquer comando, acionado uma primeira vez,
+vai abrir o diálogo pra carregar uma imagem de disco, e todos os comandos vão poder aceitar [,nome] que
+vai permitir carregar outra imagem... use o sistema de DSK que o Paleobasic já tem"). Porta do `FS` do
+SUPER-X (inventário do módulo 45: "Lista arquivos do disco (equivalente a `DIR`)").
+
+**"Disco corrente"** — `HasCurrentDisk.b`/`CurrentDiskPath.s`, novos campos em `MamuteGui_State`
+(mesma vida útil de sessão de janela que `PAGE`/`DisplayMode`/etc.) — um ÚNICO caminho de imagem `.dsk`
+compartilhado por QUALQUER comando de disco futuro, ao contrário dos campos `HasLastXd`/`HasLastXa`/etc.
+(esses são POR COMANDO de propósito). Mostrado na barra fixa de status (topo da janela,
+`MamuteGui_RefreshStatusBar()`) como uma linha nova `DISCO: <nome>`/`DISCO: (nenhum)` — a barra tinha 2
+linhas (`ULTIMO`/`END`), virou 3; `StatusSize` (altura do `TextGadget`/`CanvasGadget` da miniatura de
+memória ao lado) aumentado de `64` pra `84` pra caber sem cortar — cascata automática, todo o resto do
+layout (`G_MemView`, `G_Log`) já era calculado A PARTIR de `StatusSize`, nada mais precisou mudar.
+
+**Reaproveita `MSXDisk::`** (`MSXDisk.pbi`, o único `DeclareModule`/`Module` real do projeto, já usado
+pelo Gerenciador de Disco/CLI `--diskmanipulator`/montagem do disco de execução do openMSX) — decisão
+direta do pedido do usuário ("use o sistema de DSK que o Paleobasic já tem... se não for possível, crie
+rotinas diferentes"; foi possível, nenhuma rotina de FAT12 nova precisou ser escrita). `MamuteGui_CmdXfs`
+faz exatamente o mesmo ciclo do CLI (`RunDiskManipulatorCli()`, `Case "list"`, `BadigEditor.pb`):
+`MSXDisk::OpenDisk()` → `MSXDisk::ListFiles()` → `MSXDisk::CloseDisk()`, a CADA chamada — o disco nunca
+fica aberto entre comandos `MON>` (evita segurar o arquivo travado enquanto o usuário digita outra
+coisa no meio tempo). Filtro de diálogo reaproveitado também: `#File_Pattern_Disk`
+(`DiskManagerGui.pbi`), o MESMO já usado pelo `ZAP`/Gerenciador de Disco — `MamuteGui_PickDisk()`, nova,
+fica pronta pra qualquer comando de disco futuro chamar.
+
+**Sintaxe `XFS[,<nome>]`** — decisão de design pra toda a família, não só o `XFS`:
+- `XFS` sem disco corrente → abre o diálogo; com disco corrente → lista direto.
+- `XFS ,<nome>` → SEMPRE abre o diálogo de novo (mesmo já tendo um disco corrente); `<nome>` é só a
+  SUGESTÃO inicial do campo (mesmo idioma "sugerindo o nome" do `XSD`, módulo 45m), não um caminho
+  usado sem confirmar. A vírgula é OBRIGATÓRIA pra sinalizar "escolha outro" mesmo sem nome nenhum
+  depois dela — decisão pra que a MESMA convenção funcione em comandos futuros que já tenham outros
+  argumentos posicionais antes da vírgula final (ela sempre aparece por último, como um sufixo).
+  Precisa vir depois de um ESPAÇO separando do verbo (`XFS ,disco.dsk`, não `XFS,disco.dsk` grudado) —
+  mesmo split verbo/argumentos por espaço que todo o resto do monitor usa (`MamuteGui_Dispatch`); o
+  pedido original do usuário mostrava a forma grudada, mas ela colidiria com esse split já
+  estabelecido — corrigido pra exigir o espaço, documentado aqui e na ajuda embutida.
+- Cancelar o diálogo (nos dois casos) preserva o disco corrente anterior, sem apagar nada — mostra só
+  `CANCELADO`.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) — sem verificação ao vivo (abrir um
+`.dsk` real e listar de verdade) nesta sessão.
+
+### 45q. SUPER-X — comando `XCI` (uso do disco) + `MSXDisk::GetClusterInfo()` (2026-08-26)
+
+Pedido explícito do usuário: "XCI, este comando mostra a quantidade de clusters livres do disco /
+quantidade total de clusters" — porta do `CI` do SUPER-X (inventário do módulo 45: "Uso do disco
+(clusters usados/total)"). Mesma sintaxe/resolução de disco corrente do `XFS` (módulo 45p) — refatorada
+pra `MamuteGui_ResolveCurrentDisk()`, nova, compartilhada pelos dois comandos (extraída do corpo que o
+`XFS` já tinha, sem mudar nenhum comportamento dele).
+
+**Única lacuna real na API pública do `MSXDisk::`** (`MSXDisk.pbi`) — nenhuma das funções exportadas
+(`OpenDisk`/`CloseDisk`/`ListFiles`/`ExtractFile`/`AddFile`/`DeleteMSXFile`/`GetLastErrorMessage`/
+`ConvertToFAT11`/`MatchesFAT11`) devolve uso de cluster. Internamente, porém, o módulo já faz
+EXATAMENTE essa varredura (`AddFile()`, procurando o próximo cluster livre pra gravar: `For c = 2 To
+maxcl : If ReadFAT(c, *FAT) = 0 ...`) — só nunca tinha sido exposta como uma pergunta "quantos clusters
+tem, quantos estão livres" isolada. Nova `MSXDisk::GetClusterInfo(*OutFree.Long, *OutTotal.Long)`,
+adicionada dentro do `Module MSXDisk` (tem acesso aos `Global`s privados `*FAT`/`maxcl`/`DiskFile`) e
+declarada em `DeclareModule` ao lado de `ListFiles` — mesmo critério de "cluster livre" que `AddFile()`
+já usa, `Total = maxcl - 1` (clusters numerados de 2 a `maxcl` inclusive). **Decisão direta do pedido do
+usuário** ("use o sistema de DSK que o Paleobasic já tem... se não for possível, crie rotinas
+diferentes") — foi possível sem duplicar NENHUMA lógica de FAT12; a única mudança em `MSXDisk.pbi` foi
+essa função nova, aditiva, que não toca em nenhum caminho de leitura/escrita já existente. Mesmo guard
+de "nenhum disco aberto" que `ListFiles()` já usa (`DiskFile = 0` → `SetError`+`#False`).
+
+`MamuteGui_CmdXci()` seguem o MESMO ciclo `OpenDisk`→(operação)→`CloseDisk` a cada chamada, igual ao
+`XFS`. Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) — sem verificação ao vivo
+(abrir um `.dsk` real com espaço conhecido e conferir a conta) nesta sessão.
+
+### 45r. SUPER-X — comando `XTP` (visualizador de texto) (2026-08-26)
+
+Pedido explícito do usuário: "XTP <arquivo> Mostra o conteúdo de um arquivo na tela, crie um read
+simples, com botões para rolar a tela para os lados, linha a linha, página a página, como outros
+visualizadores do programa" — porta do `TP` do SUPER-X (inventário do módulo 45: "Exibe arquivo de
+texto (paginado, `ENTER`/`ESPAÇO`/`ESC`)").
+
+**Achado real, corrigido na mesma sessão antes de qualquer release** — a primeira versão implementada
+leu `<arquivo>` como um caminho do sistema de arquivos do HOST (Windows), sem relação nenhuma com
+disco/memória. Errado: o usuário reportou "abro um disco com XFS, ele mostra os arquivos, aí tento
+carregar um arquivo mas ele mostra Arquivo Inválido. Conferi o nome, o arquivo existe" — `<arquivo>` é
+um nome de arquivo DENTRO do disco corrente (mesmo conceito do `XFS`/`XCI`, módulos 45p/45q), não um
+caminho do host. Fazia sentido perceber isso ANTES de codar: `TP` está agrupado com `FS`/`CI`/`CD`/
+`BL`/`SV`/`LD` no inventário do módulo 45 — é um comando de DISCO, não um visualizador de arquivo
+qualquer do host; só não foi percebido na primeira leitura do pedido do usuário (que não mencionou
+disco explicitamente ao descrever o `XTP`). Corrigido: `MamuteGui_CmdXtp()` agora aceita
+`<arquivo>[,<nome>]` (`[,<nome>]` funciona igual ao `XFS`/`XCI` via `MamuteGui_ResolveCurrentDisk()`,
+só que aparece DEPOIS do nome do arquivo em vez de sozinho), abre o disco corrente, extrai `<arquivo>`
+pra um temporário (`MSXDisk::ExtractFile()` — a API do módulo não tem "ler pra memória" direto, só
+"extrair pra um caminho real", mesma usada pelo Gerenciador de Disco/CLI `--diskmanipulator`), lê
+DAQUELE temporário, apaga em seguida. `MamuteXtp_Open()` (`MamuteXtpGui.pbi`) ganhou um segundo
+parâmetro (`DisplayName`) só pra mostrar o nome de VERDADE (dentro do disco) no título da janela, em
+vez do caminho temporário.
+
+**Ainda assim, não tem cruz de modos** — diferente de `XD`/`XA`/`XI`/`XM`/`XH` (que SÃO sobre um
+endereço de memória), `XTP` mostra o conteúdo de um ARQUIVO, sem endereço nenhum por trás — não haveria
+sentido em ligar "Dump"/"Ascii"/etc.
+
+**Técnica de scroll**: em vez de usar o scroll nativo do `EditorGadget` (que só resolveria o eixo
+vertical, e mesmo assim sem controle preciso via botão), `MamuteXtpGui.pbi` (novo) reaproveita a MESMA
+técnica que o `XI` já usa (módulo 45i) — mudar um estado (`TopLine`/`LeftCol`) e reconstruir o texto
+inteiro via `SetGadgetText()` a cada navegação, nunca depender de scroll nativo. Aqui aplicada nos DOIS
+eixos: cada linha mostrada já vem pré-cortada (`Mid(Linha, LeftCol+1, 100)`) na largura visível antes de
+entrar no `EditorGadget` (sem `#PB_Editor_WordWrap`), dando controle exato sobre "rolar pros lados" —
+pedido que o `XI` nunca precisou resolver (linhas de disassembly nunca são mais compridas que a tela).
+Arquivo inteiro lido pra uma `List Lines.s()` na abertura (`Mamute_ReadTextLines()`, novo, mesmo idioma
+`ReadFile()`+`ReadString(#PB_File_IgnoreEOL)` de `GenMdHelp_LoadRaw()`, `GenericMdHelpGui.pbi`) — sem
+streaming/paginação em disco, simples de propósito ("read simples", pedido do usuário).
+
+**6 botões, MESMO layout/glifos do `XH`** (`<<`/`<`/`^`/`v`/`>`/`>>`, `MamuteXd_DrawButton()`
+reaproveitado sem mudança) — só a semântica muda: `<<`/`>>` = página inteira (30 linhas), `^`/`v` =
+linha a linha, `<`/`>` = rolagem lateral (10 colunas por clique) — mapeamento direto dos 3 pedidos do
+usuário ("rolar... para os lados, linha a linha, página a página"). Atalhos de teclado equivalentes nas
+4 setas + `PgUp`/`PgDn`; `RETURN`/`ESC` fecha (mesma convenção do `XI`) — decisão própria de não seguir
+o `ENTER`/`ESPAÇO`/`ESC` exato do manual original (o pedido do usuário enfatizou botões como interação
+principal, não fidelidade de tecla ao SUPER-X original).
+
+`<arquivo>` é obrigatório (sem colchete no `TP` original) — `?ERRO DE SINTAXE` se omitido,
+`?ARQUIVO INVALIDO: <erro>` se `MSXDisk::ExtractFile()` não achar o nome no disco corrente.
+
+**Segundo achado real, corrigido depois de verificação ao vivo de verdade** — o usuário testou contra
+um disco real dele (`others/disk_generated_artifacts/run.dsk`, com `nbasic1.dmx` dentro, um programa
+NestorBASIC em ASCII) e reportou: "agora está abrindo o arquivo, porém mostra 2 linhas e interrompe...
+mostra a linha 10 e a 20 do arquivo e parou". Isolado com um `.pb` de teste separado rodando
+`Mamute_ReadTextLines()` sozinho contra o arquivo extraído de verdade (`MSXDisk::ExtractFile()`
+confirmado byte-a-byte idêntico ao `.dmx` original antes de suspeitar do resto): a causa era
+`ReadString(FileNum, #PB_File_IgnoreEOL)` — a flag `#PB_File_IgnoreEOL` faz o OPOSTO do que o nome
+sugere: em vez de "detectar EOL normalmente, ignorando qual variante (CR/LF/CRLF)", ela faz
+`ReadString()` IGNORAR toda quebra de linha e devolver o RESTO INTEIRO do arquivo numa única chamada.
+Copiada por engano de `GenMdHelp_LoadRaw()` (`GenericMdHelpGui.pbi`), que usa essa flag de propósito
+porque só quer o arquivo inteiro como uma string só — uso completamente diferente do que
+`Mamute_ReadTextLines()` precisa (uma linha por elemento). Com a flag, `Count=1` (o arquivo inteiro
+virava "a linha 1", com CRLFs embutidos como caracteres literais dentro da mesma string) — o
+`EditorGadget` mostrava esse elemento único, mas cortado pelo `Mid(LeftCol+1, 100)` do mesmo jeito que
+cortaria uma linha comum, então só os primeiros ~100 caracteres apareciam (que por coincidência
+incluíam as linhas `10`/`20` do programa BASIC dentro dessa janela de corte) — exatamente o sintoma
+relatado. Fix de uma palavra: tirar a flag (`ReadString(FileNum)` sozinho já detecta CRLF/LF
+normalmente) — confirmado no mesmo `.pb` de teste isolado, `Count` foi de `1` pra `589` (o total real
+de linhas do arquivo).
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) depois do fix. Verificação ao vivo
+FEITA desta vez, mas so isolando a função de leitura de linhas num `.pb` avulso contra o arquivo real
+extraído do disco do usuário — não abrindo a janela do `XTP` de verdade (mesmo bloqueio de
+`dist\PaleoBasic.exe` das sessões anteriores).
+
+### 45s. XTP — contraste de botão sob tema claro, Home/End, campo de busca (2026-08-26)
+
+Pedido explícito do usuário, em uma única mensagem: "deixe os botões de rolagem de texto mais claros
+por causa da cor escolhida `CO 1,15,15`, os botões ficaram muito escuros, melhore eles, deixe mais
+opções para rolar o texto como ir ao início, ou ao fim, coloque um campo de busca, busca com Case ou
+sem Case, com e sem expressões regulares".
+
+**Terceiro achado real desta mesma sessão do `XTP`** (depois do caminho-de-host e do
+`#PB_File_IgnoreEOL`) — `MamuteXd_DrawButton()` (`MamuteXdGui.pbi`, reaproveitada por TODAS as janelas
+com botão do Mamute) pintava o FUNDO do botão com um verde escuro **hardcoded**
+(`RGB(0, 45, 18)`) — nunca migrado pro tema durante a sessão do `XCO` (módulo 45n), que só trocou o par
+`RGB(60, 220, 90)`/`RGB(0, 0, 0)` exato, e essa cor de fundo de botão é um TERCEIRO literal diferente,
+não capturado por aquela varredura. Com `XCO 1,15,15` (frente=Preto), contorno/texto do botão (sempre
+`Mamute_CurrentFrontColor()`) ficavam PRETOS em cima desse fundo verde-escuro quase preto também —
+contraste péssimo, exatamente o sintoma relatado. Fix: fundo do botão agora é
+`Mamute_CurrentBackColor()` — mesma técnica de "fundo=Back, contorno/texto=Front" que já garante
+contraste em QUALQUER combinação de tema em todo o resto da UI (não uma heurística nova). Corrigido nas
+**7 cópias** dessa mesma função duplicada pelo Mamute (`XD`/`Dump`/`M`/`Debugger`/`Scr`/`Zap`, mais o
+`XTP` que já chamava a do `XD`) — achado ao procurar o mesmo literal `RGB(0, 45, 18)` nos outros
+arquivos, não só corrigido isoladamente no `XTP`. O estilo "ainda não implementado" da cruz de modos
+(`MamuteXd_DrawModeButton`, cinza fixo) foi deixado de propósito FORA da varredura — é um indicador
+"desabilitado" deliberadamente independente de tema, não um bug.
+
+**8 botões de navegação** (de 6 pra 8) — `|<`/`>|` novos nas pontas (início/fim do arquivo inteiro),
+mesmos glifos `<<`/`<`/`^`/`v`/`>`/`>>` de antes no meio. `MamuteXtp_ClampTop()` ganhou um teto mais
+correto de propósito (`MaxTop = LineCount - VisibleRows`, não mais `LineCount - 1`) — sem isso, "ir ao
+fim" mostraria só a ÚLTIMA linha isolada no topo com 29 linhas em branco embaixo, em vez da última
+página CHEIA; o mesmo teto também deixa a rolagem normal (`v`/`PgDn`) mais bem comportada perto do fim.
+Atalhos de teclado `Home`/`End` novos.
+
+**Campo de busca** (`StringGadget` + 2 `CheckBoxGadget` nativos `Case`/`Regex` + botão `BUSCAR`,
+`MamuteXd_DrawButton` reaproveitado) — busca a partir de logo depois do ÚLTIMO MATCH de verdade
+(`HasLastMatch`/`LastMatchLine`/`LastMatchEnd`, novos campos em `MamuteXtpState`), com wraparound pro
+início se chegar ao fim do arquivo sem achar nada; `RETURN` com o campo em foco busca em vez de fechar
+a janela (`GetActiveGadget()` decide) — e TODAS as teclas de navegação (setas/`PgUp`/`PgDn`/`Home`/
+`End`) ficam desligadas enquanto o campo de busca está em foco, pra não competir com a edição de texto
+nele (sem esse guard, digitar `Home`/setas dentro do campo rolaria o documento por baixo, não moveria o
+cursor de texto). Modo texto usa `FindString()` nativo (`#PB_String_NoCase` quando `Case` desmarcado);
+modo regex usa `CreateRegularExpression()`/`ExamineRegularExpression()`/`NextRegularExpressionMatch()`/
+`RegularExpressionMatchPosition()`/`RegularExpressionMatchLength()` (API nativa do PureBasic,
+compilada UMA VEZ por busca, não por linha).
+
+**Quarto achado real, isolado e corrigido ANTES de compilar contra o projeto real** (mesma disciplina
+do achado do `#PB_File_IgnoreEOL`): a primeira versão da lógica de "buscar de novo" usava
+`*State\LeftCol + 2` como ponto de partida — errado, porque `LeftCol` é só "pra onde a TELA rolou pra
+enquadrar o match com contexto à esquerda" (`FoundCol - 10`), não a posição real do match. Isolado num
+`.pb` de teste com 5 linhas fixas e 7 casos (case-sensitive, case-insensitive, buscar de novo avançando,
+wraparound, regex, não encontrado, regex inválida): o caso "buscar de novo" falhava — reencontrava o
+MESMO match em vez de avançar pro próximo, porque `LeftCol+2` podia cair ANTES do início do match
+verdadeiro. Fix: campos dedicados `LastMatchLine`/`LastMatchEnd` (posição real, não a de enquadramento
+de tela) — `HasLastMatch=#False` depois de uma busca sem sucesso (o wraparound já rodou por completo,
+não há "próximo" de verdade; a busca seguinte recomeça da posição de tela atual). Reexecutado o mesmo
+`.pb` de teste depois do fix — os 7 casos bateram com o esperado.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) depois de cada fix. Sem verificação
+ao vivo abrindo a janela do `XTP` de verdade (mesmo bloqueio de `dist\PaleoBasic.exe`) — só a lógica de
+busca isolada, testada de verdade num `.pb` avulso antes de entrar no arquivo real.
+
+### 45t. Dispatch do MON> — verbo termina em espaço OU vírgula (2026-08-26)
+
+Pedido explícito do usuário, insistindo na forma exata do pedido original do `XFS` (módulo 45p):
+"Quando eu der `XFS,arquivo`, mesmo já tendo um arquivo, ele deve abrir para buscar outra imagem de
+disco" — a forma GRUDADA (`XFS,arquivo`, sem espaço nenhum antes da vírgula) precisava funcionar de
+verdade, não só a forma com espaço (`XFS ,arquivo`) que o módulo 45p tinha deliberadamente exigido.
+
+**Causa raiz**: `MamuteGui_Dispatch()` sempre cortou verbo/argumentos no primeiro ESPAÇO, ponto final —
+`"XFS,arquivo"` inteiro (sem espaço nenhum) virava um único "verbo" desconhecido, `?COMANDO INVALIDO`.
+**Fix**: o corte agora acontece no primeiro ESPAÇO OU VÍRGULA, o que vier primeiro na string — quando a
+vírgula vem antes de qualquer espaço (ou não há espaço nenhum), ela mesma vira o separador, e fica
+PRESERVADA em `Args` (`Mid()` a partir dela, não depois) pra continuar batendo com o "começa com
+vírgula" que `MamuteGui_ResolveCurrentDisk()` (módulo 45p) e o parser do `XCO` já esperam. Quando o
+espaço aparece antes de qualquer vírgula (o caso comum — `"XRG BP1,4000"`, `"XTS 4000,4010"`,
+`"XCO 1,15,15"` etc.), nada muda: continua cortando só no espaço.
+
+**Verificado num `.pb` de teste isolado** (12 casos: `XFS,arquivo`, `XFS ,arquivo`, `XFS` sozinho,
+`XCI,run.dsk`, `XRG BP1,4000`, `XTS 4000,4010`, `XCO 1,15,15`, `XCO ,,4`, `XTP AUTOEXEC.BAS`,
+`XTP AUTOEXEC.BAS,run2.dsk`, `BA`, `PAGE 0,1,2,3`) — todos bateram com o esperado, confirmando que a
+mudança não regride NENHUM comando existente (o espaço sempre vence quando aparece antes de uma
+vírgula, que é o padrão de toda sintaxe já documentada). **Achado colateral real durante esse mesmo
+teste**: a primeira versão do harness de teste usava `*Ptr.String` como out-parameter pra devolver
+verbo+args — e CRASHOU (`0xC0000005`, access violation) rodando sozinho, um arquivo `.pb` minúsculo,
+nada a ver com a unidade de compilação de ~30000 linhas do projeto real. Isso **contradiz a suposição
+registrada no `CLAUDE.md`** (2026-08-12, achado do disassembler `L`/`LP`) de que o bug seria específico
+"talvez do tamanho/aninhamento deste arquivo" — na verdade parece ser o idioma `*Ptr.String`
+em si, neste PureBasic/ambiente, independente do tamanho do arquivo. Harness corrigido pra devolver uma
+única string concatenada (`"VERB" + Chr(1) + "ARGS"`, separada pelo chamador) em vez do out-parameter —
+mesma técnica de "retorno direto da função" que o próprio `CLAUDE.md` já recomendava, só que confirmando
+agora que a cautela vale FORA do contexto original também, não só dentro de `BadigEditor.pb`.
+
+Não há caso conhecido de sintaxe já documentada que dependa de uma vírgula aparecer ANTES de um espaço
+nos argumentos — a mudança é aditiva (habilita a forma grudada pra `XFS`/`XCI`, e por extensão qualquer
+comando futuro do mesmo formato) sem tirar nada que já funcionava. Compilado limpo
+(`pbcompiler.exe` direto pra um `.exe` de scratch) depois do fix, além do teste isolado.
+
+### 45u. SUPER-X — comandos `XSV`/`XLD` (BSAVE/BLOAD reais) (2026-08-26)
+
+Pedido explícito do usuário: "`XSV <nome>, <inicio>#<slot>-<subslot>,<fim>[,<execucao>,<offset>]` que
+funciona exatamente igual ao BSAVE do BASIC... aproveite e crie o `XLD <name>[,<offset>#<slot>-
+<subslot>]`" — porta do `SV`/`LD` do SUPER-X (inventário do módulo 45: "Salva com cabeçalho BSAVE" /
+"Carrega com cabeçalho BLOAD").
+
+**Cabeçalho BSAVE real do MSX** (7 bytes: `$FE` + início/fim/execução, cada um 2 bytes little-endian) —
+o MESMO formato que o `SAVE` nativo (`MamuteSaveGui.pbi`) já grava na opção "BIN". **Decisão de não
+reaproveitar aquela janela**: `MamuteSave_Open()` é uma janela RICA (Slot/Formato/sem-cabeçalho todos
+editáveis, pensada pro caso de uso "grava o que estiver mapeado agora, deixa eu revisar tudo antes") —
+estendê-la pra entender slot+sub-slot (ela só tem um combo Slot 0-3, sem conceito de sub-slot nenhum)
+seria mexer numa janela já funcionando sem necessidade. `XSV`/`XLD` usam só um `SaveFileRequester`/
+`OpenFileRequester` direto (mesmo idioma "abrir o diálogo é o file picker, não uma tela de edição
+inteira" que o `XSD`, módulo 45m, já estabeleceu) — caminho novo, zero risco pro `SAVE`/`"A I"` já
+existentes.
+
+**Ambas rejeitam VRAM** (`#V`/`#4`) pro endereço de memória (`?ERRO DE SINTAXE`) — decisão direta:
+`BSAVE`/`BLOAD` de verdade no MSX NUNCA tocam VRAM (precisariam de `VPEEK`/`VPOKE`, formato/uso
+completamente diferente); aceitar VRAM aqui quebraria a promessa "exatamente igual ao BSAVE do BASIC".
+Slot/sub-slot honrados via `Mamute_ParseSxAddr()`/`Mamute_SxReadByte()`/`Mamute_SxWriteByte()` de
+sempre.
+
+**Nova `Mamute_ParseAddrOffset()`** (`MamuteAssemblerGui.pbi`) pro `<offset>` de ambos — decisão
+explícita de NÃO reaproveitar `Mamute_ParseHexOffset()` (já existente, usada pelo `XI`): aquela função é
+limitada a `-7Fh..80h` (deslocamento de 1 BYTE, pensada pro "nudge" de navegação do disassembler);
+deslocar um ENDEREÇO de 16 bits (relocar `8000H` pra `C000H`, por exemplo) precisa de alcance bem maior
+— a nova aceita `+`/`-` seguido de 1-4 dígitos hexa.
+
+**Decisão pra uma ambiguidade real do pedido do usuário, sem poder confirmar por falta de contexto
+adicional**: o `<offset>` do `XSV` — o pedido original não deixa claro se ele desloca os BYTES LIDOS da
+memória, ou só os ENDEREÇOS GRAVADOS NO CABEÇALHO do arquivo. Adotado: **só os endereços do cabeçalho**
+— os bytes continuam vindo do intervalo `[<inicio>,<fim>]` de verdade no simulador. Raciocínio: (1) o
+próprio inventário original do SUPER-X mostra `<offset>` ANINHADO dentro do colchete de `<execução>`
+(`[<execução>[<offset>]]`), sugerindo que os dois pertencem ao mesmo grupo "personalização do que vai
+pro cabeçalho", não um terceiro conceito independente; (2) essa interpretação é um caso de uso real e
+útil — montar/testar código num endereço de trabalho neste monitor e gerar um `.bin` que declara um
+endereço de carga FINAL diferente, pra levar pra hardware de verdade depois. **Se essa não for a
+intenção original, é uma mudança isolada e fácil de reverter** (só a linha que soma `OffsetVal` aos 3
+`H*` antes de montar o cabeçalho, `MamuteGui_CmdXsv()`).
+
+`XLD` não executa nada sozinho — mostra o endereço de execução do cabeçalho no log, mas o equivalente a
+"rodar" fica por conta do `XGO` (módulo 45k) depois, se o usuário quiser; SUPER-X original tem uma
+opção de auto-run (`,R` do `BLOAD` real) que não foi pedida aqui, então não foi implementada.
+
+**Verificação real de ponta a ponta**, fora do projeto (não dependeu de `dist\PaleoBasic.exe`, que
+seguia bloqueado): isolado num `.pb` de teste separado, reproduzindo a matemática de empacotamento/
+desempacotamento do cabeçalho (endianness, offset positivo/negativo, override de endereço no `XLD`)
+contra um arquivo real gravado em disco — todos os casos bateram: cabeçalho com offset `+4000H`
+aplicado a `8000H` virou `C000H` corretamente; round-trip completo (gravar em `8000H` com offset,
+reler, escrever em `C000H` sem override) reproduziu os bytes originais byte a byte; override explícito
+no `XLD` (`E000H`, ignorando o `C000H` do cabeçalho) também reproduziu os bytes corretamente; offset
+negativo (`-1000H` sobre `8000H` = `7000H`) conferido também.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch). Sem verificação ao vivo do comando
+`MON>` de verdade (mesmo bloqueio de `dist\PaleoBasic.exe`) — só a matemática de cabeçalho/offset,
+testada de ponta a ponta fora do projeto antes de entrar no código real.
+
+### 45v. SUPER-X — comandos `XS#`/`XL#` (bytes crus, sem cabeçalho) (2026-08-26)
+
+Pedido explícito do usuário: "`S#<nome>,<inicio>#<slot>-<subslot>,<fim>` ... salva um bloco bruto de
+dados no disco ... sem header binário ou de outro tipo ... crie também o análogo `L#<nome>,<inicio>#
+<slot>-<subslot>` que carrega dados brutos" — porta do `S#`/`L#` do SUPER-X (inventário do módulo 45:
+"Salva/Carrega bytes crus, sem cabeçalho").
+
+**Renomeado pra `XS#`/`XL#` antes de codar** — o usuário escreveu sem o prefixo `X` desta vez, mas na
+sessão anterior pediu explicitamente pra trocar `CO` por `XCO` só por consistência de prefixo (módulo
+45n); perguntado de novo (pergunta direta, não suposição), confirmou manter o prefixo `X` — nenhuma
+exceção entre os ~26 comandos portados do SUPER-X até aqui.
+
+**Mais simples que `XSV`/`XLD` de propósito** — zero cabeçalho, literalmente só os bytes do intervalo
+`[<inicio>,<fim>]` (`XS#`) ou do arquivo inteiro (`XL#`, tamanho vem de `Lof()`). **Diferente do `XSV`/
+`XLD`, ACEITAM VRAM** (`#V`/`#4`) — decisão direta: `XSV`/`XLD` precisavam rejeitar VRAM pra ficar fiel
+ao `BSAVE`/`BLOAD` reais do MSX (que nunca tocam VRAM); `XS#`/`XL#` não têm essa pretensão de imitar um
+formato de arquivo real — são um dump/restore genérico, mesmo escopo de alvo completo que o `XSD`
+(módulo 45m) já usa (útil, por exemplo, pra salvar/restaurar uma tabela de sprites/fonte direto da
+VRAM).
+
+`XL#` valida overflow do alvo (`StartAddr + tamanho_do_arquivo - 1 > Mamute_SxMaxAddr()`) como
+`?ERRO DE SINTAXE` em vez de dar a volta silenciosamente — mesma convenção do `XBT`/`XRT`/`XFL` (nunca
+"enrola" no destino sem avisar). `XS#` não precisa desse mesmo cuidado porque `<fim>` já vem do usuário,
+validado contra a faixa do próprio alvo pelo `Mamute_ParseHexAddr`/`Mamute_ParseVramAddr` existentes.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch). Sem verificação ao vivo — a lógica é
+uma versão simplificada (sem cabeçalho) do `XSV`/`XLD` já verificados no módulo 45u, risco baixo.
+
+### 45w. SUPER-X — `XL%`/`XS%` (setor cru) + mudança drástica: `XDK` substitui `[,<nome>]` em TODOS os comandos de disco (2026-08-26)
+
+Pedido explícito do usuário, em duas partes na mesma mensagem — primeiro os dois comandos novos: "o
+comando `XL% <setor inicial>[,<setor final>],<endereco>#<slot>-<subslot>` pega do arquivo de imagem de
+disco corrente, o `<setor inicial>` e carrega no `<endereco>`, até chegar ao `<setor final>`, se o setor
+final não for informado, carregue apenas um único setor... crie também o análogo `XS%` que faz o
+reverso" — porta do `L%`/`S%` do SUPER-X (inventário do módulo 45: "Lê/Grava setor(es) de disco direto
+pra/da memória"). Depois, uma **mudança de design retroativa** a tudo que os módulos 45p/45q/45r já
+tinham construído: "uma mudança drástica, todos os comandos de disco que lançamos agora da série X,
+vamos eliminar o nome deles, o nome vai ser sempre o nome corrente... vamos criar um comando novo `XDK
+[<nome>]` que vai abrir o diálogo... porém para cada comando de disco, caso não exista um disco
+previamente carregado por `XDK`, aí sim abra o diálogo".
+
+**Motivação do usuário, verbatim**: "eu andei misturando sintaxe com nome na frente ou atrás do comando
+e alguns até sem nome, vamos padronizar" — reconhecendo que o próprio design de `[,<nome>]` (módulo 45p)
+tinha ficado inconsistente pelas 3 sessões seguintes (`XFS`/`XCI` levavam `,<nome>` sozinho; `XTP`
+precisava dele DEPOIS do nome do arquivo). Resposta: eliminar a opção de nome de TODOS os comandos de
+disco, concentrando a troca num ÚNICO comando dedicado.
+
+**`MamuteGui_ResolveCurrentDisk()` (módulo 45p) DELETADA**, substituída por `MamuteGui_EnsureCurrentDisk()`
+— muito mais simples (sem parsing de vírgula nenhum): se já há disco corrente, não faz nada; se não há,
+abre o diálogo (`MamuteGui_PickDisk()`, sem sugestão de nome) uma única vez. `XFS`/`XCI`/`XTP` perdem o
+`[,<nome>]` inteiro — `XFS`/`XCI` não aceitam mais NENHUM argumento (`?ERRO DE SINTAXE` se vier algo);
+`XTP <arquivo>` continua com seu argumento obrigatório (o nome do arquivo DENTRO do disco, que nunca foi
+"o nome do disco" pra começo de conversa), só perde o sufixo de troca.
+
+**`XDK [<nome>]`** (novo, sem equivalente direto no inventário original do SUPER-X — inventado pra esta
+sessão) — SEMPRE abre o diálogo, mesmo já tendo disco corrente (diferente de
+`MamuteGui_EnsureCurrentDisk()`, que só abre se não houver nenhum ainda); `<nome>` é só sugestão pro
+campo do diálogo.
+
+**Achado de arquitetura durante a implementação (não um bug de lógica, um erro de ORDEM)**: o novo
+`XL%`/`XS%` e seus helpers foram escritos inicialmente ANTES de `MamuteGui_EnsureCurrentDisk()`/`XDK` no
+arquivo — `pbcompiler.exe` recusou com `MamuteGui_EnsureCurrentDisk() is not a function`, confirmando
+que PROCEDURES dentro do MESMO arquivo (não só através de `XIncludeFile`) também precisam estar
+definidas ANTES do primeiro uso nesta configuração — mesma regra já documentada pro topo deste arquivo/
+`CLAUDE.md` pra Global/Structure/Constant, agora confirmada valer pra Procedure também dentro de um
+único arquivo grande. Corrigido movendo o bloco inteiro (`#Mamute_DiskSectorSize`, os dois helpers de
+setor, `MamuteGui_ParseSectorArgs()`, `XL%`, `XS%`) pra DEPOIS do `XTP` (onde `MamuteGui_
+EnsureCurrentDisk()` já existe).
+
+**`XL%`/`XS%` operam ABAIXO do nível de arquivo/FAT12** (setor físico cru, 512 bytes cada) — por isso NÃO
+usam `MSXDisk::` (aquele módulo só entende arquivos/diretório via FAT12, não tem noção de "setor N"
+isolado) — decisão direta do pedido do usuário ("use o sistema que já tem, se não for possível, crie
+rotinas diferentes": aqui não foi possível). `Mamute_ReadDiskSector()`/`Mamute_WriteDiskSector()`
+(novos) fazem I/O direto no ARQUIVO de imagem via `FileSeek`/`ReadData`/`WriteData` — **achado crítico
+de correção, verificado antes de confiar**: a gravação usa `OpenFile()`, nunca `CreateFile()`
+(`CreateFile()` TRUNCARIA o disco inteiro, apagando tudo além do setor gravado). Isolado num `.pb` de
+teste — criou um "disco" fake de 10 setores, cada um preenchido com seu próprio número, gravou um
+padrão novo (`0xAA`) no setor 5, e confirmou: tamanho do arquivo inalterado, setor 5 realmente virou
+`0xAA`, e os setores VIZINHOS (4 e 6) continuaram intactos — a operação mais arriscada implementada
+nesta sessão inteira (é a primeira que muta em memória um arquivo do usuário já existente, o próprio
+disco corrente), então foi a que recebeu a verificação mais direta.
+
+`<endereço>` de `XL%`/`XS%` aceita VRAM (mesmo escopo do `XS#`/`XL#`, módulo 45v) — o próprio
+NestorBASIC (visto no `.dmx` que o usuário usou pra testar o `XTP`, sessão anterior) tem
+`.NB_ReadSectorsToVram`/`.NB_WriteSectorsFromVram` equivalentes, confirmando que é uma operação real do
+MSX. Validação de faixa em dois níveis: `<setorfim>` contra o tamanho REAL do disco corrente
+(`FileSize()`), e overflow do alvo de memória (`Mamute_SxMaxAddr()`) — mesma convenção "nunca dá a
+volta silenciosamente" do `XBT`/`XRT`/`XFL`/`XL#`.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) depois de cada fix. Sem verificação ao
+vivo do comando `MON>` de verdade (mesmo bloqueio de `dist\PaleoBasic.exe`) — a parte de maior risco real
+(I/O de setor sem truncar o disco) foi verificada de ponta a ponta fora do projeto antes de confiar nela.
+
+### 45x. SUPER-X — comandos `XIM`/`XIC`/`XIL`/`XIS` (notas por endereço) + extração do arquivo traduzido (2026-08-26)
+
+Pedido do usuário em duas mensagens. Primeiro um diagnóstico: "já existe um arquivo de notas carregado
+quando eu entro no Mamute Assembler? já posso consultar um endereço?" — resposta, confirmada por leitura
+direta do código: **não**, `Mamute_LoadNoteFile()` (módulo 45e, carrega o `.TNK` binário original em
+japonês) existe mas nunca é chamada por nenhum comando, e não existe `iM`/`iC`/`iL`/`iS` nem `XIM`/`XIC`/
+`XIL`/`XIS` no dispatch — as 471 notas traduzidas só existem como texto ESTÁTICO da Ajuda
+(`MamuteSuperXNotesHelpData.pbi`), não como dado consultável por endereço. Segunda mensagem, o pedido de
+verdade: "ok, porte estes comandos, mas assegure-se de ler o arquivo já traduzido de notas e não o
+original em japonês" — porta do `iM`/`iC`/`iL`/`iS` (Input Memo/Check/Load/Save) do SUPER-X, com uma
+exigência explícita de correção: `XIL` NUNCA pode carregar o `SUPER-X.TNK` japonês por padrão.
+
+**Problema real encontrado antes de codar**: não existia nenhum arquivo "de notas traduzido" separado no
+repositório — as únicas 471 traduções reais viviam espalhadas em ~13 chamadas `MamuteHelp_Add(...)` de
+`MamuteSuperXNotesHelpData.pbi`, como literais de string PB concatenados com `+`/`#CRLF$`. Extraídas com
+um script Python descartável (fora do projeto, mesmo espírito do processo original de tradução japonês→
+português documentado no cabeçalho desse mesmo arquivo de Ajuda) que fez o parse reverso do texto PB de
+volta pra `endereço;slot;tipo;texto`.
+
+**Dois bugs reais achados e corrigidos NO SCRIPT de extração** (não no código do projeto — ferramenta
+descartável, mas os bugs eram genuínos): a primeira versão dividia cada literal ingenuamente em `+`,
+quebrando em 5 das 471 notas cujo TEXTO tinha um `+` literal dentro das aspas (`"CTRL+STOP"`,
+`"SHIFT+CTRL+GRAPH+tecla kana"`, `"(F676H)+2"`) — indistinguível do operador de concatenação `+` do
+PureBasic sem rastrear se a posição atual está dentro de uma string `"..."`. Corrigido com um tokenizador
+que alterna um flag "dentro de aspas" a cada `"` visto e só trata `+` como separador de campo quando FORA
+de uma string — re-extração confirmou "471 notas, 0 erros" e as 5 linhas problemáticas conferidas
+individualmente. **17 endereços duplicados** também apareceram nas 471 notas (ex.: `0090` como BIOS E
+como PORT) — inspecionados e confirmados como coincidências numéricas reais entre faixas de BIOS/porta de
+I/O ou SUB-ROM vs ROM principal do próprio material original, não erro de extração — decisão: preservar
+TODOS fielmente, sem deduplicar (`XIC` mostra todas as notas de um endereço, não só a primeira).
+
+**Novo formato de arquivo** (`resource/superx/SUPER-X-PT.notas`, texto UTF-8 com BOM, uma nota por linha,
+`ENDERECO;SLOT;TIPO;TEXTO`) em vez de reaproveitar o binário fixo de 64 bytes/registro do `.TNK` original
+— decisão direta: várias traduções reais em português são mais longas que os 60 bytes de texto por
+registro do formato original (ex.: "Preenche BC bytes a partir de VRAM(HL) com A. Endereço válido até 14
+bits."), um formato de largura fixa truncaria silenciosamente essas notas. `SLOT`/`TIPO` continuam os
+mesmos códigos numéricos 0-4/0-7 do formato original (ver cabeçalho de `MamuteNotesData.pbi`).
+`resource/` é o local certo por convenção do projeto (dado versionado não-compilado); `build.ps1` ganhou
+uma linha copiando o arquivo pra `dist/editor/SUPER-X-PT.notas` (cópia de arquivo único, sem `-Recurse`),
+seguindo o padrão `GetPathPart(ProgramFilename()) + "editor\..."` de resolução de caminho em runtime.
+
+**`MamuteNotesData.pbi`** ganhou, ao lado do `Mamute_LoadNoteFile()` original (que fica INTOCADO,
+dormant): `Mamute_TranslatedNotesFilePath()` (caminho padrão do arquivo traduzido — usado como sugestão
+no diálogo do `XIL`), `Mamute_LoadTranslatedNotes(FilePath.s)`/`Mamute_SaveTranslatedNotes(FilePath.s)`
+(parser/gravador do novo formato texto, usando `ReadFile(..., #PB_File_BOM)`+`ReadString()` — **nunca**
+`#PB_File_IgnoreEOL`, lição já documentada no `XTP`, módulo 45r, sobre essa flag não servir pra
+quebra-de-linha real) e `Mamute_NoteSlotName()`/`Mamute_NoteTypeName()` (nomes exibidos pelo `XIC`).
+
+**Os 4 comandos** (`MamuteAssemblerGui.pbi`, logo depois do `XLD`):
+- **`XIM <endereço>,<slot>,<tipo>,<texto>`** — adiciona uma nota em `MamuteNotes()` (só em memória até
+  gravar com `XIS`). `<slot>`/`<tipo>` validados nas faixas 0-4/0-7; `<texto>` é tudo depois da 3ª vírgula.
+- **`XIC <endereço>`** — mostra TODAS as notas desse endereço (não só a primeira, por causa dos 17
+  duplicados legítimos acima); `?NOTA NAO ENCONTRADA` se nenhuma bater.
+- **`XIL [<nome>]`** — abre "Selecione o arquivo", sugerindo `<nome>` OU, se ausente,
+  `Mamute_TranslatedNotesFilePath()` (o arquivo traduzido) — carrega via `Mamute_LoadTranslatedNotes()`,
+  **nunca** `Mamute_LoadNoteFile()`. Esse é o ponto que satisfaz a exigência explícita do usuário: por
+  padrão o diálogo já sugere o arquivo certo (português), e mesmo que o usuário aponte pra outro arquivo
+  manualmente, o parser usado é sempre o do formato texto novo, incapaz de interpretar o binário
+  Shift-JIS do `.TNK` original (`Mamute_IsHexString` rejeitaria os bytes binários como campo inválido).
+- **`XIS <nome>`** — grava `MamuteNotes()` atual (carregado + adicionado via `XIM`) no mesmo formato,
+  via `SaveFileRequester` (mesmo idioma do `XSV`).
+
+**Verificação real feita antes de confiar no formato novo** (isolado, fora do projeto): `.pb` de teste
+compilado e rodado contra o `resource/superx/SUPER-X-PT.notas` de verdade — `Mamute_LoadTranslatedNotes()`
+carregou as 471 notas (contagem exata), as duas linhas mais arriscadas (`00B4`, texto com aspas
+embutidas: `Exibe "? " e depois chama INLIN...`; `FC9B`, texto com `+` literal: `CTRL+STOP`) vieram
+corretas byte a byte, e um ciclo completo grava→recarrega (`Mamute_SaveTranslatedNotes()` seguido de novo
+`Mamute_LoadTranslatedNotes()`) reproduziu exatamente as mesmas 471 notas, mesmo texto. Compilado limpo
+depois (`pbcompiler.exe` direto pra um `.exe` de scratch, com `/CONSTANT App_Version`/`App_Build`/
+`App_BuildDate` — o projeto inteiro exige essas três constantes vindas da linha de comando, não só de
+`build.ps1`). Sem verificação ao vivo do `MON>` de verdade (mesmo bloqueio histórico de
+`dist\PaleoBasic.exe` em uso por um processo já rodando) — risco residual baixo, dado que a lógica de
+parsing/gravação já foi provada correta isoladamente contra o arquivo real.
+
+### 45y. Carga automática do arquivo de notas + proteção do `SUPER-X-PT.notas` original (2026-08-26)
+
+Pedido explícito do usuário: "em Configurar->Mamute Assembly, abra um campo para escolher um arquivo de
+nota padrão para ser carregado sempre que o Mamute iniciar, se o usuário escolher o SUPER-X-PT.notas,
+preserve-o como apenas leitura, informe que vai criar um SUPER-X-SHADOW.notas e este vai ser o padrão
+para preservar o original, aliás, já sugira isso" — continuação direta do módulo 45x (`XIM`/`XIC`/`XIL`/
+`XIS`), agora resolvendo o carregamento automático que só existia via comando manual (`XIL`) até aqui.
+
+**Novo campo "Notas SUPER-X padrão:"** em "Configurar → Mamute Assembler..." (`MamuteSettings_OpenWindow`,
+`MamuteSupport.pbi`) — `StringGadget` + botão `...` (`OpenFileRequester`), mesmo layout do campo
+"Arquivo:" já existente na mesma tela pra ROM/BASIC por slot/página. Persistido em
+`mamute_settings.json` como novo campo `"DefaultNotesFile"` (`MamuteCfg_Load`/`MamuteCfg_Save`), Global
+novo `MamuteDefaultNotesFile.s` (`""` por padrão — não carrega nada automaticamente, comportamento antigo
+preservado pra quem nunca configurar o campo). Janela cresceu de 830 pra 870px de altura pra caber a
+linha nova (posição dos botões Salvar/Cancelar é relativa a `WinH`, então não precisou reposicionar mais
+nada).
+
+**Auto-carga em `MamuteAssembler_OpenWindow`** (`MamuteAssemblerGui.pbi`) — logo depois do cabeçalho fixo
+do log ("MAMUTE ASSEMBLY V...", mapa de páginas), se `MamuteDefaultNotesFile <> ""`, chama
+`Mamute_LoadTranslatedNotes()` (o parser do formato texto novo do módulo 45x, **nunca**
+`Mamute_LoadNoteFile()` do `.TNK` binário japonês) e loga o resultado — contagem de notas em caso de
+sucesso, `?NAO FOI POSSIVEL CARREGAR AS NOTAS PADRAO` em caso de falha (arquivo apagado/movido depois de
+configurado, por exemplo) — não bloqueia a abertura da janela nos dois casos, só informa.
+
+**Proteção do arquivo original — `Mamute_ProtectTranslatedNotesIfPicked()` (nova, `MamuteNotesData.pbi`)**
+— o núcleo do pedido. Chamada tanto ao escolher o arquivo pelo botão `...` quanto (por segurança, caso o
+caminho tenha sido digitado à mão em vez de escolhido no diálogo) no momento de "Salvar" da tela de
+configuração. Compara o caminho escolhido, via `UCase()`, contra `Mamute_TranslatedNotesFilePath()`
+(também nova, mesmo caminho fixo que o `XIL` já sugere por padrão desde o módulo 45x,
+`dist/editor/SUPER-X-PT.notas`) — **qualquer outro caminho passa direto, sem nenhum aviso** (só o arquivo
+shipado exato dispara a proteção). Se bater:
+1. `Mamute_ShadowNotesFilePath()` (nova) devolve o caminho fixo do arquivo-sombra editável,
+   `dist/editor/SUPER-X-SHADOW.notas` (mesma pasta).
+2. Se o arquivo-sombra AINDA NÃO existir, `CopyFile()` cria a cópia a partir do original (`?ERRO` via
+   `MessageRequester` se a cópia falhar — nesse caso desiste da proteção e devolve o caminho original
+   inalterado, sem marcar somente-leitura nada).
+3. `SetFileAttributes(PickedPath, #PB_FileSystem_ReadOnly)` marca o **original** como somente-leitura —
+   comando confirmado existir e funcionar nesta versão do PureBasic via teste isolado (`.pb` de scratch:
+   criou um arquivo, chamou `SetFileAttributes`+`GetFileAttributes`, confirmou o atributo setado, depois
+   desfez pra poder apagar o arquivo de teste) antes de confiar nele no projeto de verdade.
+4. `MessageRequester` informativo pro usuário — texto diferente se a sombra já existia (reaproveitada) ou
+   foi criada agora — explicando os dois arquivos e por que o padrão passou a ser o arquivo-sombra.
+5. Devolve o caminho da SOMBRA, não o original — é esse caminho que fica gravado em
+   `MamuteDefaultNotesFile`/exibido no campo, nunca o `SUPER-X-PT.notas` protegido.
+
+**Motivo de não pedir confirmação (Sim/Não) antes de agir** — leitura direta do pedido do usuário ("já
+sugira isso"): a intenção era implementar a salvaguarda diretamente como parte do fluxo de escolha, não
+adicionar mais uma pergunta — o `MessageRequester` é só informativo (`#PB_MessageRequester_Info`/`_Error`),
+sem `_YesNo`, o usuário já vê o resultado (caminho da sombra no campo) e pode digitar por cima manualmente
+se quiser reverter.
+
+**Ordem de `XIncludeFile` exigiu 2 `Declare` novos no topo de `BadigEditor.pb`** (mesmo padrão já usado
+pros outros `Declare` cross-arquivo do Mamute, ver comentários ao lado deles) —
+`MamuteSupport.pbi` (linha 266) é incluído ANTES de `MamuteNotesData.pbi` (linha 267), mas
+`MamuteSettings_OpenWindow()` (em `MamuteSupport.pbi`) precisa chamar `Mamute_TranslatedNotesFilePath()`/
+`Mamute_ProtectTranslatedNotesIfPicked()` (definidas em `MamuteNotesData.pbi`) — mesma regra de ordem
+textual já documentada em `CLAUDE.md`/módulo 45w, desta vez entre arquivos diferentes em vez de dentro do
+mesmo arquivo.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) depois de cada bloco de mudança. Sem
+verificação ao vivo da tela `Configurar -> Mamute Assembler...` nem do `MON>` de verdade (mesmo bloqueio
+histórico de `dist\PaleoBasic.exe`) — a única peça de risco real isolada e testada à parte foi
+`SetFileAttributes`/`#PB_FileSystem_ReadOnly` (comando nunca usado antes em nenhum lugar do projeto).
+
+### 45z. SUPER-X — comando `XIR` (visualizador de notas com busca) (2026-08-26)
+
+Pedido explícito do usuário: "faca um comando XIR que abre uma janela e mostra o conteudo das notas, uma
+por uma, permite rolar com botoes, e permite busca com case, sem case e expressao regular" — continuação
+direta dos módulos 45x (`XIM`/`XIC`/`XIL`/`XIS`) e 45y (carga automática + proteção do arquivo original):
+até aqui, consultar notas só era possível uma de cada vez via `XIC <endereço>` no `MON>` texto; `XIR`
+adiciona uma janela dedicada pra folhear a lista inteira.
+
+**Reaproveitamento quase literal do campo de busca do `XTP`** (`MamuteXtpGui.pbi`, módulo 45r/45s) — o
+pedido do usuário aqui ("busca com case, sem case e expressão regular") é quase palavra por palavra o
+mesmo pedido que já tinha criado aquele campo ("busca com Case ou sem Case, com e sem expressões
+regulares"). Mesma técnica exata: `StringGadget` + 2 `CheckBoxGadget` nativos independentes (`Case` =
+diferencia maiúsculas/minúsculas, `Regex` = trata o texto buscado como expressão regular) + botão
+"Buscar" (`MamuteXd_DrawButton`), usando a API nativa de regex do PureBasic
+(`CreateRegularExpression`/`ExamineRegularExpression`/`NextRegularExpressionMatch`) — as 4 combinações
+das 2 checkboxes cobrem exatamente "com case, sem case, e com expressão regular" pedido.
+
+**Diferença de granularidade vs. `XTP`** — `XTP` navega LINHA de texto crua (com corte de coluna,
+`TopLine`/`LeftCol`); `XIR` (`MamuteXirGui.pbi`, novo arquivo) navega NOTA inteira (registro
+endereço+slot+tipo+texto de `MamuteNotes()`, `MamuteNotesData.pbi`) — não precisa de lógica de coluna
+porque o texto de uma nota sempre cabe numa tela com `#PB_Editor_WordWrap` ligado (diferente do `XTP`,
+que evita _word wrap_ de propósito pra preservar alinhamento de código-fonte). `MamuteXir_Repaint()`
+simplesmente usa `SelectElement(MamuteNotes(), CurrentIndex)` pra pular pro registro certo do `NewList` a
+cada navegação — mais simples que manter um array paralelo.
+
+**Busca contra `"ENDERECO SLOT TIPO TEXTO"`, não só o texto** (`MamuteXir_Searchable()`) — decisão de
+design que vai um pouco além do pedido literal, mas de graça: como o formato já tem slot/tipo com nomes
+legíveis (`Mamute_NoteSlotName`/`Mamute_NoteTypeName`, módulo 45x), incluir os três campos na string
+buscada permite pular direto pra um endereço hexa (`00B4`) OU filtrar por categoria (`PORT`, `BIOS`) além
+da busca de texto livre normal — sem custo extra de UI. Busca sempre a partir da PRÓXIMA nota (nunca a
+atual), com wraparound completo pela lista inteira em uma única passada (`For Checked = 1 To NoteCount`,
+`Idx = (Idx+1) % NoteCount`) — mais simples que o algoritmo de 2 passadas do `XTP` porque a unidade
+buscada é "a nota inteira", sem posição de coluna dentro dela pra rastrear entre buscas sucessivas.
+
+**Navegação**: 4 botões (`|<`/`<`/`>`/`>|`, mesmos glifos do `XTP`) — primeira/anterior/próxima/última;
+teclado Setas Cima/Baixo (nota anterior/próxima), PgUp/PgDn (pula 10 notas de uma vez,
+`#MamuteXir_PageStep`), Home/End (primeira/última), Return (fecha, ou busca se o campo estiver em foco —
+mesmo `GetActiveGadget() = G_SearchField` do `XTP`), Esc (fecha).
+
+**`XIR [<endereço>]`** (`MamuteGui_CmdXir`, `MamuteAssemblerGui.pbi`) — `<endereço>` opcional abre já na
+primeira nota daquele endereço (`Mamute_ParseHexAddr`, mesma validação simples do `XIC` — notas não têm
+conceito de slot/sub-slot/VRAM, então **não** usa `Mamute_ParseSxAddr` como `XM`/`XH`/etc.); sem
+argumento, abre sempre na primeira nota da lista. Lista vazia (antes de qualquer `XIL`/`XIM`) mostra
+"NENHUMA NOTA CARREGADA - USE XIL PRA CARREGAR" em vez de uma tela em branco confusa.
+
+**`XIncludeFile "assemblers/MamuteXirGui.pbi"`** inserido logo depois de `MamuteXtpGui.pbi` em
+`BadigEditor.pb` — antes de `MamuteAssemblerGui.pbi` (onde `MamuteGui_CmdXir` chama `MamuteXir_Open()`),
+mesma regra de ordem textual de sempre; não precisou de nenhum `Declare` novo porque a dependência corre
+na direção "de cima pra baixo" desta vez (diferente do módulo 45y).
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) depois de escrever o arquivo inteiro.
+Sem verificação ao vivo da janela (mesmo bloqueio histórico de teclado sintético neste ambiente de
+automação, documentado no módulo 45h — `SendKeys`/`WM_CHAR`/`SendInput` todos falharam especificamente
+pra eventos de teclado, e abrir o Mamute + digitar `XIM`/`XIR` no `MON>` exigiria exatamente isso) — risco
+residual considerado baixo dado o reaproveitamento quase literal do código de busca do `XTP` (esse sim já
+verificado ao vivo numa sessão anterior) e da técnica de navegação por índice já usada em outros lugares
+do Mamute.
+
+## 46. Painel de Portas I/O (`XPP`/`XPI`/`XPO`) (2026-08-26)
+
+Pedido explícito do usuário: "Vamos simular um painel de simulacao de I/O agora... um painel onde
+colocamos algumas portas que desejamos monitorar, e conforme o programa mandar um dado para a porta, ele
+escreve em (entrada), se uma rotina de simulacao no futuro escrever algo devolvendo para o Z80, escreve
+em (saida), mas por hora, o usuario pode colocar um byte na saida e ou na entrada e simular os comandos
+que mandam dados para as portas de I/O... com botoes o usuario pode incluir ou excluir portas, as portas
+que sofrem alteracao podem mudar de cor... o limite de portas e 256... implemente mais 2 comandos XPI
+<port>... e XPO <porta><byte>... Se a porta ainda nao aparece no painel de portas, crie a mesma." —
+diferente dos módulos 45/45j-45z (porta literal de comandos do monitor SUPER-X), esta é uma feature nova
+inventada nesta sessão, sem equivalente direto no SUPER-X original — daí o número de módulo 46 em vez de
+mais um sufixo `45x`.
+
+**Achado real que motivou a implementação inteira**: `MamuteZ80Cpu.pbi` já tinha TODAS as instruções Z80
+de I/O decodificadas (`$D3` `OUT (n),A`, `$DB` `IN A,(n)`, `ED $40-$78` `IN r,(C)`, `ED $41-$79`
+`OUT (C),r`, `INI`/`IND`/`OUTI`/`OUTD`) — mas todas eram stubs "Fase 1, sem dispositivo real": todo `OUT`
+simplesmente descartava o byte, todo `IN` sempre devolvia `$FF` fixo. O painel não é só uma tela nova —
+é o primeiro "dispositivo real" (ainda que só manual) que essas instruções passam a enxergar.
+
+**Modelo de dados** (`MamuteIoGui.pbi`, novo arquivo — `Structure MamuteIOPort` + `Global NewList
+MamuteIOPorts()`, um registro por porta 0-255 monitorada, sempre mantido em ORDEM CRESCENTE de porta):
+- **`Entrada`** = o último byte que o PROGRAMA mandou pra porta via `OUT` — "o que entra no dispositivo
+  simulado", do ponto de vista do dispositivo.
+- **`Saída`** = o byte que uma instrução `IN` vai LER dessa porta — "o que o dispositivo devolve pro
+  Z80". Sem nenhuma rotina de simulação de verdade ainda (só chega numa sessão futura), o único jeito de
+  `Saída` ter outro valor que não `$FF` (padrão de barramento flutuante, mesmo valor que o stub antigo
+  sempre devolvia) é o USUÁRIO digitar um byte no painel antes de rodar o programa — exatamente o "por
+  hora, o usuário pode colocar um byte" do pedido.
+- **`Changed`** — marcado em QUALQUER escrita (`Entrada` OU `Saída`, seja pela CPU de verdade, por
+  `XPO`, ou por edição manual no painel), nunca por leitura (`XPI`/instrução `IN` só consultam). Fica
+  marcado até o usuário limpar (botão "Limpar Marcas") — o painel não tem como saber sozinho quando o
+  usuário "já viu" a mudança.
+
+`Mamute_IOPort_Ensure(Port.a)` (cria se ausente, insere ordenado, `#True` se criou agora) é o núcleo
+compartilhado por TODO caminho de acesso — `Mamute_IOPort_SetEntrada()`/`SetSaida()`/`GetSaida()` chamam
+ela primeiro, então nenhum código de chamada (CPU real, `XPI`/`XPO`, ou o próprio painel) precisa se
+preocupar em checar existência antes — resolve diretamente o pedido "se a porta ainda não aparece no
+painel de portas, crie a mesma", para TODOS os pontos de entrada, não só `XPI`/`XPO`.
+
+**As 6 instruções de I/O do `MamuteZ80Cpu.pbi` foram religadas** pra usar essas 3 funções em vez dos
+stubs antigos — `$D3`/`ED OUT (C),r` (`$71`/`OUT (C),0` indocumentado mantido como envia a CONSTANTE 0,
+não um registrador — comportamento real do Z80, `Mz80_GetR8` com índice 6 leria de `(HL)` por engano se
+não tratado à parte)/`OUTI`/`OUTD` chamam `Mamute_IOPort_SetEntrada()`; `$DB`/`ED IN r,(C)`/`INI`/`IND`
+chamam `Mamute_IOPort_GetSaida()`. `INI`/`IND`/`OUTI`/`OUTD` também ganharam o número de porta CERTO
+(registrador `C`, endereçamento clássico dos blocos de I/O do Z80) — os stubs antigos nem usavam porta
+nenhuma, só descartavam/devolviam `$FF` incondicionalmente.
+
+**Janela `XPP`** (`MamuteIoPanel_Open()`, mesmo arquivo) — `ListIconGadget` (Porta/Entrada/Saída, "--"
+pros campos ainda não definidos) com `SetGadgetItemColor()` destacando fundo amarelo claro nas portas
+`Changed` (comando confirmado existir e funcionar nesta versão do PureBasic via teste isolado antes de
+usar — nunca usado antes em nenhum lugar do projeto). A lista em si fica com cores NATIVAS do Windows de
+propósito (mesmo idioma do `G_List` de "Configurar → Mamute Assembler...", que também nunca aplicou o
+tema verde-terminal a um `ListIconGadget`); os controles ao redor (labels/botões) seguem o tema normal.
+**Um único campo "Porta:" é o alvo de TODOS os botões** (Adicionar/Remover/Definir Entrada/Definir
+Saída) — selecionar uma linha na lista só PREENCHE esse campo (e os de Entrada/Saída) por conveniência,
+nunca existe uma "seleção" separada do que está digitado — decisão deliberada pra eliminar qualquer
+ambiguidade entre "o que está selecionado" e "o que os botões afetam". Botão "Limpar Marcas" zera
+`Changed` em todas as portas de uma vez.
+
+Janela sem redimensionamento dinâmico conforme portas são adicionadas — decisão deliberada em vez de
+crescer a janela conforme o pedido sugeria ("pode ser uma tela menor e ir crescendo se necessário"): uma
+lista ROLÁVEL (`ListIconGadget` com barra de rolagem nativa) já cobre esse caso sem esforço extra, e o
+próprio pedido reconhece que "raramente os programas usam muitas portas" — uma janela de altura fixa com
+lista rolável é mais simples e não tem limite prático antes das 256 portas cabendo tranquilamente via
+scroll.
+
+**`XPI <porta>`** — lê `Saída` da porta (mesma função que a CPU real usa), mostra `PORTA xx = yy` no log
+do `MON>`, cria a porta se ausente, nunca marca `Changed`. **`XPO <porta>,<byte>`** — grava `Entrada`
+(mesma função que a CPU real usa), mostra `PORTA xx <- yy`, cria a porta e marca `Changed` — mesmo efeito
+visual que uma `OUT` de verdade rodada via `XGO`/`XTR` teria. Ambos usam `Mamute_IsHexString(Token, 2)`
+(0-FF, o mesmo teto de 256 sem precisar de checagem de faixa separada).
+
+**Verificação real feita antes de confiar na lógica de dados** (isolado, fora do projeto): `.pb` de teste
+reproduzindo `Mamute_IOPort_Ensure`/`SetEntrada`/`SetSaida`/`GetSaida` byte a byte — confirmou inserção
+em ORDEM CRESCENTE mesmo inserindo fora de ordem, auto-criação (via leitura OU escrita) incluindo os 2
+casos de FRONTEIRA do espaço de portas (porta `0` e porta `255`, ambos criados sem erro — `.a` do
+PureBasic é exatamente 0-255 sem sinal, cobre o teto "limite de portas é 256" do pedido sozinho, sem
+checagem de faixa extra), `GetSaida` default `$FF` numa porta nova, gravação/leitura indo e voltando
+corretas, `Changed` marcado nas escritas, e remoção via `DeleteElement` (mesma técnica usada pelo botão
+"Remover" do painel) removendo exatamente a porta certa sem afetar as outras.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch, `/CONSTANT App_Version`/`App_Build`/
+`App_BuildDate`) depois de cada bloco de mudança. Sem verificação ao vivo da janela `XPP` nem de um
+programa real executando `OUT`/`IN` via `XGO` (mesmo bloqueio histórico de teclado sintético neste
+ambiente de automação, módulo 45h) — risco residual considerado baixo: a lógica de dados (a parte
+realmente nova e arriscada) foi verificada isoladamente byte a byte; a janela reaproveita quase
+integralmente técnicas já usadas e verificadas em outras janelas do Mamute (`ListIconGadget`+campos de
+edição do `MamuteSettings_OpenWindow`, `MamuteXd_DrawButton` de todo canto, cálculo de `WinH` antes de
+abrir a janela do `XTP`/`XIR`); e a religação da CPU só troca a FONTE do valor lido/escrito
+(`Mamute_IOPort_GetSaida`/`SetEntrada` em vez de uma constante fixa), sem tocar em nenhuma lógica de
+flags/decodificação já existente e testada.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
-- **Porta do SUPER-X (módulo 45) — 17 comandos portados até a 8.6.0 (`XD`/`XA`/`XI`/`XM`/`XH`/`XBT`/
-  `XRT`/`XFL`/`XCM`/`XFD`/`XCO`/`XCS`/`XTS`/`XRG`/`XGO`/`XTR`/`XSD`), ainda bem longe de completa**
-  (atualizado 2026-08-26, módulos 45j-45n): da lista de comandos "sem colisão, nome livre" (módulo 45),
-  faltam ainda `S%`/`L%` (setor de disco cru), `S#`/`L#` (bload/bsave sem cabeçalho), `iM`/`iC`/`iL`/
-  `iS` (notas persistentes — o carregador e a tradução já existem desde o módulo 45e, só os comandos
-  `MON>` que faltam), `OF` (offset global), `SF` (tecla de função programável), `BL`/`BF` (list/busca
-  de BASIC tokenizado), `CK`, `PP`, `FS`, `CI`, `CU`, `KR`/`KT`/`KL`, `TP`, `SV`/`LD`, `PI`/`PO`, `TK`
+- **Porta do SUPER-X (módulo 45) — 36 comandos com prefixo `X` portados até a 8.7.5 (a lista completa
+  está no início do módulo 45x/README), ainda bem longe de completa**
+  (atualizado 2026-08-26, módulos 45j-46): da lista de comandos "sem colisão, nome livre" (módulo 45),
+  faltam ainda `OF` (offset global), `SF` (tecla de função programável), `BL`/`BF` (list/busca
+  de BASIC tokenizado), `CK`, `PP` (mapeador de RAM/segmentos — não confundir com o `XPP` novo da 8.7.5,
+  painel de portas I/O, feature diferente que só coincide de letras), `CU`, `KR`/`KT`/`KL`, `CD`, `TK`
   (esse último já coberto por equivalente existente do Mamute, só falta documentar a equivalência de
-  verdade). O próprio `XI` ficou deliberadamente SEM a pilha de navegação jump/call (`←`/`→`) que o `I`
+  verdade). `FS`/`CI`/`TP`/`SV`/`LD`/`PI`/`PO` — que apareciam nesta lista até a 8.6.0 — já foram
+  portados (`XFS`/`XCI`/`XTP`/`XSV`/`XLD`/`XPI`/`XPO`, módulos 45p-45u/46). O próprio `XI` ficou
+  deliberadamente SEM a pilha de navegação jump/call (`←`/`→`) que o `I`
   original do SUPER-X tem — decisão de escopo explícita, não esquecimento. `XGO` só executa contra o
   slot PRIMÁRIO (não sub-slot/VRAM explícito, módulo 45k) — mesma decisão de escopo, motivo diferente
   (risco no núcleo de execução compartilhado). `XH`/`XBT`/`XRT`/`XFL`/`XCM`/`XFD`/`XCO`/`XCS`/`XTS`

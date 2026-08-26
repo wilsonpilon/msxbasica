@@ -147,6 +147,20 @@ EndProcedure
 ; transferir, executar e' opt-in.
 Global MamuteAutoRunAfterTransfer.b = #False
 
+; Arquivo de notas do SUPER-X (comandos XIM/XIC/XIL/XIS, docs/SPEC.md
+; modulo 45x) carregado automaticamente toda vez que o Mamute abre - campo
+; "Notas SUPER-X padrao" em Configurar -> Mamute Assembler...
+; (MamuteSettings_OpenWindow abaixo), persistido em mamute_settings.json
+; (MamuteCfg_Load/Save). "" (padrao) = nao carrega nada automaticamente -
+; pedido explicito do usuario: "abra um campo para escolher um arquivo de
+; nota padrao para ser carregado sempre que o Mamute iniciar" (modulo
+; 45y). Se o usuario escolher justamente o arquivo traduzido ORIGINAL que
+; o Paleobasic ja traz pronto (Mamute_TranslatedNotesFilePath(),
+; MamuteNotesData.pbi), Mamute_ProtectTranslatedNotesIfPicked() substitui
+; isto pelo caminho do arquivo-sombra editavel automaticamente - este
+; Global nunca guarda o caminho do arquivo original protegido.
+Global MamuteDefaultNotesFile.s = ""
+
 ; Fonte carregada (HFONT) a partir dos 3 campos acima - Global aqui (nao em
 ; MamuteAssemblerGui.pbi, onde MamuteGui_EnsureFont() de fato a carrega/
 ; recarrega) so pela ordem de declaracao: MamuteEditGui.pbi (janela do
@@ -2020,6 +2034,7 @@ Procedure MamuteCfg_Load()
   Mamute_SKeyMapDefaults()
   MamuteVramSize = 16384
   MamuteAutoRunAfterTransfer = #False
+  MamuteDefaultNotesFile = ""
   MamuteColorFg = 3 : MamuteColorBg = 1 : MamuteColorBorder = 1
 
   Protected FilePath.s = MamuteCfg_FilePath()
@@ -2039,6 +2054,7 @@ Procedure MamuteCfg_Load()
   M = GetJSONMember(Root, "FontBold") : If M : MamuteFontBold = GetJSONBoolean(M) : EndIf
   M = GetJSONMember(Root, "VramSize") : If M : MamuteVramSize = GetJSONInteger(M) : EndIf
   M = GetJSONMember(Root, "AutoRunAfterTransfer") : If M : MamuteAutoRunAfterTransfer = GetJSONBoolean(M) : EndIf
+  M = GetJSONMember(Root, "DefaultNotesFile") : If M : MamuteDefaultNotesFile = GetJSONString(M) : EndIf
   If MamuteVramSize <> 16384 And MamuteVramSize <> 131072 And MamuteVramSize <> 196608
     MamuteVramSize = 16384 ; valor invalido/corrompido - volta pro padrao seguro
   EndIf
@@ -2089,6 +2105,7 @@ Procedure MamuteCfg_Save()
   SetJSONBoolean(AddJSONMember(Root, "FontBold"), MamuteFontBold)
   SetJSONInteger(AddJSONMember(Root, "VramSize"), MamuteVramSize)
   SetJSONBoolean(AddJSONMember(Root, "AutoRunAfterTransfer"), MamuteAutoRunAfterTransfer)
+  SetJSONString(AddJSONMember(Root, "DefaultNotesFile"), MamuteDefaultNotesFile)
   SetJSONInteger(AddJSONMember(Root, "ColorFg"), MamuteColorFg)
   SetJSONInteger(AddJSONMember(Root, "ColorBg"), MamuteColorBg)
   SetJSONInteger(AddJSONMember(Root, "ColorBorder"), MamuteColorBorder)
@@ -2154,7 +2171,7 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
     Next
   Next
 
-  Protected WinW = 820, WinH = 830
+  Protected WinW = 820, WinH = 870
   Protected Win = OpenModelessChildWindow(ParentWindow, 0, 0, WinW, WinH, "Configurar - Mamute Assembler",
                                           #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
   If Not Win
@@ -2281,6 +2298,17 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
   SetGadgetState(G_AutoRunAfterTransfer, MamuteAutoRunAfterTransfer)
   KeysY + 34
 
+  ; Notas do SUPER-X por endereco (comandos XIM/XIC/XIL/XIS, docs/SPEC.md
+  ; modulo 45x) - pedido explicito do usuario: "abra um campo para
+  ; escolher um arquivo de nota padrao para ser carregado sempre que o
+  ; Mamute iniciar" (modulo 45y). Mesmo layout Label+StringGadget+Botao
+  ; "..." do campo "Arquivo:" da lista de memoria, la em cima. Vazio
+  ; (padrao) = nao carrega nada automaticamente.
+  TextGadget(#PB_Any, 24, KeysY + 4, 160, 20, "Notas SUPER-X padrao:")
+  Protected G_NotesFile = StringGadget(#PB_Any, 190, KeysY, WinW - 190 - 24 - 64 - 8, 24, MamuteDefaultNotesFile)
+  Protected G_NotesFileBrowse = ThemedButton(WinW - 24 - 64, KeysY, 64, 24, "...", "")
+  KeysY + 34
+
   Protected G_Save = ThemedButton(WinW - 256, WinH - 56, 110, 32, "Salvar", Chr(#Icon_Save))
   GadgetToolTip(G_Save, "Salvar")
   Protected G_Cancel = ThemedButton(WinW - 134, WinH - 56, 110, 32, "Cancelar", "")
@@ -2373,6 +2401,13 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
               EndIf
             EndIf
 
+          Case G_NotesFileBrowse
+            Protected NotesPick.s = OpenFileRequester("Selecione o arquivo de notas padrao",
+              GetGadgetText(G_NotesFile), "Notas traduzidas (*.notas)|*.notas|Todos os arquivos (*.*)|*.*", 0)
+            If NotesPick <> ""
+              SetGadgetText(G_NotesFile, Mamute_ProtectTranslatedNotesIfPicked(NotesPick))
+            EndIf
+
           Case G_Save
             Saved = #True
             Quit = #True
@@ -2414,6 +2449,16 @@ Procedure MamuteSettings_OpenWindow(ParentWindow)
     EndSelect
 
     MamuteAutoRunAfterTransfer = GetGadgetState(G_AutoRunAfterTransfer)
+
+    ; Protege tambem se o caminho foi DIGITADO a mao (nao so' escolhido via
+    ; "..." acima, ja tratado no Case G_NotesFileBrowse) - mesma checagem,
+    ; Mamute_ProtectTranslatedNotesIfPicked() so' age se bater exatamente
+    ; com o arquivo traduzido original.
+    Protected TypedNotesPath.s = Trim(GetGadgetText(G_NotesFile))
+    If TypedNotesPath <> ""
+      TypedNotesPath = Mamute_ProtectTranslatedNotesIfPicked(TypedNotesPath)
+    EndIf
+    MamuteDefaultNotesFile = TypedNotesPath
 
     MamuteCfg_Save()
   EndIf

@@ -42,6 +42,7 @@ DeclareModule MSXDisk
   Declare.i OpenDisk(DiskPath$)
   Declare.i CloseDisk()
   Declare.i ListFiles(List FilesOut.FileInfo())
+  Declare.i GetClusterInfo(*OutFree.Long, *OutTotal.Long)
   Declare.i ExtractFile(MSXName$, DestPath$)
   Declare.i AddFile(LocalPath$, MSXName$ = "")
   Declare.i DeleteMSXFile(MSXName$)
@@ -138,6 +139,31 @@ Module MSXDisk
       PokeA(P, val & $FF)
       PokeA(P + 1, (PeekA(P + 1) & $F0) | ((val >> 8) & $0F))
     EndIf
+  EndProcedure
+
+  ; Uso do disco: total de clusters de dados e quantos estao livres agora -
+  ; varre a FAT em memoria com o MESMO criterio "ReadFAT(c,*FAT)=0" que
+  ; AddFile() ja usa pra achar um cluster livre (acima) - nenhuma logica
+  ; nova de FAT12, so' leitura. Usado pelo comando XCI do Mamute Assembler
+  ; (docs/SPEC.md modulo 45q). #False (com GetLastErrorMessage() explicando)
+  ; se nenhum disco estiver aberto - mesmo guard do ListFiles().
+  Procedure.i GetClusterInfo(*OutFree.Long, *OutTotal.Long)
+    If DiskFile = 0
+      SetError("No disk image is open.")
+      ProcedureReturn #False
+    EndIf
+
+    Protected Free.l = 0
+    Protected c.u
+    For c = 2 To maxcl
+      If ReadFAT(c, *FAT) = 0
+        Free + 1
+      EndIf
+    Next
+
+    *OutFree\l = Free
+    *OutTotal\l = maxcl - 1
+    ProcedureReturn #True
   EndProcedure
 
   ; Timestamp conversions
