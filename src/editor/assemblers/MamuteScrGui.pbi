@@ -171,11 +171,11 @@ Procedure MamuteScr_DrawButton(Canvas, Label.s, Font)
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
   Box(0, 0, W, H, RGB(0, 45, 18))
   DrawingMode(#PB_2DDrawing_Outlined)
-  Box(0, 0, W, H, RGB(60, 220, 90))
+  Box(0, 0, W, H, Mamute_CurrentFrontColor())
   DrawingMode(#PB_2DDrawing_Transparent)
   DrawingFont(FontID(Font))
   Protected TW = TextWidth(Label), TH = TextHeight(Label)
-  DrawText((W - TW) / 2, (H - TH) / 2, Label, RGB(60, 220, 90))
+  DrawText((W - TW) / 2, (H - TH) / 2, Label, Mamute_CurrentFrontColor())
   StopDrawing()
 EndProcedure
 
@@ -187,8 +187,8 @@ Procedure MamuteScr_RepaintNav(Canvas, *State.MamuteScrState, PixelSize.i)
     ProcedureReturn
   EndIf
 
-  Protected ColBack  = RGB(0, 0, 0)
-  Protected ColFront = RGB(60, 220, 90)
+  Protected ColBack  = Mamute_CurrentBackColor()
+  Protected ColFront = Mamute_CurrentFrontColor()
   Protected ColFrame = RGB(60, 140, 230)
 
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
@@ -228,8 +228,8 @@ Procedure MamuteScr_RepaintEdit(Canvas, *State.MamuteScrState, PixelSize.i)
     ProcedureReturn
   EndIf
 
-  Protected ColBack   = RGB(0, 0, 0)
-  Protected ColFront  = RGB(60, 220, 90)
+  Protected ColBack   = Mamute_CurrentBackColor()
+  Protected ColFront  = Mamute_CurrentFrontColor()
   Protected ColGrid   = RGB(20, 60, 30)
   Protected ColCursor = RGB(230, 60, 60)
   Protected W = #Mamute_MolduraChars * 8 * PixelSize
@@ -346,9 +346,9 @@ Procedure MamuteScr_Open(ParentWindow, StartAddr.i, Dx.i, Dy.i, Modo.i)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, RGB(0, 0, 0))
+  SetWindowColor(Win, Mamute_CurrentBorderColor())
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   Protected CurY = Margin
 
   Protected G_Legend = TextGadget(#PB_Any, Margin, CurY, WinW - Margin * 2, LegendH, "")

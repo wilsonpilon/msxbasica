@@ -85,6 +85,56 @@ Global MamuteFontName.s = "Consolas"
 Global MamuteFontSize.i = 16
 Global MamuteFontBold.b = #True
 
+; Cor da tela (comando CO, docs/SPEC.md modulo 45, porta do CO do SUPER-X) -
+; indices 0-15 da paleta REAL, FIXA, do MSX1/TMS9918 (Mamute_Msx1PaletteRGB()
+; logo abaixo) - nao editavel, exatamente como o hardware de verdade (MSX1
+; nao tem paleta programavel, diferente do V9938/MSX2). Front/Back/Border
+; configuraveis via CO, persistidos em mamute_settings.json (MamuteCfg_Load/
+; Save abaixo). Default 3/1/1 (Verde Claro/Preto/Preto) reproduz o visual
+; "terminal verde sobre preto" que o Mamute sempre teve - achado real ao
+; implementar o CO: esse visual estava hardcoded como RGB(60,220,90)/
+; RGB(0,0,0) SEPARADAMENTE em 12 arquivos/72 lugares (cada janela do Mamute
+; tinha sua PROPRIA copia local), todos migrados pra ler daqui.
+Global MamuteColorFg.i     = 3
+Global MamuteColorBg.i     = 1
+Global MamuteColorBorder.i = 1
+
+; Paleta REAL do TMS9918 (VDP do MSX1), RGB aproximado (mesmos valores
+; usados por emuladores como o openMSX) - indice 0 (transparente) devolve o
+; mesmo preto do indice 1, ja que nao ha "transparencia" de verdade fora de
+; sprites (mesma simplificacao que o resto do simulador ja assume em outros
+; lugares).
+Procedure.i Mamute_Msx1PaletteRGB(Index.i)
+  Select Index & 15
+    Case 1  : ProcedureReturn RGB(0, 0, 0)       ; Preto
+    Case 2  : ProcedureReturn RGB(33, 200, 66)   ; Verde Medio
+    Case 3  : ProcedureReturn RGB(94, 220, 120)  ; Verde Claro
+    Case 4  : ProcedureReturn RGB(84, 85, 237)   ; Azul Escuro
+    Case 5  : ProcedureReturn RGB(125, 118, 252) ; Azul Claro
+    Case 6  : ProcedureReturn RGB(212, 82, 77)   ; Vermelho Escuro
+    Case 7  : ProcedureReturn RGB(66, 235, 245)  ; Ciano
+    Case 8  : ProcedureReturn RGB(252, 85, 84)   ; Vermelho Medio
+    Case 9  : ProcedureReturn RGB(255, 121, 120) ; Vermelho Claro
+    Case 10 : ProcedureReturn RGB(212, 193, 84)  ; Amarelo Escuro
+    Case 11 : ProcedureReturn RGB(230, 206, 128) ; Amarelo Claro
+    Case 12 : ProcedureReturn RGB(33, 176, 59)   ; Verde Escuro
+    Case 13 : ProcedureReturn RGB(201, 91, 186)  ; Magenta
+    Case 14 : ProcedureReturn RGB(204, 204, 204) ; Cinza
+    Case 15 : ProcedureReturn RGB(255, 255, 255) ; Branco
+    Default : ProcedureReturn RGB(0, 0, 0)       ; 0 = Transparente -> preto
+  EndSelect
+EndProcedure
+
+Procedure.i Mamute_CurrentFrontColor()
+  ProcedureReturn Mamute_Msx1PaletteRGB(MamuteColorFg)
+EndProcedure
+Procedure.i Mamute_CurrentBackColor()
+  ProcedureReturn Mamute_Msx1PaletteRGB(MamuteColorBg)
+EndProcedure
+Procedure.i Mamute_CurrentBorderColor()
+  ProcedureReturn Mamute_Msx1PaletteRGB(MamuteColorBorder)
+EndProcedure
+
 ; Comandos FOSSAURO e OPENMSX (MamuteGui_CmdFossauro()/MamuteGui_CmdOpenMSX(),
 ; MamuteAssemblerGui.pbi) - depois do LOAD, sempre digita "DEFUSR0=&H<endereco>" na sessao MSX
 ; (ver Fossauro_SendAndType()/FossauroSupport.pbi ou OMSX_SendMamuteProgram()/
@@ -1142,22 +1192,31 @@ Procedure Mamute_BuildDumpLines(List Lines.s(), StartAddr.i, EndAddr.i, Mode.b, 
   Wend
 EndProcedure
 
-; Mesma coisa que Mamute_BuildDumpLines() acima, mas honrando um
+; Mesma ideia de Mamute_BuildDumpLines() acima, mas honrando um
 ; MamuteSxTarget completo (slot/sub-slot explicito ou VRAM via
 ; Mamute_SxReadByte) em vez de so' um flag IsVram - usada SO' pela forma de
 ; dois/tres enderecos do XD (docs/SPEC.md modulo 45g), que aceita
 ; "<inic>#<slot>-<subslot>,<fim>[,<arquivo>]" (o mesmo sufixo de slot que a
 ; forma de UM endereco/grade interativa ja aceitava desde o modulo 45b).
 ; Mamute_BuildDumpLines() em si fica INTOCADA - continua servindo D/P/V
-; (heranca MegaAssembler, sempre pagina ativa/VRAM, nunca slot explicito).
-Procedure Mamute_BuildDumpLinesSx(List Lines.s(), StartAddr.i, EndAddr.i, Mode.b, *T.MamuteSxTarget)
+; (heranca MegaAssembler, com seus proprios 4 modos via comando C).
+;
+; Formato FIXO (pedido explicito do usuario, 2026-08-26 - "esqueci de dizer
+; na epoca"): sempre 8 bytes/linha, hexa E ASCII E checksum juntos na MESMA
+; linha - "AAAA XX XX XX XX XX XX XX XX : YY : QQQQQQQQ" (AAAA=endereco,
+; XX=bytes, YY=checksum de 1 byte, QQQQQQQQ=ASCII dos bytes, "." pros nao-
+; imprimiveis). Substituiu os 4 modos antigos (herdados de Mode.b, que
+; alternavam ascii OU checksum, nunca os dois juntos) - agora e' sempre os
+; tres juntos, sem selecao de modo nenhuma pro XD (o comando C continua so
+; pro D/P/V, que tem seu proprio historico de formato). ChecksumAddrMode
+; (comando XCS, MamuteGui_CmdXcs) troca so' o CALCULO do checksum: soma dos
+; bytes sozinha (#False, "normal") ou soma dos bytes + byte baixo do
+; endereco da linha (#True, "+ADDR") - mesma formula ja usada pelos antigos
+; modos 2/3 de Mamute_BuildDumpLines(), agora exposta como um toggle
+; independente em vez de amarrada a um "modo de exibicao" com 4 opcoes.
+Procedure Mamute_BuildDumpLinesSx(List Lines.s(), StartAddr.i, EndAddr.i, ChecksumAddrMode.b, *T.MamuteSxTarget)
   ClearList(Lines())
-  Protected BytesPerLine.i
-  Select Mode
-    Case 0 : BytesPerLine = 4
-    Case 1 : BytesPerLine = 16
-    Default : BytesPerLine = 8 ; modo 2/3
-  EndSelect
+  Protected BytesPerLine.i = 8
 
   Protected AddrDigits.i = 4
   If *T\IsVram : AddrDigits = 5 : EndIf
@@ -1171,26 +1230,20 @@ Procedure Mamute_BuildDumpLinesSx(List Lines.s(), StartAddr.i, EndAddr.i, Mode.b
       If Addr > EndAddr : Break : EndIf
       RawByte = Mamute_SxReadByte(Addr, *T)
       HexPart + Mamute_Hex2(RawByte) + " "
-      If Mode = 0 Or Mode = 1
-        If RawByte >= 32 And RawByte <= 126
-          AsciiPart + Chr(RawByte)
-        Else
-          AsciiPart + "."
-        EndIf
+      If RawByte >= 32 And RawByte <= 126
+        AsciiPart + Chr(RawByte)
+      Else
+        AsciiPart + "."
       EndIf
       Checksum + RawByte
       Addr + 1
     Next
 
-    Line = Mamute_HexPad(LineAddr, AddrDigits) + ": " + HexPart
-    Select Mode
-      Case 0, 1
-        Line + " " + AsciiPart
-      Case 2
-        Line + RSet(Hex((Checksum + (LineAddr & $FF)) & $FF), 2, "0")
-      Case 3
-        Line + RSet(Hex(Checksum & $FF), 2, "0")
-    EndSelect
+    If ChecksumAddrMode
+      Checksum + (LineAddr & $FF)
+    EndIf
+
+    Line = Mamute_HexPad(LineAddr, AddrDigits) + " " + Trim(HexPart) + " : " + Mamute_Hex2(Checksum & $FF) + " : " + AsciiPart
     AddElement(Lines())
     Lines() = Line
   Wend
@@ -1967,6 +2020,7 @@ Procedure MamuteCfg_Load()
   Mamute_SKeyMapDefaults()
   MamuteVramSize = 16384
   MamuteAutoRunAfterTransfer = #False
+  MamuteColorFg = 3 : MamuteColorBg = 1 : MamuteColorBorder = 1
 
   Protected FilePath.s = MamuteCfg_FilePath()
   If FileSize(FilePath) <= 0
@@ -1988,6 +2042,12 @@ Procedure MamuteCfg_Load()
   If MamuteVramSize <> 16384 And MamuteVramSize <> 131072 And MamuteVramSize <> 196608
     MamuteVramSize = 16384 ; valor invalido/corrompido - volta pro padrao seguro
   EndIf
+  M = GetJSONMember(Root, "ColorFg")     : If M : MamuteColorFg     = GetJSONInteger(M) : EndIf
+  M = GetJSONMember(Root, "ColorBg")     : If M : MamuteColorBg     = GetJSONInteger(M) : EndIf
+  M = GetJSONMember(Root, "ColorBorder") : If M : MamuteColorBorder = GetJSONInteger(M) : EndIf
+  If MamuteColorFg < 0 Or MamuteColorFg > 15 : MamuteColorFg = 3 : EndIf
+  If MamuteColorBg < 0 Or MamuteColorBg > 15 : MamuteColorBg = 1 : EndIf
+  If MamuteColorBorder < 0 Or MamuteColorBorder > 15 : MamuteColorBorder = 1 : EndIf
 
   Protected CellsElem = GetJSONMember(Root, "Cells")
   If CellsElem
@@ -2029,6 +2089,9 @@ Procedure MamuteCfg_Save()
   SetJSONBoolean(AddJSONMember(Root, "FontBold"), MamuteFontBold)
   SetJSONInteger(AddJSONMember(Root, "VramSize"), MamuteVramSize)
   SetJSONBoolean(AddJSONMember(Root, "AutoRunAfterTransfer"), MamuteAutoRunAfterTransfer)
+  SetJSONInteger(AddJSONMember(Root, "ColorFg"), MamuteColorFg)
+  SetJSONInteger(AddJSONMember(Root, "ColorBg"), MamuteColorBg)
+  SetJSONInteger(AddJSONMember(Root, "ColorBorder"), MamuteColorBorder)
   Protected CellsElem = SetJSONArray(AddJSONMember(Root, "Cells"))
 
   Protected Slot, Pagina, Elem

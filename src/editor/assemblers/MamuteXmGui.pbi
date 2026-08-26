@@ -274,8 +274,8 @@ Procedure.i MamuteXm_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
     ProcedureReturn StartAddr
   EndIf
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
-  SetWindowColor(Win, ColBack)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor(), ColBorder = Mamute_CurrentBorderColor()
+  SetWindowColor(Win, ColBorder)
 
   Protected G_Legend = TextGadget(#PB_Any, 16, 12, WinW - 32, 20,
     "I [<n>]: lista  .:;[  dados (1/2/2/1 byte)  " + Chr(34) + "texto  ENDERECO[#slot[-sub]|#V|#S]: salta  " +

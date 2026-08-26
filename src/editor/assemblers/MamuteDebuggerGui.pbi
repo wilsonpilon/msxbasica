@@ -93,7 +93,7 @@ Procedure Mdbg_RepaintMiniMap(Canvas, *State.MamuteDebuggerState, Font.i)
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
   Protected Cols = 16, Rows = 16
   Protected BlockW.f = W * 1.0 / Cols, BlockH.f = H * 1.0 / Rows
-  Box(0, 0, W, H, RGB(0, 0, 0))
+  Box(0, 0, W, H, Mamute_CurrentBackColor())
 
   Protected *S.MamuteGui_State = *State\CpuState
   Protected PcBlock.i = (*S\RegPC & $FFFF) / 256
@@ -111,7 +111,7 @@ Procedure Mdbg_RepaintMiniMap(Canvas, *State.MamuteDebuggerState, Font.i)
       SlotHere = MamutePageMap(Page)
       Tipo = MamuteCfgCell(SlotHere, Page)\Tipo
       Select Tipo
-        Case #MamuteMem_RAM   : BaseCol = RGB(15, 55, 28)  : BrightCol = RGB(60, 220, 90)
+        Case #MamuteMem_RAM   : BaseCol = RGB(15, 55, 28)  : BrightCol = RGB(60,220,90) ; cor FIXA de RAM (codigo visual RAM/ROM/BASIC/vazio), independente do tema CO de proposito - sem espacos de intento pra nao ser pego pelo replace de tema (ver Mamute_CurrentFrontColor(), MamuteSupport.pbi)
         Case #MamuteMem_ROM   : BaseCol = RGB(25, 25, 65)  : BrightCol = RGB(110, 110, 230)
         Case #MamuteMem_Basic : BaseCol = RGB(70, 60, 20)  : BrightCol = RGB(230, 200, 60)
         Default                : BaseCol = RGB(45, 12, 12)  : BrightCol = RGB(200, 60, 60)
@@ -153,7 +153,7 @@ Procedure Mdbg_RepaintMiniMap(Canvas, *State.MamuteDebuggerState, Font.i)
   Next
 
   DrawingMode(#PB_2DDrawing_Outlined)
-  Box(0, 0, W, H, RGB(60, 220, 90))
+  Box(0, 0, W, H, Mamute_CurrentFrontColor())
   StopDrawing()
 EndProcedure
 
@@ -178,11 +178,11 @@ Procedure Mdbg_DrawButton(Canvas, Label.s, Font)
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
   Box(0, 0, W, H, RGB(0, 45, 18))
   DrawingMode(#PB_2DDrawing_Outlined)
-  Box(0, 0, W, H, RGB(60, 220, 90))
+  Box(0, 0, W, H, Mamute_CurrentFrontColor())
   DrawingMode(#PB_2DDrawing_Transparent)
   DrawingFont(FontID(Font))
   Protected TW = TextWidth(Label), TH = TextHeight(Label)
-  DrawText((W - TW) / 2, (H - TH) / 2, Label, RGB(60, 220, 90))
+  DrawText((W - TW) / 2, (H - TH) / 2, Label, Mamute_CurrentFrontColor())
   StopDrawing()
 EndProcedure
 
@@ -302,8 +302,8 @@ Procedure Mdbg_RepaintDisasm(Canvas, *State.MamuteDebuggerState, Font.i)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
-  Protected ColBack = RGB(0, 0, 0), ColFront = RGB(60, 220, 90), ColCur = RGB(0, 0, 0)
-  Protected ColCurBack = RGB(60, 220, 90)
+  Protected ColBack = Mamute_CurrentBackColor(), ColFront = Mamute_CurrentFrontColor(), ColCur = Mamute_CurrentBackColor()
+  Protected ColCurBack = Mamute_CurrentFrontColor()
   DrawingFont(FontID(Font))
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
 
@@ -344,7 +344,7 @@ Procedure Mdbg_RepaintMiniGrid(Canvas, *State.MamuteDebuggerState, Font.i)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
-  Protected ColBack = RGB(0, 0, 0), ColFront = RGB(60, 220, 90), ColDim = RGB(25, 110, 50)
+  Protected ColBack = Mamute_CurrentBackColor(), ColFront = Mamute_CurrentFrontColor(), ColDim = RGB(25, 110, 50)
   DrawingFont(FontID(Font))
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
 
@@ -413,8 +413,8 @@ Procedure Mdbg_RepaintStack(Canvas, *State.MamuteDebuggerState, Font.i)
   If Not StartDrawing(CanvasOutput(Canvas))
     ProcedureReturn
   EndIf
-  Protected ColBack = RGB(0, 0, 0), ColFront = RGB(60, 220, 90)
-  Protected ColCur = RGB(0, 0, 0), ColCurBack = RGB(60, 220, 90)
+  Protected ColBack = Mamute_CurrentBackColor(), ColFront = Mamute_CurrentFrontColor()
+  Protected ColCur = Mamute_CurrentBackColor(), ColCurBack = Mamute_CurrentFrontColor()
   DrawingFont(FontID(Font))
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
 
@@ -500,9 +500,9 @@ Procedure MamuteDebugger_Open(ParentWindow, *CpuState.MamuteGui_State, StartAddr
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, RGB(0, 0, 0))
+  SetWindowColor(Win, Mamute_CurrentBorderColor())
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   Protected LblW = 26, FldW = 44, FldH = 20, RowGap = 26
   Protected CurX, CurY = 8
 

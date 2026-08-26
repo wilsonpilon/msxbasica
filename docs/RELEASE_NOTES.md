@@ -6,6 +6,68 @@ Para o histórico completo e detalhado sessão a sessão (incluindo versões sem
 
 ---
 
+## 8.6.0 — "CRUZ CURADA" (2026-08-26)
+
+**Tema da versão**: fecha o arco aberto pela 8.5.0. Naquela versão, a "cruz de modos" do SUPER-X nascia
+com uma perna manca — `Char` sem nada por trás. Esta versão implementa o `XH` (editor de
+caractere/sprite) e a cruz fecha de verdade, todos os 5 modos ligando pra uma tela real. Mas o resto da
+versão foi bem além de só curar a perna: mais 12 comandos do SUPER-X chegaram — ferramentas de memória
+intra-slots (`XBT`/`XRT`/`XFL`/`XCM`/`XFD`), checksum (`XCS`/`XTS`), e um salto de qualidade real: o
+Mamute Assembler passa a EXECUTAR programas de verdade (`XGO`, com 5 breakpoints nomeados e 3 critérios
+de parada "livre"), tracear passo a passo (`XTR`), editar registradores em pares incluindo os
+"secretos" (`XRG`), exportar disassembly pra um compilador externo em 4 formatos (`XSD`), e — pela
+primeira vez desde que o projeto existe — trocar de cor: `XCO` (nascido `CO`, renomeado por consistência
+de prefixo) dá ao terminal, sempre verde-sobre-preto por decisão estética fixa, a paleta REAL de 16
+cores do MSX1/TMS9918.
+
+### Novidades
+
+- **`XH`** — editor de caractere/sprite (bitmap 16×16, 4 caracteres/32 bytes por tela, miniatura 2×2
+  montada como ficaria na tela MSX de verdade) — completa a cruz de modos de 5 pontas, zero
+  placeholders restantes.
+- **`XBT`/`XRT`/`XFL`/`XCM`/`XFD`** — transferência de bloco, realocação com ajuste de ponteiros
+  absolutos internos, preenchimento, comparação (diferenças ou iguais) e busca por PADRÃO DE
+  INSTRUÇÃO decodificada (não bytes crus) — todos "intra-slots", origem e destino podem ser
+  slot/sub-slot/VRAM totalmente diferentes.
+- **`XCS`/`XTS`** — alterna o tipo de checksum por linha do `XD`, ou calcula um checksum agregado de
+  16 bits do bloco inteiro (HEX/BIN/DEC+/DEC±/OCT).
+- **`XRG`** — mostra/edita os registradores Z80 simulados em pares, incluindo o par alternado
+  `AF'`/`BC'`/`DE'`/`HL'` e o `PC`; `*` limpa tudo exceto a pilha, `+` reseta só a pilha; edita
+  qualquer registrador nomeado, mais 5 breakpoints (`BP`/`BP1`/`BP2`/`BP3`/`BPF`) usados pelo `XGO`.
+- **`XGO <endereço>[#slot]`** — executa o programa simulado, parando no breakpoint da vez em sequência
+  (`BP`→`BP1`→`BP2`→`BP3`→`BPF`) ou rodando "livre" (até o `RET` de topo, até `ESC`, ou até um teto de
+  segurança) quando não há breakpoint definido.
+- **`XTR <endereço>`** — trace passo a passo interativo: uma instrução por `ENTER`, registradores
+  mostrados a cada passo, `ESC` interrompe.
+- **`XSD`** — "super disassembler": listagem assembly reassemblável (com `ORG`) pra compilador
+  externo, ou exportação de bytes crus em `DEFB`/`DATA` (BASIC, com loop `FOR/READ/POKE/NEXT` já
+  pronto)/dados embutidos do X-BASIC — sempre com diálogo "Salvar como".
+- **`XCO [<frente>],[<fundo>],[<borda>]`** — cor da tela de verdade, paleta fixa do MSX1 (16 cores,
+  índices decimais 0-15, convenção do `COLOR` do MSX BASIC), aplicada ao monitor inteiro (log/entrada
+  de comandos, `XD`/`XA`/`XI`/`XH`/`XM`, debugger gráfico, `DM`/`ZAP`/`SCR`/`M`/`EDIT`).
+
+### Bastidores
+
+- **Lacuna de documentação encontrada e fechada, não escondida**: `XH`/`XBT`/`XRT`/`XFL`/`XCM`/`XFD`/
+  `XCS`/`XTS` já existiam no código antes desta sessão de release, mas nunca tinham passado por
+  `docs/SPEC.md`/`CHANGELOG.md` — registrados agora, de uma vez, junto com os 5 comandos genuinamente
+  novos desta sessão (`XRG`/`XGO`/`XTR`/`XSD`/`XCO`, módulos 45j-45n do `SPEC.md`).
+- **`XCO`: 72 ocorrências do mesmo par de cores hardcoded em 12 arquivos** — cada janela do Mamute
+  guardava sua própria cópia local de `RGB(60, 220, 90)`/`RGB(0, 0, 0)`; todas migradas pra 3 funções
+  centrais novas. Uma colisão incidental real (a cor de RAM no minimapa do debugger gráfico usava o
+  mesmo valor só por coincidência) foi protegida em vez de trocada, pra não acoplar a codificação
+  visual RAM/ROM/BASIC/vazio ao tema escolhido pelo usuário.
+- **`XGO`: decisão confirmada com o usuário antes de codar** — o sufixo `#slot-subslot` pedido não é
+  implementável sem threadar um parâmetro de alvo por todo o núcleo de execução Z80 (o mesmo núcleo
+  compartilhado por `G`/Step/Run/Trace) — escolhido honrar só o slot PRIMÁRIO (via `PAGE` implícito),
+  rejeitando sub-slot/VRAM explícito com erro de sintaxe.
+- Compilado limpo a cada comando/arquivo tocado nesta sessão; verificação ao vivo completa (clique
+  real, screenshots) não pôde ser feita — o `dist\PaleoBasic.exe` ficou travado por um processo já em
+  execução durante boa parte da sessão. Rebuild final e empacotamento feitos assim que o processo foi
+  encerrado.
+
+---
+
 ## 8.5.0 — "CRUZ MANCA" (2026-08-24)
 
 **Tema da versão**: início da portagem do **SUPER-X**, outro monitor/debugger clássico de MSX (mais

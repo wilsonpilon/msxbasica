@@ -42,10 +42,10 @@
 ;    disassembler em fluxo, nao so' deste).
 ;
 ;  Cruz de modos (modulo 45f/45h) - aqui **Disasm** e' o modo ativo; **Dump**/
-;  **Ascii**/**Multi** ligam de verdade pro XD/XA/XM (os tres ja prontos);
-;  **Char** continua o UNICO placeholder restante da cruz inteira. As cruzes
-;  do XD e do XA tambem foram atualizadas nesta mesma sessao pra ligar o
-;  botao Disasm delas de volta pro XI.
+;  **Ascii**/**Multi**/**Char** ligam de verdade pro XD/XA/XM/XH - os quatro
+;  modos da cruz ja existem, nenhum placeholder restante (Char foi o
+;  ultimo, virou o comando XH - editor de caracteres/sprites,
+;  MamuteXhGui.pbi).
 ; ------------------------------------------------------------
 ;
 
@@ -129,7 +129,7 @@ Procedure.i MamuteXi_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
   Protected BtnFont = LoadFont(#PB_Any, "Consolas", 14, #PB_Font_Bold)
   If Not BtnFont : BtnFont = MFont : EndIf
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor(), ColBorder = Mamute_CurrentBorderColor()
 
   Protected Margin = 16
   Protected ViewW = 620, ViewH = 560
@@ -155,7 +155,7 @@ Procedure.i MamuteXi_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
   If Not Win
     ProcedureReturn StartAddr
   EndIf
-  SetWindowColor(Win, ColBack)
+  SetWindowColor(Win, ColBorder)
 
   Protected CurY = Margin
 
@@ -186,12 +186,12 @@ Procedure.i MamuteXi_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
 
   MamuteXd_DrawModeButton(G_ModeDump, "Dump", BtnFont, 0)    ; ja liga com XD de verdade
   MamuteXd_DrawModeButton(G_ModeAscii, "Ascii", BtnFont, 0)  ; ja liga com XA de verdade
-  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 2)    ; placeholder
+  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 0)    ; ja liga com XH de verdade
   MamuteXd_DrawModeButton(G_ModeMulti, "Multi", BtnFont, 0)  ; ja liga com XM de verdade
   MamuteXd_DrawModeButton(G_ModeDisasm, "Disasm", BtnFont, 1) ; ja e' o modo ativo agora
   GadgetToolTip(G_ModeDump, "Modo Dump - abre o XD neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeAscii, "Modo Ascii - abre o XA neste mesmo endereco/alvo")
-  GadgetToolTip(G_ModeChar, "Modo Char (sprite/fonte) - ainda nao implementado")
+  GadgetToolTip(G_ModeChar, "Modo Char - abre o XH neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeMulti, "Modo Multi - abre o XM neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeDisasm, "Modo Disasm (esta tela) - ja ativo")
 
@@ -255,9 +255,8 @@ Procedure.i MamuteXi_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
           Case G_PageDown   : If EventType() = #PB_EventType_LeftButtonDown : MamuteXi_DoPageDown : EndIf
 
           ; Cruz de modos (ver comentario no topo do arquivo) - Disasm ja e'
-          ; o modo ativo (clique nao faz nada); Dump/Ascii/Multi trocam de
-          ; verdade pro XD/XA/XM, no MESMO endereco/alvo; Char continua o
-          ; unico placeholder restante da cruz inteira.
+          ; o modo ativo (clique nao faz nada); Dump/Ascii/Multi/Char trocam
+          ; de verdade pro XD/XA/XM/XH, no MESMO endereco/alvo.
           Case G_ModeDisasm
             ; ja e' o modo ativo - nada a fazer
 
@@ -287,9 +286,10 @@ Procedure.i MamuteXi_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
 
           Case G_ModeChar
             If EventType() = #PB_EventType_LeftButtonDown
-              ; sem status label dedicado nesta tela (so' G_AddrLabel) -
-              ; reusa o proprio rotulo de endereco pra avisar, momentaneamente.
-              SetGadgetText(G_AddrLabel, "Modo Char (sprite/fonte): AINDA NAO IMPLEMENTADO")
+              CloseModelessChildWindow(ParentWindow, Win)
+              AlreadyClosed = #True
+              State\BaseAddr = MamuteXh_Open(ParentWindow, State\BaseAddr, @State\Target)
+              Quit = #True
             EndIf
         EndSelect
 

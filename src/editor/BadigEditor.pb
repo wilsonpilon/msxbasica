@@ -53,6 +53,13 @@ Declare RunBasicFromActiveTab()
 ; tipo real e resolvido na definicao completa, em MamuteDebuggerGui.pbi).
 Declare MamuteDebugger_Open(ParentWindow, *State, StartAddr.u)
 
+; Mesmo motivo do Declare acima - Mz80_ExecuteOne() so' e' definida "de
+; verdade" em MamuteZ80Cpu.pbi (precisa da Structure MamuteGui_State e do
+; nucleo de decodificacao inteiro), mas o comando XGO (MamuteGui_CmdXgo/
+; MamuteGui_XgoRunLoop, MamuteAssemblerGui.pbi, docs/SPEC.md modulo 45j) e'
+; incluido ANTES e precisa chama-la em loop pra rodar o programa.
+Declare Mz80_ExecuteOne(*S)
+
 ; Mesmo motivo do Declare acima - MamuteGui_AppendLog() so' e' definida "de
 ; verdade" dentro de MamuteAssemblerGui.pbi (mais abaixo), mas MamuteXmGui.pbi
 ; (comando XM, docs/SPEC.md modulo 45) precisa chama-la e e' incluido ANTES.
@@ -76,6 +83,13 @@ Declare.i MamuteXa_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
 ; MamuteXaGui.pbi (botao "Disasm" da cruz de modos, agora ligado de verdade
 ; pro XI nos dois) sao incluidos ANTES e precisam chamar ela.
 Declare.i MamuteXi_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
+
+; Mesmo motivo de novo - MamuteXh_Open() so' e' definida "de verdade" dentro
+; de MamuteXhGui.pbi (comando XH, o editor de caracteres/sprites do SUPER-X -
+; o ultimo placeholder "Char" da cruz de modos), mas MamuteXdGui.pbi/
+; MamuteXaGui.pbi/MamuteXiGui.pbi (botao "Char" da cruz, agora ligado de
+; verdade pro XH nos tres) sao incluidos ANTES e precisam chamar ela.
+Declare.i MamuteXh_Open(ParentWindow, StartAddr.i, *Target.MamuteSxTarget)
 
 ; Structure EditorSettings/Global EditorCfg (definidos "de verdade" em
 ; EditorSettings.pbi, incluido logo abaixo) e os globais Color_* (tab bar/
@@ -263,6 +277,7 @@ XIncludeFile "assemblers/MamuteXdGui.pbi"
 XIncludeFile "assemblers/MamuteXaGui.pbi"
 XIncludeFile "assemblers/MamuteXiGui.pbi"
 XIncludeFile "assemblers/MamuteXmGui.pbi"
+XIncludeFile "assemblers/MamuteXhGui.pbi"
 XIncludeFile "assemblers/MamutePdf.pbi"
 XIncludeFile "assemblers/MamuteEditGui.pbi"
 XIncludeFile "assemblers/MamuteAssemblerGui.pbi"

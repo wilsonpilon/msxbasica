@@ -129,6 +129,12 @@
 #MamuteGui_EnterShortcut = 9101
 #MamuteGui_UpShortcut    = 9102
 #MamuteGui_DownShortcut  = 9103
+; Comando XTR (docs/SPEC.md modulo 45, TRACE) - ESC interrompe o loop modal
+; de trace (MamuteGui_CmdXtr, mais abaixo). Registrado uma unica vez em
+; MamuteAssembler_OpenWindow, junto com os 3 de cima - fora do trace, o
+; #PB_Event_Menu correspondente simplesmente nao tem Case nenhum no loop
+; principal e e' ignorado (nao precisa de comportamento fora do XTR).
+#MamuteGui_EscShortcut   = 9104
 
 ; MamuteGui_Font agora e' declarado em MamuteSupport.pbi (hoisted pra la -
 ; MamuteEditGui.pbi, incluido antes deste arquivo, tambem precisa dele).
@@ -181,6 +187,8 @@ Structure MamuteGui_State
   HasLastS.b    ; mesma ideia do M, mas rastreado separado (S tem "memoria" propria)
   LastSAddr.i
   DisplayMode.b ; comando C - modo de exibicao (0-3) que D/P/V vao usar; zero-inicializado = modo 0
+  ChecksumAddrMode.b ; comando XCS - #False (zero-inicializado) = checksum NORMAL (so os bytes) do
+                     ; despejo do XD; #True = "+ADDR" (soma tambem o byte baixo do endereco da linha)
   ; Registradores Z80 simulados (comando X, e agora tambem o motor de execucao real do
   ; comando G - MamuteZ80Cpu.pbi/MamuteDebuggerGui.pbi) - zero-inicializados (boot "limpo"),
   ; duram so a sessao da janela (mesmo espirito volatil do PAGE/DisplayMode).
@@ -198,6 +206,19 @@ Structure MamuteGui_State
   Halted.b
   HasBreak1.b : Break1Addr.u
   HasBreak2.b : Break2Addr.u
+  ; Comando XGO (SUPER-X, docs/SPEC.md modulo 45j) - 5 breakpoints nomeados
+  ; DEDICADOS (independentes de HasBreak1/Break2 acima, que continuam so' do
+  ; comando G/debugger grafico, sem mudanca nenhuma) + XgoStep, a posicao
+  ; atual na sequencia BP->BP1->BP2->BP3->(BPF dai em diante) que cada XGO
+  ; sem argumento avanca - ver MamuteGui_XgoResolveTarget/MamuteGui_CmdXgo.
+  ; HasLastXgo segue o mesmo idioma "sem argumento continua" do L/M/S/XD.
+  HasXgoBp.b  : XgoBpAddr.u
+  HasXgoBp1.b : XgoBp1Addr.u
+  HasXgoBp2.b : XgoBp2Addr.u
+  HasXgoBp3.b : XgoBp3Addr.u
+  HasXgoBpF.b : XgoBpFAddr.u
+  XgoStep.b
+  HasLastXgo.b
   ; Comandos XD/XM (SUPER-X, docs/SPEC.md modulo 45/45b) - mesma "memoria de
   ; ultimo endereco" que M/S/L ja usam pra reabrir sem argumento; Target
   ; junto (docs/SPEC.md modulo 45b) - reabrir sem argumento tambem volta pro
@@ -206,6 +227,17 @@ Structure MamuteGui_State
   HasLastXa.b : LastXaAddr.i : LastXaTarget.MamuteSxTarget
   HasLastXi.b : LastXiAddr.i : LastXiTarget.MamuteSxTarget
   HasLastXm.b : LastXmAddr.i : LastXmTarget.MamuteSxTarget
+  HasLastXh.b : LastXhAddr.i : LastXhTarget.MamuteSxTarget
+  ; Barra fixa de status (topo da janela, fora do log que rola) - pedido
+  ; explicito do usuario: ultimo comando digitado + endereco/offset + slot
+  ; de trabalho atual + miniatura 16x16 da memoria a partir dali. Ver
+  ; MamuteGui_RefreshStatusBar() mais abaixo. LastCmdAddr/HasLastCmdAddr so'
+  ; mudam quando o comando novo tem um endereco reconhecivel (primeiro
+  ; token hexa dos argumentos) - sem isso, mantem o ultimo endereco valido
+  ; conhecido, mesmo espirito "continua dali" do M/S/L/SH.
+  LastCmdText.s
+  HasLastCmdAddr.b
+  LastCmdAddr.i
 EndStructure
 
 ; Persistencia do historico - pedido explicito do usuario ("guarde inclusive
@@ -266,17 +298,113 @@ Procedure MamuteGui_HistoryAdd(Cmd.s)
 EndProcedure
 
 ; Mostra o mapeamento ATIVO agora (MamutePageMap(), MamuteSupport.pbi) - uma
-; linha por pagina, endereco real + slot comutado ali. Usado tanto por
-; "PAGE ?" quanto logo apos qualquer "PAGE"/"PAGE X,Y,Z,W" bem-sucedido
-; (feedback imediato, mesmo espirito de monitores de verdade ecoarem o
-; estado apos um SET).
+; linha por pagina, endereco real + slot comutado ali + sub-slot. Usado
+; tanto por "PAGE ?" quanto logo apos qualquer "PAGE"/"PAGE X,Y,Z,W"
+; bem-sucedido (feedback imediato, mesmo espirito de monitores de verdade
+; ecoarem o estado apos um SET), e tambem no banner de abertura da janela.
+; Sub-slot sempre mostrado como 0: nao existe registrador de "sub-slot
+; ATIVO" por pagina neste simulador (decisao documentada em
+; MamuteSupport.pbi, secao do MamuteSxTarget/MamuteMemSub) - so' os
+; comandos SUPER-X (XD/XA/XI/XM) conseguem mirar um sub-slot 1-3
+; explicitamente, via sufixo "#slot-subslot" no proprio endereco.
 Procedure.s MamuteGui_ShowPageMap(G_Log, Accum.s)
   Protected Pagina.i
   For Pagina = 0 To 3
     Accum = MamuteGui_AppendLog(G_Log, Accum, "PAGE" + Str(Pagina) + "(" + Mamute_PageRangeText(Pagina) +
-                                              ") SLOT " + Str(MamutePageMap(Pagina)))
+                                              ") SLOT " + Str(MamutePageMap(Pagina)) + "-0")
   Next
   ProcedureReturn Accum
+EndProcedure
+
+; Tenta achar um endereco hexa nos argumentos de Cmd (primeiro token depois
+; do verbo, ate a primeira ","/"#") - alimenta so a barra de status
+; (MamuteGui_RefreshStatusBar() abaixo), best-effort: comandos sem
+; argumento em forma de endereco (BA, PAGE ?, X sem par, etc.) simplesmente
+; nao atualizam o endereco mostrado, mantendo o ultimo conhecido (mesmo
+; espirito "continua dali" que M/S/L/SH ja usam pra si mesmos).
+Procedure.b MamuteGui_ExtractCmdAddr(Cmd.s, *OutAddr.Integer)
+  Protected Trimmed.s = Trim(Cmd)
+  If Left(Trimmed, 1) = "@" Or Left(Trimmed, 1) = "?"
+    Trimmed = Trim(Mid(Trimmed, 2))
+  EndIf
+  Protected SpacePos.i = FindString(Trimmed, " ")
+  If SpacePos = 0
+    ProcedureReturn #False
+  EndIf
+  Protected Args.s = Trim(Mid(Trimmed, SpacePos + 1))
+  If Args = ""
+    ProcedureReturn #False
+  EndIf
+  Protected Tok.s = Args
+  Protected CommaPos.i = FindString(Tok, ",")
+  If CommaPos > 0
+    Tok = Left(Tok, CommaPos - 1)
+  EndIf
+  Protected HashPos.i = FindString(Tok, "#")
+  If HashPos > 0
+    Tok = Left(Tok, HashPos - 1)
+  EndIf
+  Tok = Trim(Tok)
+  ProcedureReturn Mamute_ParseHexAddr(Tok, *OutAddr)
+EndProcedure
+
+; Cor de um pixel da miniatura de memoria (MamuteGui_DrawMemSnapshot()
+; abaixo) - gradiente do preto ate o verde do terminal (ColFront, mesmo
+; RGB(60,220,90) usado no resto da janela) proporcional ao valor do byte,
+; pra ficar visualmente coerente com o resto da janela em vez de um
+; grayscale generico.
+Procedure Mamute_BytePixelColor(V.a)
+  Protected Frac.f = V / 255.0
+  ProcedureReturn RGB(Int(60 * Frac), Int(220 * Frac), Int(90 * Frac))
+EndProcedure
+
+; Desenha a grade 16x16 (256 bytes a partir de BaseAddr, um pixel por byte,
+; lido via Mamute_ReadByte() - resolve PAGE ativo, mesma regra do D/P/V) no
+; CanvasGadget G_Canvas - pedido explicito do usuario ("trecho 16x16 com
+; pixels representando os bytes a partir do endereco"). Sem endereco ainda
+; conhecido (HasAddr = #False), so limpa o canvas.
+Procedure MamuteGui_DrawMemSnapshot(G_Canvas, HasAddr.b, BaseAddr.i, ColBack.i)
+  Protected CanvasSize.i = GadgetWidth(G_Canvas)
+  Protected CellSize.i = CanvasSize / 16
+  If Not StartDrawing(CanvasOutput(G_Canvas))
+    ProcedureReturn
+  EndIf
+  Box(0, 0, CanvasSize, CanvasSize, ColBack)
+  If HasAddr
+    Protected Row.i, Col.i, Addr.i, V.a
+    For Row = 0 To 15
+      For Col = 0 To 15
+        Addr = (BaseAddr + Row * 16 + Col) & $FFFF
+        V = Mamute_ReadByte(Addr)
+        Box(Col * CellSize, Row * CellSize, CellSize, CellSize, Mamute_BytePixelColor(V))
+      Next
+    Next
+  EndIf
+  StopDrawing()
+EndProcedure
+
+; Atualiza a barra fixa de status inteira (texto + miniatura) a partir do
+; *State atual - chamada na abertura da janela e depois de todo comando
+; despachado (MamuteAssembler_OpenWindow() abaixo), nao so na abertura,
+; porque o endereco/slot mudam a cada comando e a memoria pode ter sido
+; escrita por M/S/T/F/etc.
+Procedure MamuteGui_RefreshStatusBar(G_StatusText, G_MemView, *State.MamuteGui_State, ColBack.i)
+  Protected StatusText.s
+  If *State\LastCmdText = ""
+    StatusText = "ULTIMO: (nenhum)"
+  Else
+    StatusText = "ULTIMO: " + *State\LastCmdText
+  EndIf
+  If *State\HasLastCmdAddr
+    Protected Slot.i, Pagina.i, Offset.i
+    Mamute_ResolveAddress(*State\LastCmdAddr, @Slot, @Pagina, @Offset)
+    StatusText + Chr(13) + Chr(10) + "END $" + Mamute_Hex4(*State\LastCmdAddr) +
+                 "  OFFSET $" + Mamute_Hex4(Offset) + "  SLOT " + Str(Slot)
+  Else
+    StatusText + Chr(13) + Chr(10) + "(sem endereco ainda)"
+  EndIf
+  SetGadgetText(G_StatusText, StatusText)
+  MamuteGui_DrawMemSnapshot(G_MemView, *State\HasLastCmdAddr, *State\LastCmdAddr, ColBack)
 EndProcedure
 
 ; Token.s precisa ser 1+ digitos representando um numero de slot valido
@@ -1348,15 +1476,23 @@ EndProcedure
 
 ; Valor de 16 bits do par PairName (AF/BC/DE/HL a partir dos bytes, IX/IY/SP
 ; direto) - usado pelo modo "par" do X (ver comentario da Procedure abaixo).
+; Casos AF'/BC'/DE'/HL' (par alternado) e PC acrescentados pro XRG (comando
+; novo, ver MamuteGui_CmdXrg mais abaixo) - o X nunca passa esses nomes,
+; entao a extensao nao muda o comportamento existente do X.
 Procedure.i MamuteGui_RegPairValue(*State.MamuteGui_State, PairName.s)
   Select PairName
     Case "AF" : ProcedureReturn (*State\RegA << 8) | *State\RegF
     Case "BC" : ProcedureReturn (*State\RegB << 8) | *State\RegC
     Case "DE" : ProcedureReturn (*State\RegD << 8) | *State\RegE
     Case "HL" : ProcedureReturn (*State\RegH << 8) | *State\RegL
+    Case "AF'" : ProcedureReturn (*State\RegA2 << 8) | *State\RegF2
+    Case "BC'" : ProcedureReturn (*State\RegB2 << 8) | *State\RegC2
+    Case "DE'" : ProcedureReturn (*State\RegD2 << 8) | *State\RegE2
+    Case "HL'" : ProcedureReturn (*State\RegH2 << 8) | *State\RegL2
     Case "IX" : ProcedureReturn *State\RegIX
     Case "IY" : ProcedureReturn *State\RegIY
     Case "SP" : ProcedureReturn *State\RegSP
+    Case "PC" : ProcedureReturn *State\RegPC
   EndSelect
   ProcedureReturn 0
 EndProcedure
@@ -1367,12 +1503,22 @@ Procedure MamuteGui_SetRegPair(*State.MamuteGui_State, PairName.s, Value.i)
     Case "BC" : *State\RegB = (Value >> 8) & $FF : *State\RegC = Value & $FF
     Case "DE" : *State\RegD = (Value >> 8) & $FF : *State\RegE = Value & $FF
     Case "HL" : *State\RegH = (Value >> 8) & $FF : *State\RegL = Value & $FF
+    Case "AF'" : *State\RegA2 = (Value >> 8) & $FF : *State\RegF2 = Value & $FF
+    Case "BC'" : *State\RegB2 = (Value >> 8) & $FF : *State\RegC2 = Value & $FF
+    Case "DE'" : *State\RegD2 = (Value >> 8) & $FF : *State\RegE2 = Value & $FF
+    Case "HL'" : *State\RegH2 = (Value >> 8) & $FF : *State\RegL2 = Value & $FF
     Case "IX" : *State\RegIX = Value & $FFFF
     Case "IY" : *State\RegIY = Value & $FFFF
     Case "SP" : *State\RegSP = Value & $FFFF
+    Case "PC" : *State\RegPC = Value & $FFFF
   EndSelect
 EndProcedure
 
+; Idem acima pros registradores de 1 byte - casos A'/F'/B'/C'/D'/E'/H'/L'
+; (par alternado) e IXH/IXL/IYH/IYL (meios-indices) acrescentados pro XRG.
+; Nao reaproveita Mz80_GetIXH/SetIXH etc. (MamuteZ80Cpu.pbi) porque aquele
+; arquivo e' incluido DEPOIS deste em BadigEditor.pb - mesma extracao de
+; bits, duplicada aqui de proposito.
 Procedure.i MamuteGui_RegByteValue(*State.MamuteGui_State, RegName.s)
   Select RegName
     Case "A" : ProcedureReturn *State\RegA
@@ -1383,6 +1529,18 @@ Procedure.i MamuteGui_RegByteValue(*State.MamuteGui_State, RegName.s)
     Case "E" : ProcedureReturn *State\RegE
     Case "H" : ProcedureReturn *State\RegH
     Case "L" : ProcedureReturn *State\RegL
+    Case "A'" : ProcedureReturn *State\RegA2
+    Case "F'" : ProcedureReturn *State\RegF2
+    Case "B'" : ProcedureReturn *State\RegB2
+    Case "C'" : ProcedureReturn *State\RegC2
+    Case "D'" : ProcedureReturn *State\RegD2
+    Case "E'" : ProcedureReturn *State\RegE2
+    Case "H'" : ProcedureReturn *State\RegH2
+    Case "L'" : ProcedureReturn *State\RegL2
+    Case "IXH" : ProcedureReturn (*State\RegIX >> 8) & $FF
+    Case "IXL" : ProcedureReturn *State\RegIX & $FF
+    Case "IYH" : ProcedureReturn (*State\RegIY >> 8) & $FF
+    Case "IYL" : ProcedureReturn *State\RegIY & $FF
   EndSelect
   ProcedureReturn 0
 EndProcedure
@@ -1397,6 +1555,18 @@ Procedure MamuteGui_SetRegByte(*State.MamuteGui_State, RegName.s, Value.i)
     Case "E" : *State\RegE = Value & $FF
     Case "H" : *State\RegH = Value & $FF
     Case "L" : *State\RegL = Value & $FF
+    Case "A'" : *State\RegA2 = Value & $FF
+    Case "F'" : *State\RegF2 = Value & $FF
+    Case "B'" : *State\RegB2 = Value & $FF
+    Case "C'" : *State\RegC2 = Value & $FF
+    Case "D'" : *State\RegD2 = Value & $FF
+    Case "E'" : *State\RegE2 = Value & $FF
+    Case "H'" : *State\RegH2 = Value & $FF
+    Case "L'" : *State\RegL2 = Value & $FF
+    Case "IXH" : *State\RegIX = (*State\RegIX & $00FF) | ((Value & $FF) << 8)
+    Case "IXL" : *State\RegIX = (*State\RegIX & $FF00) | (Value & $FF)
+    Case "IYH" : *State\RegIY = (*State\RegIY & $00FF) | ((Value & $FF) << 8)
+    Case "IYL" : *State\RegIY = (*State\RegIY & $FF00) | (Value & $FF)
   EndSelect
 EndProcedure
 
@@ -1410,6 +1580,629 @@ Procedure.s MamuteGui_ShowRegs(G_Log, Accum.s, *State.MamuteGui_State)
   Accum = MamuteGui_AppendLog(G_Log, Accum,
     "IX=" + Mamute_Hex4(*State\RegIX) + " IY=" + Mamute_Hex4(*State\RegIY) + " SP=" + Mamute_Hex4(*State\RegSP))
   ProcedureReturn Accum
+EndProcedure
+
+; "----" (nao definido) ou o endereco em hexa - usado pelas 5 colunas de
+; breakpoint do MamuteGui_ShowRegsXrg() logo abaixo.
+Procedure.s MamuteGui_XgoBreakText(HasIt.b, Addr.u)
+  If HasIt : ProcedureReturn Mamute_Hex4(Addr) : EndIf
+  ProcedureReturn "----"
+EndProcedure
+
+; Mostra os 7 pares "normais" (MamuteGui_ShowRegs() acima, reaproveitado tal
+; e qual) mais os "secretos" (AF'/BC'/DE'/HL'), o PC e os 5 breakpoints
+; nomeados do XGO (BP/BP1/BP2/BP3/BPF, docs/SPEC.md modulo 45j) - usado so'
+; pelo XRG (comando novo, ver MamuteGui_CmdXrg logo abaixo).
+Procedure.s MamuteGui_ShowRegsXrg(G_Log, Accum.s, *State.MamuteGui_State)
+  Accum = MamuteGui_ShowRegs(G_Log, Accum, *State)
+  Accum = MamuteGui_AppendLog(G_Log, Accum,
+    "AF'=" + Mamute_Hex4(MamuteGui_RegPairValue(*State, "AF'")) +
+    " BC'=" + Mamute_Hex4(MamuteGui_RegPairValue(*State, "BC'")) +
+    " DE'=" + Mamute_Hex4(MamuteGui_RegPairValue(*State, "DE'")) +
+    " HL'=" + Mamute_Hex4(MamuteGui_RegPairValue(*State, "HL'")))
+  Accum = MamuteGui_AppendLog(G_Log, Accum, "PC=" + Mamute_Hex4(*State\RegPC))
+  Accum = MamuteGui_AppendLog(G_Log, Accum,
+    "BP=" + MamuteGui_XgoBreakText(*State\HasXgoBp, *State\XgoBpAddr) +
+    " BP1=" + MamuteGui_XgoBreakText(*State\HasXgoBp1, *State\XgoBp1Addr) +
+    " BP2=" + MamuteGui_XgoBreakText(*State\HasXgoBp2, *State\XgoBp2Addr) +
+    " BP3=" + MamuteGui_XgoBreakText(*State\HasXgoBp3, *State\XgoBp3Addr) +
+    " BPF=" + MamuteGui_XgoBreakText(*State\HasXgoBpF, *State\XgoBpFAddr))
+  ProcedureReturn Accum
+EndProcedure
+
+; Classifica RegName (ja em maiusculas) pro XRG - 1 = registrador de 1 byte
+; (2 digitos hexa), 2 = par de 16 bits (4 digitos hexa, incluindo os
+; "secretos" AF'/BC'/DE'/HL' e o PC), 3 = um dos 5 breakpoints nomeados do
+; XGO (BP/BP1/BP2/BP3/BPF - nao sao registradores de verdade, ver comentario
+; da Procedure MamuteGui_CmdXrg abaixo e MamuteGui_CmdXgo/docs/SPEC.md
+; modulo 45j), 0 = nome desconhecido.
+Procedure.b MamuteGui_XrgRegKind(RegName.s)
+  Select RegName
+    Case "A", "F", "B", "C", "D", "E", "H", "L",
+         "A'", "F'", "B'", "C'", "D'", "E'", "H'", "L'",
+         "IXH", "IXL", "IYH", "IYL"
+      ProcedureReturn 1
+    Case "AF", "BC", "DE", "HL", "AF'", "BC'", "DE'", "HL'", "IX", "IY", "SP", "PC"
+      ProcedureReturn 2
+    Case "BP", "BP1", "BP2", "BP3", "BPF"
+      ProcedureReturn 3
+  EndSelect
+  ProcedureReturn 0
+EndProcedure
+
+; Grava Addr no breakpoint nomeado RegName (BP/BP1/BP2/BP3/BPF) - usado so'
+; pelo MamuteGui_CmdXrg (Kind=3) logo abaixo.
+Procedure MamuteGui_XrgSetBreak(*State.MamuteGui_State, RegName.s, Addr.u)
+  Select RegName
+    Case "BP"  : *State\HasXgoBp  = #True : *State\XgoBpAddr  = Addr
+    Case "BP1" : *State\HasXgoBp1 = #True : *State\XgoBp1Addr = Addr
+    Case "BP2" : *State\HasXgoBp2 = #True : *State\XgoBp2Addr = Addr
+    Case "BP3" : *State\HasXgoBp3 = #True : *State\XgoBp3Addr = Addr
+    Case "BPF" : *State\HasXgoBpF = #True : *State\XgoBpFAddr = Addr
+  EndSelect
+EndProcedure
+
+; XRG - porta do RG do SUPER-X (docs/SPEC.md modulo 45, inventario) - mostra/
+; edita os registradores Z80 simulados (os mesmos campos Reg*/RegA2../RegPC
+; de MamuteGui_State que o motor de execucao real de MamuteZ80Cpu.pbi ja usa,
+; e que o comando X ja edita parcialmente). Pedido explicito do usuario:
+;
+;   XRG                 - sem argumento, mostra TODOS os pares (normais +
+;                          "secretos" AF'/BC'/DE'/HL' + PC) mais o estado
+;                          do BP (MamuteGui_ShowRegsXrg acima).
+;   XRG *               - limpa TODOS os registradores (A-L, o par
+;                          alternado, IX/IY/PC/I/R/IFF1/IFF2/IM/estado de
+;                          HALT) EXCETO a pilha (SP) - mesma ressalva do
+;                          inventario do SUPER-X ("RG *" limpa tudo "except
+;                          stack").
+;   XRG +               - reseta so' a pilha (SP) pro seu inicio - $0000
+;                          (mesma convencao "zero-inicializado = boot
+;                          limpo" ja documentada no topo da Structure
+;                          MamuteGui_State; a pilha cresce pra baixo, entao
+;                          SP=0000 e' o topo "logico" do espaco de 64K - o
+;                          1o PUSH grava em $FFFF).
+;   XRG <reg>,<valor>   - atribui <valor> (hexa) a <reg>. Registradores de 1
+;                          byte (A/F/B/C/D/E/H/L, o par alternado com "'" e
+;                          IXH/IXL/IYH/IYL) aceitam 1-2 digitos; pares de 16
+;                          bits (AF/BC/DE/HL, o par alternado, IX/IY/SP/PC)
+;                          aceitam 1-4. Alterar SP muda a MESMA RegSP que
+;                          PUSH/POP/CALL/RET ja usam (MamuteZ80Cpu.pbi), nao
+;                          e' um valor cosmetico separado. **BP/BP1/BP2/
+;                          BP3/BPF nao sao registradores de verdade** - cada
+;                          um marca um endereco de breakpoint DEDICADO
+;                          (HasXgoBp*/XgoBp*Addr, independente de
+;                          HasBreak1/Break2 que o comando G/debugger grafico
+;                          continuam usando do jeito de sempre) - o XGO
+;                          (docs/SPEC.md modulo 45j) para nesses enderecos
+;                          em sequencia (BP->BP1->BP2->BP3->BPF) e mostra os
+;                          registradores, mesmo idioma do manual original
+;                          ("the program will stop at this point and the
+;                          registers are displayed").
+;
+; Qualquer nome fora dos reconhecidos por MamuteGui_XrgRegKind() acima, ou
+; sintaxe fora dos 4 formatos deste comentario, e' ?ERRO DE SINTAXE.
+Procedure MamuteGui_CmdXrg(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = UCase(Trim(Args))
+
+  If Trimmed = ""
+    *State\LogAccum = MamuteGui_ShowRegsXrg(G_Log, *State\LogAccum, *State)
+    ProcedureReturn
+  EndIf
+
+  If Trimmed = "*"
+    *State\RegA = 0 : *State\RegF = 0 : *State\RegB = 0 : *State\RegC = 0
+    *State\RegD = 0 : *State\RegE = 0 : *State\RegH = 0 : *State\RegL = 0
+    *State\RegA2 = 0 : *State\RegF2 = 0 : *State\RegB2 = 0 : *State\RegC2 = 0
+    *State\RegD2 = 0 : *State\RegE2 = 0 : *State\RegH2 = 0 : *State\RegL2 = 0
+    *State\RegIX = 0 : *State\RegIY = 0 : *State\RegPC = 0
+    *State\RegI = 0 : *State\RegR = 0
+    *State\IFF1 = #False : *State\IFF2 = #False : *State\IM = 0
+    *State\Halted = #False
+    *State\LogAccum = MamuteGui_ShowRegsXrg(G_Log, *State\LogAccum, *State)
+    ProcedureReturn
+  EndIf
+
+  If Trimmed = "+"
+    *State\RegSP = 0
+    *State\LogAccum = MamuteGui_ShowRegsXrg(G_Log, *State\LogAccum, *State)
+    ProcedureReturn
+  EndIf
+
+  Protected CommaPos.i = FindString(Trimmed, ",")
+  If CommaPos = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected RegName.s = Trim(Left(Trimmed, CommaPos - 1))
+  Protected ValTok.s = Trim(Mid(Trimmed, CommaPos + 1))
+  If ValTok = "" Or FindString(ValTok, ",") > 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Kind.b = MamuteGui_XrgRegKind(RegName)
+  Protected Value.i
+
+  Select Kind
+    Case 1
+      If Not Mamute_IsHexString(ValTok, 2)
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+        ProcedureReturn
+      EndIf
+      MamuteGui_SetRegByte(*State, RegName, Val("$" + ValTok))
+
+    Case 2
+      If Not Mamute_ParseHexAddr(ValTok, @Value)
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+        ProcedureReturn
+      EndIf
+      MamuteGui_SetRegPair(*State, RegName, Value)
+
+    Case 3 ; BP/BP1/BP2/BP3/BPF - marca um dos 5 breakpoints nomeados do XGO
+      If Not Mamute_ParseHexAddr(ValTok, @Value)
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+        ProcedureReturn
+      EndIf
+      MamuteGui_XrgSetBreak(*State, RegName, Value)
+
+    Default
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+  EndSelect
+
+  *State\LogAccum = MamuteGui_ShowRegsXrg(G_Log, *State\LogAccum, *State)
+EndProcedure
+
+; Resolve o alvo do PROXIMO run do XGO a partir de *State\XgoStep (0=procura
+; BP, 1=BP1, 2=BP2, 3=BP3, 4+=so' BPF dai em diante) - "se o breakpoint da
+; vez (BP/BP1/BP2/BP3) nao estiver definido, cai pro BPF se este estiver
+; definido; se nem um nem outro, roda livre" (pedido explicito do usuario,
+; docs/SPEC.md modulo 45j). #True + *OutAddr\i preenchido quando ha alvo;
+; #False quando o run desta vez deve ser "livre" (MamuteGui_XgoRunLoop
+; abaixo decide o criterio de parada nesse caso).
+Procedure.b MamuteGui_XgoResolveTarget(*State.MamuteGui_State, *OutAddr.Integer)
+  Protected HasStep.b, StepAddr.u
+  Select *State\XgoStep
+    Case 0 : HasStep = *State\HasXgoBp  : StepAddr = *State\XgoBpAddr
+    Case 1 : HasStep = *State\HasXgoBp1 : StepAddr = *State\XgoBp1Addr
+    Case 2 : HasStep = *State\HasXgoBp2 : StepAddr = *State\XgoBp2Addr
+    Case 3 : HasStep = *State\HasXgoBp3 : StepAddr = *State\XgoBp3Addr
+  EndSelect
+
+  If HasStep
+    *OutAddr\i = StepAddr
+    ProcedureReturn #True
+  EndIf
+  If *State\HasXgoBpF
+    *OutAddr\i = *State\XgoBpFAddr
+    ProcedureReturn #True
+  EndIf
+  ProcedureReturn #False
+EndProcedure
+
+; Roda o motor Z80 simulado (Mz80_ExecuteOne, MamuteZ80Cpu.pbi - nucleo
+; historicamente delicado, ver CLAUDE.md; NADA nele foi tocado por este
+; comando, so' chamado em loop igual ao Mz80_Run ja existente) a partir do
+; RegPC atual, ate a PRIMEIRA condicao que bater:
+;  - HALT (mesmo texto do Mz80_Run/StepInto ja existentes).
+;  - RegPC = TargetAddr, SE HasTarget (o breakpoint da vez, ja resolvido por
+;    MamuteGui_XgoResolveTarget acima).
+;  - "fim de programa": RegSP > EntrySP - o RET que devolve pra ALEM de onde
+;    este run comecou (mesmo criterio exato do Mz80_StepOut ja existente,
+;    MamuteZ80Cpu.pbi) - SO' quando HasTarget=#False (com um breakpoint
+;    definido, um RET no meio do caminho NAO para a execucao; o alvo e' o
+;    unico criterio - pedido explicito do usuario).
+;  - ESC pressionado (ExamineKeyboard()/KeyboardPushed, checado a cada 2000
+;    instrucoes - poll barato o bastante pra nao pesar no throughput) - SO'
+;    quando HasTarget=#False, mesmo raciocinio do RET acima. A cada checagem
+;    tambem chama WindowEvent() (nao-bloqueante) so' pra manter a janela
+;    respondendo (nao "Nao esta respondendo") durante um run livre longo -
+;    eventos porventura enfileirados nesse meio tempo (ex.: fechar a janela)
+;    ficam pendentes ate este loop retornar, mesma limitacao de qualquer
+;    operacao "modal" longa.
+;  - Teto de seguranca (#Mz80_MaxStepBudget, MamuteZ80Cpu.pbi) - rede de
+;    protecao final contra loop infinito sem HALT/RET/ESC (com HasTarget
+;    tambem se aplica - um breakpoint que nunca e' alcancado nao pode travar
+;    o monitor pra sempre).
+; Devolve o texto de status pro log via RETORNO DIRETO da funcao, NAO
+; *Ptr.String out-parameter - bug real documentado no CLAUDE.md (2026-08-12,
+; "L"/"LP"): esse idioma crashava neste mesmo arquivo/unidade de compilacao.
+Procedure.s MamuteGui_XgoRunLoop(*State.MamuteGui_State, HasTarget.b, TargetAddr.u)
+  If *State\Halted
+    ProcedureReturn "CPU HALTADA (HALT) EM " + Mamute_Hex4(*State\RegPC)
+  EndIf
+
+  Protected EntrySP.u = *State\RegSP
+  Protected Steps.q = 0
+
+  Repeat
+    Mz80_ExecuteOne(*State)
+    Steps + 1
+
+    If *State\Halted
+      ProcedureReturn "CPU HALTADA (HALT) EM " + Mamute_Hex4(*State\RegPC)
+    EndIf
+
+    If HasTarget
+      If *State\RegPC = TargetAddr
+        ProcedureReturn "PARADO NO BREAKPOINT (" + Mamute_Hex4(*State\RegPC) + ")"
+      EndIf
+    Else
+      If *State\RegSP > EntrySP
+        ProcedureReturn "PROGRAMA TERMINOU (RET NO TOPO DA PILHA) EM " + Mamute_Hex4(*State\RegPC)
+      EndIf
+      If (Steps % 2000) = 0
+        ExamineKeyboard()
+        If KeyboardPushed(#PB_Key_Escape)
+          ProcedureReturn "INTERROMPIDO PELO USUARIO (ESC) EM " + Mamute_Hex4(*State\RegPC)
+        EndIf
+        WindowEvent()
+      EndIf
+    EndIf
+
+    ; #Mz80_MaxStepBudget (MamuteZ80Cpu.pbi) nao pode ser referenciada aqui -
+    ; aquele arquivo e' incluido DEPOIS deste em BadigEditor.pb (mesmo motivo
+    ; do Declare de Mz80_ExecuteOne no topo do arquivo) - literal duplicado
+    ; de proposito, mesmo valor usado por Mz80_Run/StepOver/StepOut.
+    If Steps > 2000000
+      ProcedureReturn "RUN INTERROMPIDO - LIMITE DE 2000000 INSTRUCOES ATINGIDO EM " + Mamute_Hex4(*State\RegPC)
+    EndIf
+  ForEver
+EndProcedure
+
+; XGO <endereco>[#<slot>] - porta do GO do SUPER-X (inventario do modulo 45:
+; "Executa programa (para em breakpoint, ver RG BP)") - inicia (ou continua)
+; a execucao do motor Z80 simulado (MamuteZ80Cpu.pbi, o MESMO nucleo do
+; comando G/debugger grafico) a partir de <endereco> (ou de onde a ultima
+; chamada parou, se <endereco> for omitido), mostrando os registradores
+; (MamuteGui_ShowRegsXrg) no ponto onde parou. Pedido explicito do usuario -
+; sequencia de ate 5 breakpoints nomeados (BP/BP1/BP2/BP3/BPF, editaveis via
+; XRG, ver comentario la e MamuteGui_XgoResolveTarget acima):
+;
+;   XGO <endereco>  - COMECA do zero em <endereco> (reseta XgoStep pra 0 -
+;                      alvo desta chamada = BP). <endereco> aceita
+;                      "#<slot>" (troca IMPLICITAMENTE o slot PRIMARIO
+;                      mapeado na PAGINA de <endereco>, mesmo efeito do
+;                      comando PAGE, ANTES de rodar - decisao confirmada
+;                      com o usuario, docs/SPEC.md modulo 45j) - "#V" (VRAM)
+;                      ou um sub-slot explicito (`#slot-sub`) sao
+;                      ?ERRO DE SINTAXE: o motor de execucao Z80 simulado
+;                      (Mz80_ExecuteOne/Fetch8) so' le/escreve via
+;                      Mamute_ReadByte/WriteByte (PAGE-relativo comum) -
+;                      nunca honrou sub-slot/VRAM explicito como os
+;                      comandos de MEMORIA (XD/XM/XA/XI, Mamute_SxReadByte)
+;                      ja honram, e threadar um alvo por TODO opcode do
+;                      nucleo (usado tambem por Step/Run/Trace) seria um
+;                      risco de regressao grande demais pra este pedido.
+;   XGO             - CONTINUA de RegPC (onde a ultima chamada parou), alvo
+;                      = BP1 na 2a chamada, BP2 na 3a, BP3 na 4a, BPF dai em
+;                      diante. So' valido depois de pelo menos um
+;                      "XGO <endereco>" bem-sucedido nesta sessao da janela
+;                      (mesmo idioma "sem argumento, continua" do L/M/S/XD -
+;                      HasLastXgo) - senao, ?ERRO DE SINTAXE.
+;
+; Se o alvo da vez nao existir (MamuteGui_XgoResolveTarget = #False, nem o
+; breakpoint da vez nem o BPF de fallback definidos), roda "livre": para em
+; HALT, no RET que devolve pra alem da pilha de entrada, em ESC, ou no teto
+; de seguranca - "se o usuario nao tiver BP algum, executa ate o fim (RET)
+; ou ate ESC" (pedido explicito do usuario) - MamuteGui_XgoRunLoop acima.
+Procedure MamuteGui_CmdXgo(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+
+  If Trimmed <> ""
+    Protected StartAddr.i
+    Protected Target.MamuteSxTarget
+    If Not Mamute_ParseSxAddr(Trimmed, @StartAddr, @Target)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+    If Target\IsVram Or (Target\IsExplicit And Target\SubSlot <> 0)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+
+    If Target\IsExplicit
+      Protected Pagina.i = (StartAddr >> 14) & 3
+      MamutePageMap(Pagina) = Target\Slot
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+        "PAGE" + Str(Pagina) + "(" + Mamute_PageRangeText(Pagina) + ") SLOT " + Str(Target\Slot) + "-0")
+    EndIf
+
+    *State\RegPC = StartAddr & $FFFF
+    *State\XgoStep = 0
+    *State\HasLastXgo = #True
+  Else
+    If Not *State\HasLastXgo
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Protected TargetAddr.i
+  Protected HasTarget.b = MamuteGui_XgoResolveTarget(*State, @TargetAddr)
+
+  Protected StatusText.s = MamuteGui_XgoRunLoop(*State, HasTarget, TargetAddr & $FFFF)
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, StatusText)
+
+  If *State\XgoStep < 4 : *State\XgoStep + 1 : EndIf
+
+  *State\LogAccum = MamuteGui_ShowRegsXrg(G_Log, *State\LogAccum, *State)
+EndProcedure
+
+; Executa UMA instrucao a partir de RegPC (mesmo motor Z80 simulado do G/
+; XGO/debugger - Mz80_ExecuteOne, MamuteZ80Cpu.pbi, NADA tocado) e mostra o
+; endereco/bytes/mnemonico da instrucao que rodou mais os registradores
+; principais (MamuteGui_ShowRegs - AF/BC/DE/HL/IX/IY/SP, mesmo formato
+; compacto do comando X; sem os "secretos"/BP do XRG de proposito, pra nao
+; encher o log demais numa sessao de trace de varios passos). Usado so' pelo
+; XTR (MamuteGui_CmdXtr abaixo). ProcedureReturn #False quando a CPU haltou
+; (o trace se encerra sozinho nesse caso, sem esperar ESC) - #True enquanto
+; deve continuar aceitando ENTER.
+Procedure.b MamuteGui_XtrStepAndShow(G_Log, *State.MamuteGui_State)
+  If *State\Halted
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CPU HALTADA (HALT) EM " + Mamute_Hex4(*State\RegPC))
+    ProcedureReturn #False
+  EndIf
+
+  Protected InstrLen.i
+  Protected Text.s = Mamute_DisasmOne(*State\RegPC, @InstrLen)
+  If InstrLen < 1 : InstrLen = 1 : EndIf
+  Protected HexBytes.s = "", i.i
+  For i = 0 To InstrLen - 1
+    If HexBytes <> "" : HexBytes + " " : EndIf
+    HexBytes + Mamute_Hex2(Mamute_ReadByte(*State\RegPC + i))
+  Next
+  Protected Line.s = Mamute_Hex4(*State\RegPC) + "  " + LSet(HexBytes, 11, " ") + "  " + Text
+
+  Mz80_ExecuteOne(*State)
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, Line)
+  *State\LogAccum = MamuteGui_ShowRegs(G_Log, *State\LogAccum, *State)
+
+  If *State\Halted
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CPU HALTADA (HALT) EM " + Mamute_Hex4(*State\RegPC))
+    ProcedureReturn #False
+  EndIf
+  ProcedureReturn #True
+EndProcedure
+
+; XTR <endereco> - porta do TR do SUPER-X (inventario do modulo 45: "Trace
+; passo a passo, imprime registradores a cada instrucao") - pedido explicito
+; do usuario: comeca em <endereco>, executa a instrucao, mostra os
+; registradores e FICA um loop modal proprio esperando ENTER (mais uma
+; instrucao) ou ESC (interrompe). Nao aceita sufixo de slot/VRAM (mesmo
+; escopo do TR original - so' um endereco puro) - se precisar rodar num slot
+; especifico, troca a PAGE antes com o comando `PAGE` (ou usa `XGO
+; <endereco>#<slot>` pra so' comecar la, mas XGO nao para a cada instrucao).
+;
+; Loop modal PROPRIO (WaitWindowEvent() aninhado dentro do dispatch) em vez
+; de um flag de "modo trace" no loop principal de MamuteAssembler_OpenWindow
+; - reaproveita o MESMO #MamuteGui_EnterShortcut que o campo de comando ja
+; usa (ENTER sem nada de novo digitado no campo simplesmente nao aciona nada
+; ali, entao nao ha conflito nenhum em interceptar o mesmo atalho aqui
+; dentro enquanto o trace estiver rodando) mais o novo #MamuteGui_EscShortcut
+; (registrado uma vez so' em MamuteAssembler_OpenWindow). Fechar a janela
+; (Alt+F4/botao X) durante o trace marca ShouldQuit pra o loop PRINCIPAL
+; tambem encerrar assim que este retornar.
+Procedure MamuteGui_CmdXtr(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+  Protected StartAddr.i
+  If Not Mamute_ParseHexAddr(Trimmed, @StartAddr)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  *State\RegPC = StartAddr & $FFFF
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "TRACE EM " + Mamute_Hex4(*State\RegPC) + " - ENTER = PROXIMA INSTRUCAO, ESC = INTERROMPE")
+
+  If Not MamuteGui_XtrStepAndShow(G_Log, *State)
+    ProcedureReturn ; ja haltou no 1o passo - nem entra no loop modal
+  EndIf
+
+  Protected Ev, Quit.b = #False
+  Repeat
+    Ev = WaitWindowEvent()
+    Select Ev
+      Case #PB_Event_Menu
+        Select EventMenu()
+          Case #MamuteGui_EnterShortcut
+            If Not MamuteGui_XtrStepAndShow(G_Log, *State)
+              Quit = #True
+            EndIf
+
+          Case #MamuteGui_EscShortcut
+            *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "TRACE INTERROMPIDO (ESC)")
+            Quit = #True
+        EndSelect
+
+      Case #PB_Event_CloseWindow
+        *State\ShouldQuit = #True
+        Quit = #True
+    EndSelect
+  Until Quit
+EndProcedure
+
+; XSD <arquivo>,<inicio>[#slot[-sub]|#V|#S|#4|#5],<final>[,B|D|X] - porta do
+; SD do SUPER-X (inventario do modulo 45: "Super disassembler: disassembly
+; pra arquivo texto, ou exporta bytes crus como DEFB/DATA/inline X-BASIC") -
+; pedido explicito do usuario. Puramente LEITURA de memoria (Mamute_
+; SxReadByte/Mamute_DisasmOne, mesmo *Target opcional que XD/XM/XA/XI ja
+; usam desde os modulos 45b/45i) - honra slot/sub-slot/VRAM completo, SEM a
+; limitacao do XGO (que so' honra slot primario porque PRECISA executar
+; contra memoria mapeada de verdade; aqui e' so' leitura, nao ha esse
+; problema).
+;
+; SEM modo (`,B`/`,D`/`,X` omitido) - **listagem assembly de verdade**, uma
+; instrucao decodificada por linha (Mamute_DisasmOne, sem coluna de
+; endereco/bytes - diferente do XI, que salva pra LEITURA humana; aqui e'
+; pra REALIMENTAR um compilador Z80 externo), com um `ORG <inicio>H` no
+; topo (necessario pra montar de volta nos enderecos certos - sem isso as
+; instrucoes com operando absoluto continuariam corretas, mas o proprio
+; posicionamento do bloco ficaria errado).
+;
+; `,B`/`,D`/`,X` - **exportacao de bytes CRUS** (ignora fronteiras de
+; instrucao de proposito - 8 bytes fixos por linha, pedido explicito do
+; usuario), em vez de disassembly:
+;   B - `DEFB xxH,xxH,...` (sintaxe Z80 assembler, 8 bytes por linha).
+;   D - `<linha> DATA &Hxx,&Hxx,...` (BASIC, 8 bytes por linha, `<linha>`
+;       comecando em 10000 e subindo de 10 em 10) - **"&H" obrigatorio**:
+;       sem ele nao seria hexadecimal NENHUM pro interpretador BASIC (viraria
+;       decimal ou erro de sintaxe) - "sempre no formato hexadecimal" (pedido
+;       do usuario) so' e' verdade com o prefixo. Ganha uma linha extra no
+;       final com o loop pra reler e gravar: `<linha> FOR I=&H<inicio> TO
+;       &H<final>:READ A:POKE I,A:NEXT I` (pedido explicito do usuario -
+;       "ja coloque no final as linhas para ler os DATA e dar poke... for,
+;       read, poke, next"). **Rejeita VRAM** (`?ERRO DE SINTAXE`) - o loop
+;       gerado faz `POKE` (memoria comum), que nao tem o menor sentido pros
+;       MESMOS numeros de endereco se a origem for VRAM (precisaria de
+;       `VPOKE`, fora de escopo aqui).
+;   X - `<linha> '#&Hxx,&Hxx,...` (formato de dados embutidos do X-BASIC -
+;       linha comecando com `'#`, sem virgula antes do 1o valor - o proprio
+;       X-BASIC ja sabe carregar isso sozinho, sem loop `FOR/READ/POKE`
+;       nenhum, diferente do `D`).
+;
+; **Sempre abre o dialogo "Salvar como"** sugerindo `<arquivo>` como nome
+; (pedido explicito do usuario - diferente do XI, que grava direto sem
+; dialogo) - extensao sugerida `.asm` (sem modo/`B`) ou `.bas` (`D`/`X`) se
+; `<arquivo>` nao tiver nenhuma. Cancelar o dialogo = "CANCELADO", sem gravar
+; nada (mesmo idioma do `?XD`/`?XI`, modulo 45i).
+Procedure MamuteGui_CmdXsd(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected FileToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If FileToken = "" Or CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected StartToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected Rest2.s = Mid(Rest1, CommaPos2 + 1)
+
+  Protected EndToken.s, ModeToken.s = ""
+  Protected CommaPos3.i = FindString(Rest2, ",")
+  If CommaPos3 = 0
+    EndToken = Trim(Rest2)
+  Else
+    EndToken = Trim(Left(Rest2, CommaPos3 - 1))
+    ModeToken = UCase(Trim(Mid(Rest2, CommaPos3 + 1)))
+    If FindString(ModeToken, ",") > 0 Or (ModeToken <> "B" And ModeToken <> "D" And ModeToken <> "X")
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Protected StartAddr.i, EndAddr.i
+  Protected Target.MamuteSxTarget
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  If ModeToken = "D" And Target\IsVram
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If Target\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected DefaultExt.s = ".asm"
+  Protected Pattern.s = "Fonte Z80 (*.asm)|*.asm|Todos os arquivos (*.*)|*.*"
+  If ModeToken = "D" Or ModeToken = "X"
+    DefaultExt = ".bas"
+    Pattern = "Listagem BASIC (*.bas)|*.bas|Todos os arquivos (*.*)|*.*"
+  EndIf
+
+  Protected FilePath.s = SaveFileRequester("Salvar listagem (XSD) como", FileToken, Pattern, 0)
+  If FilePath = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+  If GetExtensionPart(FilePath) = ""
+    FilePath + DefaultExt
+  EndIf
+
+  Protected NewList Lines.s()
+  Protected Addr.i, Count.i, LineText.s
+
+  Select ModeToken
+    Case "B"
+      Addr = StartAddr
+      While Addr <= EndAddr
+        LineText = "DEFB "
+        Count = 0
+        While Addr <= EndAddr And Count < 8
+          If Count > 0 : LineText + "," : EndIf
+          LineText + Mamute_Hex2(Mamute_SxReadByte(Addr, @Target)) + "H"
+          Addr + 1 : Count + 1
+        Wend
+        AddElement(Lines()) : Lines() = LineText
+      Wend
+
+    Case "D"
+      Protected LineNum.i = 10000
+      Addr = StartAddr
+      While Addr <= EndAddr
+        LineText = Str(LineNum) + " DATA "
+        Count = 0
+        While Addr <= EndAddr And Count < 8
+          If Count > 0 : LineText + "," : EndIf
+          LineText + "&H" + Mamute_Hex2(Mamute_SxReadByte(Addr, @Target))
+          Addr + 1 : Count + 1
+        Wend
+        AddElement(Lines()) : Lines() = LineText
+        LineNum + 10
+      Wend
+      AddElement(Lines())
+      Lines() = Str(LineNum) + " FOR I=&H" + Mamute_Hex4(StartAddr) + " TO &H" + Mamute_Hex4(EndAddr) +
+                 ":READ A:POKE I,A:NEXT I"
+
+    Case "X"
+      Protected LineNumX.i = 10000
+      Addr = StartAddr
+      While Addr <= EndAddr
+        LineText = Str(LineNumX) + " '#"
+        Count = 0
+        While Addr <= EndAddr And Count < 8
+          If Count > 0 : LineText + "," : EndIf
+          LineText + "&H" + Mamute_Hex2(Mamute_SxReadByte(Addr, @Target))
+          Addr + 1 : Count + 1
+        Wend
+        AddElement(Lines()) : Lines() = LineText
+        LineNumX + 10
+      Wend
+
+    Default ; sem modo - listagem assembly (Mamute_DisasmOne, sem coluna de endereco/bytes)
+      AddElement(Lines()) : Lines() = "        ORG " + Mamute_Hex4(StartAddr) + "H"
+      Protected CurAddr.i = StartAddr
+      Protected InstrLen.i
+      Repeat
+        If CurAddr > EndAddr : Break : EndIf
+        Protected Text.s = Mamute_DisasmOne(CurAddr, @InstrLen, @Target)
+        If InstrLen < 1 : InstrLen = 1 : EndIf
+        AddElement(Lines()) : Lines() = "        " + Text
+        CurAddr + InstrLen
+      ForEver
+  EndSelect
+
+  If Mamute_SaveTextListing(FilePath, Lines())
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "GRAVADO: " + GetFilePart(FilePath))
+  Else
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO AO GRAVAR ARQUIVO")
+  EndIf
 EndProcedure
 
 ; X [<reg>] - sem argumento, mostra os 7 pares de registrador (AF/BC/DE/HL/
@@ -1739,7 +2532,7 @@ Procedure MamuteGui_CmdXd(Win, G_Log, *State.MamuteGui_State, Args.s, PrinterMod
     EndIf
 
     Protected NewList XdLines.s()
-    Mamute_BuildDumpLinesSx(XdLines(), StartAddr, EndAddr, *State\DisplayMode, @DumpTarget)
+    Mamute_BuildDumpLinesSx(XdLines(), StartAddr, EndAddr, *State\ChecksumAddrMode, @DumpTarget)
 
     If PrinterMode
       ; "?XD" = "impressora" do SUPER-X, que aqui vira PDF - mesma tecnica
@@ -1752,7 +2545,9 @@ Procedure MamuteGui_CmdXd(Win, G_Log, *State.MamuteGui_State, Args.s, PrinterMod
       If LCase(Right(FilePath, 4)) <> ".pdf"
         FilePath + ".pdf"
       EndIf
-      Protected Header.s = "?XD " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr) + " MODO " + Str(*State\DisplayMode)
+      Protected ChecksumModeText.s = "NORMAL"
+      If *State\ChecksumAddrMode : ChecksumModeText = "+ADDR" : EndIf
+      Protected Header.s = "?XD " + Mamute_Hex4(StartAddr) + "-" + Mamute_Hex4(EndAddr) + " CHECKSUM " + ChecksumModeText
       If Mamute_SavePdfListing(FilePath, XdLines(), Header)
         *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "PDF GRAVADO: " + FilePath)
       Else
@@ -2081,6 +2876,767 @@ Procedure MamuteGui_CmdXm(Win, G_Log, *State.MamuteGui_State, Args.s)
   *State\HasLastXm = #True
 EndProcedure
 
+; XH [<endereco>] - porta do comando H do SUPER-X (docs/SPEC.md modulo 45/45f)
+; - o editor de caracteres/sprites, ultimo placeholder "Char" da cruz de
+; modos. Abre a janela interativa MamuteXhGui.pbi, editando os 4 caracteres/
+; sprites consecutivos a partir do endereco (32 bytes). Sem argumento, reabre
+; onde a janela do XH ficou da ultima vez (mesmo idioma do M/S/XD/XA/XI/XM).
+Procedure MamuteGui_CmdXh(Win, G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+  Protected Addr.i
+  Protected Target.MamuteSxTarget
+  If Trimmed = ""
+    If Not *State\HasLastXh
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+    Addr = *State\LastXhAddr
+    CopyStructure(@*State\LastXhTarget, @Target, MamuteSxTarget)
+  Else
+    If Not Mamute_ParseSxAddr(Trimmed, @Addr, @Target)
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+      ProcedureReturn
+    EndIf
+  EndIf
+
+  Mamute_VarStoreBase(Addr, @Target) ; "commands store base address in variable 0", doc do SUPER-X
+  *State\LastXhAddr = MamuteXh_Open(Win, Addr, @Target)
+  CopyStructure(@Target, @*State\LastXhTarget, MamuteSxTarget)
+  *State\HasLastXh = #True
+EndProcedure
+
+; XBT <endinic>[#slot[-subslot]|#V|#4|#S|#5],<endfim>,<enddest>[#slot[-subslot]|
+; #V|#4|#S|#5] - transfere o bloco [endinic,endfim] pra um novo bloco iniciado
+; em <enddest>, pedido explicito do usuario: "inclusive intra-slots" - origem
+; e destino podem ter alvos (slot/sub-slot/VRAM) DIFERENTES um do outro, cada
+; um resolvido de forma independente (Mamute_ParseSxAddr), ao contrario do T
+; comum (modulo 31), que so trabalha PAGE-relativo com um unico endereco de
+; 16 bits pros tres tokens. Batizado XBT (nao XT) por pedido explicito do
+; usuario - "BT" de "Block Transfer", pra nao colidir com o T do proprio
+; Mamute nem com nenhum outro comando SUPER-X ja portado.
+;
+; <endfim> e' um endereco PURO (sem sufixo de alvo) - sempre no MESMO alvo que
+; <endinic> ja resolveu, exatamente como o Field2 do modo "dois enderecos" do
+; XD/XA (docs/SPEC.md modulo 45g) - so' faz sentido delimitar o FIM de um
+; bloco que comeca num alvo ja escolhido, nao um alvo proprio. Aceita ate 5
+; digitos quando <endinic> mirou VRAM (Mamute_ParseVramAddr), 4 digitos nos
+; outros casos (Mamute_ParseHexAddr) - mesma logica de Mamute_SxMaxAddr().
+;
+; Sem wraparound nenhum dos dois lados (mesma regra do T/D/P/V) - <enddest> +
+; tamanho do bloco passando do teto do ALVO DE DESTINO (Mamute_SxMaxAddr) e
+; ?ERRO DE SINTAXE, nunca da a volta. Cruza slot/sub-slot/VRAM livremente -
+; "intra-slots" pedido explicito do usuario.
+;
+; Direcao da copia (tras-pra-frente quando <enddest> numericamente MAIOR que
+; <endinic>, frente-pra-tras senao) sempre a mesma logica segura de um memmove
+; do T comum - continua correta mesmo quando origem/destino sao alvos
+; DIFERENTES (nesse caso nao ha sobreposicao de verdade nenhuma, entao a
+; direcao escolhida nao muda o resultado, so' o T ja fazia essa comparacao
+; simples, sem precisar detectar "e' o mesmo alvo?" primeiro).
+Procedure MamuteGui_CmdXbt(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected EndToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected DestToken.s = Trim(Mid(Rest1, CommaPos2 + 1))
+
+  Protected StartAddr.i, EndAddr.i, DestAddr.i
+  Protected SrcTarget.MamuteSxTarget, DestTarget.MamuteSxTarget
+
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @SrcTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If SrcTarget\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If Not Mamute_ParseSxAddr(DestToken, @DestAddr, @DestTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Length.i = EndAddr - StartAddr + 1
+  If DestAddr + Length - 1 > Mamute_SxMaxAddr(@DestTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected i.i
+  If DestAddr > StartAddr
+    For i = Length - 1 To 0 Step -1
+      Mamute_SxWriteByte(DestAddr + i, Mamute_SxReadByte(StartAddr + i, @SrcTarget), @DestTarget)
+    Next
+  Else
+    For i = 0 To Length - 1
+      Mamute_SxWriteByte(DestAddr + i, Mamute_SxReadByte(StartAddr + i, @SrcTarget), @DestTarget)
+    Next
+  EndIf
+
+  Protected SrcDigits.i = 4
+  If SrcTarget\IsVram : SrcDigits = 5 : EndIf
+  Protected DestDigits.i = 4
+  If DestTarget\IsVram : DestDigits = 5 : EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "TRANSFERIDO " + Mamute_HexPad(StartAddr, SrcDigits) + Mamute_SxTargetSuffixText(@SrcTarget) + "-" +
+    Mamute_HexPad(EndAddr, SrcDigits) + Mamute_SxTargetSuffixText(@SrcTarget) + " PARA " +
+    Mamute_HexPad(DestAddr, DestDigits) + Mamute_SxTargetSuffixText(@DestTarget))
+EndProcedure
+
+; XRT <endinic>[#slot[-subslot]|#V|#4|#S|#5],<endfim>,<enddest>[#slot[-subslot]|
+; #V|#4|#S|#5] - "Relocating Transfer": mesma sintaxe de 3 campos do XBT (ao
+; lado), mas em vez de copiar os bytes crus, RELOCALIZA um programa Z80 -
+; decodifica cada instrucao do bloco [endinic,endfim] (motor de disassembly
+; do L/LP/XI, Mamute_DisasmOne(), so pra descobrir o TAMANHO de cada
+; instrucao - nao usa o texto formatado) e, pra cada instrucao que carrega um
+; endereco absoluto de 16 bits (JP/CALL/JP cc/CALL cc, LD dd,nn, LD (nn),HL/
+; LD HL,(nn)/LD (nn),A/LD A,(nn), formas estendidas ED/DD/FD equivalentes -
+; em TODAS elas o endereco sao sempre os ULTIMOS 2 bytes da instrucao, o que
+; simplifica bastante o patch), soma o deslocamento (<enddest>-<endinic>) SE
+; e SO SE o endereco embutido cair DENTRO de [endinic,endfim] - pedido
+; explicito do usuario: "CALL 8012 -> CALL C012" ao mover 8000->C000, mas
+; "CALL 4D" (BIOS, fora do intervalo) fica intocado. JR/DJNZ (saltos
+; RELATIVOS) nao precisam de ajuste quando o alvo tambem esta dentro do
+; bloco (fonte E destino se movem juntos, mesma distancia relativa) - so'
+; recalcula o deslocamento quando o alvo de um JR/DJNZ fica FORA do bloco
+; (salto pra codigo fixo externo), abortando com erro se o novo deslocamento
+; nao couber em -128..127 (nada e' gravado nesse caso - todo o bloco e' lido
+; pra um buffer local e decodificado ANTES de qualquer escrita no destino,
+; entao um erro no meio da decodificacao nunca deixa o destino pela metade).
+;
+; Limitacao aceita, documentada (mesma classe de limitacao ja assumida pelo
+; disassembler do L/LP/XI - "nao da pra decodificar Z80 de forma 100%
+; confiavel sem executar de verdade"): tabelas de dados inline (DEFW com
+; enderecos de salto, por exemplo) NO MEIO do codigo sao lidas como se fossem
+; instrucao, podendo confundir a decodificacao dali em diante - relocar um
+; bloco assim pode produzir resultado errado. Funciona bem pro caso comum
+; (codigo assembly continuo, sem dados misturados no meio do fluxo).
+Procedure MamuteGui_CmdXrt(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected EndToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected DestToken.s = Trim(Mid(Rest1, CommaPos2 + 1))
+
+  Protected StartAddr.i, EndAddr.i, DestAddr.i
+  Protected SrcTarget.MamuteSxTarget, DestTarget.MamuteSxTarget
+
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @SrcTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If SrcTarget\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If Not Mamute_ParseSxAddr(DestToken, @DestAddr, @DestTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Length.i = EndAddr - StartAddr + 1
+  If DestAddr + Length - 1 > Mamute_SxMaxAddr(@DestTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Delta.i = DestAddr - StartAddr
+
+  ; Le o bloco INTEIRO pra um buffer local antes de mexer no destino - source
+  ; e destino podem se sobrepor (mesmo alvo, faixas cruzadas) sem risco
+  ; nenhum de corromper nada no meio da decodificacao, e um erro (JR fora de
+  ; alcance, abaixo) pode abortar sem ter gravado nada ainda.
+  Protected Dim Buf.a(Length - 1)
+  Protected k.i
+  For k = 0 To Length - 1
+    Buf(k) = Mamute_SxReadByte(StartAddr + k, @SrcTarget)
+  Next
+
+  Protected CurAddr.i, InstrLen.i, DiscardText.s
+  Protected b0.a, b1.a
+  Protected IsAbsPatch.b, IsRelJump.b, Truncated.b
+  Protected AbsVal.i, RelSigned.i, OldTarget.i, NewInstrAddr.i, NewRel.i
+  Protected PatchCount.i = 0
+
+  k = 0
+  While k < Length
+    CurAddr = StartAddr + k
+    DiscardText = Mamute_DisasmOne(CurAddr, @InstrLen, @SrcTarget)
+    If InstrLen <= 0 : InstrLen = 1 : EndIf ; guarda defensiva - nunca deveria acontecer, a tabela do disassembler cobre todo opcode
+
+    Truncated = Bool(k + InstrLen > Length)
+    If Truncated
+      InstrLen = Length - k ; <endfim> nao alinhado com o fim de uma instrucao - so copia o resto sem tentar remendar
+    EndIf
+
+    IsAbsPatch = #False
+    IsRelJump = #False
+    b0 = Buf(k)
+    If Not Truncated
+      Select b0
+        Case $C3, $CD, $C2, $CA, $D2, $DA, $E2, $EA, $F2, $FA, $C4, $CC, $D4, $DC, $E4, $EC, $F4, $FC,
+             $01, $11, $21, $31, $22, $2A, $32, $3A
+          IsAbsPatch = #True
+
+        Case $ED
+          If InstrLen >= 2
+            b1 = Buf(k + 1)
+            Select b1
+              Case $43, $4B, $53, $5B, $63, $6B, $73, $7B
+                IsAbsPatch = #True
+            EndSelect
+          EndIf
+
+        Case $DD, $FD
+          If InstrLen >= 2
+            b1 = Buf(k + 1)
+            Select b1
+              Case $21, $22, $2A
+                IsAbsPatch = #True
+            EndSelect
+          EndIf
+
+        Case $18, $20, $28, $30, $38, $10 ; JR e / JR cc,e / DJNZ e
+          IsRelJump = #True
+      EndSelect
+    EndIf
+
+    If IsAbsPatch And InstrLen >= 2
+      AbsVal = Buf(k + InstrLen - 2) | (Buf(k + InstrLen - 1) << 8)
+      If AbsVal >= StartAddr And AbsVal <= EndAddr
+        AbsVal = (AbsVal + Delta) & $FFFF
+        Buf(k + InstrLen - 2) = AbsVal & $FF
+        Buf(k + InstrLen - 1) = (AbsVal >> 8) & $FF
+        PatchCount + 1
+      EndIf
+
+    ElseIf IsRelJump And InstrLen = 2
+      RelSigned = Buf(k + 1)
+      If RelSigned > 127 : RelSigned - 256 : EndIf
+      OldTarget = (CurAddr + 2 + RelSigned) & $FFFF
+      If OldTarget < StartAddr Or OldTarget > EndAddr
+        ; alvo fica FORA do bloco (salto pra codigo fixo externo) - o
+        ; deslocamento relativo precisa mudar, ja que a instrucao em si vai
+        ; se mover mas o alvo externo nao.
+        NewInstrAddr = DestAddr + k
+        NewRel = OldTarget - (NewInstrAddr + 2)
+        If NewRel < -128 Or NewRel > 127
+          *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+            "?RELOCACAO INVALIDA: JR/DJNZ EM " + Mamute_Hex4(CurAddr) + " NAO ALCANCA O ALVO EXTERNO " +
+            Mamute_Hex4(OldTarget) + " DEPOIS DE MOVER (FORA DE -128..127)")
+          ProcedureReturn
+        EndIf
+        Buf(k + 1) = NewRel & $FF
+        PatchCount + 1
+      EndIf
+    EndIf
+
+    k + InstrLen
+  Wend
+
+  Protected wi.i
+  For wi = 0 To Length - 1
+    Mamute_SxWriteByte(DestAddr + wi, Buf(wi), @DestTarget)
+  Next
+
+  Protected SrcDigits2.i = 4
+  If SrcTarget\IsVram : SrcDigits2 = 5 : EndIf
+  Protected DestDigits2.i = 4
+  If DestTarget\IsVram : DestDigits2 = 5 : EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "RELOCADO " + Mamute_HexPad(StartAddr, SrcDigits2) + Mamute_SxTargetSuffixText(@SrcTarget) + "-" +
+    Mamute_HexPad(EndAddr, SrcDigits2) + Mamute_SxTargetSuffixText(@SrcTarget) + " PARA " +
+    Mamute_HexPad(DestAddr, DestDigits2) + Mamute_SxTargetSuffixText(@DestTarget) +
+    " (" + Str(PatchCount) + " PONTEIRO(S) AJUSTADO(S))")
+EndProcedure
+
+; XFL <endinic>[#slot[-subslot]|#V|#4|#S|#5],<endfim>,<valor> - versao do F
+; comum (modulo 31, ao lado) que entende o enderecamento estendido do
+; SUPER-X: preenche [endinic,endfim] inteiro com <valor> (1-2 digitos hexa)
+; no ALVO explicito informado (slot/sub-slot/VRAM), em vez de sempre PAGE-
+; relativo. <endfim> e' sempre um endereco PURO (sem sufixo), no MESMO alvo
+; que <endinic> ja escolheu - mesma convencao do XBT/XRT (ao lado).
+Procedure MamuteGui_CmdXfl(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected EndToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected ByteToken.s = Trim(Mid(Rest1, CommaPos2 + 1))
+
+  Protected StartAddr.i, EndAddr.i
+  Protected Target.MamuteSxTarget
+
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If Target\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If Not Mamute_IsHexString(ByteToken, 2)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected FillByte.i = Val("$" + ByteToken)
+
+  Protected Addr.i
+  For Addr = StartAddr To EndAddr
+    Mamute_SxWriteByte(Addr, FillByte, @Target)
+  Next
+
+  Protected Digits.i = 4
+  If Target\IsVram : Digits = 5 : EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "PREENCHIDO " + Mamute_HexPad(StartAddr, Digits) + Mamute_SxTargetSuffixText(@Target) + "-" +
+    Mamute_HexPad(EndAddr, Digits) + Mamute_SxTargetSuffixText(@Target) + " COM " + Mamute_Hex2(FillByte))
+EndProcedure
+
+; XCM <endinic>[#slot[-subslot]|#V|#4|#S|#5],<endfim>,<endcomp>[#slot[-subslot]|
+; #V|#4|#S|#5][,S] - compara byte a byte o bloco [endinic,endfim] com o bloco
+; de mesmo tamanho comecando em <endcomp> (alvo TOTALMENTE independente,
+; "intra-slots" como o XBT/XRT/XFL, ao lado). Por padrao lista so' os bytes
+; DIFERENTES (endereco+valor dos dois lados); ",S" no final (pedido explicito
+; do usuario) inverte pro modo "iguais" - lista so' os bytes que BATEM.
+; <endfim> e' sempre um endereco puro, no MESMO alvo que <endinic> ja
+; escolheu (mesma convencao do XBT/XRT/XFL).
+Procedure MamuteGui_CmdXcm(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected Rest1.s = Mid(Args, CommaPos1 + 1)
+  Protected CommaPos2.i = FindString(Rest1, ",")
+  If CommaPos2 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected EndToken.s = Trim(Left(Rest1, CommaPos2 - 1))
+  Protected Rest2.s = Mid(Rest1, CommaPos2 + 1)
+
+  ; Quarto campo ",S" e' opcional - so procura uma TERCEIRA virgula dentro do
+  ; que sobrou depois do segundo campo.
+  Protected CompareToken.s, FlagToken.s
+  Protected CommaPos3.i = FindString(Rest2, ",")
+  If CommaPos3 > 0
+    CompareToken = Trim(Left(Rest2, CommaPos3 - 1))
+    FlagToken = UCase(Trim(Mid(Rest2, CommaPos3 + 1)))
+  Else
+    CompareToken = Trim(Rest2)
+    FlagToken = ""
+  EndIf
+  If FlagToken <> "" And FlagToken <> "S"
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected ShowEqual.b = Bool(FlagToken = "S")
+
+  Protected StartAddr.i, EndAddr.i, CompAddr.i
+  Protected SrcTarget.MamuteSxTarget, CompTarget.MamuteSxTarget
+
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @SrcTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If SrcTarget\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  If Not Mamute_ParseSxAddr(CompareToken, @CompAddr, @CompTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Length.i = EndAddr - StartAddr + 1
+  If CompAddr + Length - 1 > Mamute_SxMaxAddr(@CompTarget)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected SrcDigits.i = 4
+  If SrcTarget\IsVram : SrcDigits = 5 : EndIf
+  Protected CompDigits.i = 4
+  If CompTarget\IsVram : CompDigits = 5 : EndIf
+
+  Protected i.i, AddrA.i, AddrB.i, ValA.a, ValB.a, IsMatch.b, Op.s
+  Protected Hits.i = 0
+  For i = 0 To Length - 1
+    AddrA = StartAddr + i
+    AddrB = CompAddr + i
+    ValA = Mamute_SxReadByte(AddrA, @SrcTarget)
+    ValB = Mamute_SxReadByte(AddrB, @CompTarget)
+    IsMatch = Bool(ValA = ValB)
+    If (ShowEqual And IsMatch) Or (Not ShowEqual And Not IsMatch)
+      If IsMatch : Op = "==" : Else : Op = "<>" : EndIf
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+        Mamute_HexPad(AddrA, SrcDigits) + Mamute_SxTargetSuffixText(@SrcTarget) + ": " + Mamute_Hex2(ValA) +
+        " " + Op + " " +
+        Mamute_HexPad(AddrB, CompDigits) + Mamute_SxTargetSuffixText(@CompTarget) + ": " + Mamute_Hex2(ValB))
+      Hits + 1
+    EndIf
+  Next
+
+  If ShowEqual
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, Str(Hits) + " BYTE(S) IGUAL(IS)")
+  Else
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, Str(Hits) + " DIFERENCA(S) ENCONTRADA(S)")
+  EndIf
+EndProcedure
+
+; XFD <endinic>[#slot[-subslot]|#V|#4|#S|#5],<endfim> - "Find": pede (via
+; InputRequester(), pedido explicito do usuario - "o sistema pede uma
+; instrucao em ASM") uma UNICA instrucao Z80 e lista todo endereco dentro de
+; [endinic,endfim] onde essa MESMA instrucao (opcode + operando, byte a
+; byte) aparece.
+;
+; Monta a instrucao digitada UMA vez so (Z80Asm::ParseLine+EncodeInstruction,
+; mesmo motor do XM/comando A) ancorada em <endinic> - suficiente pra
+; qualquer instrucao com operando ABSOLUTO (CALL/JP/LD nn/etc., que codificam
+; sempre os MESMOS bytes independente de onde ficam). *Limitacao aceita*:
+; JR/DJNZ (saltos RELATIVOS) codificam bytes DIFERENTES dependendo de onde
+; ficam - a busca funciona, mas so' acha ocorrencias na MESMA distancia
+; relativa da instrucao digitada, nao "todo JR pro mesmo alvo absoluto"
+; (limitacao documentada, mesmo espirito do aviso ja existente no `XRT`).
+;
+; So conta como ocorrencia uma instrucao REAL, alinhada num limite de
+; instrucao de verdade (decodificada via Mamute_DisasmOne(), mesmo motor do
+; L/LP/XI/XRT) - nao uma busca de bytes crua tipo o `SH`, que acharia
+; coincidencias no MEIO de outra instrucao/dado.
+Procedure MamuteGui_CmdXfd(Win, G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected StartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected EndToken.s = Trim(Mid(Args, CommaPos1 + 1))
+  If FindString(EndToken, ",") > 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartAddr.i, EndAddr.i
+  Protected Target.MamuteSxTarget
+
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If Target\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected InstrText.s = Trim(InputRequester("XFD - Buscar instrucao", "Instrucao Z80 a procurar:", ""))
+  If InstrText = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CANCELADO")
+    ProcedureReturn
+  EndIf
+
+  Z80Asm::ResetState() ; limpa qualquer estado deixado por um "Montar" (EDIT)/XM anterior
+  Protected PL.Z80Asm::Z80ParsedLine
+  Z80Asm::ParseLine(InstrText, @PL)
+  If PL\IsBlank Or Not PL\HasOperator Or PL\HasLabel
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Z80Asm::SetCurrentLocation(StartAddr)
+  Dim PatBytes.a(3)
+  Protected PatLen.i = Z80Asm::EncodeInstruction(PL\Operator, PL\ArgsText, #True, PatBytes())
+  If PatLen <= 0
+    Protected AsmErr.s = Z80Asm::GetLastAsmError()
+    If AsmErr = "" : AsmErr = "ERRO DE SINTAXE" : EndIf
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?" + AsmErr)
+    ProcedureReturn
+  EndIf
+
+  Protected Digits.i = 4
+  If Target\IsVram : Digits = 5 : EndIf
+
+  Protected Length.i = EndAddr - StartAddr + 1
+  Protected CurAddr.i, InstrLen.i, DisasmText.s
+  Protected k.i = 0
+  Protected Hits.i = 0
+  Protected MatchOk.b, bi.i
+
+  While k < Length
+    CurAddr = StartAddr + k
+    DisasmText = Mamute_DisasmOne(CurAddr, @InstrLen, @Target)
+    If InstrLen <= 0 : InstrLen = 1 : EndIf
+    If k + InstrLen > Length : Break : EndIf ; instrucao nao cabe inteira dentro do intervalo - para, nao conta parcial
+
+    MatchOk = Bool(InstrLen = PatLen)
+    If MatchOk
+      For bi = 0 To PatLen - 1
+        If Mamute_SxReadByte(CurAddr + bi, @Target) <> PatBytes(bi)
+          MatchOk = #False
+          Break
+        EndIf
+      Next
+    EndIf
+
+    If MatchOk
+      *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+        Mamute_HexPad(CurAddr, Digits) + Mamute_SxTargetSuffixText(@Target) + ": " + DisasmText)
+      Hits + 1
+    EndIf
+
+    k + InstrLen
+  Wend
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, Str(Hits) + " OCORRENCIA(S) ENCONTRADA(S)")
+EndProcedure
+
+; XCO [<frente>],[<fundo>],[<borda>] - porta do CO do SUPER-X (batizado XCO,
+; nao CO - decisao explicita do usuario logo apos a implementacao inicial,
+; pra ficar consistente com o prefixo X de todo o resto dos comandos
+; portados do SUPER-X nesta sessao: XD/XA/XI/XH/XM/XGO/XTR/XSD/XRG/XTS/XCS/
+; XBT/XRT/XFL/XCM/XFD) (inventario do modulo 45: "Cor da tela") - pedido
+; explicito do usuario: "podendo mudar a
+; cor geral do mamute assembly, pelo menos na parte interna de display e de
+; entrada de comandos e das janelas extras de comandos". Troca a paleta do
+; Mamute Assembler INTEIRO - monitor principal (log/entrada de comandos),
+; XD/XM/XA/XI/XH, debugger grafico, DM/ZAP/SCR/M/EDIT - toda janela do
+; Mamute agora le Mamute_CurrentFrontColor()/Mamute_CurrentBackColor()/
+; Mamute_CurrentBorderColor() (MamuteSupport.pbi) em vez do RGB() hardcoded
+; que cada uma tinha localmente antes (achado real: 72 ocorrencias em 12
+; arquivos diferentes, todas migradas nesta sessao).
+;
+; <frente>/<fundo>/<borda> sao indices 0-15 da paleta REAL, FIXA, do MSX1/
+; TMS9918 (Mamute_Msx1PaletteRGB()) - **DECIMAL, nao hexa**, de proposito:
+; mesma convencao do `COLOR frente,fundo,borda` do MSX BASIC de verdade
+; (o `XCO` PORTA um comando de cor de tela MSX - faz sentido seguir a
+; convencao de cor do MSX, nao a convencao hexadecimal do resto do monitor).
+; Qualquer um dos 3 pode ficar VAZIO (virgula sem nada, ou omitido no final)
+; - mantem o valor atual dessa cor sozinho, mesma convencao do `COLOR`
+; original (so muda o que foi informado). Sem argumento nenhum, so mostra o
+; estado atual.
+;
+; Nao repinta janela nenhuma JA ABERTA - vale a partir da PROXIMA janela
+; aberta (mesmo espirito de outras configuracoes "estaticas" do Mamute, ex.:
+; fonte). Persistido em mamute_settings.json (MamuteCfg_Save, ja existente)
+; - sobrevive entre sessoes, diferente do XCS/DisplayMode (esses continuam
+; volateis de proposito).
+Procedure MamuteGui_CmdXco(G_Log, *State.MamuteGui_State, Args.s)
+  Protected Trimmed.s = Trim(Args)
+
+  If Trimmed = ""
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+      "XCO " + Str(MamuteColorFg) + "," + Str(MamuteColorBg) + "," + Str(MamuteColorBorder))
+    ProcedureReturn
+  EndIf
+
+  If CountString(Trimmed, ",") > 2
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Dim Tok.s(2)
+  Tok(0) = Trim(StringField(Trimmed, 1, ","))
+  Tok(1) = Trim(StringField(Trimmed, 2, ","))
+  Tok(2) = Trim(StringField(Trimmed, 3, ","))
+
+  Protected NewFg.i = MamuteColorFg, NewBg.i = MamuteColorBg, NewBorder.i = MamuteColorBorder
+  Protected i.i, k.i, V.i, Valid.b
+
+  For i = 0 To 2
+    If Tok(i) <> ""
+      Valid = Bool(Len(Tok(i)) <= 2)
+      If Valid
+        For k = 1 To Len(Tok(i))
+          If Mid(Tok(i), k, 1) < "0" Or Mid(Tok(i), k, 1) > "9"
+            Valid = #False
+          EndIf
+        Next
+      EndIf
+      If Valid
+        V = Val(Tok(i))
+        If V < 0 Or V > 15 : Valid = #False : EndIf
+      EndIf
+      If Not Valid
+        *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+        ProcedureReturn
+      EndIf
+      Select i
+        Case 0 : NewFg = V
+        Case 1 : NewBg = V
+        Case 2 : NewBorder = V
+      EndSelect
+    EndIf
+  Next
+
+  MamuteColorFg = NewFg
+  MamuteColorBg = NewBg
+  MamuteColorBorder = NewBorder
+  MamuteCfg_Save()
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum,
+    "XCO " + Str(MamuteColorFg) + "," + Str(MamuteColorBg) + "," + Str(MamuteColorBorder) +
+    " - vale a partir da proxima janela aberta")
+EndProcedure
+
+; XCS - alterna o tipo de calculo do checksum usado pelo despejo do XD
+; (`XD <endinic>,<endfim>`, Mamute_BuildDumpLinesSx()) - pedido explicito do
+; usuario: "normal" (soma so' os bytes da linha) <-> "+ADDR" (soma tambem o
+; byte baixo do endereco da linha, checksum de 8 bits/1 byte). Sem
+; argumentos - so alterna e confirma no log, mesmo idioma do PAGE/C ecoando
+; o estado apos uma mudanca. Dura so' esta sessao da janela (nao persiste em
+; mamute_settings.json, mesmo espirito volatil do PAGE/DisplayMode).
+Procedure MamuteGui_CmdXcs(G_Log, *State.MamuteGui_State)
+  *State\ChecksumAddrMode = Bool(Not *State\ChecksumAddrMode)
+  Protected ModeText.s = "NORMAL (soma so os bytes)"
+  If *State\ChecksumAddrMode : ModeText = "+ADDR (soma tambem o byte baixo do endereco)" : EndIf
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "CHECKSUM: " + ModeText)
+EndProcedure
+
+; XTS <endinic>[#slot[-subslot]|#V|#4|#S|#5],<endfim> - calcula UM checksum
+; agregado do bloco [endinic,endfim] inteiro (soma de TODOS os bytes, 16
+; bits, com wraparound - mesma convencao numerica do CL, ao lado) e mostra o
+; resultado nos MESMOS 4 formatos do CL (HEX/BIN/DEC+/DEC+-) mais OCTAL -
+; pedido explicito do usuario. Diferente do checksum POR LINHA do despejo do
+; XD (8 bits, comando XCS) - este e' um unico valor de 16 bits pro bloco
+; inteiro, mais util pra comparar/verificar a integridade de um bloco
+; inteiro (ex.: um ROM) de uma vez, nao linha a linha. <endfim> e' sempre um
+; endereco puro, no MESMO alvo que <endinic> ja escolheu (mesma convencao do
+; XBT/XRT/XFL/XCM/XFD).
+Procedure MamuteGui_CmdXts(G_Log, *State.MamuteGui_State, Args.s)
+  Protected CommaPos1.i = FindString(Args, ",")
+  If CommaPos1 = 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+  Protected StartToken.s = Trim(Left(Args, CommaPos1 - 1))
+  Protected EndToken.s = Trim(Mid(Args, CommaPos1 + 1))
+  If FindString(EndToken, ",") > 0
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected StartAddr.i, EndAddr.i
+  Protected Target.MamuteSxTarget
+
+  If Not Mamute_ParseSxAddr(StartToken, @StartAddr, @Target)
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected EndOk.b
+  If Target\IsVram
+    EndOk = Mamute_ParseVramAddr(EndToken, @EndAddr)
+  Else
+    EndOk = Mamute_ParseHexAddr(EndToken, @EndAddr)
+  EndIf
+  If Not EndOk Or EndAddr < StartAddr
+    *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "?ERRO DE SINTAXE")
+    ProcedureReturn
+  EndIf
+
+  Protected Sum.i = 0
+  Protected Addr.i
+  For Addr = StartAddr To EndAddr
+    Sum + Mamute_SxReadByte(Addr, @Target)
+  Next
+  Sum = Sum & $FFFF
+
+  Protected Signed.i = Sum
+  If Signed >= $8000 : Signed - $10000 : EndIf
+
+  ; PureBasic nao tem Oct() nativo (so Hex()/Bin()) - converte a mao, digito
+  ; a digito, do jeito classico (resto da divisao por 8, do fim pro comeco).
+  Protected OctStr.s = ""
+  Protected OctTemp.i = Sum
+  If OctTemp = 0
+    OctStr = "0"
+  Else
+    While OctTemp > 0
+      OctStr = Str(OctTemp % 8) + OctStr
+      OctTemp = OctTemp / 8
+    Wend
+  EndIf
+
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "HEX  : " + Mamute_Hex4(Sum) + "H")
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "BIN  : " + RSet(Bin(Sum), 16, "0"))
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "DEC+ : " + Str(Sum))
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "DEC+-: " + Str(Signed))
+  *State\LogAccum = MamuteGui_AppendLog(G_Log, *State\LogAccum, "OCT  : " + RSet(OctStr, 6, "0"))
+EndProcedure
+
 ; "@" sozinho no prompt - mostra o conteudo das 7 variaveis de debugger do
 ; SUPER-X (docs/SPEC.md modulo 45d): @0-@3 normais + @B/@E/@S especiais.
 ; "(vazia)" pras que ainda nao foram definidas nesta sessao da janela.
@@ -2178,6 +3734,10 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
     Case "BA", "QUIT"
       *State\ShouldQuit = #True
 
+    Case "CLS"
+      SetGadgetText(G_Log, "")
+      *State\LogAccum = ""
+
     Case "PAGE"
       MamuteGui_CmdPage(G_Log, *State, Args)
 
@@ -2262,6 +3822,45 @@ Procedure MamuteGui_Dispatch(Win, G_Log, *State.MamuteGui_State, Cmd.s)
     Case "XM"
       MamuteGui_CmdXm(Win, G_Log, *State, Args)
 
+    Case "XH"
+      MamuteGui_CmdXh(Win, G_Log, *State, Args)
+
+    Case "XBT"
+      MamuteGui_CmdXbt(G_Log, *State, Args)
+
+    Case "XRT"
+      MamuteGui_CmdXrt(G_Log, *State, Args)
+
+    Case "XFL"
+      MamuteGui_CmdXfl(G_Log, *State, Args)
+
+    Case "XCM"
+      MamuteGui_CmdXcm(G_Log, *State, Args)
+
+    Case "XFD"
+      MamuteGui_CmdXfd(Win, G_Log, *State, Args)
+
+    Case "XCO"
+      MamuteGui_CmdXco(G_Log, *State, Args)
+
+    Case "XCS"
+      MamuteGui_CmdXcs(G_Log, *State)
+
+    Case "XTS"
+      MamuteGui_CmdXts(G_Log, *State, Args)
+
+    Case "XRG"
+      MamuteGui_CmdXrg(G_Log, *State, Args)
+
+    Case "XGO"
+      MamuteGui_CmdXgo(G_Log, *State, Args)
+
+    Case "XTR"
+      MamuteGui_CmdXtr(G_Log, *State, Args)
+
+    Case "XSD"
+      MamuteGui_CmdXsd(G_Log, *State, Args)
+
     Case "EDIT"
       MamuteEdit_Open(Win)
 
@@ -2285,10 +3884,25 @@ Procedure MamuteAssembler_OpenWindow(ParentWindow)
     ProcedureReturn
   EndIf
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
-  SetWindowColor(Win, ColBack)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor(), ColBorder = Mamute_CurrentBorderColor()
+  SetWindowColor(Win, ColBorder)
 
-  Protected G_Log = EditorGadget(#PB_Any, 16, 16, WinW - 32, WinH - 72, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
+  ; Barra fixa de status (topo, FORA do log que rola) - pedido explicito do
+  ; usuario: ultimo comando digitado, endereco/offset e slot de trabalho
+  ; atual, e uma miniatura 16x16 (um pixel por byte) da memoria a partir
+  ; dali. G_Status e' texto de 2 linhas; G_MemView e' o CanvasGadget da
+  ; miniatura, ao lado (StatusSize x StatusSize = grade 16x16 a
+  ; StatusSize/16 px por byte). Atualizada por MamuteGui_RefreshStatusBar()
+  ; abaixo, tanto na abertura quanto apos cada comando despachado.
+  Protected StatusSize = 64
+  Protected G_Status = TextGadget(#PB_Any, 16, 16, WinW - 32 - StatusSize - 16, StatusSize, "")
+  SetGadgetColor(G_Status, #PB_Gadget_FrontColor, ColFront)
+  SetGadgetColor(G_Status, #PB_Gadget_BackColor, ColBack)
+  SetGadgetFont(G_Status, FontID(MamuteGui_Font))
+
+  Protected G_MemView = CanvasGadget(#PB_Any, WinW - 16 - StatusSize, 16, StatusSize, StatusSize)
+
+  Protected G_Log = EditorGadget(#PB_Any, 16, 16 + StatusSize + 8, WinW - 32, WinH - 72 - (StatusSize + 8), #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
   SetGadgetColor(G_Log, #PB_Gadget_FrontColor, ColFront)
   SetGadgetColor(G_Log, #PB_Gadget_BackColor, ColBack)
   SetGadgetFont(G_Log, FontID(MamuteGui_Font))
@@ -2304,21 +3918,41 @@ Procedure MamuteAssembler_OpenWindow(ParentWindow)
   SetGadgetFont(G_Input, FontID(MamuteGui_Font))
 
   ; Reaplica a fonte - ver nota no topo do arquivo sobre App_StyleChildCallback.
+  ; So chamar SetGadgetFont aqui de novo NAO bastava de verdade (achado real,
+  ; 2026-08-25: usuario reportou que esta janela - a UNICA tela do Mamute que
+  ; usa controles nativos, RICHEDIT/Static/Edit, em vez de tudo desenhado a
+  ; mao num CanvasGadget como DM/M/S/XD/etc - ignorava MamuteFontName/Size/
+  ; Bold e ficava pequena, presa na Segoe UI). Causa raiz: o WM_PAINT que
+  ; aciona o clobber (App_StyleChildCallback, BadigEditor.pb - forca Segoe UI
+  ; em TODO controle nativo) so e' ENTREGUE no primeiro WaitWindowEvent() do
+  ; loop la embaixo, ou seja, DEPOIS deste bloco inteiro ja ter rodado -
+  ; reaplicar "antes do loop" nunca vencia a corrida, so' parecia vencer.
+  ; Fix: forca esse WM_PAINT (e o clobber junto) a acontecer AGORA, de forma
+  ; sincrona, via SendMessage_ direto na janela - App_DarkModeWindowProc so'
+  ; clobra uma vez por HWND (guarda App_StyledWindows()), entao depois desta
+  ; linha a fonte reaplicada abaixo e' a que sobrevive pro resto da sessao.
+  SendMessage_(WindowID(Win), #WM_PAINT, 0, 0)
+  SetGadgetFont(G_Status, FontID(MamuteGui_Font))
   SetGadgetFont(G_Log, FontID(MamuteGui_Font))
   SetGadgetFont(G_Prompt, FontID(MamuteGui_Font))
   SetGadgetFont(G_Input, FontID(MamuteGui_Font))
 
   Protected State.MamuteGui_State
-  State\LogAccum = MamuteGui_AppendLog(G_Log, "", "MAMUTE ASSEMBLER")
+  State\LogAccum = MamuteGui_AppendLog(G_Log, "", "MAMUTE ASSEMBLY V" + #App_Version)
+  State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "COPYRIGHT (C) 2026 BARNEY")
+  State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "")
   State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "Digite BA ou QUIT para encerrar.")
   State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "")
   State\LogAccum = MamuteGui_ShowPageMap(G_Log, State\LogAccum)
   State\LogAccum = MamuteGui_AppendLog(G_Log, State\LogAccum, "")
 
+  MamuteGui_RefreshStatusBar(G_Status, G_MemView, @State, ColBack)
+
   SetActiveGadget(G_Input)
   AddKeyboardShortcut(Win, #PB_Shortcut_Return, #MamuteGui_EnterShortcut)
   AddKeyboardShortcut(Win, #PB_Shortcut_Up, #MamuteGui_UpShortcut)
   AddKeyboardShortcut(Win, #PB_Shortcut_Down, #MamuteGui_DownShortcut)
+  AddKeyboardShortcut(Win, #PB_Shortcut_Escape, #MamuteGui_EscShortcut)
 
   ; Posicao de navegacao no historico - -1 = "fora" dele (campo livre, o
   ; usuario esta digitando algo novo); 0..ListSize-1 = indice do comando
@@ -2340,7 +3974,14 @@ Procedure MamuteAssembler_OpenWindow(ParentWindow)
             HistPos = -1
             MamuteGui_HistoryAdd(Cmd)
             MamuteGui_HistorySave()
+            Protected ExtractedAddr.i
+            If MamuteGui_ExtractCmdAddr(Cmd, @ExtractedAddr)
+              State\LastCmdAddr = ExtractedAddr
+              State\HasLastCmdAddr = #True
+            EndIf
+            State\LastCmdText = Cmd
             MamuteGui_Dispatch(Win, G_Log, @State, Cmd)
+            MamuteGui_RefreshStatusBar(G_Status, G_MemView, @State, ColBack)
             If State\ShouldQuit
               Quit = #True
             EndIf

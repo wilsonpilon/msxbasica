@@ -62,18 +62,16 @@
 ;  seu proprio arquivo/janela) - decisao explicita do usuario (pergunta
 ;  direta antes de codar): colocar a cruz JA, ligando so' o que ja existe -
 ;  **Dump** = esta propria grade (ja ativa, botao so' mostra destaque);
-;  **Multi** = fecha esta janela e abre MamuteXm_Open() no MESMO
-;  endereco/alvo (XM ja existe pronto, so' faltava essa ponte); **Char**
-;  continua o UNICO modo ainda nao implementado da cruz inteira - botao
-;  mostra "AINDA NAO IMPLEMENTADO" no rotulo de status em vez de fingir
-;  trocar de tela. **Ascii** (modulo 45h) e **Disasm** (modulo 45i, sessoes
-;  seguintes) fecham esta janela e abrem MamuteXa_Open()/MamuteXi_Open() no
-;  MESMO endereco/alvo - mesma ponte do Multi/XM, so' que precisam de
-;  Declare.i MamuteXa_Open(...)/MamuteXi_Open(...) antecipados em
-;  BadigEditor.pb (sentido INVERSO do Declare do XM: aqui sao os arquivos
-;  incluidos DEPOIS, MamuteXaGui.pbi/MamuteXiGui.pbi, que fornecem as
-;  funcoes reais). Cada modo novo (quando for construido) vira so' mais um
-;  Case aqui, sem mudar o layout da cruz.
+;  **Multi**/**Ascii**/**Disasm**/**Char** fecham esta janela e abrem
+;  MamuteXm_Open()/MamuteXa_Open()/MamuteXi_Open()/MamuteXh_Open() no MESMO
+;  endereco/alvo - os quatro modos da cruz ja existem de verdade agora
+;  (Char, o ultimo placeholder restante, virou o comando XH - editor de
+;  caracteres/sprites, MamuteXhGui.pbi). Cada ponte precisa de
+;  Declare.i MamuteXm_Open(...)/MamuteXa_Open(...)/MamuteXi_Open(...)/
+;  MamuteXh_Open(...) antecipados em BadigEditor.pb, ja que os arquivos que
+;  fornecem as funcoes reais (MamuteXmGui.pbi/MamuteXaGui.pbi/MamuteXiGui.pbi/
+;  MamuteXhGui.pbi) sao incluidos DEPOIS deste. Cada modo novo (quando for
+;  construido) vira so' mais um Case aqui, sem mudar o layout da cruz.
 ; ------------------------------------------------------------
 ;
 
@@ -141,11 +139,11 @@ Procedure MamuteXd_Repaint(Canvas, *State.MamuteXdState, HexX.i, AsciiX.i, CharW
     ProcedureReturn
   EndIf
 
-  Protected ColBack        = RGB(0, 0, 0)
-  Protected ColFront       = RGB(60, 220, 90)
+  Protected ColBack        = Mamute_CurrentBackColor()
+  Protected ColFront       = Mamute_CurrentFrontColor()
   Protected ColDim         = RGB(25, 110, 50)
-  Protected ColCursorBack  = RGB(60, 220, 90)
-  Protected ColCursorFront = RGB(0, 0, 0)
+  Protected ColCursorBack  = Mamute_CurrentFrontColor()
+  Protected ColCursorFront = Mamute_CurrentBackColor()
   Protected ColTypingBack  = RGB(220, 160, 40) ; laranja - realca visualmente o modo de digitacao ASCII
 
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
@@ -226,11 +224,11 @@ Procedure MamuteXd_DrawButton(Canvas, Label.s, Font)
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
   Box(0, 0, W, H, RGB(0, 45, 18))
   DrawingMode(#PB_2DDrawing_Outlined)
-  Box(0, 0, W, H, RGB(60, 220, 90))
+  Box(0, 0, W, H, Mamute_CurrentFrontColor())
   DrawingMode(#PB_2DDrawing_Transparent)
   DrawingFont(FontID(Font))
   Protected TW = TextWidth(Label), TH = TextHeight(Label)
-  DrawText((W - TW) / 2, (H - TH) / 2, Label, RGB(60, 220, 90))
+  DrawText((W - TW) / 2, (H - TH) / 2, Label, Mamute_CurrentFrontColor())
   StopDrawing()
 EndProcedure
 
@@ -244,7 +242,7 @@ Procedure MamuteXd_DrawModeButton(Canvas, Label.s, Font, Style.b)
     ProcedureReturn
   EndIf
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
-  Protected ColActive = RGB(60, 220, 90), ColDim = RGB(70, 70, 70), ColDimText = RGB(120, 120, 120)
+  Protected ColActive = Mamute_CurrentFrontColor(), ColDim = RGB(70, 70, 70), ColDimText = RGB(120, 120, 120)
   Select Style
     Case 1 ; ativo agora
       Box(0, 0, W, H, ColActive)
@@ -253,7 +251,7 @@ Procedure MamuteXd_DrawModeButton(Canvas, Label.s, Font, Style.b)
       DrawingMode(#PB_2DDrawing_Transparent)
       DrawingFont(FontID(Font))
       Protected TW1 = TextWidth(Label), TH1 = TextHeight(Label)
-      DrawText((W - TW1) / 2, (H - TH1) / 2, Label, RGB(0, 0, 0))
+      DrawText((W - TW1) / 2, (H - TH1) / 2, Label, Mamute_CurrentBackColor())
     Case 2 ; ainda nao implementado
       Box(0, 0, W, H, RGB(0, 20, 8))
       DrawingMode(#PB_2DDrawing_Outlined)
@@ -377,9 +375,9 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
   If Not Win
     ProcedureReturn StartAddr
   EndIf
-  SetWindowColor(Win, RGB(0, 0, 0))
+  SetWindowColor(Win, Mamute_CurrentBorderColor())
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   Protected CurY = Margin
 
   Protected LegendTxt.s = "Setas/PgUp/PgDn: mover  TAB: hex/texto  0-F: digitar hexa  " + Chr(34) +
@@ -409,12 +407,12 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
 
   MamuteXd_DrawModeButton(G_ModeDump, "Dump", BtnFont, 1)   ; ja e' o modo ativo agora
   MamuteXd_DrawModeButton(G_ModeAscii, "Ascii", BtnFont, 0)  ; ja liga com XA de verdade
-  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 2)    ; placeholder
+  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 0)    ; ja liga com XH de verdade
   MamuteXd_DrawModeButton(G_ModeMulti, "Multi", BtnFont, 0)  ; ja liga com XM de verdade
   MamuteXd_DrawModeButton(G_ModeDisasm, "Disasm", BtnFont, 0) ; ja liga com XI de verdade
   GadgetToolTip(G_ModeDump, "Modo Dump (grade hexa+ASCII) - ja ativo")
   GadgetToolTip(G_ModeAscii, "Modo Ascii - abre o XA neste mesmo endereco/alvo")
-  GadgetToolTip(G_ModeChar, "Modo Char (sprite/fonte) - ainda nao implementado")
+  GadgetToolTip(G_ModeChar, "Modo Char - abre o XH neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeMulti, "Modo Multi - abre o XM neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeDisasm, "Modo Disasm - abre o XI neste mesmo endereco/alvo")
 
@@ -604,7 +602,10 @@ Procedure.i MamuteXd_Open(ParentWindow, StartAddr.i, StartOffset.i, *StartTarget
 
           Case G_ModeChar
             If EventType() = #PB_EventType_LeftButtonDown
-              SetGadgetText(G_ModeLabel, "Modo Char (sprite/fonte): AINDA NAO IMPLEMENTADO")
+              CloseModelessChildWindow(ParentWindow, Win)
+              AlreadyClosed = #True
+              State\BaseAddr = MamuteXh_Open(ParentWindow, State\BaseAddr, @State\Target)
+              Quit = #True
             EndIf
 
           Case G_ModeDisasm

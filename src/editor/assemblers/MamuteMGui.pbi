@@ -85,11 +85,11 @@ Procedure MamuteM_Repaint(Canvas, *State.MamuteMState, HexX.i, AsciiX.i, CharW.i
     ProcedureReturn
   EndIf
 
-  Protected ColBack        = RGB(0, 0, 0)
-  Protected ColFront       = RGB(60, 220, 90)
+  Protected ColBack        = Mamute_CurrentBackColor()
+  Protected ColFront       = Mamute_CurrentFrontColor()
   Protected ColDim         = RGB(25, 110, 50)
-  Protected ColCursorBack  = RGB(60, 220, 90)
-  Protected ColCursorFront = RGB(0, 0, 0)
+  Protected ColCursorBack  = Mamute_CurrentFrontColor()
+  Protected ColCursorFront = Mamute_CurrentBackColor()
 
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
 
@@ -165,11 +165,11 @@ Procedure MamuteM_DrawButton(Canvas, Label.s, Font)
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
   Box(0, 0, W, H, RGB(0, 45, 18))
   DrawingMode(#PB_2DDrawing_Outlined)
-  Box(0, 0, W, H, RGB(60, 220, 90))
+  Box(0, 0, W, H, Mamute_CurrentFrontColor())
   DrawingMode(#PB_2DDrawing_Transparent)
   DrawingFont(FontID(Font))
   Protected TW = TextWidth(Label), TH = TextHeight(Label)
-  DrawText((W - TW) / 2, (H - TH) / 2, Label, RGB(60, 220, 90))
+  DrawText((W - TW) / 2, (H - TH) / 2, Label, Mamute_CurrentFrontColor())
   StopDrawing()
 EndProcedure
 
@@ -257,9 +257,9 @@ Procedure.i MamuteM_Open(ParentWindow, StartAddr.i, StartOffset.i, UseCustomKeys
   If Not Win
     ProcedureReturn StartAddr
   EndIf
-  SetWindowColor(Win, RGB(0, 0, 0))
+  SetWindowColor(Win, Mamute_CurrentBorderColor())
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   Protected CurY = Margin
 
   Protected LegendTxt.s = "Setas/PgUp/PgDn: mover  TAB: hex/texto  0-F: digitar hexa  RETURN/ESC: sai  +/-: desloc."

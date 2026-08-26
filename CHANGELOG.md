@@ -2878,4 +2878,51 @@ hoje, veja o [`README.md`](README.md). Para arquitetura/decisões técnicas de c
   bytes+arquivo gravou `.txt` real de 132 linhas; `?XI` abriu o diálogo de PDF de verdade; tela
   interativa screenshot-confirmada; PgDn/PgUp funcionando; as 5 pontes de cruz (XI→XM, XI→XD via Dump,
   XI→XA via Dump-XA, XD→XI, XA→XI) confirmadas por clique real. Ver `docs/SPEC.md`, módulo 45i.
+- **2026-08-26 — release 8.6.0 "CRUZ CURADA": mais 13 comandos do SUPER-X, execução real e cor** —
+  sessão longa fechando o arco começado em 8.5.0 (CRUZ MANCA). Antes desta entrada, `XH`/`XBT`/`XRT`/
+  `XFL`/`XCM`/`XFD`/`XCO`/`XCS`/`XTS` já tinham sido implementados sem passar por `docs/SPEC.md`/
+  `CHANGELOG.md` (lacuna de documentação encontrada e registrada agora, não escondida) — `XRG`/`XGO`/
+  `XTR`/`XSD` são desta sessão, com módulos 45j-45n documentados em `docs/SPEC.md`.
+  - **`XH`** — porta o `H` do SUPER-X: editor de caractere/sprite (bitmap 16×16, grade de pixel
+    editável, 4 caracteres consecutivos por tela, miniatura 2×2 montada). Com ele, **a cruz de modos
+    fecha** — os 5 modos (Dump/Ascii/Char/Multi/Disasm) agora ligam todos pra uma tela de verdade, zero
+    placeholders restantes (a "perna manca" do nome da 8.5.0).
+  - **`XBT`/`XRT`/`XFL`/`XCM`/`XFD`** — ferramentas de memória "intra-slots" (origem/destino podem ser
+    slots/sub-slots/VRAM totalmente diferentes, sem precisar trocar `PAGE`): `XBT` transfere um bloco
+    (memmove seguro, sem sobrepor incorretamente); `XRT` faz o mesmo mas também ajusta ponteiros
+    internos absolutos que apontem pro bloco movido (limite aceito: só instruções reais decodificadas,
+    dados inline no meio do código podem confundir); `XFL` preenche um bloco com um byte; `XCM` compara
+    dois blocos byte a byte (lista diferenças, ou iguais com `,S`); `XFD` busca um PADRÃO DE INSTRUÇÃO
+    (não bytes crus) usando o mesmo decodificador do `L`/`LP`/`XI` — limite documentado pra `JR`/`DJNZ`
+    (saltos relativos codificam bytes diferentes conforme a posição).
+  - **`XCS`/`XTS`** — dupla de checksum: `XCS` alterna o tipo usado pelo despejo do `XD` (soma simples
+    ou soma+endereço, 8 bits por linha); `XTS <inic>,<fim>` calcula UM checksum agregado de 16 bits do
+    bloco inteiro, mostrado em HEX/BIN/DEC+/DEC±/OCT.
+  - **`XRG`** — mostra/edita os registradores Z80 simulados em pares, incluindo os "secretos" (par
+    alternado `AF'`/`BC'`/`DE'`/`HL'`, que nem o `X` mostra) e o `PC`. `XRG *` limpa tudo exceto a
+    pilha; `XRG +` reseta só a pilha; `XRG <reg>,<valor>` edita qualquer registrador (`A`-`L` e o par
+    alternado, `AF`-`HL`/`IX`/`IY`/`IXH`/`IXL`/`IYH`/`IYL`/`SP`/`PC`) mais 5 breakpoints nomeados —
+    `BP`/`BP1`/`BP2`/`BP3`/`BPF` — usados pelo `XGO`.
+  - **`XGO <endereço>[#slot]`** — porta o `GO`: executa o programa simulado (mesmo motor do `G`/
+    debugger gráfico) a partir do endereço, parando no breakpoint da vez (`BP` na 1ª chamada, `BP1`/
+    `BP2`/`BP3` nas seguintes sem endereço novo, `BPF` como fallback ou teto final). Sem breakpoint
+    nenhum, roda "livre" até o `RET` que devolve pra além de onde começou, até `ESC`, ou até um teto de
+    segurança — os três juntos, não escolhidos um por vez.
+  - **`XTR <endereço>`** — trace passo a passo de verdade: executa uma instrução, mostra endereço/
+    bytes/mnemônico + registradores, e abre um loop modal esperando `ENTER` (próxima instrução) ou
+    `ESC` (interrompe) — encerra sozinho se a CPU haltar.
+  - **`XSD`** — "super disassembler": ou gera uma listagem assembly reassemblável (`ORG` + mnemônicos,
+    sem coluna de endereço/bytes) pra um compilador Z80 externo, ou despeja bytes crus em 3 formatos
+    (`,B` = `DEFB`; `,D` = `DATA` em BASIC com prefixo `&H` + loop `FOR/READ/POKE/NEXT` gerado
+    automaticamente; `,X` = dados embutidos do X-BASIC, `'#&Hxx,...`) — sempre abrindo "Salvar como"
+    com o nome sugerido.
+  - **`XCO` (batizado assim depois de nascer só `CO`, pra ficar consistente com o prefixo `X` do resto)
+    — cor da tela de verdade**: paleta REAL e fixa do MSX1/TMS9918 (16 cores, não editável, mesma do
+    hardware), `XCO [<frente>],[<fundo>],[<borda>]` em DECIMAL (não hexa — mesma convenção do `COLOR`
+    do MSX BASIC). Achado real na implementação: as cores do terminal (verde-sobre-preto) estavam
+    hardcoded independentemente em **12 arquivos, 72 lugares** — todos migrados pra ler de 3 funções
+    novas (`Mamute_CurrentFrontColor`/`BackColor`/`BorderColor`, `MamuteSupport.pbi`); uma colisão
+    incidental (a cor de RAM no minimapa do debugger gráfico coincidia por acaso com a cor de tema) foi
+    protegida em vez de trocada, pra não acoplar a codificação visual RAM/ROM/BASIC ao tema. Persistido
+    em `mamute_settings.json`, vale a partir da próxima janela aberta.
 

@@ -9249,21 +9249,304 @@ clique real no PgUp voltou pela largura heurística certa; clique real nos botõ
 Arquivo de teste apagado, `.exe` de teste encerrado ao final. `build.ps1` rodado limpo antes de qualquer
 teste ao vivo.
 
+### 45j. SUPER-X — comando `XRG` (porta do `RG`, registradores) (2026-08-26)
+
+Pedido explícito do usuário: "Implementar o comando XRG, ele mostra os registradores em pares, alem dos
+secretos, o parametro `*` limpa todos os registradores, e o parametro `+` o stack e reiniciado para seu
+inicio. E `XRG <registro>,<valor>` atribui o valor ao registro" — porta do `RG` do SUPER-X (inventário do
+módulo 45: `[<reg>,<valor>]` / `RG *` / `RG +`, "* limpa tudo exceto pilha; + reseta a pilha").
+
+Opera direto sobre os mesmos campos `Reg*`/`RegA2..`/`RegPC`/`HasBreak1`/`Break1Addr` de
+`MamuteGui_State` que o comando `X` (módulo 32) e o motor de execução real (`MamuteZ80Cpu.pbi`, módulo 32
+Fase 1) já usam — nenhum estado novo além do necessário pro `BP` (ver abaixo).
+
+- **`XRG`** (sem argumento) — mostra os 7 pares "normais" que `MamuteGui_ShowRegs()` (comando `X`) já
+  mostra, MAIS uma linha nova com os "secretos" `AF'`/`BC'`/`DE'`/`HL'` e outra com `PC`/`BP`
+  (`MamuteGui_ShowRegsXrg()`, que chama `MamuteGui_ShowRegs()` e acrescenta — reaproveita sem duplicar).
+- **`XRG *`** — zera `A`-`L`, o par alternado, `IX`/`IY`/`PC`/`I`/`R`/`IFF1`/`IFF2`/`IM`/`Halted`,
+  **exceto `SP`** (ressalva textual do inventário: "except stack").
+- **`XRG +`** — zera SÓ `SP`. **Decisão sem fonte primária direta** (a seção "Other commands" do
+  `SUPER-X.DOC.pdf` não pôde ser extraída nesta sessão — sem `pdftoppm`/poppler instalado neste
+  ambiente pra renderizar o PDF): adotado `SP=$0000` como "início da pilha", mesma convenção já usada
+  pelo resto da `Structure MamuteGui_State` pro estado de "boot limpo" (comentário no topo dela,
+  `RegA`/`RegF`/etc. citam explicitamente "zero-inicializados (boot limpo)") — a pilha cresce pra baixo,
+  então `SP=0000` é o topo lógico do espaço de 64K (1o `PUSH`/`CALL` grava em `$FFFF`, `Mz80_Push16()`
+  já faz `(RegSP-1)&$FFFF`, sem tratamento especial). **Se isso não bater com o valor real do manual
+  original, é só trocar a constante em `MamuteGui_CmdXrg()` (`*State\RegSP = 0`)** — decisão isolada,
+  fácil de reverter.
+- **`XRG <reg>,<valor>`** — `MamuteGui_XrgRegKind()` classifica o nome (1 = byte/2 dígitos hexa, 2 = par
+  de 16 bits/4 dígitos, 3 = `BP`, 0 = desconhecido → `?ERRO DE SINTAXE`). `MamuteGui_RegByteValue`/
+  `SetRegByte`/`RegPairValue`/`SetRegPair` (já existentes, usados pelo `X`) ganharam casos novos — par
+  alternado (`A'`.."L'", `AF'`.."HL'"), meios-índice `IXH`/`IXL`/`IYH`/`IYL` e `PC` — extensão pura
+  (nenhum nome novo colide com o que o `X` já passava, então o `X` continua bit-a-bit idêntico).
+  `IXH`/`IXL`/`IYH`/`IYL` duplicam a mesma extração de bits de `Mz80_GetIXH`/`SetIXH` etc.
+  (`MamuteZ80Cpu.pbi`) em vez de reaproveitar — aquele arquivo é incluído DEPOIS de
+  `MamuteAssemblerGui.pbi` em `BadigEditor.pb`, mesma regra de ordem de include do topo deste documento/
+  `CLAUDE.md`. Alterar `SP` grava direto em `RegSP`, o MESMO campo que `PUSH`/`POP`/`CALL`/`RET` usam —
+  não existe valor "cosmético" separado, a ressalva do usuário ("Alterando SP o Stack Pointer é alterado
+  também") já é verdade de graça.
+- **`BP` não é um registrador de verdade** — `XRG BP,<endereço>` grava em `HasBreak1`/`Break1Addr`, o
+  MESMO par de campos que o comando `G` (módulo 32) já preenche via sua sintaxe posicional própria
+  (`G <inic>,<bp1>,<bp2>`) e que o motor de execução (`MamuteZ80Cpu.pbi:1253`) já consulta pra parar —
+  decisão pra que um futuro `XGO` (`GO` do SUPER-X, ainda não portado) baste checar os campos que já
+  existem, sem inventar um terceiro mecanismo de breakpoint. `XRG *`/`XRG +` NÃO tocam `HasBreak1` (é
+  configuração de depuração, não um registrador da CPU).
+
+Compilado limpo (`pbcompiler.exe` direto, mesmos `/CONSTANT` do `build.ps1`) — rebuild via `.\build.ps1`
+não pôde ser confirmado nesta sessão porque `dist\PaleoBasic.exe` estava aberto/travado por um processo
+já em execução; sem verificação ao vivo da tela (só a compilação).
+
+### 45k. SUPER-X — comando `XGO` (porta do `GO`) + `BP`/`BP1`/`BP2`/`BP3`/`BPF` (2026-08-26)
+
+Pedido explícito do usuário: "vamos ao comando XGO <endereco>#<slot>-<subslot> que executa um programa
+iniciando em <endereco> e parando no Break Point mostrando os registros" — e, na mesma mensagem, um
+redesenho do registrador especial `BP` do `XRG` (módulo 45j, mesma sessão anterior): em vez de um único
+`BP`, agora `BP`/`BP1`/`BP2`/`BP3` (4 breakpoints "numerados") mais `BPF` ("Break Point Final") — XGOs
+consecutivos SEM endereço avançam por essa sequência; se um breakpoint numerado não estiver definido,
+cai pro `BPF`; sem breakpoint nenhum, roda até o fim/ESC.
+
+**Decisão confirmada com o usuário via pergunta direta antes de codar** — o sufixo `-<subslot>`
+literalmente pedido na sintaxe não é implementável sem risco: o motor de execução Z80 simulado
+(`Mz80_ExecuteOne`/`Fetch8`/`Fetch16`, `MamuteZ80Cpu.pbi`) sempre leu/escreveu via `Mamute_ReadByte`/
+`WriteByte` (PAGE-relativo comum) — nunca honrou sub-slot/VRAM explícito como os comandos de MEMÓRIA
+(`XD`/`XM`/`XA`/`XI`, via `Mamute_SxReadByte`) já honram desde o módulo 45b. Rodar de verdade contra um
+sub-slot exigiria threadar um `*Target` por TODO opcode do núcleo — o mesmo núcleo compartilhado por
+Step/Run/Trace/G, risco de regressão descartado. Escolhida a opção de menor risco: **`#<slot>` no `XGO`
+vira um `PAGE` IMPLÍCITO** (troca `MamutePageMap()` da página que contém `<endereço>` pro slot pedido,
+antes de rodar — efeito 100% idêntico a digitar `PAGE` manualmente pra essa página, só automatizado);
+`#V` (VRAM) e `-<subslot>` explícito viram `?ERRO DE SINTAXE`. O núcleo Z80 (`MamuteZ80Cpu.pbi`) **não
+foi tocado** — só um novo call site em `MamuteAssemblerGui.pbi` chamando o `Mz80_ExecuteOne()` já
+existente em loop.
+
+**Registro especial `BP` virou 5 breakpoints dedicados** — `HasXgoBp/XgoBpAddr` até
+`HasXgoBpF/XgoBpFAddr` (`MamuteGui_State`), **independentes** de `HasBreak1`/`Break2` (que continuam
+pertencendo só ao comando `G`/debugger gráfico, módulo 32, sem nenhuma mudança de comportamento —
+decisão de não unificar os dois mecanismos, pra não arriscar a UI do debugger gráfico que já edita
+`HasBreak1`/`Break2` via checkbox). `MamuteGui_XrgRegKind()` e o `Case 3` de `MamuteGui_CmdXrg()` (módulo
+45j) foram estendidos pra rotear `BP`/`BP1`/`BP2`/`BP3`/`BPF` pros campos certos via nova
+`MamuteGui_XrgSetBreak()`; `MamuteGui_ShowRegsXrg()` agora mostra os 5 numa linha só (`----` = não
+definido).
+
+**Sequência do `XGO` sem endereço** (`MamuteGui_XgoResolveTarget()`, novo campo `XgoStep.b`
+0-4+): `XGO <endereço>` sempre reseta `XgoStep=0` (mira `BP`); cada `XGO` sem argumento subsequente
+incrementa (mira `BP1`, depois `BP2`, depois `BP3`, e a partir da 5ª chamada consecutiva fica preso em
+`BPF`). **Fallback pro `BPF`** aplicado uniformemente a QUALQUER passo (inclusive o 0/`BP`, não só
+`BP1`-`BP3` como o pedido descreveu explicitamente) — se o breakpoint da vez não existir mas `BPF`
+existir, mira `BPF`; se nem um nem outro existir, roda "livre". Decisão de generalizar em vez de
+distinguir `BP` dos demais: mais simples de implementar/explicar e não contradiz nenhum exemplo do
+pedido (a frase final do usuário — "se não tiver BP algum, executa até o fim" — já é exatamente o caso
+"nem o passo da vez nem `BPF` definidos", coberto igual).
+
+**Rodando "livre"** (`MamuteGui_XgoRunLoop()`, novo) — pedido do usuário oferecia 3 alternativas ("até o
+fim (último RET do stack?), ou fim de memória, ou até ESC"); decisão (não é escolha excludente, as 3 só
+competem em complexidade de implementação, não em utilidade) foi **combinar as duas primeiras mais uma
+rede de segurança**, todas simultâneas:
+1. **"Fim de programa" = `RegSP > EntrySP`** — o mesmo critério EXATO já usado por `Mz80_StepOut()`
+   (`MamuteZ80Cpu.pbi`, pré-existente, não mexido) pra "saiu da sub-rotina atual": um `RET` que devolve
+   pra além de onde este `XGO` começou. Descartada a ideia de "fim de memória" (não tem um critério
+   objetivo real — PC alto não significa "acabou").
+2. **`ESC`** — poll de `ExamineKeyboard()`/`KeyboardPushed(#PB_Key_Escape)` a cada 2000 instruções (não a
+   cada uma só, por custo), e um `WindowEvent()` não-bloqueante junto (mantém a janela "respondendo"
+   durante um run livre longo — sem isso o Windows marcaria "Não está respondendo"). **Só se aplica no
+   modo livre** — com um breakpoint definido pra esta chamada, só ele conta (um `RET` no meio do caminho
+   não para, pedido explícito do usuário).
+3. **Teto de segurança** (2000000 instruções, mesmo valor de `#Mz80_MaxStepBudget` — não pôde ser
+   REFERENCIADO daquela constante por causa da ordem de include de `MamuteZ80Cpu.pbi` vs
+   `MamuteAssemblerGui.pbi` — literal duplicado de propósito, comentado no código) — rede final contra
+   loop infinito sem `HALT`/`RET`/`ESC` (também vale com breakpoint definido, se ele nunca for
+   alcançado).
+
+**Achado de ordem de include, mesmo padrão já documentado no topo deste arquivo/`CLAUDE.md`**:
+`MamuteGui_XgoRunLoop()` precisa chamar `Mz80_ExecuteOne()`, mas `MamuteZ80Cpu.pbi` é incluído DEPOIS de
+`MamuteAssemblerGui.pbi` em `BadigEditor.pb` — resolvido com um `Declare Mz80_ExecuteOne(*S)` (ponteiro
+sem tipo, mesma técnica do `Declare MamuteDebugger_Open(...)` já existente logo acima, pelo mesmo
+motivo) no topo de `BadigEditor.pb`.
+
+Devolve o texto de status por **retorno direto da função** (`Procedure.s`), não `*Ptr.String`
+out-parameter — mesma cautela do bug real documentado no `CLAUDE.md` (2026-08-12, disassembler `L`/`LP`)
+que crashava com esse idioma especificamente nesta unidade de compilação grande.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch, mesmos `/CONSTANT` do `build.ps1`) —
+de novo sem rebuild de `dist\PaleoBasic.exe`/verificação ao vivo nesta sessão (mesmo bloqueio do processo
+já em execução, módulo 45j) e sem um programa Z80 de teste real montado em memória pra exercitar o loop
+de execução (`RET`-unwind/`ESC`/sequência de breakpoints) de ponta a ponta — só revisão manual da lógica
+e compilação limpa.
+
+### 45l. SUPER-X — comando `XTR` (porta do `TR`, trace passo a passo) (2026-08-26)
+
+Pedido explícito do usuário: "Comando XTR <endereco>, este comando funciona como TRACE, a partir do
+endereco passado, ele executa a instrução, mostra os registradores e fica aguardando o usuário ir
+pressionando <enter> e a instrução seguinte é executada, mostra os registros e aguarda novamente, até o
+usuário dar <ESC> para interromper a execução" — porta do `TR` do SUPER-X (inventário do módulo 45: "Trace
+passo a passo, imprime registradores a cada instrução"). Só endereço puro, sem sufixo de slot/VRAM (o `TR`
+original também não tem esse sufixo, diferente do `GO`/`XGO`).
+
+**Decisão de arquitetura, sem precisar perguntar** (baixo risco, reversível, não toca no núcleo Z80):
+em vez de um flag de "modo trace" no loop principal de `MamuteAssembler_OpenWindow()`, o `XTR`
+(`MamuteGui_CmdXtr()`) abre seu PRÓPRIO loop `WaitWindowEvent()` ANINHADO dentro do dispatch — técnica
+padrão em PureBasic pra diálogos/modos modais, já seguramente aninhável (o loop principal já está dentro
+de uma chamada de evento quando despacha um comando). Reaproveita o MESMO `#MamuteGui_EnterShortcut`
+que o campo `MON>` já usa (`AddKeyboardShortcut(Win, #PB_Shortcut_Return, ...)`, registrado uma vez em
+`MamuteAssembler_OpenWindow()`) — fora do trace, `ENTER` com o campo vazio já não fazia nada (`If Cmd <>
+"" `), então interceptar o mesmo atalho aqui dentro não colide com nada. Novo `#MamuteGui_EscShortcut`
+(`AddKeyboardShortcut(Win, #PB_Shortcut_Escape, ...)`) registrado no mesmo lugar, ao lado dos 3 atalhos
+já existentes (Enter/Cima/Baixo) — fora de um trace em andamento, esse evento simplesmente não tem
+`Case` nenhum no loop principal e é ignorado, sem precisar de nenhum comportamento "default" pra `ESC`
+no monitor.
+
+**Formato de cada passo** (`MamuteGui_XtrStepAndShow()`, novo) - 3 linhas: `<endereço>  <bytes>
+<mnemônico>` (mesmo formato exato do `L`/`LP`/`Mamute_DisasmBuildLines()`, endereço+bytes+mnemônico,
+reaproveitando `Mamute_DisasmOne()` + `Mamute_ReadByte()` já existentes, nada duplicado nas tabelas de
+opcode) seguido de `MamuteGui_ShowRegs()` (o formato compacto de 2 linhas AF/BC/DE/HL + IX/IY/SP que o
+comando `X` já usa) — **decisão de NÃO usar `MamuteGui_ShowRegsXrg()`** (que acrescentaria mais 2 linhas
+de "secretos"/`BP`s por passo): um trace de dezenas de instruções já produz bastante scroll, e o par
+alternado/breakpoints raramente importa passo a passo — quem precisar deles pode digitar `XRG`
+a qualquer momento, inclusive no meio de um trace (o campo `MON>` continua funcionando normalmente
+entre um `ENTER` de trace e outro, já que o loop aninhado só intercepta os DOIS atalhos, não desabilita
+o resto da janela).
+
+**Encerramento automático em `HALT`** - `MamuteGui_XtrStepAndShow()` devolve `#False` quando a CPU haltou
+(antes OU depois do passo que acabou de rodar), e o trace se encerra sozinho nesse caso, sem esperar
+`ESC` - mesma lógica de "não adianta continuar" já usada por `Mz80_Run()`/`Mz80_StepInto()` pra `HALT`.
+Fechar a janela (botão X) durante um trace marca `ShouldQuit` e sai do loop aninhado - o loop PRINCIPAL
+(que só é alcançado de novo depois que `MamuteGui_CmdXtr()` retorna) já confere esse mesmo campo logo
+após despachar qualquer comando, então a janela fecha normalmente pela rota já existente, sem fechamento
+duplicado.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) - sem verificação ao vivo nesta sessão
+(mesmo bloqueio de `dist\PaleoBasic.exe`, módulos 45j/45k) e sem um programa Z80 de teste real montado em
+memória pra exercitar o loop modal ENTER-a-ENTER/ESC/HALT de ponta a ponta.
+
+### 45m. SUPER-X — comando `XSD` (porta do `SD`, super disassembler) (2026-08-26)
+
+Pedido explícito do usuário: "como XSD super disassembly, gera uma listagem assembly para um compilador
+externo XSD <filename>,<inicio>#<slot>-<sibslot>, final [,B|D|X], ele abre o dialogo para salvar a
+listagem em disco sugerindo o nome" + as 3 sintaxes exatas de `B`/`D`/`X` (ver comentário de
+`MamuteGui_CmdXsd()`, `MamuteAssemblerGui.pbi`, pra citação completa) — porta do `SD` do SUPER-X
+(inventário do módulo 45: "Super disassembler: disassembly pra arquivo texto, ou exporta bytes crus como
+`DEFB`/`DATA`/inline X-BASIC").
+
+**Puramente leitura de memória** — ao contrário do `XGO` (que precisa EXECUTAR e por isso só aceita slot
+PRIMÁRIO, módulo 45k), o `XSD` só lê (`Mamute_SxReadByte`/`Mamute_DisasmOne` com o `*Target` opcional já
+estabelecido pelo `XD`/`XM`/`XA`/`XI`, módulos 45b/45i), então honra slot/sub-slot/VRAM **completo**, sem
+nenhuma limitação nova.
+
+**Dois modos de saída bem distintos, nunca misturados**:
+1. **Sem `,B`/`,D`/`,X`** — disassembly de verdade, instrução por instrução (`Mamute_DisasmOne()` em
+   loop, mesma técnica segura que o `XI` já usa pro engine, módulo 45i) — mas SEM a coluna de
+   endereço/bytes que o `XI`/`L`/`LP` sempre mostram: aqui o texto precisa ser reassemblável por um
+   compilador Z80 externo, não é uma listagem de referência humana. Ganha um `ORG <início>H` no topo —
+   decisão própria (o usuário não pediu literalmente, mas "gera uma listagem assembly para um compilador
+   externo" sem `ORG` produziria um arquivo que assembla nos endereços ERRADOS, já que operandos
+   absolutos ficam corretos mas o posicionamento do próprio bloco não — não é enfeite, é necessidade
+   funcional pro próprio objetivo declarado do comando).
+2. **`,B`/`,D`/`,X`** — despejo de bytes CRUS, ignorando fronteiras de instrução de propósito (8 bytes
+   fixos por linha, conforme os exemplos exatos do pedido do usuário) em vez de disassembly:
+   - `B`: `DEFB xxH,xxH,...` (sintaxe Z80 assembler).
+   - `D`: `<linha> DATA &Hxx,&Hxx,...` (BASIC), `<linha>` começando em `10000`, subindo de 10 em 10.
+     **Decisão sem precisar perguntar**: o prefixo `&H` é OBRIGATÓRIO em `D` mesmo o usuário não tendo
+     mostrado no exemplo (só mostrou no `X`) — sem ele os valores não seriam hexadecimais NENHUM pro
+     interpretador BASIC (vira decimal ou erro), e a mensagem do próprio usuário logo depois ("sempre no
+     formato hexadecimal") só é verdade com o prefixo. Ganha uma linha extra no final com o loop pedido
+     explicitamente ("ja coloque no final as linhas para ler os DATA e dar poke... for, read, poke,
+     next"): `<linha> FOR I=&H<início> TO &H<final>:READ A:POKE I,A:NEXT I`. **Rejeita VRAM**
+     (`?ERRO DE SINTAXE`) — decisão própria: o loop gerado faz `POKE` (memória comum) usando os MESMOS
+     números de `<início>`/`<final>` como endereço — se a origem fosse VRAM, esses números não
+     representariam posições de memória `POKE`-áveis (precisaria de `VPOKE`, escopo bem maior, não
+     pedido).
+   - `X`: `<linha> '#&Hxx,&Hxx,...` (dados embutidos do X-BASIC, `'#` colado sem vírgula antes do 1º
+     valor, exatamente como no exemplo do usuário) — SEM loop nenhum (o próprio X-BASIC já sabe carregar
+     isso sozinho — diferente do `D`, onde o pedido explícito foi "já coloque" o loop).
+
+**Diálogo "Salvar como" sempre aberto** (`SaveFileRequester`, mesmo idioma do `Mamute_AsmSave()`/`SAVE`
+já existente) sugerindo `<arquivo>` como nome — diferente do `XI` (módulo 45i), que grava direto sem
+diálogo nenhum; decisão do próprio usuário nesta mensagem ("ele abre o dialogo para salvar a listagem em
+disco sugerindo o nome"). Extensão default quando `<arquivo>` não tiver nenhuma: `.asm` (sem modo/`B`,
+listagem/DEFB são sintaxe de assembler) ou `.bas` (`D`/`X`, ambos têm números de linha BASIC). Grava via
+`Mamute_SaveTextListing()` (já existente, reaproveitado sem mudança). Cancelar = `CANCELADO`, sem gravar.
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) — sem verificação ao vivo nesta sessão
+(mesmo bloqueio de `dist\PaleoBasic.exe` já registrado nos módulos 45j/45k/45l) e sem testar de verdade
+o round-trip de nenhum dos 4 formatos contra um compilador/interpretador externo real.
+
+### 45n. SUPER-X — comando `XCO` (cor da tela) + centralização de cores em 12 arquivos (2026-08-26)
+
+Pedido explícito do usuário, em duas mensagens: primeiro uma pergunta direta ("fica difícil implementar
+o comando `CO <frente>,<fundo>,<borda>` com as paletas do MSX 1? podendo mudar a cor geral do mamute
+assembly, pelo menos na parte interna de display e de entrada de comandos e das janelas extras de
+comandos?"), respondida com um levantamento real do código (72 ocorrências do MESMO par de literais
+`RGB(60, 220, 90)`/`RGB(0, 0, 0)` espalhadas em 12 arquivos — cada janela do Mamute declarava sua PRÓPRIA
+cópia local) e um plano proposto; confirmado com "impemente" na mensagem seguinte.
+
+**Centralização** (`MamuteSupport.pbi`, antes de qualquer `XIncludeFile` de janela do Mamute) — 3
+`Global` novos (`MamuteColorFg`/`MamuteColorBg`/`MamuteColorBorder`, índice 0-15, default `3`/`1`/`1` =
+Verde Claro/Preto/Preto, reproduz o visual "terminal verde sobre preto" de sempre) + `Mamute_
+Msx1PaletteRGB(Index)` (as 16 cores REAIS do TMS9918/MSX1, RGB aproximado — paleta FIXA, não editável,
+mesmos valores usados por emuladores como o openMSX) + 3 funções de acesso (`Mamute_
+CurrentFrontColor()`/`CurrentBackColor()`/`CurrentBorderColor()`). Persistido em `mamute_settings.json`
+via `MamuteCfg_Load`/`Save` (campos `ColorFg`/`ColorBg`/`ColorBorder`, já existentes, só estendidos).
+
+**Varredura dos 12 arquivos** (`MamuteAssemblerGui`/`Xd`/`Xa`/`Xi`/`Xh`/`Xm`/`M`/`Dump`/`Debugger`/`Scr`/
+`Zap`/`EditGui`) — toda declaração local `ColFront = RGB(60, 220, 90)`/`ColBack = RGB(0, 0, 0)` (72
+ocorrências) trocada pelas 3 funções acima. **Duas decisões que precisaram de leitura de contexto, não
+só busca-e-troca cega**:
+1. **`SetWindowColor(Win, ...)` de cada janela agora usa `Mamute_CurrentBorderColor()`** (não `Back`) —
+   8 arquivos já chamavam isso com o literal `RGB(0, 0, 0)` direto; os outros 4 (`Xi`/`Xm`/`Edit`/
+   `AssemblerGui`, a janela principal) chamavam `SetWindowColor(Win, ColBack)` com uma variável — ganharam
+   um `ColBorder` local novo ao lado de `ColFront`/`ColBack`. Resultado: `<borda>` do `XCO` controla a
+   moldura/margem de CADA janela, separada do fundo interno do log/grade — visualmente idênticas por
+   default (`fundo`=`borda`=índice `1`), só divergem se o usuário escolher índices diferentes.
+2. **Um achado real de colisão incidental, protegido em vez de trocado**: `MamuteDebuggerGui.pbi`
+   (minimapa de memória, `Mdbg_DrawMiniMap`) usa `RGB(60, 220, 90)` como `BrightCol` do código de cor
+   RAM/ROM/BASIC/vazio (`Case #MamuteMem_RAM`) — mesmo valor do tema só por COINCIDÊNCIA, sem relação
+   nenhuma com "cor de texto do terminal". Trocar essa ocorrência pelo tema faria o RAM mudar de cor
+   toda vez que o usuário rodasse `XCO`, quebrando a codificação visual RAM=verde/ROM=azul/BASIC=amarelo/
+   vazio=vermelho que é INDEPENDENTE do tema. Protegida ANTES da troca em massa reescrevendo só essa
+   linha sem espaços (`RGB(60,220,90)`, valor idêntico, formatação diferente de propósito) — assim o
+   busca-e-troca do literal com espaço não a alcançou. Nenhuma outra colisão desse tipo encontrada nos
+   outros 11 arquivos (conferido um por um antes de qualquer substituição em massa).
+
+**`XCO [<frente>],[<fundo>],[<borda>]`** (`MamuteGui_CmdXco()`, `MamuteAssemblerGui.pbi`) — **decisão sem
+precisar perguntar**: os 3 valores são **decimais** (`0`-`15`), não hexadecimais — o resto do Mamute é
+hexa por padrão, mas `XCO` porta um comando de cor de tela MSX de verdade, e o `COLOR frente,fundo,borda`
+real do MSX BASIC sempre foi decimal; seguir essa convenção (em vez da hexa do monitor) é o que faz o
+comando reconhecível pra quem já conhece MSX BASIC. Qualquer um dos 3 campos pode ficar vazio (mantém o
+valor atual só daquele) — mesma convenção do `COLOR` original. Sem argumento, só mostra o estado atual.
+Não repinta janela já aberta (mesmo espírito de outras configurações "estáticas" do Mamute, ex.: fonte)
+— vale a partir da próxima janela aberta.
+
+**Renomeado de `CO` pra `XCO`** logo em seguida, pedido explícito do usuário ("change CO to XCO") — pra
+ficar consistente com o prefixo `X` de TODO o resto dos comandos portados do SUPER-X nesta sessão (`XD`/
+`XA`/`XI`/`XH`/`XM`/`XGO`/`XTR`/`XSD`/`XRG`/`XTS`/`XCS`/`XBT`/`XRT`/`XFL`/`XCM`/`XFD`) — `CO` tinha sido a
+única exceção, batizada sem o `X` na implementação inicial desta mesma sessão. Renomeados: o `Case` do
+dispatch, `MamuteGui_CmdCo()` → `MamuteGui_CmdXco()`, as 2 linhas de eco no log, a entrada de
+`MamuteHelp_Add`, e os comentários — não afeta a tabela de inventário do SUPER-X original (módulo 45,
+que continua listando `CO` — é o nome do comando ORIGINAL, não o nosso apelido portado, mesma convenção
+já usada pra `SD`→`XSD`/`TS`→`XTS`/etc.).
+
+Compilado limpo (`pbcompiler.exe` direto pra um `.exe` de scratch) em cada etapa da varredura (12
+arquivos + o comando, incluindo depois do rename) — sem verificação visual ao vivo nesta sessão (mesmo
+bloqueio de `dist\PaleoBasic.exe`, módulos 45j-45m) comparando o visual ANTES/DEPOIS ou testando `XCO`
+com índices diferentes de verdade numa janela aberta.
+
 ## Lacunas conhecidas (a preencher em conversas futuras)
 
-- **Porta do SUPER-X (módulo 45) longe de completa — só a fase inicial (`XD`/`XA`/`XI`/`XM`) existe**
-  (2026-08-24): das fases B-F do roteiro original (módulo 45) e da lista de comandos "sem colisão, nome
-  livre", NADA foi tocado ainda — `CM`/`FD`/`CS`/`TS` (comparação/busca/checksum), `SD` (super
-  disassembler pra arquivo), `S%`/`L%` (setor de disco cru), `S#`/`L#` (bload/bsave sem cabeçalho), `RT`
-  (realocação com correção de ponteiro), `iM`/`iC`/`iL`/`iS` (notas persistentes — o carregador e a
-  tradução já existem desde o módulo 45e, só os comandos `MON>` que faltam), `OF` (offset global), `SF`
-  (tecla de função programável), `BL`/`BF` (list/busca de BASIC tokenizado), `TR` (trace textual), `CK`,
-  `PP`, `FS`, `CI`, `CU`, `CO`, `KR`/`KT`/`KL`, `TP`, `SV`/`LD`, `PI`/`PO`, `BT`/`FL`/`TK`/`GO`/`RG`
-  (esses cinco últimos já cobertos por equivalentes existentes do Mamute, só falta documentar a
-  equivalência de verdade). O próprio `XI` ficou deliberadamente SEM a pilha de navegação jump/call
-  (`←`/`→`) que o `I` original do SUPER-X tem — decisão de escopo explícita, não esquecimento. `Char`
-  (editor de sprite/fonte) é o único modo da cruz de 5 que ainda não tem NENHUMA implementação, nem
-  parcial. Ver módulo 45 (tabela completa de comandos) pra retomar por onde parar.
+- **Porta do SUPER-X (módulo 45) — 17 comandos portados até a 8.6.0 (`XD`/`XA`/`XI`/`XM`/`XH`/`XBT`/
+  `XRT`/`XFL`/`XCM`/`XFD`/`XCO`/`XCS`/`XTS`/`XRG`/`XGO`/`XTR`/`XSD`), ainda bem longe de completa**
+  (atualizado 2026-08-26, módulos 45j-45n): da lista de comandos "sem colisão, nome livre" (módulo 45),
+  faltam ainda `S%`/`L%` (setor de disco cru), `S#`/`L#` (bload/bsave sem cabeçalho), `iM`/`iC`/`iL`/
+  `iS` (notas persistentes — o carregador e a tradução já existem desde o módulo 45e, só os comandos
+  `MON>` que faltam), `OF` (offset global), `SF` (tecla de função programável), `BL`/`BF` (list/busca
+  de BASIC tokenizado), `CK`, `PP`, `FS`, `CI`, `CU`, `KR`/`KT`/`KL`, `TP`, `SV`/`LD`, `PI`/`PO`, `TK`
+  (esse último já coberto por equivalente existente do Mamute, só falta documentar a equivalência de
+  verdade). O próprio `XI` ficou deliberadamente SEM a pilha de navegação jump/call (`←`/`→`) que o `I`
+  original do SUPER-X tem — decisão de escopo explícita, não esquecimento. `XGO` só executa contra o
+  slot PRIMÁRIO (não sub-slot/VRAM explícito, módulo 45k) — mesma decisão de escopo, motivo diferente
+  (risco no núcleo de execução compartilhado). `XH`/`XBT`/`XRT`/`XFL`/`XCM`/`XFD`/`XCO`/`XCS`/`XTS`
+  foram implementados numa sessão anterior a este registro e só ganharam entrada formal em
+  `docs/SPEC.md`/`CHANGELOG.md`/`docs/RELEASE_NOTES.md` na 8.6.0 — comportamento real não re-verificado
+  linha a linha nessa mesma passada, só documentado a partir da leitura do código já existente. Ver
+  módulo 45 (tabela completa de comandos) pra retomar por onde parar.
 
 - **Digitação de caractere na grade do `XA` nunca foi verificada AO VIVO contra o `.exe` real** (2026-08-24,
   módulo 45h) — três técnicas de injeção sintética de teclado (`SendKeys`, `WM_CHAR` via `SendMessage`,

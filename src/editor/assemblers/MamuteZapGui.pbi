@@ -165,11 +165,11 @@ Procedure MamuteZap_Repaint(Canvas, *State.MamuteZapState, HexX.i, AsciiX.i, Cha
     ProcedureReturn
   EndIf
 
-  Protected ColBack        = RGB(0, 0, 0)
-  Protected ColFront       = RGB(60, 220, 90)
+  Protected ColBack        = Mamute_CurrentBackColor()
+  Protected ColFront       = Mamute_CurrentFrontColor()
   Protected ColDim         = RGB(25, 110, 50)
-  Protected ColCursorBack  = RGB(60, 220, 90)
-  Protected ColCursorFront = RGB(0, 0, 0)
+  Protected ColCursorBack  = Mamute_CurrentFrontColor()
+  Protected ColCursorFront = Mamute_CurrentBackColor()
 
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
 
@@ -239,7 +239,7 @@ Procedure MamuteZap_DrawButton(Canvas, Label.s, Font, AccentColor.l = -1)
     ProcedureReturn
   EndIf
   Protected W = GadgetWidth(Canvas), H = GadgetHeight(Canvas)
-  Protected Fg = RGB(60, 220, 90)
+  Protected Fg = Mamute_CurrentFrontColor()
   If AccentColor <> -1 : Fg = AccentColor : EndIf
   Box(0, 0, W, H, RGB(0, 45, 18))
   DrawingMode(#PB_2DDrawing_Outlined)
@@ -347,9 +347,9 @@ Procedure MamuteZap_Open(ParentWindow, StartSector.i, StartOffset.i)
   If Not Win
     ProcedureReturn
   EndIf
-  SetWindowColor(Win, RGB(0, 0, 0))
+  SetWindowColor(Win, Mamute_CurrentBorderColor())
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   Protected CurY = Margin
 
   Protected G_Legend = TextGadget(#PB_Any, Margin, CurY, WinW - Margin * 2, LegendH,

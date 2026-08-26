@@ -653,6 +653,12 @@ Procedure MamuteHelp_BuildData()
     "recente parou, se nenhum endereco for passado). Cancelar a janela " + Chr(34) + "Salvar como" +
     Chr(34) + " nao gera arquivo nenhum - so mostra `CANCELADO`.")
 
+  MamuteHelp_Add("CLS", "Comandos",
+    "**Limpa a tela** - apaga todo o conteudo do log do `MON>` (rolagem, banner de abertura, historico " +
+    "de comandos anteriores - tudo), deixando a janela em branco pronta pra continuar. Nao afeta " +
+    "memoria/PAGE/registradores/historico de comandos digitados (Cima/Baixo continuam navegando " +
+    "normalmente) - so' o texto visivel no log e' apagado. Sem argumentos.")
+
   MamuteHelp_Add("CL", "Comandos",
     "**Calculadora** - converte um numero (ou avalia uma expressao matematica inteira) e mostra o " +
     "resultado em quatro formatos de uma vez: **HEX**, **BIN** (16 bits), **DEC+** (decimal sem " +
@@ -743,11 +749,20 @@ Procedure MamuteHelp_BuildData()
     "o byte em `endereco-1` e grava no cursor, avancando - util pra preencher sequencias repetidas " +
     "rapido." + #CRLF$ +
     "- `SHIFT`+Cima/Baixo funcionam como sinonimo de `PgUp`/`PgDn` (a doc do SUPER-X lista os dois)." + #CRLF$ + #CRLF$ +
-    "**Dois enderecos** - NAO abre grade nenhuma, so despejo direto no log do `MON>`, no formato " +
-    "escolhido em `C` - exatamente o mesmo comportamento do comando `D` (doc do SUPER-X: " + Chr(34) +
-    "Two Addresses: give a non stop list output" + Chr(34) + "). `<endfim>` nao pode ser menor que " +
-    "`<endinic>`. *Esse modo continua so' PAGE-relativo* - o sufixo `#slot`/`#V` so vale pro modo de " +
-    "UM endereco (a grade interativa acima)." + #CRLF$ + #CRLF$ +
+    "**Dois enderecos** - NAO abre grade nenhuma, so despejo direto no log do `MON>` (doc do SUPER-X: " +
+    Chr(34) + "Two Addresses: give a non stop list output" + Chr(34) + "). `<endfim>` nao pode ser " +
+    "menor que `<endinic>`. `<endinic>` aceita o MESMO sufixo de alvo do endereco unico acima " +
+    "(`#slot[-sub]`/`#V`/`#S`) - nao e' PAGE-relativo apenas." + #CRLF$ + #CRLF$ +
+    "**Formato FIXO, sempre 8 bytes/linha, hexa + checksum + ASCII juntos** (pedido explicito do " +
+    "usuario):" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "AAAA XX XX XX XX XX XX XX XX : YY : QQQQQQQQ" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`AAAA` = endereco da linha, `XX` = os bytes (ate 8), `YY` = checksum de 1 byte (soma dos bytes " +
+    "da linha, com wraparound em 8 bits), `QQQQQQQQ` = ASCII dos mesmos bytes (`.` pros nao-" +
+    "imprimiveis). **`XCS`** (ao lado) alterna COMO `YY` e' calculado: **NORMAL** (so' os bytes, " +
+    "padrao) ou **+ADDR** (soma tambem o byte baixo `AAAA & FF` de cada linha) - vale tanto pro " +
+    "despejo no log quanto pro PDF (`?XD`, abaixo)." + #CRLF$ + #CRLF$ +
     "**`?XD <endinic>,<endfim>`** - " + Chr(34) + "impressora" + Chr(34) + " do SUPER-X (`?` na frente " +
     "do comando, ver Introducao ao lado) - em vez de mandar a mesma listagem pro log, gera um PDF A4 " +
     "(fonte Courier, igual `P`/`LP`) e abre " + Chr(34) + "Salvar como" + Chr(34) + " no final. So' " +
@@ -821,6 +836,342 @@ Procedure MamuteHelp_BuildData()
     "Escrita **so tem efeito em celulas mapeadas como RAM agora** - slot/sub-slot 0 respeitam a " +
     "configuracao fisica (`Configurar -> Mamute Assembler...`); sub-slots 1-3 sao sempre RAM " +
     "gravavel; VRAM (`#V`) sempre aceita escrita - mesmas regras do `XD`.")
+
+  MamuteHelp_Add("XH", "Comandos",
+    "**Porta do comando `H` do monitor SUPER-X** (`docs/SPEC.md`, modulo 45) - o editor de " +
+    "caracteres/sprites, ultimo modo " + Chr(34) + "Char" + Chr(34) + " da cruz que ainda faltava (ver " +
+    "`XD`). Edita **4 caracteres (ou sprites - o layout de bytes e' identico) CONSECUTIVOS de uma vez** " +
+    "- 32 bytes, 8 por caractere, formato padrao MSX de gerador de caracteres/padrao de sprite 8x8." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XH [<endereco>|@<var>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "*`<endereco>` aceita o sufixo `[#<slot>[-<subslot>]|#V|#4|#S|#5]` (ver `XD`) OU `@<nome>` " +
+    "(uma das 7 variaveis de debugger do SUPER-X, ver Introducao).* Sem endereco, reabre onde a janela " +
+    "do `XH` ficou da ultima vez (mesmo endereco E mesmo alvo)." + #CRLF$ + #CRLF$ +
+    "**A grade** e' 16 linhas x 16 colunas de PIXELS (nao bytes) - cada linha e' UMA linha de pixel de " +
+    "DOIS caracteres lado a lado (colunas 0-7 = caractere da esquerda, 8-F = caractere da direita), com " +
+    "um cabecalho `0123456789ABCDEF` no topo marcando as colunas. As primeiras 8 linhas mostram os " +
+    "caracteres 1 e 2; as ultimas 8 mostram os caracteres 3 e 4 (" + Chr(34) + "2 em cima, 2 embaixo" + Chr(34) +
+    "). Pixel aceso desenha `0`, apagado desenha `-`. Cada linha termina com `ENDERECO : YY:ZZ N` - " +
+    "`ENDERECO`/`YY` sao o endereco/valor do byte do caractere DA ESQUERDA nessa linha, `ZZ` e' o valor " +
+    "do byte do caractere DA DIREITA na mesma linha, `N` (0-7) e' o indice da linha DENTRO do caractere." + #CRLF$ + #CRLF$ +
+    "**No canto**, uma miniatura mostra os 4 caracteres ja montados lado a lado/um embaixo do outro " +
+    "(16x16 pixels), exatamente como ficam de verdade numa tela MSX." + #CRLF$ + #CRLF$ +
+    "**Edicao:** setas movem o cursor pela grade 16x16; `ESPACO` inverte o bit sob o cursor. Botoes " +
+    "`INVERTER`/`LIMPAR`/`PREENCHER` operam sobre o **caractere onde o cursor esta agora** (nao a grade " +
+    "inteira); `LIMPAR BLOCO` zera os 4 caracteres de uma vez (32 bytes). `<<`/`>>` (ou `PgUp`/`PgDn`, " +
+    "`SHIFT`+Cima/Baixo) pulam 32 bytes - um bloco inteiro de 4 caracteres - pro anterior/proximo." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas mapeadas como RAM agora** - mesmas regras do `XD`/`XM`.")
+
+  MamuteHelp_Add("XBT", "Comandos",
+    "**Transferencia de bloco entre alvos** (" + Chr(34) + "BT" + Chr(34) + " de " + Chr(34) +
+    "Block Transfer" + Chr(34) + ") - versao do `T` (comando herdado do MegaAssembler, ao lado) que " +
+    "entende o enderecamento estendido do SUPER-X: origem e destino podem estar em slot/sub-slot/VRAM " +
+    "**DIFERENTES um do outro** (" + Chr(34) + "inclusive intra-slots" + Chr(34) + ", pedido explicito " +
+    "do usuario) - o `T` comum so trabalha dentro do `PAGE` corrente, um unico espaco de 16 bits pros " +
+    "tres numeros." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XBT <endinic>[#slot[-sub]|#V|#S],<endfim>,<enddest>[#slot[-sub]|#V|#S]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "- **`<endinic>`** aceita o sufixo de alvo completo (ver `XD`) - resolve ONDE o bloco de origem " +
+    "comeca." + #CRLF$ +
+    "- **`<endfim>`** e' sempre um endereco PURO, sem sufixo - marca o FIM do bloco de origem no MESMO " +
+    "alvo que `<endinic>` ja escolheu (nao teria sentido um alvo proprio so pro fim de um bloco que " +
+    "comecou noutro)." + #CRLF$ +
+    "- **`<enddest>`** tambem aceita o sufixo de alvo completo, resolvido de forma **totalmente " +
+    "independente** da origem - pode ser outro slot, outro sub-slot, VRAM enquanto a origem e' RAM " +
+    "normal, ou vice-versa." + #CRLF$ + #CRLF$ +
+    "Copia [`<endinic>`,`<endfim>`] inteiro pro bloco iniciado em `<enddest>`, avancando byte a byte. " +
+    "**Sem wraparound** (mesma regra do `T`/`D`/`P`/`V`) - se `<enddest>` + o tamanho do bloco passar do " +
+    "teto do ALVO DE DESTINO (FFFF pra RAM/slot, o tamanho de VRAM configurado pra `#V`), e' `?ERRO DE " +
+    "SINTAXE`, nunca da a volta. Origem/destino sobrepostos (quando os dois caem no MESMO alvo de " +
+    "verdade) sao tratados com o mesmo algoritmo seguro de um `memmove` que o `T` ja usa - copia de " +
+    "tras pra frente quando `<enddest>` e' numericamente maior que `<endinic>`, de frente pra tras " +
+    "senao; quando origem e destino sao alvos DIFERENTES essa direcao e' irrelevante pro resultado " +
+    "(nao ha sobreposicao de verdade possivel), entao nenhuma deteccao extra e' necessaria." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas do destino mapeadas como RAM agora** - slot/sub-slot 0 " +
+    "respeitam a configuracao fisica (`Configurar -> Mamute Assembler...`); sub-slots 1-3 sao sempre " +
+    "RAM gravavel; VRAM (`#V`) sempre aceita escrita - mesmas regras do `XD`/`XM`.")
+
+  MamuteHelp_Add("XRT", "Comandos",
+    "**Reloca um programa Z80** (" + Chr(34) + "RT" + Chr(34) + " de " + Chr(34) + "Relocating Transfer" +
+    Chr(34) + ") - mesma sintaxe de 3 campos do `XBT` (ao lado), mas em vez de copiar bytes crus, " +
+    "**decodifica cada instrucao** do bloco e ajusta " +
+    "todo endereco absoluto embutido (`JP`/`CALL`, ponteiros `LD`) que apontava pra DENTRO do bloco " +
+    "original, somando o deslocamento do movimento - pedido explicito do usuario." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XRT <endinic>[#slot[-sub]|#V|#S],<endfim>,<enddest>[#slot[-sub]|#V|#S]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Mesma regra de sufixo de alvo do `XBT` pros tres campos (`<endinic>`/`<enddest>` aceitam slot/" +
+    "sub-slot/VRAM, `<endfim>` e' sempre um endereco puro no MESMO alvo de `<endinic>`) - inclusive " +
+    "entre slots DIFERENTES." + #CRLF$ + #CRLF$ +
+    "**O que e' ajustado**: `JP`/`CALL`/`JP cc`/`CALL cc` (endereco absoluto), `LD dd,nn` (par de " +
+    "registrador com um numero de 16 bits), `LD (nn),HL`/`LD HL,(nn)`/`LD (nn),A`/`LD A,(nn)` e as " +
+    "formas estendidas equivalentes (`ED`/`DD`/`FD`) - **so' quando o endereco embutido cai DENTRO** " +
+    "de `[<endinic>,<endfim>]`. Um `CALL 8012H` vira `CALL C012H` ao mover `8000H` pra `C000H`, mas um " +
+    "`CALL 004DH` (BIOS, endereco fora do bloco) fica **intocado** - exatamente o exemplo pedido pelo " +
+    "usuario. `JR`/`DJNZ` (saltos relativos) normalmente nao precisam de ajuste nenhum quando o alvo " +
+    "tambem esta dentro do bloco (origem e destino se movem juntos, a distancia relativa nao muda) - " +
+    "so' recalcula o deslocamento quando o alvo de um `JR`/`DJNZ` fica FORA do bloco (salto pra codigo " +
+    "fixo externo), e aborta com `?RELOCACAO INVALIDA` **sem gravar nada** se o novo deslocamento nao " +
+    "couber em -128..127 depois do movimento (o bloco inteiro e' lido/decodificado pra um buffer " +
+    "ANTES de qualquer escrita no destino - um erro no meio nunca deixa o destino pela metade)." + #CRLF$ + #CRLF$ +
+    "**Limitacao aceita** (mesma classe de limite ja documentada no disassembler do `L`/`LP`/`XI`): " +
+    "tabelas de dados inline (`DEFW` com enderecos, por exemplo) NO MEIO do codigo sao lidas como se " +
+    "fossem instrucao, podendo confundir a decodificacao dali em diante - funciona bem pro caso comum " +
+    "(codigo continuo, sem dados misturados no meio do fluxo), mas nao ha como garantir 100% sem " +
+    "executar o programa de verdade." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas do destino mapeadas como RAM agora** - mesmas regras do `XBT`.")
+
+  MamuteHelp_Add("XFL", "Comandos",
+    "**Preenche um bloco** - versao do `F` comum (modulo 31, ao lado) que entende o enderecamento " +
+    "estendido do SUPER-X: preenche um bloco num slot/sub-slot/VRAM **explicito**, em vez de sempre " +
+    "PAGE-relativo." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XFL <endinic>[#slot[-sub]|#V|#S],<endfim>,<valor>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endinic>` aceita o sufixo de alvo completo (ver `XD`); `<endfim>` e' sempre um endereco puro, " +
+    "no MESMO alvo que `<endinic>` ja escolheu (mesma convencao do `XBT`/`XRT`, ao lado). `<valor>` e' " +
+    "1-2 digitos hexa - o byte que preenche [`<endinic>`,`<endfim>`] inteiro." + #CRLF$ + #CRLF$ +
+    "Escrita **so tem efeito em celulas mapeadas como RAM agora** - slot/sub-slot 0 respeitam a " +
+    "configuracao fisica (`Configurar -> Mamute Assembler...`); sub-slots 1-3 sao sempre RAM " +
+    "gravavel; VRAM (`#V`) sempre aceita escrita - mesmas regras do `XD`/`XBT`.")
+
+  MamuteHelp_Add("XCM", "Comandos",
+    "**Compara dois blocos de memoria** byte a byte - pedido explicito do usuario. Origem e bloco de " +
+    "comparacao podem estar em alvos TOTALMENTE independentes (slot/sub-slot/VRAM diferentes um do " +
+    "outro, mesmo espirito " + Chr(34) + "intra-slots" + Chr(34) + " do `XBT`/`XRT`/`XFL`, ao lado)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XCM <endinic>[#slot[-sub]|#V|#S],<endfim>,<endcomp>[#slot[-sub]|#V|#S][,S]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endinic>`/`<endcomp>` aceitam o sufixo de alvo completo (ver `XD`); `<endfim>` e' sempre um " +
+    "endereco puro, no MESMO alvo que `<endinic>` ja escolheu (mesma convencao do `XBT`/`XRT`/`XFL`)." + #CRLF$ + #CRLF$ +
+    "Compara [`<endinic>`,`<endfim>`] com o bloco de mesmo tamanho comecando em `<endcomp>`, byte a " +
+    "byte. **Por padrao lista so' os bytes DIFERENTES** - uma linha por byte, endereco+valor dos dois " +
+    "lados (`ENDERECO_A: VALOR_A <> ENDERECO_B: VALOR_B`), terminando com a contagem total de " +
+    "diferencas. **`,S` no final inverte pro modo " + Chr(34) + "iguais" + Chr(34) + "** - lista so' os " +
+    "bytes que BATEM (`ENDERECO_A: VALOR_A == ENDERECO_B: VALOR_B`) em vez dos diferentes.")
+
+  MamuteHelp_Add("XFD", "Comandos",
+    "**Procura uma instrucao Z80** dentro de um intervalo - pedido explicito do usuario: " + Chr(34) +
+    "o sistema pede uma instrucao em ASM, ai ele vai listar todos os enderecos no intervalo que " +
+    "tenham esta instrucao" + Chr(34) + "." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XFD <endinic>[#slot[-sub]|#V|#S],<endfim>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endinic>` aceita o sufixo de alvo completo (ver `XD`); `<endfim>` e' sempre um endereco puro, " +
+    "no MESMO alvo (mesma convencao do `XBT`/`XRT`/`XFL`/`XCM`)." + #CRLF$ + #CRLF$ +
+    "Depois do `ENTER`, abre uma caixa de dialogo pedindo **uma instrucao Z80** (mesma sintaxe do " +
+    "`XM`/comando `A` - ex.: `CALL 8012H`). Decodifica o intervalo inteiro instrucao por instrucao " +
+    "(mesmo motor do `L`/`LP`/`XI`/`XRT`) e lista o ENDERECO de toda ocorrencia onde a instrucao " +
+    "encontrada bate EXATAMENTE (opcode + operando, byte a byte) com a digitada, terminando com a " +
+    "contagem total. So' conta instrucao REAL, alinhada num limite de instrucao de verdade - nao e' " +
+    "uma busca de bytes crua (diferente do `SH`, que acharia coincidencias no MEIO de outra " +
+    "instrucao/dado)." + #CRLF$ + #CRLF$ +
+    "**Limitacao aceita**: a instrucao digitada e' montada UMA unica vez, ancorada em `<endinic>` - " +
+    "funciona perfeitamente pra qualquer instrucao com operando ABSOLUTO (`CALL`/`JP`/`LD nn`/etc., " +
+    "que codificam sempre os MESMOS bytes independente de onde ficam), mas `JR`/`DJNZ` (saltos " +
+    "RELATIVOS) codificam bytes diferentes dependendo de onde ficam - a busca so' encontra ocorrencias " +
+    "na MESMA distancia relativa da instrucao digitada, nao " + Chr(34) +
+    "todo JR pro mesmo alvo absoluto" + Chr(34) + " (mesmo espirito do aviso ja documentado no `XRT`).")
+
+  MamuteHelp_Add("XCO", "Comandos",
+    "**Cor da tela** - troca a paleta de cores do Mamute Assembler INTEIRO (monitor principal, `XD`/" +
+    "`XM`/`XA`/`XI`/`XH`, debugger grafico, `DM`/`ZAP`/`SCR`/`M`/`EDIT`) - pedido explicito do usuario. " +
+    "Porta do `CO` do SUPER-X, batizado `XCO` (nao `CO`) pra ficar consistente com o prefixo `X` de todo " +
+    "o resto dos comandos portados do SUPER-X." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XCO [<frente>],[<fundo>],[<borda>]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<frente>`/`<fundo>`/`<borda>` sao indices **0-15, sempre DECIMAL** (nao hexa - mesma convencao " +
+    "do `COLOR frente,fundo,borda` do MSX BASIC de verdade, ja que `XCO` porta um comando de cor de " +
+    "tela MSX) da paleta REAL e FIXA do MSX1/TMS9918 (a mesma paleta de sempre - nao e' editavel, " +
+    "MSX1 nao tem paleta programavel)." + #CRLF$ + #CRLF$ +
+    "Qualquer um dos 3 pode ficar VAZIO (virgula sem nada entre duas virgulas, ou so' nao digitar o " +
+    "resto) - mantem o valor atual dessa cor sozinho, mesma convencao do `COLOR` original (`XCO ,,4` " +
+    "muda so a borda). Sem argumento nenhum, `XCO` so mostra o estado atual." + #CRLF$ + #CRLF$ +
+    "*Nao repinta janela nenhuma ja aberta - vale a partir da PROXIMA janela que abrir (inclusive " +
+    "fechar e reabrir o proprio Mamute Assembler). Fica salvo em `mamute_settings.json` - sobrevive " +
+    "entre sessoes, diferente do `XCS`/`C` (esses continuam volateis de proposito).*")
+
+  MamuteHelp_Add("XCS", "Comandos",
+    "**Alterna o tipo de checksum** do despejo do `XD` (`XD <endinic>,<endfim>`, ver ao lado) - pedido " +
+    "explicito do usuario." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XCS" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Sem argumentos - cada `XCS` so' ALTERNA entre os dois modos e confirma o novo estado no log " +
+    "(mesmo idioma do `PAGE`/`C` ecoando o estado apos uma mudanca):" + #CRLF$ +
+    "- **NORMAL** (padrao) - checksum = soma dos ate 8 bytes da linha, com wraparound em 8 bits." + #CRLF$ +
+    "- **+ADDR** - a mesma soma, mas somando TAMBEM o byte baixo do endereco da linha (`AAAA & FF`) - " +
+    "checksum tipico de 8 bits que embute o endereco, util pra detectar linhas fora de ordem/deslocadas " +
+    "que o modo NORMAL nao pegaria (mesmos bytes, endereco diferente = checksum igual no NORMAL, " +
+    "diferente no +ADDR)." + #CRLF$ + #CRLF$ +
+    "Dura so' esta sessao da janela (nao persiste em `mamute_settings.json`, mesmo espirito volatil do " +
+    "`PAGE`/`C`) - reabrir o Mamute Assembler volta pro modo NORMAL.")
+
+  MamuteHelp_Add("XTS", "Comandos",
+    "**Calcula UM checksum agregado** do bloco inteiro - pedido explicito do usuario. Diferente do " +
+    "checksum POR LINHA do despejo do `XD` (8 bits, alternado pelo `XCS`, ao lado), aqui e' um UNICO " +
+    "valor de 16 bits pro bloco `[endinic,endfim]` inteiro (soma de TODOS os bytes, com wraparound) - " +
+    "util pra comparar/verificar a integridade de um bloco inteiro (ex.: um ROM) de uma vez, nao linha " +
+    "a linha." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XTS <endinic>[#slot[-sub]|#V|#S],<endfim>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<endinic>` aceita o sufixo de alvo completo (ver `XD`); `<endfim>` e' sempre um endereco puro, " +
+    "no MESMO alvo (mesma convencao do `XBT`/`XRT`/`XFL`/`XCM`/`XFD`)." + #CRLF$ + #CRLF$ +
+    "Mostra o resultado nos MESMOS 4 formatos do `CL` (ao lado) mais **OCTAL**:" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "HEX  : 06C4H" + #CRLF$ +
+    "BIN  : 0000011011000100" + #CRLF$ +
+    "DEC+ : 1732" + #CRLF$ +
+    "DEC+-: 1732" + #CRLF$ +
+    "OCT  : 003304" + #CRLF$ +
+    "```")
+
+  MamuteHelp_Add("XRG", "Comandos",
+    "**Mostra/edita os registradores Z80 simulados** - pedido explicito do usuario. Sem argumento, " +
+    "mostra TODOS os pares de 16 bits, inclusive os " + Chr(34) + "secretos" + Chr(34) + " (o par " +
+    "alternado AF'/BC'/DE'/HL', que nem o comando `X` mostra) mais o `PC` e os 5 breakpoints nomeados " +
+    "do `XGO` (`BP`/`BP1`/`BP2`/`BP3`/`BPF`, ver `XGO` ao lado)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XRG" + #CRLF$ +
+    "MON>XRG *" + #CRLF$ +
+    "MON>XRG +" + #CRLF$ +
+    "MON>XRG <registro>,<valor>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "- **`XRG`** (sem argumento) - mostra os registradores:" + #CRLF$ +
+    "```" + #CRLF$ +
+    "AF=0000 BC=0000 DE=0000 HL=0000" + #CRLF$ +
+    "IX=0000 IY=0000 SP=0000" + #CRLF$ +
+    "AF'=0000 BC'=0000 DE'=0000 HL'=0000" + #CRLF$ +
+    "PC=0000" + #CRLF$ +
+    "BP=---- BP1=---- BP2=---- BP3=---- BPF=----" + #CRLF$ +
+    "```" + #CRLF$ +
+    "- **`XRG *`** - limpa TODOS os registradores (`A`-`L`, o par alternado, `IX`/`IY`/`PC`/`I`/`R`/" +
+    "`IFF1`/`IFF2`/`IM`/estado de `HALT`) **exceto a pilha** (`SP`) - mesma ressalva do manual " +
+    "original (`RG *` limpa tudo " + Chr(34) + "except stack" + Chr(34) + "). Nao mexe em `BP`/`BP1`/" +
+    "`BP2`/`BP3`/`BPF` - sao configuracao de depuracao, nao registradores da CPU." + #CRLF$ +
+    "- **`XRG +`** - reseta SO' a pilha (`SP`) pro seu inicio (`$0000` - a pilha cresce pra baixo, " +
+    "entao o 1o `PUSH`/`CALL` grava em `$FFFF`)." + #CRLF$ +
+    "- **`XRG <registro>,<valor>`** - atribui `<valor>` (hexadecimal) ao registrador escolhido. " +
+    "Registradores suportados: `A`, `B`, `C`, `D`, `E`, `F`, `H`, `L`, `A'`, `B'`, `C'`, `D'`, `E'`, " +
+    "`F'`, `H'`, `L'` (1-2 digitos hexa cada), `AF`, `BC`, `DE`, `HL`, `AF'`, `BC'`, `DE'`, `HL'`, " +
+    "`IX`, `IY`, `IXH`, `IXL`, `IYH`, `IYL`, `SP`, `PC` (1-4 digitos hexa, exceto `IXH`/`IXL`/`IYH`/" +
+    "`IYL`, que sao meios-registradores de 1 byte) e `BP`/`BP1`/`BP2`/`BP3`/`BPF`." + #CRLF$ + #CRLF$ +
+    "*Alterando `SP` o Stack Pointer de verdade e' alterado tambem* - nao e' um valor cosmetico " +
+    "separado, e' o MESMO `SP` que `PUSH`/`POP`/`CALL`/`RET` usam (`MamuteZ80Cpu.pbi`)." + #CRLF$ + #CRLF$ +
+    "**`BP`/`BP1`/`BP2`/`BP3`/`BPF` nao sao registradores de verdade** - cada um marca um endereco de " +
+    "breakpoint. O `XGO` (ao lado) para nesses enderecos EM SEQUENCIA e mostra os registradores " +
+    "automaticamente, mesmo idioma do manual original (" + Chr(34) + "the program will stop at this " +
+    "point and the registers are displayed" + Chr(34) + ").")
+
+  MamuteHelp_Add("XGO", "Comandos",
+    "**Executa o programa** a partir de um endereco, no MESMO motor Z80 simulado do comando `G`/" +
+    "debugger grafico (`MamuteZ80Cpu.pbi`) - pedido explicito do usuario. Para AUTOMATICAMENTE num dos " +
+    "5 breakpoints nomeados (`BP`/`BP1`/`BP2`/`BP3`/`BPF`, editaveis via `XRG`, ver ao lado) e mostra os " +
+    "registradores no ponto onde parou." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XGO <endereco>[#<slot>]" + #CRLF$ +
+    "MON>XGO" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "- **`XGO <endereco>`** - COMECA do zero nesse endereco, e para no `BP` (se estiver definido). " +
+    "`#<slot>` troca IMPLICITAMENTE o slot PRIMARIO mapeado na PAGINA de `<endereco>` (mesmo efeito do " +
+    "comando `PAGE`) antes de rodar - **`#V` (VRAM) e sub-slot explicito (`#slot-sub`) sao " +
+    "?ERRO DE SINTAXE**: o motor de execucao Z80 so' roda contra a memoria mapeada normal (a mesma que " +
+    "`PAGE` controla), nunca contra um sub-slot/VRAM explicito como os comandos de memoria (`XD`/`XM`/" +
+    "`XA`/`XI`) conseguem mirar." + #CRLF$ +
+    "- **`XGO`** (sem endereco) - CONTINUA de onde a ultima chamada parou. Cada chamada consecutiva " +
+    "avanca um passo na sequencia: a 1a (`XGO <endereco>`) mira `BP`; a 2a mira `BP1`; a 3a, `BP2`; a " +
+    "4a, `BP3`; a 5a em diante, so' `BPF`. **Se o breakpoint da vez nao estiver definido, cai pro " +
+    "`BPF`** (se este estiver definido) - senao, roda " + Chr(34) + "livre" + Chr(34) + " (ver abaixo). " +
+    "So' funciona depois de pelo menos um `XGO <endereco>` bem-sucedido." + #CRLF$ + #CRLF$ +
+    "**Rodando " + Chr(34) + "livre" + Chr(34) + "** (nenhum breakpoint definido pra esta chamada) - " +
+    "pedido explicito do usuario: para no que vier primeiro entre:" + #CRLF$ +
+    "- **Fim do programa** - o `RET` que devolve pra ALEM da pilha de onde este `XGO` comecou (mesmo " +
+    "criterio do `STEP OUT` do debugger grafico)." + #CRLF$ +
+    "- **`ESC`** - interrompe manualmente a qualquer momento." + #CRLF$ +
+    "- **`HALT`** - instrucao `HALT` sem interrupcao configurada pra retomar." + #CRLF$ +
+    "- Um teto de seguranca de instrucoes (protecao final contra loop infinito sem nenhum dos " +
+    "criterios acima)." + #CRLF$ + #CRLF$ +
+    "*Com um breakpoint definido pra esta chamada, so' ele para a execucao - um `RET` no meio do " +
+    "caminho NAO conta.*")
+
+  MamuteHelp_Add("XTR", "Comandos",
+    "**Trace passo a passo** - pedido explicito do usuario. Comeca em `<endereco>`, executa UMA " +
+    "instrucao, mostra o endereco/bytes/mnemonico dela mais os registradores, e fica esperando: " +
+    "`ENTER` executa a proxima instrucao (mostra de novo e espera outra vez), `ESC` interrompe." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XTR <endereco>" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Cada passo mostra 3 linhas:" + #CRLF$ +
+    "```" + #CRLF$ +
+    "4000  3E 05        LD A,05H" + #CRLF$ +
+    "AF=0500 BC=0000 DE=0000 HL=0000" + #CRLF$ +
+    "IX=0000 IY=0000 SP=F380" + #CRLF$ +
+    "```" + #CRLF$ +
+    "(mesmo formato endereco+bytes+mnemonico do `L`/`LP`, registradores no mesmo formato compacto do " +
+    "comando `X` - sem os " + Chr(34) + "secretos" + Chr(34) + "/`BP`s do `XRG`, pra nao encher o log " +
+    "numa sessao de trace longa; use `XRG` a qualquer momento, inclusive no meio de um trace, se " +
+    "precisar ver tudo)." + #CRLF$ + #CRLF$ +
+    "Se a `CPU` **haltar** (instrucao `HALT` sem interrupcao configurada pra retomar) o trace se " +
+    "encerra sozinho, sem esperar `ESC`." + #CRLF$ + #CRLF$ +
+    "*Diferente do `XGO`, `XTR` nao aceita sufixo de slot/VRAM - so' um endereco puro (mesmo escopo do " +
+    "`TR` original). Pra rodar num slot especifico, troque a `PAGE` antes com o comando `PAGE`.*")
+
+  MamuteHelp_Add("XSD", "Comandos",
+    "**Super disassembler** - gera uma listagem em disco a partir de um bloco de memoria: OU uma " +
+    "listagem assembly de verdade (pra realimentar um compilador Z80 externo), OU um despejo de bytes " +
+    "crus em 3 formatos de texto diferentes - pedido explicito do usuario. **Sempre abre o dialogo " +
+    "" + Chr(34) + "Salvar como" + Chr(34) + "**, sugerindo `<arquivo>` como nome (diferente do `XI`, " +
+    "que grava direto sem dialogo)." + #CRLF$ + #CRLF$ +
+    "**Sintaxe:**" + #CRLF$ + #CRLF$ +
+    "```" + #CRLF$ +
+    "MON>XSD <arquivo>,<inicio>[#slot[-sub]|#V|#S],<final>[,B|D|X]" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "`<inicio>` aceita o sufixo de alvo completo (ver `XD`) - slot/sub-slot/VRAM, igual `XD`/`XM`/`XA`/" +
+    "`XI` (isto e' so' LEITURA de memoria, nao precisa da limitacao de slot primario que o `XGO` tem " +
+    "por precisar EXECUTAR). `<final>` e' sempre um endereco puro, no MESMO alvo." + #CRLF$ + #CRLF$ +
+    "- **Sem `,B`/`,D`/`,X`** - listagem assembly de verdade, uma instrucao decodificada por linha " +
+    "(sem coluna de endereco/bytes, diferente do `XI`), com `ORG <inicio>H` no topo:" + #CRLF$ +
+    "```" + #CRLF$ +
+    "        ORG 4000H" + #CRLF$ +
+    "        LD A,05H" + #CRLF$ +
+    "        CALL 0A2H" + #CRLF$ +
+    "```" + #CRLF$ +
+    "- **`,B`** - bytes crus em `DEFB` (sintaxe Z80 assembler), 8 por linha:" + #CRLF$ +
+    "```" + #CRLF$ +
+    "DEFB 3EH,05H,CDH,A2H,00H,C9H,00H,00H" + #CRLF$ +
+    "```" + #CRLF$ +
+    "- **`,D`** - `DATA` em BASIC, 8 por linha, `<linha>` comecando em `10000` (subindo de 10 em 10) - " +
+    "**sempre com prefixo `&H`** (sem ele nao seria hexadecimal nenhum pro interpretador BASIC). Ganha " +
+    "uma linha extra no final com o loop de carga:" + #CRLF$ +
+    "```" + #CRLF$ +
+    "10000 DATA &H3E,&H05,&HCD,&HA2,&H00,&HC9,&H00,&H00" + #CRLF$ +
+    "10010 FOR I=&H4000 TO &H4007:READ A:POKE I,A:NEXT I" + #CRLF$ +
+    "```" + #CRLF$ +
+    "**`,D` nao aceita VRAM** (`?ERRO DE SINTAXE`) - o loop gerado faz `POKE` (memoria comum), que nao " +
+    "faz sentido nenhum pros MESMOS numeros de endereco se a origem for VRAM (precisaria de `VPOKE`)." + #CRLF$ +
+    "- **`,X`** - dados embutidos no formato do X-BASIC (`'#` na frente, sem virgula antes do 1o " +
+    "valor - o proprio X-BASIC ja sabe carregar isso sozinho, sem loop nenhum):" + #CRLF$ +
+    "```" + #CRLF$ +
+    "10000 '#&H3E,&H05,&HCD,&HA2,&H00,&HC9,&H00,&H00" + #CRLF$ +
+    "```" + #CRLF$ + #CRLF$ +
+    "Extensao sugerida quando `<arquivo>` nao tiver nenhuma: `.asm` (sem modo/`,B`) ou `.bas` (`,D`/" +
+    "`,X`). Cancelar o dialogo mostra `CANCELADO`, sem gravar nada.")
 
   MamuteHelp_Add("EDIT", "Comandos",
     "**Abre uma janela separada** com um editor de linhas pro **programa-fonte Z80**, modelado no " +

@@ -10,15 +10,18 @@
       2. Gera um manifesto (lista de arquivos a empacotar) via
          "git ls-files dist/" - a mesma lista que o proprio git ja usa pra
          decidir o que e conteudo versionado/distribuivel de dist\ (exclui
-         *_settings.json, dist\roms\, dist\projects\noname.msxproject, etc.
-         automaticamente, ver .gitignore) - evita duplicar essas regras de
-         exclusao aqui e correr o risco delas divergirem com o tempo. Usa
-         "-c core.quotepath=false" pra nomes de arquivo com acento (ex.:
-         "La sereníssima...mid" em dist\editor\tools\msxbas2rom\games\) nao
-         virem escapados em octal (\303\255) na saida - confirmado um caso
-         real assim ao testar, o arquivo ficava de fora do pacote silenciosamente
-         sem esse flag. dist\fossauro.exe e' adicionado a mao (nao rastreado
-         no git de proposito, ver .gitignore, mas faz parte do pacote).
+         *_settings.json, dist\projects\noname.msxproject, etc. automaticamente,
+         ver .gitignore) - evita duplicar essas regras de exclusao aqui e correr
+         o risco delas divergirem com o tempo. Usa "-c core.quotepath=false" pra
+         nomes de arquivo com acento (ex.: "La sereníssima...mid" em
+         dist\editor\tools\msxbas2rom\games\) nao virem escapados em octal
+         (\303\255) na saida - confirmado um caso real assim ao testar, o
+         arquivo ficava de fora do pacote silenciosamente sem esse flag.
+         dist\fossauro.exe e dist\roms\*.ROM sao adicionados a mao (os dois
+         gitignored de proposito - fossauro.exe por ser binario grande,
+         dist\roms\ por serem ROMs com copyright proprio - mas pedido explicito
+         do usuario 2026-08-25: os dois fazem parte do pacote redistribuivel
+         mesmo assim, so' nao ficam rastreados no repositorio git).
       3. Compila src\installer\tools\BuildPayloadZip.pb (ferramenta de build,
          usa o Packer nativo do PureBasic - UseZipPacker/AddPackFile - em vez
          de Compress-Archive do PowerShell, mesmo espirito "sem dependencia
@@ -37,11 +40,11 @@
 .EXAMPLE
     .\build-installer.ps1
 .EXAMPLE
-    .\build-installer.ps1 -Version "8.4.0" -Run
+    .\build-installer.ps1 -Version "8.6.0" -Run
 #>
 
 param(
-    [string]$Version = "8.4.0",
+    [string]$Version = "8.6.0",
     [switch]$Run,
     [switch]$SkipAppBuild
 )
@@ -114,7 +117,20 @@ try {
     [Console]::OutputEncoding = $PrevOutputEncoding
 }
 
-$allFiles = @($trackedFiles) + @("dist/fossauro.exe")
+
+# dist\roms\ e' gitignored de proposito (ROMs do sistema MSX pro Fossauro,
+# copyright proprio - nunca rastreadas no git, ver .gitignore/CLAUDE.md), logo
+# "git ls-files dist/" nunca as lista sozinho. Pedido explicito do usuario
+# (2026-08-25): o instalador standalone TAMBEM deve empacotar as ROMs (nao so'
+# o build local em dist\roms\) - adicionadas a mao aqui, mesmo espirito do
+# "dist/fossauro.exe" logo abaixo (tambem gitignored, tambem parte do pacote).
+$RomFiles = @()
+$DistRomsDir = Join-Path $RepoRoot "dist\roms"
+if (Test-Path $DistRomsDir) {
+    $RomFiles = Get-ChildItem -Path $DistRomsDir -File | ForEach-Object { "dist/roms/$($_.Name)" }
+}
+
+$allFiles = @($trackedFiles) + @("dist/fossauro.exe") + $RomFiles
 # UTF8 sem BOM - o manifesto e' lido por um programa PureBasic (ReadFile/
 # ReadString), BOM na primeira linha corromperia o primeiro caminho.
 [System.IO.File]::WriteAllLines($ManifestPath, $allFiles, (New-Object System.Text.UTF8Encoding($false)))

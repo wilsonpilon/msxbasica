@@ -6,7 +6,7 @@
 
 ![Editor com destaque de sintaxe para o dialeto Basic Dignified](docs/images/msxbasica-01.png)
 
-**Versão atual: 8.4.0** — versão e build (data/hora UTC de compilação, em
+**Versão atual: 8.6.0** — versão e build (data/hora UTC de compilação, em
 hexadecimal) são embutidas no executável pelo `build.ps1` e exibidas em `Ajuda → Sobre...`.
 
 IDE nativa em **PureBasic** para desenvolvimento em MSX BASIC (dialeto "Dignified", sem números de
@@ -609,20 +609,17 @@ fora do tema da IDE), prompt `MON>`, inspirado no **MegaAssembler** do usuário 
 de linha de comando dos anos 80. Simula o sistema de slots/páginas de memória do MSX (4 slots × 4
 páginas de 16KB = 256KB), configurável em **Configurar → Mamute Assembler...** (o que é RAM, ROM, BASIC
 ou vazio em cada célula — arquivos ROM/BASIC configurados são lidos de verdade toda vez que a janela do
-Mamute Assembler abre). Só **12 comandos** existem até agora: **`BA`/`QUIT`** (fecha a janela), **`PAGE`**
-(mostra/troca o slot ativo em cada página), os editores de bytes **`DM`** (memória simulada) e **`ZAP`**
-(setores de uma imagem `.dsk` real), **`SCR`** (display gráfico da memória numa tela fixa 256x192 estilo
-SCREEN 2, útil pra visualizar fontes/sprites direto na ROM), **`SH`** (busca de bytes/texto na memória,
-com curingas e detecção automática de deslocamento), **`MS`** (grava uma string na memória, com o mesmo
-deslocamento opcional do `SH`/`DM`), **`LOAD`** (carrega um `.rom`/binário escolhido numa janela pra
-dentro de um slot escolhido pelo usuário), **`SAVE`** (o inverso — grava um bloco de memória num
-arquivo `.bin`/`.rom`, com ou sem cabeçalho), **`M`**/**`S`** (edição rápida estilo `DM`, mas digitando
-hexa tecla-a-tecla direto — `S` usa um teclado numérico configurável em `Configurar → Mamute
-Assembler...`), e **`C`** (escolhe o modo de exibição — 4 formatos possíveis — que os futuros comandos
-`D`/`P`/`V` vão usar). Ainda não é um assembler de verdade — não monta
-código Z80, não tem editor de fonte próprio nem integra com o resto da IDE além do que já existe aqui;
-cresce comando por comando em sessões futuras. **Ajuda → Mamute Assembler...** sempre reflete só o que
-já foi portado.
+Mamute Assembler abre). Cresceu de um punhado de comandos herdados do MegaAssembler (`BA`/`QUIT`,
+`PAGE`, os editores de bytes `DM`/`ZAP`/`SCR`/`M`/`S`, busca/gravação `SH`/`MS`, `LOAD`/`SAVE`, `C`,
+mais o disassembler `L`/`LP`, a calculadora `CL`, um editor de fonte Z80 próprio via `EDIT` e um motor
+de execução Z80 real via `G`/debugger gráfico) pra também portar comandos do **SUPER-X**, outro
+monitor/debugger clássico de MSX mais avançado — 17 comandos com prefixo `X` até a versão 8.6.0
+(`XD`/`XA`/`XI`/`XM`/`XH` — a mesma "cruz de modos" do SUPER-X original; `XBT`/`XRT`/`XFL`/`XCM`/`XFD`
+— ferramentas de memória entre slots/sub-slots/VRAM diferentes; `XCS`/`XTS` — checksum; `XRG`/`XGO`/
+`XTR` — registradores, execução com breakpoints e trace passo a passo; `XSD` — exporta disassembly pra
+um compilador externo; `XCO` — cor de tela real, paleta do MSX1). **Ajuda → Mamute Assembler...**
+sempre reflete só o que já foi portado; lista completa de comandos pendentes em `docs/SPEC.md`,
+seção "Lacunas conhecidas".
 
 ![Mamute Assembler — monitor estilo anos 80 (Executar → Mamute Assembler...)](docs/images/msxbasica-21.png)
 

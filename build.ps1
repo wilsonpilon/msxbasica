@@ -25,6 +25,17 @@
     flag extra (a antiga opcao -D/--distribute foi removida - o que ela fazia
     agora sempre acontece).
 
+    Desde 2026-08-25 (pedido explicito do usuario), todo build TAMBEM: copia
+    as ROMs de resource\roms\ pra dist\roms\ (ja fazia isso, mas so' se
+    resource\roms\ existisse - continua condicional a isso, nunca falha o
+    build por ROM ausente), gera um .zip novo do pacote dist\ inteiro
+    (paleobasic-v<versao>.zip na raiz do repo, mesma convencao ja usada nos
+    releases manuais anteriores - ver .gitignore) e chama build-installer.ps1
+    (com -SkipAppBuild, pra nao recompilar tudo de novo) pra deixar
+    installer\PaleoBasicSetup.exe atualizado tambem. As duas novas etapas
+    podem ser puladas com -SkipZip/-SkipInstaller (compilar rapido durante
+    iteracao, sem esperar o zip de ~100+MB ou a compilacao do instalador).
+
     Todas as opcoes (-H/--help, -C/--compiler, -R/--run, -V/--version,
     -i/--sourcefile, -o/--outputexe) sao lidas manualmente de $args abaixo, em vez de um bloco
     param() do PowerShell: PowerShell 7 faz *binding posicional* de qualquer
@@ -54,24 +65,28 @@ Uso: build.ps1 [opcoes]
 Compila o MSX BASIC+Z80 IDE (dist\PaleoBasic.exe) e o fossauro
 (dist\fossauro.exe, via src\fossauro\build.ps1), depois atualiza dist\ por
 inteiro (recursos de resource\, docs, ROMs) - sempre, todo build deixa o
-pacote pronto.
+pacote pronto. Em seguida gera paleobasic-v<versao>.zip (pacote dist\
+inteiro) e installer\PaleoBasicSetup.exe (via build-installer.ps1).
 
 Opcoes:
   -C, --compiler <caminho>  Caminho para o pbcompiler.exe. Fica salvo em
                              build.config.json para as proximas execucoes.
   -R, --run                 Executa o programa apos compilar com sucesso.
   -H, --help                Mostra esta ajuda e sai.
-  -V, --version <versao>    Versao embutida nos dois executaveis (padrao: 8.4.0).
+  -V, --version <versao>    Versao embutida nos dois executaveis (padrao: 8.6.0).
   -i, --sourcefile <arquivo> Arquivo fonte a compilar
                              (padrao: src\editor\BadigEditor.pb).
   -o, --outputexe <arquivo> Caminho do executavel de saida
                              (padrao: dist\PaleoBasic.exe).
+  --skipzip                 Nao gera o .zip do pacote dist\ neste build.
+  --skipinstaller           Nao gera/atualiza installer\PaleoBasicSetup.exe neste build.
 
 Exemplos:
   .\build.ps1
   .\build.ps1 -C "C:\Basic\Compilers\pbcompiler.exe"
   .\build.ps1 --compiler "C:\Basic\Compilers\pbcompiler.exe" --run
   .\build.ps1 -V "5.2.0" -R
+  .\build.ps1 --skipzip --skipinstaller
 "@ | Write-Host
 }
 
@@ -79,9 +94,11 @@ Exemplos:
 $Help = $false
 $Compiler = $null
 $Run = $false
-$Version = "8.4.0"
+$Version = "8.6.0"
 $SourceFile = Join-Path $PSScriptRoot "src\editor\BadigEditor.pb"
 $OutputExe = Join-Path $PSScriptRoot "dist\PaleoBasic.exe"
+$SkipZip = $false
+$SkipInstaller = $false
 
 # $args e uma variavel automatica por escopo (uma funcao chamada daqui teria
 # o SEU PROPRIO $args, nao o deste script) - por isso o parsing e feito inline
@@ -117,6 +134,10 @@ while ($i -lt $args.Count) {
             if ($i -ge $args.Count) { Write-Error "Falta o caminho depois de $token."; exit 1 }
             $OutputExe = $args[$i]
         }
+
+        '^--skipzip$' { $SkipZip = $true }
+
+        '^--skipinstaller$' { $SkipInstaller = $true }
 
         default {
             Write-Warning "Parametro desconhecido: $token (use -H ou --help para ver as opcoes)."
@@ -292,6 +313,55 @@ if (Test-Path (Join-Path $PSScriptRoot "resource\roms")) {
 }
 
 Write-Host "dist\ atualizado em: $DistDir"
+
+# --- ZIP do pacote dist\ inteiro ------------------------------------------
+# paleobasic-v<versao>.zip na raiz do repo - mesma convencao ja usada nos
+# releases manuais anteriores (paleobasic-v073344.zip, paleobasic-v080200.zip,
+# etc. - ver .gitignore e docs/RELEASE_NOTES.md), so' que gerada automatica
+# a cada build agora em vez de manualmente. Tag de versao = cada parte de
+# $Version (Major.Minor.Patch) com 2 digitos, sem pontos (ex.: "8.4.0" ->
+# "080400") - mesmo esquema dos releases anteriores. Zipa o CONTEUDO de dist\
+# (Join-Path ... "*"), nao a pasta dist\ em si, pra quem extrair o zip cair
+# direto nos executaveis, sem uma pasta "dist" extra no meio.
+if (-not $SkipZip) {
+    Write-Host ""
+    Write-Host "Gerando .zip do pacote dist\..."
+
+    $VersionParts = $Version -split '\.'
+    $ZipTag = -join (0..2 | ForEach-Object {
+        $Part = if ($_ -lt $VersionParts.Count) { $VersionParts[$_] } else { "0" }
+        $DigitsOnly = ($Part -replace '[^0-9]', '')
+        if ($DigitsOnly -eq "") { $DigitsOnly = "0" }
+        "{0:D2}" -f [int]$DigitsOnly
+    })
+
+    $ZipPath = Join-Path $PSScriptRoot "paleobasic-v$ZipTag.zip"
+    Compress-Archive -Path (Join-Path $DistDir "*") -DestinationPath $ZipPath -Force
+    $ZipSizeMB = [Math]::Round((Get-Item $ZipPath).Length / 1MB, 1)
+    Write-Host "  zip: $ZipPath ($ZipSizeMB MB)"
+} else {
+    Write-Host ""
+    Write-Host "Zip do pacote dist\ pulado (--skipzip)."
+}
+
+# --- Instalador standalone -------------------------------------------------
+# build-installer.ps1 (raiz do repo) - chamado com -SkipAppBuild porque dist\
+# ja esta fresco (acabou de ser gerado acima nesta mesma execucao); sem essa
+# flag ele chamaria de volta este proprio build.ps1, recompilando tudo de
+# novo a toa.
+if (-not $SkipInstaller) {
+    Write-Host ""
+    Write-Host "Gerando instalador (build-installer.ps1)..."
+    $InstallerScript = Join-Path $PSScriptRoot "build-installer.ps1"
+    & $InstallerScript -Version $Version -SkipAppBuild
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Falha gerando o instalador (codigo $LASTEXITCODE)."
+        exit $LASTEXITCODE
+    }
+} else {
+    Write-Host ""
+    Write-Host "Instalador pulado (--skipinstaller)."
+}
 
 if ($Run) {
     Write-Host "Executando $OutputExe ..."

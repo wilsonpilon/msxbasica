@@ -35,12 +35,10 @@
 ;  grade interativa de UM endereco).
 ;
 ;  Cruz de modos (mesma cruz do XD, docs/SPEC.md modulo 45f/45h) - aqui
-;  **Ascii** e' o modo ativo (destaque solido); **Dump** agora liga de volta
-;  pro XD (MamuteXd_Open, ja existe) e **Multi** continua ligando pro XM
-;  (MamuteXm_Open) - os dois JA prontos, so' faltava a ponte nos dois
-;  sentidos; **Char**/**Disasm** continuam placeholder ("AINDA NAO
-;  IMPLEMENTADO"). A cruz do XD tambem foi atualizada nesta mesma sessao pra
-;  ligar o botao Ascii dela de volta pro XA (MamuteXdGui.pbi).
+;  **Ascii** e' o modo ativo (destaque solido); **Dump**/**Multi**/**Disasm**/
+;  **Char** ligam de volta pro XD/XM/XI/XH (MamuteXd_Open/MamuteXm_Open/
+;  MamuteXi_Open/MamuteXh_Open) - os quatro modos da cruz ja existem de
+;  verdade agora, nenhum placeholder restante.
 ; ------------------------------------------------------------
 ;
 
@@ -97,11 +95,11 @@ Procedure MamuteXa_Repaint(Canvas, *State.MamuteXaState, GridX.i, CharW.i, CharH
     ProcedureReturn
   EndIf
 
-  Protected ColBack        = RGB(0, 0, 0)
-  Protected ColFront       = RGB(60, 220, 90)
+  Protected ColBack        = Mamute_CurrentBackColor()
+  Protected ColFront       = Mamute_CurrentFrontColor()
   Protected ColDim         = RGB(25, 110, 50)
-  Protected ColCursorBack  = RGB(60, 220, 90)
-  Protected ColCursorFront = RGB(0, 0, 0)
+  Protected ColCursorBack  = Mamute_CurrentFrontColor()
+  Protected ColCursorFront = Mamute_CurrentBackColor()
 
   Box(0, 0, GadgetWidth(Canvas), GadgetHeight(Canvas), ColBack)
 
@@ -226,9 +224,9 @@ Procedure.i MamuteXa_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
   If Not Win
     ProcedureReturn StartAddr
   EndIf
-  SetWindowColor(Win, RGB(0, 0, 0))
+  SetWindowColor(Win, Mamute_CurrentBorderColor())
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   Protected CurY = Margin
 
   Protected LegendTxt.s = "Setas/PgUp/PgDn: mover  Qualquer caractere: digita direto  RETURN/ESC: sai"
@@ -255,12 +253,12 @@ Procedure.i MamuteXa_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
 
   MamuteXd_DrawModeButton(G_ModeDump, "Dump", BtnFont, 0)    ; ja liga com XD de verdade
   MamuteXd_DrawModeButton(G_ModeAscii, "Ascii", BtnFont, 1)  ; ja e' o modo ativo agora
-  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 2)    ; placeholder
+  MamuteXd_DrawModeButton(G_ModeChar, "Char", BtnFont, 0)    ; ja liga com XH de verdade
   MamuteXd_DrawModeButton(G_ModeMulti, "Multi", BtnFont, 0)  ; ja liga com XM de verdade
   MamuteXd_DrawModeButton(G_ModeDisasm, "Disasm", BtnFont, 0) ; ja liga com XI de verdade
   GadgetToolTip(G_ModeDump, "Modo Dump - abre o XD neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeAscii, "Modo Ascii (esta tela) - ja ativo")
-  GadgetToolTip(G_ModeChar, "Modo Char (sprite/fonte) - ainda nao implementado")
+  GadgetToolTip(G_ModeChar, "Modo Char - abre o XH neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeMulti, "Modo Multi - abre o XM neste mesmo endereco/alvo")
   GadgetToolTip(G_ModeDisasm, "Modo Disasm - abre o XI neste mesmo endereco/alvo")
 
@@ -366,8 +364,8 @@ Procedure.i MamuteXa_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
           Case G_PageRight  : If EventType() = #PB_EventType_LeftButtonDown : MamuteXa_DoPage(256) : EndIf
 
           ; Cruz de modos (ver comentario no topo do arquivo) - Ascii ja e' o
-          ; modo ativo (clique nao faz nada); Dump/Multi trocam de verdade
-          ; pro XD/XM, no MESMO endereco/alvo; Char/Disasm ainda placeholder.
+          ; modo ativo (clique nao faz nada); Dump/Multi/Disasm/Char trocam
+          ; de verdade pro XD/XM/XI/XH, no MESMO endereco/alvo.
           Case G_ModeAscii
             ; ja e' o modo ativo - nada a fazer
 
@@ -389,7 +387,10 @@ Procedure.i MamuteXa_Open(ParentWindow, StartAddr.i, *StartTarget.MamuteSxTarget
 
           Case G_ModeChar
             If EventType() = #PB_EventType_LeftButtonDown
-              SetGadgetText(G_ModeLabel, "Modo Char (sprite/fonte): AINDA NAO IMPLEMENTADO")
+              CloseModelessChildWindow(ParentWindow, Win)
+              AlreadyClosed = #True
+              State\BaseAddr = MamuteXh_Open(ParentWindow, State\BaseAddr, @State\Target)
+              Quit = #True
             EndIf
 
           Case G_ModeDisasm

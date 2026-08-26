@@ -596,7 +596,7 @@ EndProcedure
 ; linhas de continuacao nao correspondem a nenhuma linha REAL de
 ; MamuteEditProgram()) - comecando em St\TopIndex.
 Procedure MamuteEdit_Repaint(G_Screen, *St.MamuteEditState)
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   If Not StartDrawing(CanvasOutput(G_Screen))
     ProcedureReturn
   EndIf
@@ -636,7 +636,7 @@ EndProcedure
 ; eco cosmetico "PASSO-1"/"PASSO-2" do comando A (ver MamuteEdit_PumpDelay()
 ; logo abaixo), reproduzindo o assembler de 2 passagens do manual original.
 Procedure MamuteEdit_ShowPassMessage(G_Screen, Text.s)
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor()
   If StartDrawing(CanvasOutput(G_Screen))
     DrawingFont(FontID(MamuteGui_Font))
     Box(0, 0, GadgetWidth(G_Screen), GadgetHeight(G_Screen), ColBack)
@@ -666,8 +666,8 @@ Procedure MamuteEdit_Open(ParentWindow)
     ProcedureReturn
   EndIf
 
-  Protected ColFront = RGB(60, 220, 90), ColBack = RGB(0, 0, 0)
-  SetWindowColor(Win, ColBack)
+  Protected ColFront = Mamute_CurrentFrontColor(), ColBack = Mamute_CurrentBackColor(), ColBorder = Mamute_CurrentBorderColor()
+  SetWindowColor(Win, ColBorder)
 
   Protected ScreenH = WinH - 16 - 90
   Protected G_Screen = CanvasGadget(#PB_Any, 16, 16, WinW - 32, ScreenH)
